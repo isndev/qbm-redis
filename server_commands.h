@@ -1,19 +1,19 @@
 /*
-* qb - C++ Actor Framework
-* Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*         http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-*         limitations under the License.
-*/
+ * qb - C++ Actor Framework
+ * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ *         limitations under the License.
+ */
 
 #ifndef QBM_REDIS_SERVER_COMMANDS_H
 #define QBM_REDIS_SERVER_COMMANDS_H
@@ -31,11 +31,9 @@ public:
         return static_cast<Derived &>(*this).template command<void>("BGREWRITEAOF").ok;
     }
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     bgrewriteaof(Func &&func) {
-        return static_cast<Derived &>(*this).template command<void>(
-            std::forward<Func>(func),
-            "BGREWRITEAOF");
+        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "BGREWRITEAOF");
     }
 
     /// @brief Save database in the background.
@@ -46,11 +44,9 @@ public:
         return static_cast<Derived &>(*this).template command<std::string>("BGSAVE").result;
     }
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     bgsave(Func &&func) {
-        return static_cast<Derived &>(*this).template command<std::string>(
-            std::forward<Func>(func),
-            "BGSAVE");
+        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "BGSAVE");
     }
 
     /// @brief Get the size of the currently selected database.
@@ -61,7 +57,7 @@ public:
         return static_cast<Derived &>(*this).template command<long long>("DBSIZE").result;
     }
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     dbsize(Func &&func) {
         return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "DBSIZE");
     }
@@ -77,15 +73,12 @@ public:
         return static_cast<Derived &>(*this).template command<void>("FLUSHALL", opt).ok;
     }
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     flushall(Func &&func, bool async = false) {
         std::optional<std::string> opt;
         if (async)
             opt = "ASYNC";
-        return static_cast<Derived &>(*this).template command<void>(
-            std::forward<Func>(func),
-            "FLUSHALL",
-            opt);
+        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "FLUSHALL", opt);
     }
 
     /// @brief Remove keys of current databases.
@@ -99,15 +92,12 @@ public:
         return static_cast<Derived &>(*this).template command<void>("FLUSHDB", opt).ok;
     }
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     flushdb(Func &&func, bool async = false) {
         std::optional<std::string> opt;
         if (async)
             opt = "ASYNC";
-        return static_cast<Derived &>(*this).template command<void>(
-            std::forward<Func>(func),
-            "FLUSHDB",
-            opt);
+        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "FLUSHDB", opt);
     }
 
     /// @brief Get the info about the server.
@@ -118,7 +108,7 @@ public:
         return static_cast<Derived &>(*this).template command<std::string>("INFO").result;
     }
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     info(Func &&func) {
         return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "INFO");
     }
@@ -131,14 +121,10 @@ public:
     info(const std::string &section) {
         return static_cast<Derived &>(*this).template command<std::string>("INFO", section).result;
     }
-
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     info(Func &&func, const std::string &section) {
-        return static_cast<Derived &>(*this).template command<std::string>(
-            std::forward<Func>(func),
-            "INFO",
-            section);
+        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "INFO", section);
     }
 
     /// @brief Get the UNIX timestamp in seconds, at which the database was saved successfully.
@@ -149,11 +135,9 @@ public:
         return static_cast<Derived &>(*this).template command<long long>("LASTSAVE").result;
     }
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lastsave(Func &&func) {
-        return static_cast<Derived &>(*this).template command<long long>(
-            std::forward<Func>(func),
-            "LASTSAVE");
+        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "LASTSAVE");
     }
 
     /// @brief Save databases into RDB file **synchronously**, i.e. block the server during saving.
@@ -163,7 +147,7 @@ public:
         return static_cast<Derived &>(*this).template command<void>("SAVE").ok;
     }
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     save(Func &&func) {
         return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "SAVE");
     }

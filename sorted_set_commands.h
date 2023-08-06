@@ -1,29 +1,63 @@
 /*
-* qb - C++ Actor Framework
-* Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*         http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-*         limitations under the License.
-*/
+ * qb - C++ Actor Framework
+ * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ *         limitations under the License.
+ */
 
 #ifndef QBM_REDIS_SORTED_SET_COMMANDS_H
 #define QBM_REDIS_SORTED_SET_COMMANDS_H
 #include <chrono>
+#include <utility>
 #include "reply.h"
 
 namespace qb::redis {
 
 template <typename Derived>
 class sorted_set_commands {
+    template <typename Func>
+    class scanner {
+        Derived &_handler;
+        std::string _key;
+        std::string _pattern;
+        Func _func;
+        qb::redis::Reply<qb::redis::reply::scan<qb::unordered_map<std::string, double>>> _reply;
+
+    public:
+        scanner(Derived &handler, std::string key, std::string pattern, Func &&func)
+            : _handler(handler)
+            , _key(std::move(key))
+            , _pattern(std::move(pattern))
+            , _func(std::forward<Func>(func)) {
+            _handler.zscan(std::ref(*this), _key, 0, _pattern, 100);
+        }
+
+        void
+        operator()(qb::redis::Reply<qb::redis::reply::scan<qb::unordered_map<std::string, double>>> &&reply) {
+            _reply.ok = reply.ok;
+            std::move(
+                reply.result.items.begin(),
+                reply.result.items.end(),
+                std::inserter(_reply.result.items, _reply.result.items.end()));
+            if (reply.ok && reply.result.cursor)
+                _handler.zscan(std::ref(*this), _key, reply.result.cursor, _pattern, 100);
+            else {
+                _func(std::move(_reply));
+                delete this;
+            }
+        }
+    };
+
 public:
     template <typename... Keys>
     std::optional<std::tuple<std::string, std::string, double>>
@@ -37,8 +71,7 @@ public:
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>,
-        Derived &>
+        std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
     bzpopmax(Func &&func, Keys &&...keys, long long timeout) {
         return static_cast<Derived &>(*this)
             .template command<std::optional<std::tuple<std::string, std::string, double>>>(
@@ -55,8 +88,7 @@ public:
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>,
-        Derived &>
+        std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
     bzpopmax(Func &&func, Keys &&...keys, const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
         return bzpopmax(std::forward<Func>(func), std::forward<Keys>(keys)..., timeout.count());
     }
@@ -73,8 +105,7 @@ public:
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>,
-        Derived &>
+        std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
     bzpopmin(Func &&func, Keys &&...keys, long long timeout) {
         return static_cast<Derived &>(*this)
             .template command<std::optional<std::tuple<std::string, std::string, double>>>(
@@ -91,8 +122,7 @@ public:
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>,
-        Derived &>
+        std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
     bzpopmin(Func &&func, Keys &&...keys, const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
         return bzpopmin(std::forward<Func>(func), std::forward<Keys>(keys)..., timeout.count());
     }
@@ -109,9 +139,7 @@ public:
         if (changed)
             opt_ch = "CH";
 
-        return static_cast<Derived &>(*this)
-            .template command<long long>("ZADD", key, opt_up, opt_ch, members)
-            .result;
+        return static_cast<Derived &>(*this).template command<long long>("ZADD", key, opt_up, opt_ch, members).result;
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -137,10 +165,7 @@ public:
     template <typename Func>
     Derived &
     zcard(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(
-            std::forward<Func>(func),
-            "ZCARD",
-            key);
+        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "ZCARD", key);
     }
 
     template <typename Interval>
@@ -153,19 +178,13 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zcount(Func &&func, const std::string &key, const Interval &interval) {
-        return static_cast<Derived &>(*this).template command<long long>(
-            std::forward<Func>(func),
-            "ZCOUNT",
-            key,
-            interval.lower(),
-            interval.upper());
+        return static_cast<Derived &>(*this)
+            .template command<long long>(std::forward<Func>(func), "ZCOUNT", key, interval.lower(), interval.upper());
     }
 
     double
     zincrby(const std::string &key, double increment, const std::string &member) {
-        return static_cast<Derived &>(*this)
-            .template command<double>("ZINCRBY", key, increment, member)
-            .result;
+        return static_cast<Derived &>(*this).template command<double>("ZINCRBY", key, increment, member).result;
     }
     template <typename Func>
     Derived &
@@ -176,8 +195,8 @@ public:
 
     inline long long
     zinterstore(
-        const std::string &destination, const std::vector<std::string> &keys,
-        const std::vector<double> &weights = {}, Aggregation type = Aggregation::SUM) {
+        const std::string &destination, const std::vector<std::string> &keys, const std::vector<double> &weights = {},
+        Aggregation type = Aggregation::SUM) {
         std::optional<std::string> opt;
         if (!weights.empty())
             opt = "WEIGHTS";
@@ -225,12 +244,7 @@ public:
     zinterstore(
         Func &&func, const std::string &destination, const std::string &key, double weight = 1.,
         Aggregation type = Aggregation::SUM) {
-        return zinterstore(
-            std::forward<Func>(func),
-            destination,
-            std::vector{key},
-            std::vector{weight},
-            type);
+        return zinterstore(std::forward<Func>(func), destination, std::vector{key}, std::vector{weight}, type);
     }
 
     template <typename Interval>
@@ -259,8 +273,7 @@ public:
             .result;
     }
     template <typename Func, typename... Keys>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, double>>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, double>>> &&>, Derived &>
     zpopmax(Func &&func, const std::string &key, long long count = 1) {
         return static_cast<Derived &>(*this).template command<std::vector<std::pair<std::string, double>>>(
             std::forward<Func>(func),
@@ -277,8 +290,7 @@ public:
             .result;
     }
     template <typename Func, typename... Keys>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, double>>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, double>>> &&>, Derived &>
     zpopmin(Func &&func, const std::string &key, long long count = 1) {
         return static_cast<Derived &>(*this).template command<std::vector<std::pair<std::string, double>>>(
             std::forward<Func>(func),
@@ -290,12 +302,7 @@ public:
     std::vector<std::pair<std::string, double>>
     zrange(const std::string &key, long long start, long long stop) {
         return static_cast<Derived &>(*this)
-            .template command<std::vector<std::pair<std::string, double>>>(
-                "ZRANGE",
-                key,
-                start,
-                stop,
-                "WITHSCORES")
+            .template command<std::vector<std::pair<std::string, double>>>("ZRANGE", key, start, stop, "WITHSCORES")
             .result;
     }
     template <typename Func>
@@ -326,8 +333,7 @@ public:
     }
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
-    zrangebylex(
-        Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
+    zrangebylex(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
         return static_cast<Derived &>(*this).template command<std::vector<std::string>>(
             std::forward<Func>(func),
             "ZRANGEBYLEX",
@@ -355,10 +361,8 @@ public:
             .result;
     }
     template <typename Func, typename Interval>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, double>>> &&>, Derived &>
-    zrangebyscore(
-        Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, double>>> &&>, Derived &>
+    zrangebyscore(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
         return static_cast<Derived &>(*this).template command<std::vector<std::pair<std::string, double>>>(
             std::forward<Func>(func),
             "ZRANGEBYSCORE",
@@ -373,9 +377,7 @@ public:
 
     std::optional<long long>
     zrank(const std::string &key, const std::string &member) {
-        return static_cast<Derived &>(*this)
-            .template command<std::optional<long long>>("ZRANK", key, member)
-            .result;
+        return static_cast<Derived &>(*this).template command<std::optional<long long>>("ZRANK", key, member).result;
     }
     template <typename Func>
     Derived &
@@ -394,11 +396,8 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zrem(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this).template command<long long>(
-            std::forward<Func>(func),
-            "ZREM",
-            key,
-            std::forward<Members>(members)...);
+        return static_cast<Derived &>(*this)
+            .template command<long long>(std::forward<Func>(func), "ZREM", key, std::forward<Members>(members)...);
     }
 
     template <typename Interval>
@@ -421,9 +420,7 @@ public:
 
     long long
     zremrangebyrank(const std::string &key, long long start, long long stop) {
-        return static_cast<Derived &>(*this)
-            .template command<long long>("ZREMRANGEBYRANK", key, start, stop)
-            .result;
+        return static_cast<Derived &>(*this).template command<long long>("ZREMRANGEBYRANK", key, start, stop).result;
     }
     template <typename Func>
     Derived &
@@ -453,12 +450,7 @@ public:
     std::vector<std::pair<std::string, double>>
     zrevrange(const std::string &key, long long start, long long stop) {
         return static_cast<Derived &>(*this)
-            .template command<std::vector<std::pair<std::string, double>>>(
-                "ZREVRANGE",
-                key,
-                start,
-                stop,
-                "WITHSCORES")
+            .template command<std::vector<std::pair<std::string, double>>>("ZREVRANGE", key, start, stop, "WITHSCORES")
             .result;
     }
     template <typename Func>
@@ -489,8 +481,7 @@ public:
     }
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
-    zrevrangebylex(
-        Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
+    zrevrangebylex(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
         return static_cast<Derived &>(*this).template command<std::vector<std::string>>(
             std::forward<Func>(func),
             "ZREVRANGEBYLEX",
@@ -518,10 +509,8 @@ public:
             .result;
     }
     template <typename Func, typename Interval>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, double>>> &&>, Derived &>
-    zrevrangebyscore(
-        Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, double>>> &&>, Derived &>
+    zrevrangebyscore(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
         return static_cast<Derived &>(*this).template command<std::vector<std::pair<std::string, double>>>(
             std::forward<Func>(func),
             "ZREVRANGEBYSCORE",
@@ -536,9 +525,7 @@ public:
 
     std::optional<long long>
     zrevrank(const std::string &key, const std::string &member) {
-        return static_cast<Derived &>(*this)
-            .template command<std::optional<long long>>("ZREVRANK", key, member)
-            .result;
+        return static_cast<Derived &>(*this).template command<std::optional<long long>>("ZREVRANK", key, member).result;
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>, Derived &>
@@ -564,25 +551,28 @@ public:
     std::enable_if_t<
         std::is_invocable_v<Func, Reply<reply::scan<qb::unordered_map<std::string, double>>> &&>, Derived &>
     zscan(
-        Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*",
-        long long count = 10) {
-        return static_cast<Derived &>(*this)
-            .template command<reply::scan<qb::unordered_map<std::string, double>>>(
-                std::forward<Func>(func),
-                "ZSCAN",
-                key,
-                cursor,
-                "MATCH",
-                pattern,
-                "COUNT",
-                count);
+        Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
+        return static_cast<Derived &>(*this).template command<reply::scan<qb::unordered_map<std::string, double>>>(
+            std::forward<Func>(func),
+            "ZSCAN",
+            key,
+            cursor,
+            "MATCH",
+            pattern,
+            "COUNT",
+            count);
+    }
+    template <typename Func>
+    std::enable_if_t<
+        std::is_invocable_v<Func, Reply<reply::scan<qb::unordered_map<std::string, double>>> &&>, Derived &>
+    zscan(Func &&func, std::string const &key, const std::string &pattern = "*") {
+        new scanner<Func>(static_cast<Derived &>(*this), key, pattern, std::forward<Func>(func));
+        return static_cast<Derived &>(*this);
     }
 
     std::optional<double>
     zscore(const std::string &key, const std::string &member) {
-        return static_cast<Derived &>(*this)
-            .template command<std::optional<double>>("ZSCORE", key, member)
-            .result;
+        return static_cast<Derived &>(*this).template command<std::optional<double>>("ZSCORE", key, member).result;
     }
     template <typename Func>
     Derived &
@@ -593,8 +583,8 @@ public:
 
     inline long long
     zunionstore(
-        const std::string &destination, const std::vector<std::string> &keys,
-        const std::vector<double> &weights = {}, Aggregation type = Aggregation::SUM) {
+        const std::string &destination, const std::vector<std::string> &keys, const std::vector<double> &weights = {},
+        Aggregation type = Aggregation::SUM) {
         std::optional<std::string> opt;
         if (!weights.empty())
             opt = "WEIGHTS";
@@ -642,12 +632,7 @@ public:
     zunionstore(
         Func &&func, const std::string &destination, const std::string &key, double weight = 1.,
         Aggregation type = Aggregation::SUM) {
-        return zunionstore(
-            std::forward<Func>(func),
-            destination,
-            std::vector{key},
-            std::vector{weight},
-            type);
+        return zunionstore(std::forward<Func>(func), destination, std::vector{key}, std::vector{weight}, type);
     }
 };
 

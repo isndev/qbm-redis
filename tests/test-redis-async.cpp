@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <thread>
+#include <utility>
 #include "redis/redis.h"
 
 using namespace qb::io;
@@ -43,8 +44,8 @@ public:
     TestRedisPubSub(
         const qb::io::uri &uri, std::vector<std::string> topics, std::vector<std::string> ptopics)
         : qb::redis::tcp::consumer<TestRedisPubSub>(uri)
-        , topics(topics)
-        , ptopics(ptopics) {}
+        , topics(std::move(topics))
+        , ptopics(std::move(ptopics)) {}
 
     bool
     connect() {
