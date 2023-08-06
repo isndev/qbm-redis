@@ -15,5 +15,14 @@
 #         limitations under the License.
 #
 
-cxx_gtest(${PROJECT_NAME}-gtest-command-async "qb-io qbm-redis" test-redis-async.cpp)
-cxx_gtest(${PROJECT_NAME}-gtest-command-sync "qb-io qbm-redis" test-redis-sync.cpp)
+qb_register_module_gtest(
+    NAME redis
+    TESTNAME command-sync
+    SOURCES test-redis-sync.cpp
+)
+
+qb_register_module_gtest(
+    NAME redis
+    TESTNAME command-async
+    SOURCES test-redis-async.cpp
+)

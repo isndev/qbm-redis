@@ -1,19 +1,19 @@
 /*
-* qb - C++ Actor Framework
-* Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*         http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-*         limitations under the License.
-*/
+ * qb - C++ Actor Framework
+ * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ *         limitations under the License.
+ */
 
 #ifndef QBM_REDIS_SET_COMMANDS_H
 #define QBM_REDIS_SET_COMMANDS_H
@@ -23,6 +23,36 @@ namespace qb::redis {
 
 template <typename Derived>
 class set_commands {
+    template <typename Func>
+    class scanner {
+        Derived &_handler;
+        std::string _key;
+        std::string _pattern;
+        Func _func;
+        qb::redis::Reply<qb::redis::reply::scan<>> _reply;
+
+    public:
+        scanner(Derived &handler, std::string key, std::string pattern, Func &&func)
+            : _handler(handler)
+            , _key(std::move(key))
+            , _pattern(std::move(pattern))
+            , _func(std::forward<Func>(func)) {
+            _handler.sscan(std::ref(*this), _key, 0, _pattern, 100);
+        }
+
+        void
+        operator()(qb::redis::Reply<qb::redis::reply::scan<>> &&reply) {
+            _reply.ok = reply.ok;
+            std::move(reply.result.items.begin(), reply.result.items.end(), std::back_inserter(_reply.result.items));
+            if (reply.ok && reply.result.cursor)
+                _handler.sscan(std::ref(*this), _key, reply.result.cursor, _pattern, 100);
+            else {
+                _func(std::move(_reply));
+                delete this;
+            }
+        }
+    };
+
 public:
     template <typename... Members>
     long long
@@ -34,11 +64,8 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     sadd(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this).template command<long long>(
-            std::forward<Func>(func),
-            "SADD",
-            key,
-            std::forward<Members>(members)...);
+        return static_cast<Derived &>(*this)
+            .template command<long long>(std::forward<Func>(func), "SADD", key, std::forward<Members>(members)...);
     }
 
     long long
@@ -48,10 +75,7 @@ public:
     template <typename Func>
     Derived &
     scard(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(
-            std::forward<Func>(func),
-            "SCARD",
-            key);
+        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "SCARD", key);
     }
 
     template <typename... Keys>
@@ -127,8 +151,7 @@ public:
     template <typename Func>
     Derived &
     sismember(Func &&func, const std::string &key, const std::string &member) {
-        return static_cast<Derived &>(*this)
-            .template command<bool>(std::forward<Func>(func), "SISMEMBER", key, member);
+        return static_cast<Derived &>(*this).template command<bool>(std::forward<Func>(func), "SISMEMBER", key, member);
     }
 
     template <typename... Members>
@@ -143,8 +166,7 @@ public:
     }
     template <typename Func, typename... Members>
     std::enable_if_t<
-        sizeof...(Members) &&
-            std::is_invocable_v<Func, Reply<qb::unordered_set<std::optional<std::string>>> &&>,
+        sizeof...(Members) && std::is_invocable_v<Func, Reply<qb::unordered_set<std::optional<std::string>>> &&>,
         Derived &>
     smembers(Func &&func, const std::string &key, Members &&...members) {
         return static_cast<Derived &>(*this).template command<qb::unordered_set<std::optional<std::string>>>(
@@ -156,9 +178,7 @@ public:
 
     qb::unordered_set<std::string>
     smembers(const std::string &key) {
-        return static_cast<Derived &>(*this)
-            .template command<qb::unordered_set<std::string>>("SMEMBERS", key)
-            .result;
+        return static_cast<Derived &>(*this).template command<qb::unordered_set<std::string>>("SMEMBERS", key).result;
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::unordered_set<std::string>> &&>, Derived &>
@@ -175,17 +195,14 @@ public:
     }
     template <typename Func>
     Derived &
-    smove(
-        Func &&func, const std::string &source, const std::string &destination, const std::string &member) {
+    smove(Func &&func, const std::string &source, const std::string &destination, const std::string &member) {
         return static_cast<Derived &>(*this)
             .template command<bool>(std::forward<Func>(func), "SMOVE", source, destination, member);
     }
 
     std::optional<std::string>
     spop(const std::string &key) {
-        return static_cast<Derived &>(*this)
-            .template command<std::optional<std::string>>("SPOP", key)
-            .result;
+        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("SPOP", key).result;
     }
     template <typename Func>
     Derived &
@@ -198,9 +215,7 @@ public:
 
     std::vector<std::string>
     spop(const std::string &key, long long count) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::string>>("SPOP", key, count)
-            .result;
+        return static_cast<Derived &>(*this).template command<std::vector<std::string>>("SPOP", key, count).result;
     }
     template <typename Func>
     Derived &
@@ -211,9 +226,7 @@ public:
 
     std::optional<std::string>
     srandmember(const std::string &key) {
-        return static_cast<Derived &>(*this)
-            .template command<std::optional<std::string>>("SRANDMEMBER", key)
-            .result;
+        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("SRANDMEMBER", key).result;
     }
     template <typename Func>
     Derived &
@@ -247,11 +260,8 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     srem(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this).template command<long long>(
-            std::forward<Func>(func),
-            "SREM",
-            key,
-            std::forward<Members>(members)...);
+        return static_cast<Derived &>(*this)
+            .template command<long long>(std::forward<Func>(func), "SREM", key, std::forward<Members>(members)...);
     }
 
     reply::scan<>
@@ -263,8 +273,7 @@ public:
     template <typename Func>
     Derived &
     sscan(
-        Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*",
-        long long count = 10) {
+        Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
         return static_cast<Derived &>(*this).template command<reply::scan<>>(
             std::forward<Func>(func),
             "SSCAN",
@@ -274,6 +283,12 @@ public:
             pattern,
             "COUNT",
             count);
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::scan<>> &&>, Derived &>
+    sscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
+        new scanner<Func>(static_cast<Derived &>(*this), key, pattern, std::forward<Func>(func));
+        return static_cast<Derived &>(*this);
     }
 
     template <typename... Keys>

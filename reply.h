@@ -1,19 +1,19 @@
 /*
-* qb - C++ Actor Framework
-* Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*         http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-*         limitations under the License.
-*/
+ * qb - C++ Actor Framework
+ * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ *         limitations under the License.
+ */
 
 #ifndef QBM_REDIS_REPLY_H
 #define QBM_REDIS_REPLY_H
@@ -48,7 +48,7 @@ public:
 
     ~Error() override = default;
 
-    const char *
+    [[nodiscard]] const char *
     what() const noexcept override {
         return _msg.data();
     }
@@ -96,7 +96,7 @@ public:
     ~ParseError() override = default;
 
 private:
-    [[nodiscard]] static std::string _err_info(const std::string &type, const redisReply &reply) ;
+    [[nodiscard]] static std::string _err_info(const std::string &type, const redisReply &reply);
 };
 
 namespace reply {
@@ -384,8 +384,7 @@ parse_variant(redisReply &reply) {
 
 template <typename T, typename... Args>
 auto
-parse_variant(redisReply &reply) ->
-    typename std::enable_if<sizeof...(Args) != 0, Variant<T, Args...>>::type {
+parse_variant(redisReply &reply) -> typename std::enable_if<sizeof...(Args) != 0, Variant<T, Args...>>::type {
     auto return_var = [](auto &&arg) {
         return Variant<T, Args...>(std::move(arg));
     };
@@ -448,9 +447,7 @@ parse(ParseTag<std::pair<T, U>>, redisReply &reply) {
         throw ProtoError("Null pair reply");
     }
 
-    return std::make_pair(
-        parse<typename std::decay<T>::type>(*first),
-        parse<typename std::decay<U>::type>(*second));
+    return std::make_pair(parse<typename std::decay<T>::type>(*first), parse<typename std::decay<U>::type>(*second));
 }
 
 template <typename... Args>
@@ -541,7 +538,7 @@ parse_scan_reply(redisReply &reply, Output output) {
     long long new_cursor = 0;
     try {
         new_cursor = std::stoll(cursor_str);
-    } catch (const std::exception &e) {
+    } catch (const std::exception &) {
         throw ProtoError("Invalid cursor reply: " + cursor_str);
     }
 
@@ -611,8 +608,7 @@ to_redis_string(qb::allocator::pipe<char> &pipe, std::string const &val) {
 
 template <typename T>
 bool
-to_redis_string(
-    qb::allocator::pipe<char> &pipe, T const &val, std::enable_if_t<std::is_arithmetic_v<T>> * = 0) {
+to_redis_string(qb::allocator::pipe<char> &pipe, T const &val, std::enable_if_t<std::is_arithmetic_v<T>> * = 0) {
     return to_redis_string(pipe, std::to_string(val));
 }
 
@@ -646,8 +642,7 @@ to_redis_string(qb::allocator::pipe<char> &pipe, std::pair<Args...> const &p) {
 
 template <typename T>
 bool
-to_redis_string(
-    qb::allocator::pipe<char> &pipe, T const &cnt, std::enable_if_t<qb::is_container<T>::value> * = 0) {
+to_redis_string(qb::allocator::pipe<char> &pipe, T const &cnt, std::enable_if_t<qb::is_container<T>::value> * = 0) {
     if constexpr (is_map_iterator<decltype(cnt.begin())>::value) {
         for (const auto &el : cnt) {
             to_redis_string(pipe, el.first);

@@ -71,8 +71,7 @@ to_status(redisReply &reply) {
 std::string_view
 parse(ParseTag<std::string_view>, redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-    if (!reply::is_string(reply) && !reply::is_status(reply) && !reply::is_verb(reply) &&
-        !reply::is_bignum(reply)) {
+    if (!reply::is_string(reply) && !reply::is_status(reply) && !reply::is_verb(reply) && !reply::is_bignum(reply)) {
         throw ParseError("STRING or STATUS or VERB or BIGNUM", reply);
     }
 #else
@@ -163,8 +162,7 @@ parse(ParseTag<void>, redisReply &reply) {
 
     // Old version hiredis' *redisReply::len* is of type int.
     // So we have to cast it to an unsigned int.
-    if (static_cast<std::size_t>(reply.len) != OK.size() ||
-        OK.compare(0, OK.size(), reply.str, reply.len) != 0) {
+    if (static_cast<std::size_t>(reply.len) != OK.size() || OK.compare(0, OK.size(), reply.str, reply.len) != 0) {
         throw ProtoError("NOT ok status reply: " + reply::to_status(reply));
     }
 }
@@ -190,7 +188,7 @@ parse(ParseTag<message>, redisReply &reply) {
     }
     auto message = reply::parse<std::string_view>(*msg_reply);
 
-    return {"", std::move(channel), std::move(message), std::move(ptr)};
+    return {"", channel, message, std::move(ptr)};
 }
 
 pmessage
@@ -220,11 +218,7 @@ parse(ParseTag<pmessage>, redisReply &reply) {
     }
     auto message = reply::parse<std::string_view>(*msg_reply);
 
-    return {
-        std::move(pattern),
-        std::move(channel),
-        std::move(message),
-        std::move(ptr)};
+    return {pattern, channel, message, std::move(ptr)};
 }
 
 subscription

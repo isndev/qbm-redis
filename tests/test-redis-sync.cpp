@@ -103,7 +103,7 @@ TEST(Redis, SYNC_COMMANDS_KEY) {
     redis.set(k2, "v");
     redis.set(k3, "v");
 
-    auto cursor = 0;
+    auto cursor = 0u;
     qb::unordered_set<std::string> res;
     while (true) {
         auto scan = redis.scan(cursor, "*" + key_pattern + "*", 2);
@@ -212,7 +212,7 @@ TEST(Redis, SYNC_COMMANDS_HASH_SCAN) {
     redis.hmset(key, items);
 
     qb::unordered_map<std::string, std::string> item_map;
-    auto cursor = 0;
+    auto cursor = 0u;
     while (true) {
         auto scan = redis.hscan<decltype(item_map)>(key, cursor, "f*", 2);
         cursor = scan.cursor;
@@ -225,7 +225,7 @@ TEST(Redis, SYNC_COMMANDS_HASH_SCAN) {
     EXPECT_TRUE(item_map == items);
 
     std::vector<std::pair<std::string, std::string>> item_vec;
-    cursor = 0;
+    cursor = 0u;
     while (true) {
         auto scan = redis.hscan<decltype(item_vec)>(key, cursor);
         cursor = scan.cursor;

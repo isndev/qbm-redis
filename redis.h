@@ -52,8 +52,8 @@ private:
 public:
     redis() = delete;
     explicit redis(IO_ &io) noexcept
-        : reader_(redisReaderCreate())
-        , qb::io::async::AProtocol<IO_>(io) {}
+        : qb::io::async::AProtocol<IO_>(io)
+        , reader_(redisReaderCreate()) {}
 
     ~redis() {
         redisReaderFree(reader_);
@@ -61,8 +61,7 @@ public:
 
     std::size_t
     getMessageSize() noexcept final {
-        if (qb__unlikely(
-                redisReaderFeed(reader_, this->_io.in().begin(), this->_io.in().size()) != REDIS_OK)) {
+        if (qb__unlikely(redisReaderFeed(reader_, this->_io.in().begin(), this->_io.in().size()) != REDIS_OK)) {
             this->not_ok();
             return 0;
         }
@@ -165,11 +164,11 @@ public:
             uri,
             [this, uri, func = std::forward<Func>(func)](auto &&raw_io) {
                 if (raw_io.is_open()) {
-                    func(this->connect(uri, std::move(raw_io)));
+                    func(this->connect(uri, std::forward<decltype(raw_io)>(raw_io)));
                 } else
                     func(false);
             },
-            3);
+            timeout);
     }
 
     template <typename Func>
@@ -438,7 +437,7 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
     }
 
 public:
-    RedisCallbackConsumer(
+    explicit RedisCallbackConsumer(
         qb::io::uri uri = {}, cb_msg_t &&on_message = [](auto &&) {}, cb_err_t &&on_error = [](auto &&) {},
         cb_disc_t &&on_disconnected = [](auto &&) {})
         : RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>(uri)
@@ -484,6 +483,8 @@ struct tcp {
     };
 #endif
 };
+
+const auto no_check = [](auto &&) {};
 
 } // namespace qb::redis
 
