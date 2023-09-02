@@ -95,7 +95,7 @@ using namespace qb::io;
 
 template <typename QB_IO_, typename Derived>
 class connector : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, QB_IO_, void> {
-    friend class has_method_on<connector<QB_IO_, Derived>, void, qb::io::async::event::disconnected &&>;
+    friend class has_method_on<connector<QB_IO_, Derived>, void, qb::io::async::event::disconnected>;
     friend class qb::io::async::io<connector<QB_IO_, Derived>>;
     friend class qb::protocol::redis<connector<QB_IO_, Derived>>;
 
@@ -247,11 +247,14 @@ public:
     command(std::string const &name, Args &&...args) {
         Reply<Ret> value{};
 
-        auto func = [&value](auto &&reply) {
+        bool wait = true;
+        auto func = [&value, &wait](auto &&reply) {
             value = std::forward<Reply<Ret>>(reply);
+            wait = false;
         };
 
-        command<Ret>(func, name, std::forward<Args>(args)...).await();
+        command<Ret>(func, name, std::forward<Args>(args)...);
+        qb::io::async::run_until(wait);
 
         return value;
     }
@@ -263,8 +266,7 @@ public:
             wait = false;
         });
 
-        while (wait)
-            qb::io::async::run(EVRUN_ONCE);
+        qb::io::async::run_until(wait);
         return *this;
     }
 };
@@ -297,7 +299,6 @@ private:
         return qb::likely(it != std::cend(str_to_enum)) ? it->second : MsgType::UNKNOWN;
     }
 
-    qb::io::uri _uri;
     std::queue<IReply *> _replies;
 
     template <typename... Args>
@@ -377,7 +378,7 @@ private:
         while (!_replies.empty()) {
             on(typename redis_protocol::message{nullptr});
         }
-        if constexpr (has_method_on<Derived, void, qb::io::async::event::disconnected &&>::value)
+        if constexpr (has_method_on<Derived, void, qb::io::async::event::disconnected>::value)
             static_cast<Derived &>(*this).on(std::forward<qb::io::async::event::disconnected>(e));
     }
 
@@ -385,7 +386,7 @@ private:
     void
     on(reply::error &&error) {
         LOG_WARN("[qbm][redis] failed to parse message : " << error.what);
-        if constexpr (has_method_on<Derived, void, reply::error &&>::value)
+        if constexpr (has_method_on<Derived, void, reply::error>::value)
             static_cast<Derived &>(*this).on(std::forward<reply::error>(error));
     }
 
@@ -402,7 +403,7 @@ public:
         });
 
         while (wait)
-            qb::io::async::run(EVRUN_ONCE);
+            qb::io::async::run(EVRUN_NOWAIT);
         return static_cast<Derived &>(*this);
     }
 };
@@ -410,8 +411,8 @@ public:
 // todo: lambda deduction instead of std::function in c++20
 template <typename QB_IO_>
 class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
-    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, reply::error &&>;
-    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::io::async::event::disconnected &&>;
+    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, reply::error>;
+    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::io::async::event::disconnected>;
     friend RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>;
     using cb_msg_t = std::function<void(reply::message &&)>;
     using cb_err_t = std::function<void(reply::error &&)>;
