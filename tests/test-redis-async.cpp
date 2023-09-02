@@ -41,8 +41,7 @@ class TestRedisPubSub : public qb::redis::tcp::consumer<TestRedisPubSub> {
     std::string message;
 
 public:
-    TestRedisPubSub(
-        const qb::io::uri &uri, std::vector<std::string> topics, std::vector<std::string> ptopics)
+    TestRedisPubSub(qb::io::uri uri, std::vector<std::string> topics, std::vector<std::string> ptopics)
         : qb::redis::tcp::consumer<TestRedisPubSub>(uri)
         , topics(std::move(topics))
         , ptopics(std::move(ptopics)) {}
@@ -69,13 +68,14 @@ TEST(Redis, ASYNC_CONNECT) {
     async::init();
     qb::redis::tcp::client redis{REDIS_URI};
     auto status = true;
-    redis.connect([&status](bool connected){
-        EXPECT_TRUE(connected);
-        status = false;
-    }, 3);
+    redis.connect(
+        [&status](bool connected) {
+            EXPECT_TRUE(connected);
+            status = false;
+        },
+        3);
 
-    while (status)
-        qb::io::async::run(EVRUN_ONCE);
+    qb::io::async::run_until(status);
     EXPECT_TRUE(redis.flushall());
 }
 
@@ -101,10 +101,10 @@ TEST(Redis, ASYNC_COMMANDS_PUBSUB_CALLBACK) {
     async::init();
     std::size_t counter{0};
     auto status = true;
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [&counter](auto &&msg){
-                                       EXPECT_EQ(msg.message, MESSAGE);
-                                       ++counter;
-                                   }};
+    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [&counter](auto &&msg) {
+                                             EXPECT_EQ(msg.message, MESSAGE);
+                                             ++counter;
+                                         }};
     consumer.on_disconnected([&status](auto const &ev) {
         EXPECT_TRUE(ev.reason == 1);
         status = false;
@@ -423,16 +423,14 @@ TEST(Redis, ASYNC_COMMANDS_GEO) {
         .await();
 }
 
-TEST(Redis, ASYNC_COMMANDS_SET) {
+TEST(Redis, ASYNC_COMMANDS_NEXT) {
     async::init();
     qb::redis::tcp::client redis{REDIS_URI};
 
     if (!redis.connect())
         throw std::runtime_error("not connected");
 
-    const auto key = "key";
     redis
         .flushall(check_ok)
-
         .await();
 }
