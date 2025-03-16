@@ -579,7 +579,7 @@ public:
                 offset++,
                 bits[i]);
         }
-        return static_cast<Derived &>(*this).ping([ret, func = std::forward<Func>(func)](auto &&r) {
+        return static_cast<Derived &>(*this).ping([ret, func = std::forward<Func>(func)](auto &&) {
             func(redis::Reply<long long>{*ret == NB_BITS, *ret, nullptr});
             delete ret;
         });

@@ -566,7 +566,7 @@ to_array(redisReply &reply, Output output) {
 } // namespace reply
 
 inline std::size_t
-redis_count(std::string const &val) {
+redis_count(std::string const &) {
     return 1;
 }
 
@@ -665,20 +665,20 @@ put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
 template <typename T>
 struct Reply {
     bool ok{};
-    T result;
-    redis::reply_ptr raw;
+    T result{};
+    redis::reply_ptr raw{};
 };
 
 template <>
 struct Reply<void> {
-    bool ok;
-    redis::reply_ptr raw;
+    bool ok{};
+    redis::reply_ptr raw{};
 };
 
 template <>
 struct Reply<bool> {
-    bool ok;
-    redis::reply_ptr raw;
+    bool ok{};
+    redis::reply_ptr raw{};
 };
 
 class IReply {
