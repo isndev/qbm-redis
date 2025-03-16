@@ -262,7 +262,7 @@ public:
     Redis &
     await() {
         bool wait = true;
-        this->ping([&wait](auto &&reply) {
+        this->ping([&wait](auto &&) {
             wait = false;
         });
 
