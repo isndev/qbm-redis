@@ -20,6 +20,12 @@
 
 namespace qb::redis {
 
+/**
+ * @brief Creates an error message for type mismatch errors
+ * @param expect_type The expected Redis reply type
+ * @param reply The actual Redis reply received
+ * @return Formatted error message describing the mismatch
+ */
 std::string
 ParseError::_err_info(const std::string &expect_type, const redisReply &reply) {
     return "expect " + expect_type + " reply, but got " + reply::type_to_string(reply.type) + " reply";
@@ -27,6 +33,11 @@ ParseError::_err_info(const std::string &expect_type, const redisReply &reply) {
 
 namespace reply {
 
+/**
+ * @brief Converts a Redis reply type code to a string representation
+ * @param type Redis reply type code
+ * @return String representation of the reply type
+ */
 std::string
 type_to_string(int type) {
     switch (type) {
@@ -53,6 +64,13 @@ type_to_string(int type) {
     }
 }
 
+/**
+ * @brief Extracts a status string from a Redis reply
+ * @param reply The Redis reply to extract status from
+ * @return The status string contained in the reply
+ * @throws ParseError if the reply is not a status reply
+ * @throws ProtoError if the status string is null
+ */
 std::string
 to_status(redisReply &reply) {
     if (!reply::is_status(reply)) {
@@ -68,6 +86,14 @@ to_status(redisReply &reply) {
     return {reply.str, reply.len};
 }
 
+/**
+ * @brief Parses a Redis reply into a string_view
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return String view of the reply content
+ * @throws ParseError if the reply is not a string or status reply
+ * @throws ProtoError if the string is null
+ */
 std::string_view
 parse(ParseTag<std::string_view>, redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
@@ -91,12 +117,25 @@ parse(ParseTag<std::string_view>, redisReply &reply) {
     return {reply.str, reply.len};
 }
 
+/**
+ * @brief Parses a Redis reply into a std::string
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return String copy of the reply content
+ */
 std::string
 parse(ParseTag<std::string>, redisReply &reply) {
     auto str = parse(ParseTag<std::string_view>{}, reply);
     return {str.data(), str.size()};
 }
 
+/**
+ * @brief Parses a Redis reply into a long long integer
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return Integer value of the reply
+ * @throws ParseError if the reply is not an integer reply
+ */
 long long
 parse(ParseTag<long long>, redisReply &reply) {
     if (!reply::is_integer(reply)) {
@@ -106,6 +145,13 @@ parse(ParseTag<long long>, redisReply &reply) {
     return reply.integer;
 }
 
+/**
+ * @brief Parses a Redis reply into a double
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return Double value of the reply
+ * @throws ParseError if the reply cannot be converted to a double
+ */
 double
 parse(ParseTag<double>, redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
@@ -126,6 +172,14 @@ parse(ParseTag<double>, redisReply &reply) {
 #endif
 }
 
+/**
+ * @brief Parses a Redis reply into a boolean
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return Boolean value of the reply
+ * @throws ParseError if the reply is not a boolean or integer reply
+ * @throws ProtoError if the integer value is not 0 or 1
+ */
 bool
 parse(ParseTag<bool>, redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
@@ -148,6 +202,13 @@ parse(ParseTag<bool>, redisReply &reply) {
     }
 }
 
+/**
+ * @brief Parses a Redis reply that doesn't return a value
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @throws ParseError if the reply is not a status reply
+ * @throws ProtoError if the status is not "OK"
+ */
 void
 parse(ParseTag<void>, redisReply &reply) {
     if (!reply::is_status(reply)) {
@@ -167,6 +228,13 @@ parse(ParseTag<void>, redisReply &reply) {
     }
 }
 
+/**
+ * @brief Parses a Redis reply into a message structure
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return Message structure containing channel and message content
+ * @throws ProtoError if the reply structure doesn't match expected format
+ */
 message
 parse(ParseTag<message>, redisReply &reply) {
     auto ptr = reply_ptr(&reply);
@@ -191,6 +259,13 @@ parse(ParseTag<message>, redisReply &reply) {
     return {"", channel, message, std::move(ptr)};
 }
 
+/**
+ * @brief Parses a Redis reply into a pattern message structure
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return Pattern message structure containing pattern, channel and message content
+ * @throws ProtoError if the reply structure doesn't match expected format
+ */
 pmessage
 parse(ParseTag<pmessage>, redisReply &reply) {
     auto ptr = reply_ptr(&reply);
@@ -221,6 +296,13 @@ parse(ParseTag<pmessage>, redisReply &reply) {
     return {pattern, channel, message, std::move(ptr)};
 }
 
+/**
+ * @brief Parses a Redis reply into a subscription structure
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return Subscription structure containing channel and count information
+ * @throws ProtoError if the reply structure doesn't match expected format
+ */
 subscription
 parse(ParseTag<subscription>, redisReply &reply) {
     if (reply.elements != 3) {
@@ -244,6 +326,11 @@ parse(ParseTag<subscription>, redisReply &reply) {
     return {std::move(channel), num};
 }
 
+/**
+ * @brief Parses a SET command reply into a boolean
+ * @param reply The Redis reply to parse
+ * @return true if the SET command succeeded, false otherwise
+ */
 bool
 parse_set_reply(redisReply &reply) {
     if (is_nil(reply)) {
@@ -258,13 +345,140 @@ parse_set_reply(redisReply &reply) {
     return true;
 }
 
+/**
+ * @brief Parses a Redis reply into a set structure
+ * @param tag Parse tag type (unused, for template specialization)
+ * @param reply The Redis reply to parse
+ * @return Set structure containing the success status
+ */
 set
 parse(ParseTag<set>, redisReply &reply) {
     return {parse_set_reply(reply)};
 }
 
+    inline std::vector<char>
+    parse(ParseTag<std::vector<char>>, redisReply &reply) {
+        if (!is_string(reply)) {
+            throw ParseError("STRING", reply);
+        }
+
+        if (reply.len == 0 || reply.str == nullptr) {
+            return {};
+        }
+
+        return std::vector<char>(reply.str, reply.str + reply.len);
+    }
+
+    inline std::chrono::milliseconds
+    parse(ParseTag<std::chrono::milliseconds>, redisReply &reply) {
+        if (!is_integer(reply)) {
+            throw ParseError("INTEGER", reply);
+        }
+
+        return std::chrono::milliseconds(reply.integer);
+    }
+
+    inline std::chrono::seconds
+    parse(ParseTag<std::chrono::seconds>, redisReply &reply) {
+        if (!is_integer(reply)) {
+            throw ParseError("INTEGER", reply);
+        }
+
+        return std::chrono::seconds(reply.integer);
+    }
+
+    inline geo_pos
+    parse(ParseTag<geo_pos>, redisReply &reply) {
+        if (!is_array(reply)) {
+            throw ParseError("ARRAY", reply);
+        }
+
+        if (reply.elements != 2 || reply.element == nullptr) {
+            throw ProtoError("Invalid GEO position reply");
+        }
+
+        auto *longitude_reply = reply.element[0];
+        auto *latitude_reply = reply.element[1];
+
+        if (longitude_reply == nullptr || latitude_reply == nullptr) {
+            throw ProtoError("Null longitude or latitude reply");
+        }
+
+        return geo_pos{
+                parse<double>(*longitude_reply),
+                parse<double>(*latitude_reply)
+        };
+    }
+
+    inline stream_id
+    parse(ParseTag<stream_id>, redisReply &reply) {
+        if (!is_string(reply)) {
+            throw ParseError("STRING", reply);
+        }
+
+        if (reply.len == 0 || reply.str == nullptr) {
+            return {};
+        }
+
+        std::string id_str(reply.str, reply.len);
+        auto pos = id_str.find('-');
+
+        if (pos == std::string::npos) {
+            throw ProtoError("Invalid stream ID format: " + id_str);
+        }
+
+        stream_id id;
+        try {
+            id.timestamp = std::stoll(id_str.substr(0, pos));
+            id.sequence = std::stoll(id_str.substr(pos + 1));
+        } catch (const std::exception &) {
+            throw ProtoError("Invalid stream ID: " + id_str);
+        }
+
+        return id;
+    }
+
+/**
+ * @brief Parses a Redis reply into a stream_entry
+ * @param tag Type tag for stream_entry
+ * @param reply Redis reply to parse
+ * @return Parsed stream_entry
+ */
+    inline stream_entry
+    parse(ParseTag<stream_entry>, redisReply &reply) {
+        if (!is_array(reply)) {
+            throw ParseError("ARRAY", reply);
+        }
+
+        if (reply.elements != 2 || reply.element == nullptr) {
+            throw ProtoError("Invalid stream entry reply");
+        }
+
+        auto *id_reply = reply.element[0];
+        auto *fields_reply = reply.element[1];
+
+        if (id_reply == nullptr || fields_reply == nullptr) {
+            throw ProtoError("Null ID or fields reply");
+        }
+
+        stream_entry entry;
+        entry.id = parse<stream_id>(*id_reply);
+        entry.fields = parse<std::unordered_map<std::string, std::string>>(*fields_reply);
+
+        return entry;
+    }
+
 namespace detail {
 
+/**
+ * @brief Checks if a Redis array reply is a flat array
+ * 
+ * A flat array is an array whose elements are not arrays themselves.
+ * This is used for determining how to parse key-value pairs from Redis.
+ * 
+ * @param reply The Redis reply to check
+ * @return true if the reply is a flat array, false otherwise
+ */
 bool
 is_flat_array(redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3

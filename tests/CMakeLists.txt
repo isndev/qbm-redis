@@ -26,3 +26,21 @@ qb_register_module_gtest(
     TESTNAME command-async
     SOURCES test-redis-async.cpp
 )
+
+qb_register_module_gtest(
+    NAME redis
+    TESTNAME string-commands
+    SOURCES test-string-commands.cpp
+)
+
+qb_register_module_gtest(
+    NAME redis
+    TESTNAME list-commands
+    SOURCES test-list-commands.cpp
+)
+
+qb_register_module_gtest(
+    NAME redis
+    TESTNAME hash-commands
+    SOURCES test-hash-commands.cpp
+)

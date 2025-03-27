@@ -21,99 +21,212 @@
 
 namespace qb::redis {
 
+/**
+ * @class connection_commands
+ * @brief Provides Redis connection command implementations.
+ *
+ * This class implements Redis commands for managing connections to the Redis server,
+ * including authentication, database selection, and connection status commands.
+ *
+ * @tparam Derived The derived class type (CRTP pattern)
+ */
 template <typename Derived>
 class connection_commands {
 public:
-    /// @brief Send password to Redis.
-    /// @param password Password.
-    /// @see https://redis.io/commands/auth
+    /**
+     * @brief Authenticates the client to the Redis server
+     *
+     * @param password Authentication password
+     * @return true if authentication was successful, false otherwise
+     */
     bool
     auth(const std::string &password) {
         return static_cast<Derived &>(*this).template command<void>("AUTH", password).ok;
     }
+    
+    /**
+     * @brief Asynchronous version of auth
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param password Authentication password
+     * @return Reference to the Redis handler for chaining
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     auth(Func &&func, const std::string &password) {
         return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "AUTH", password);
     }
 
-    /// @brief Send user and password to Redis.
-    /// @param user User name.
-    /// @param password Password.
-    /// @see https://redis.io/commands/auth
+    /**
+     * @brief Authenticates the client to the Redis server with username and password
+     *
+     * @param user Username for authentication
+     * @param password Password for authentication
+     * @return true if authentication was successful, false otherwise
+     */
     bool
     auth(const std::string &user, const std::string &password) {
         return static_cast<Derived &>(*this).template command<void>("AUTH", user, password).ok;
     }
+    
+    /**
+     * @brief Asynchronous version of auth with username and password
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param user Username for authentication
+     * @param password Password for authentication
+     * @return Reference to the Redis handler for chaining
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     auth(Func &&func, const std::string &user, const std::string &password) {
         return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "AUTH", user, password);
     }
 
-    /// @brief Ask Redis to return the given message.
-    /// @param msg Message to be sent.
-    /// @return Return the given message.
-    /// @see https://redis.io/commands/echo
+    /**
+     * @brief Echoes the given message back
+     *
+     * @param message Message to echo
+     * @return The same message
+     */
     std::string
-    echo(const std::string &msg) {
-        return static_cast<Derived &>(*this).template command<std::string>("ECHO", msg).result;
+    echo(const std::string &message) {
+        return static_cast<Derived &>(*this).template command<std::string>("ECHO", message).result;
     }
+    
+    /**
+     * @brief Asynchronous version of echo
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param message Message to echo
+     * @return Reference to the Redis handler for chaining
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
-    echo(Func &&func, const std::string &msg) {
-        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "ECHO", msg);
+    echo(Func &&func, const std::string &message) {
+        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "ECHO", message);
     }
 
-    /// @brief Test if the connection is alive.
-    /// @return Always return *PONG*.
-    /// @see https://redis.io/commands/ping
+    /**
+     * @brief Tests if the connection is still alive
+     *
+     * @return "PONG" if the connection is alive
+     */
     std::string
     ping() {
         return static_cast<Derived &>(*this).template command<std::string>("PING").result;
     }
+    
+    /**
+     * @brief Asynchronous version of ping
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @return Reference to the Redis handler for chaining
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     ping(Func &&func) {
         return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "PING");
     }
 
-    /// @brief Test if the connection is alive.
-    /// @param msg Message sent to Redis.
-    /// @return Return the given message.
-    /// @see https://redis.io/commands/ping
+    /**
+     * @brief Sends a custom message with PING
+     *
+     * @param message Custom message to send
+     * @return The message that was sent
+     */
     std::string
-    ping(const std::string &msg) {
-        return static_cast<Derived &>(*this).template command<std::string>("PING", msg).result;
+    ping(const std::string &message) {
+        return static_cast<Derived &>(*this).template command<std::string>("PING", message).result;
     }
+    
+    /**
+     * @brief Asynchronous version of ping with custom message
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param message Custom message to send
+     * @return Reference to the Redis handler for chaining
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
-    ping(Func &&func, const std::string &msg) {
-        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "PING", msg);
+    ping(Func &&func, const std::string &message) {
+        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "PING", message);
     }
 
-    /// @brief Select a database.
-    /// @param index Database index.
-    /// @return Return msg.ok.
-    /// @see https://redis.io/commands/select
+    /**
+     * @brief Closes the connection
+     *
+     * @return true if the command was acknowledged, false otherwise
+     */
+    bool
+    quit() {
+        return static_cast<Derived &>(*this).template command<void>("QUIT").ok;
+    }
+    
+    /**
+     * @brief Asynchronous version of quit
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @return Reference to the Redis handler for chaining
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    quit(Func &&func) {
+        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "QUIT");
+    }
+
+    /**
+     * @brief Selects the Redis logical database
+     *
+     * @param index Database index
+     * @return true if the database was selected, false otherwise
+     */
     bool
     select(long long index) {
         return static_cast<Derived &>(*this).template command<void>("SELECT", index).ok;
     }
+    
+    /**
+     * @brief Asynchronous version of select
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param index Database index
+     * @return Reference to the Redis handler for chaining
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     select(Func &&func, long long index) {
         return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "SELECT", index);
     }
 
-    /// @brief Swap two Redis databases.
-    /// @param index1 The index of the first database.
-    /// @param index2 The index of the second database.
-    /// @see https://redis.io/commands/swapdb
+    /**
+     * @brief Swaps two Redis databases
+     *
+     * @param index1 Index of the first database
+     * @param index2 Index of the second database
+     * @return true if the databases were swapped successfully, false otherwise
+     */
     bool
     swapdb(long long index1, long long index2) {
         return static_cast<Derived &>(*this).template command<void>("SWAPDB", index1, index2).ok;
     }
+    
+    /**
+     * @brief Asynchronous version of swapdb
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param index1 Index of the first database
+     * @param index2 Index of the second database
+     * @return Reference to the Redis handler for chaining
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     swapdb(Func &&func, long long index1, long long index2) {
