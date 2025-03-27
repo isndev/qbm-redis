@@ -25,6 +25,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include <chrono>
 #include <qb/utility/type_traits.h>
 #include <qb/system/allocator/pipe.h>
 #include <qb/system/container/unordered_map.h>
@@ -33,10 +34,22 @@
 
 namespace qb::redis {
 
+/**
+ * @enum ReplyErrorType
+ * @brief Types of errors that can occur in Redis replies
+ */
 enum ReplyErrorType { ERR, MOVED, ASK };
 
+/**
+ * @class Error
+ * @brief Base exception class for Redis errors
+ */
 class Error : public std::exception {
 public:
+    /**
+     * @brief Constructs an Error with the given message
+     * @param msg Error message
+     */
     explicit Error(std::string msg)
         : _msg(std::move(msg)) {}
 
@@ -48,6 +61,10 @@ public:
 
     ~Error() override = default;
 
+    /**
+     * @brief Gets the error message
+     * @return C-string containing the error message
+     */
     [[nodiscard]] const char *
     what() const noexcept override {
         return _msg.data();
@@ -57,8 +74,16 @@ private:
     std::string _msg;
 };
 
+/**
+ * @class ProtoError
+ * @brief Exception class for protocol-related errors
+ */
 class ProtoError : public Error {
 public:
+    /**
+     * @brief Constructs a ProtoError with the given message
+     * @param msg Error message
+     */
     explicit ProtoError(const std::string &msg)
         : Error(msg) {}
 
@@ -73,17 +98,38 @@ public:
 
 ////////////////////////////////
 
+/**
+ * @struct ReplyDeleter
+ * @brief Custom deleter for Redis reply objects
+ */
 struct ReplyDeleter {
+    /**
+     * @brief Deallocates a Redis reply object
+     * @param reply Redis reply to delete
+     */
     void
     operator()(redisReply *reply) const {
         freeReplyObject(reply);
     }
 };
 
+/**
+ * @typedef reply_ptr
+ * @brief Smart pointer for Redis reply objects
+ */
 using reply_ptr = std::unique_ptr<redisReply, ReplyDeleter>;
 
+/**
+ * @class ParseError
+ * @brief Exception class for Redis reply parsing errors
+ */
 class ParseError : public ProtoError {
 public:
+    /**
+     * @brief Constructs a ParseError for a type mismatch
+     * @param expect_type Expected Redis reply type
+     * @param reply Actual Redis reply received
+     */
     ParseError(const std::string &expect_type, const redisReply &reply)
         : ProtoError(_err_info(expect_type, reply)) {}
 
@@ -101,11 +147,25 @@ private:
 
 namespace reply {
 
+/**
+ * @struct error
+ * @brief Container for Redis error information
+ */
 struct error {
     std::string what;
     redis::reply_ptr raw;
 };
+
+/**
+ * @struct status
+ * @brief Container for Redis status reply
+ */
 struct status : public std::string {};
+
+/**
+ * @struct set
+ * @brief Container for Redis SET command result
+ */
 struct set {
     bool status{};
     bool
@@ -113,21 +173,103 @@ struct set {
         return status;
     }
 };
+
+/**
+ * @struct scan
+ * @brief Container for Redis scan command results
+ * @tparam Out Output container type for scan results
+ */
 template <typename Out = std::vector<std::string>>
 struct scan {
     std::size_t cursor;
     Out items;
 };
+
+/**
+ * @struct message
+ * @brief Container for Redis pub/sub message data
+ */
 struct message {
     std::string_view pattern;
     std::string_view channel;
     std::string_view message;
     redis::reply_ptr raw;
 };
+
+/**
+ * @struct pmessage
+ * @brief Container for Redis pub/sub pattern message data
+ */
 struct pmessage : public message {};
+
+/**
+ * @struct subscription
+ * @brief Container for Redis subscription information
+ */
 struct subscription {
     std::optional<std::string> channel;
     long long num{};
+};
+
+/**
+ * @struct geo_pos
+ * @brief Container for Redis GEO position information
+ */
+struct geo_pos {
+    double longitude{};
+    double latitude{};
+
+    bool operator==(const geo_pos& other) const {
+        return longitude == other.longitude && latitude == other.latitude;
+    }
+
+    bool operator!=(const geo_pos& other) const {
+        return !(*this == other);
+    }
+};
+
+/**
+ * @struct geo_distance
+ * @brief Container for Redis GEO distance information
+ */
+struct geo_distance {
+    std::string member;
+    double distance{};
+};
+
+/**
+ * @struct stream_id
+ * @brief Container for Redis Stream ID
+ */
+struct stream_id {
+    long long timestamp{};
+    long long sequence{};
+
+    std::string to_string() const {
+        return std::to_string(timestamp) + "-" + std::to_string(sequence);
+    }
+
+    bool operator==(const stream_id& other) const {
+        return timestamp == other.timestamp && sequence == other.sequence;
+    }
+
+    bool operator!=(const stream_id& other) const {
+        return !(*this == other);
+    }
+
+    bool operator<(const stream_id& other) const {
+        return timestamp < other.timestamp ||
+              (timestamp == other.timestamp && sequence < other.sequence);
+    }
+};
+
+/**
+ * @struct stream_entry
+ * @brief Container for Redis Stream entry
+ */
+struct stream_entry {
+    stream_id id;
+    std::unordered_map<std::string, std::string> fields;
 };
 
 template <typename T>
@@ -149,6 +291,14 @@ bool parse(ParseTag<bool>, redisReply &reply);
 message parse(ParseTag<message>, redisReply &reply);
 pmessage parse(ParseTag<pmessage>, redisReply &reply);
 subscription parse(ParseTag<subscription>, redisReply &reply);
+
+// Add parse function declarations for our new types
+std::vector<char> parse(ParseTag<std::vector<char>>, redisReply &reply);
+std::chrono::milliseconds parse(ParseTag<std::chrono::milliseconds>, redisReply &reply);
+std::chrono::seconds parse(ParseTag<std::chrono::seconds>, redisReply &reply);
+geo_pos parse(ParseTag<geo_pos>, redisReply &reply);
+stream_id parse(ParseTag<stream_id>, redisReply &reply);
+stream_entry parse(ParseTag<stream_entry>, redisReply &reply);
 
 template <typename T>
 std::optional<T> parse(ParseTag<std::optional<T>>, redisReply &reply);
@@ -267,6 +417,13 @@ template <typename Output>
 void to_array(redisReply &reply, Output output);
 // Parse set reply to bool type
 bool parse_set_reply(redisReply &reply);
+
+stream_id parse(ParseTag<stream_id>, redisReply &reply);
+geo_pos parse(ParseTag<geo_pos>, redisReply &reply);
+std::vector<char> parse(ParseTag<std::vector<char>>, redisReply &reply);
+std::chrono::milliseconds parse(ParseTag<std::chrono::milliseconds>, redisReply &reply);
+std::chrono::seconds parse(ParseTag<std::chrono::seconds>, redisReply &reply);
+stream_entry parse(ParseTag<stream_entry>, redisReply &reply);
 
 } // namespace reply
 
@@ -565,53 +722,101 @@ to_array(redisReply &reply, Output output) {
 
 } // namespace reply
 
+/**
+ * @brief Counts the number of elements in a string for Redis protocol
+ * @param Unused string parameter
+ * @return Always returns 1, as a string is a single element
+ */
 inline std::size_t
 redis_count(std::string const &) {
     return 1;
 }
 
+/**
+ * @brief Counts the number of elements in a scalar arithmetic value for Redis protocol
+ * @param Unused arithmetic value parameter
+ * @return Always returns 1, as an arithmetic value is a single element
+ */
 template <typename T>
 std::size_t
 redis_count(T const &, std::enable_if_t<std::is_arithmetic_v<T>> * = 0) {
     return 1;
 }
 
+/**
+ * @brief Counts the number of elements in a tuple for Redis protocol
+ * @param Unused tuple parameter
+ * @return Number of elements in the tuple
+ */
 template <typename... Args>
 constexpr std::size_t
 redis_count(std::tuple<Args...> const &) {
     return sizeof...(Args);
 }
 
+/**
+ * @brief Counts the number of elements in a pair for Redis protocol
+ * @param Unused pair parameter
+ * @return Always returns 2, as a pair has two elements
+ */
 template <typename... Args>
 constexpr std::size_t
 redis_count(std::pair<Args...> const &) {
     return sizeof...(Args);
 }
 
+/**
+ * @brief Counts the number of elements in an optional value for Redis protocol
+ * @param opt Optional value to count
+ * @return The count of the contained value if present, 0 otherwise
+ */
 template <typename T>
 std::size_t
 redis_count(std::optional<T> const &opt) {
     return opt ? redis_count(opt.value()) : 0;
 }
 
+/**
+ * @brief Counts the number of elements in a container for Redis protocol
+ * @param cnt Container to count
+ * @return Number of elements in the container multiplied by the count of a single element
+ */
 template <typename T>
 std::size_t
 redis_count(T const &cnt, std::enable_if_t<qb::is_container<T>::value> * = 0) {
     return cnt.size() ? redis_count(*cnt.begin()) * cnt.size() : 0;
 }
 
+/**
+ * @brief Converts a string to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param val String value to convert
+ * @return Always returns true
+ */
 inline bool
 to_redis_string(qb::allocator::pipe<char> &pipe, std::string const &val) {
     pipe << '$' << val.size() << "\r\n" << val << "\r\n";
     return true;
 }
 
+/**
+ * @brief Converts an arithmetic value to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param val Arithmetic value to convert
+ * @return Result of the string conversion
+ */
 template <typename T>
 bool
 to_redis_string(qb::allocator::pipe<char> &pipe, T const &val, std::enable_if_t<std::is_arithmetic_v<T>> * = 0) {
     return to_redis_string(pipe, std::to_string(val));
 }
 
+/**
+ * @brief Converts an optional value to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param opt Optional value to convert
+ * @return Always returns true
+ */
 template <typename T>
 bool
 to_redis_string(qb::allocator::pipe<char> &pipe, std::optional<T> const &opt) {
@@ -620,18 +825,37 @@ to_redis_string(qb::allocator::pipe<char> &pipe, std::optional<T> const &opt) {
     return true;
 }
 
+/**
+ * @brief Helper function to convert all elements of a tuple to Redis protocol format
+ * @param pipe Output pipe to write to
+ * @param t Tuple to convert
+ * @param Indices sequence for tuple element access
+ * @return true if all conversions succeed
+ */
 template <typename Tuple, std::size_t... N>
 bool
 put_tuple(qb::allocator::pipe<char> &pipe, Tuple const &t, std::index_sequence<N...>) {
     return (to_redis_string(pipe, std::get<N>(t)) && ...);
 }
 
+/**
+ * @brief Converts a tuple to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param t Tuple to convert
+ * @return Result of the tuple conversion
+ */
 template <typename... Args>
 bool
 to_redis_string(qb::allocator::pipe<char> &pipe, std::tuple<Args...> const &t) {
     return put_tuple(pipe, t, std::index_sequence_for<Args...>{});
 }
 
+/**
+ * @brief Converts a pair to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param p Pair to convert
+ * @return Always returns true
+ */
 template <typename... Args>
 bool
 to_redis_string(qb::allocator::pipe<char> &pipe, std::pair<Args...> const &p) {
@@ -640,6 +864,12 @@ to_redis_string(qb::allocator::pipe<char> &pipe, std::pair<Args...> const &p) {
     return true;
 }
 
+/**
+ * @brief Converts a container to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param cnt Container to convert
+ * @return Always returns true
+ */
 template <typename T>
 bool
 to_redis_string(qb::allocator::pipe<char> &pipe, T const &cnt, std::enable_if_t<qb::is_container<T>::value> * = 0) {
@@ -655,6 +885,75 @@ to_redis_string(qb::allocator::pipe<char> &pipe, T const &cnt, std::enable_if_t<
     return true;
 }
 
+/**
+ * @brief Converts a vector of chars to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param val Vector of chars to convert (binary data)
+ * @return Always returns true
+ */
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::vector<char> const &val) {
+    pipe << '$' << val.size() << "\r\n";
+    pipe.write(val.data(), val.size());
+    pipe << "\r\n";
+    return true;
+}
+
+/**
+ * @brief Converts milliseconds to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param val Milliseconds value to convert
+ * @return Always returns true
+ */
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::chrono::milliseconds const &val) {
+    return to_redis_string(pipe, std::to_string(val.count()));
+}
+
+/**
+ * @brief Converts seconds to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param val Seconds value to convert
+ * @return Always returns true
+ */
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::chrono::seconds const &val) {
+    return to_redis_string(pipe, std::to_string(val.count()));
+}
+
+/**
+ * @brief Converts a geo_pos to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param pos Geo position to convert
+ * @return Always returns true
+ */
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::reply::geo_pos const &pos) {
+    to_redis_string(pipe, pos.longitude);
+    to_redis_string(pipe, pos.latitude);
+    return true;
+}
+
+/**
+ * @brief Converts a stream_id to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param id Stream ID to convert
+ * @return Always returns true
+ */
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::reply::stream_id const &id) {
+    return to_redis_string(pipe, id.to_string());
+}
+
+/**
+ * @brief Formats and writes Redis commands to a pipe
+ * 
+ * This function formats the provided arguments according to the Redis protocol
+ * and writes them to the pipe. It handles the command array formatting.
+ * 
+ * @param pipe Output pipe to write to
+ * @param args Command arguments to format and write
+ */
 template <typename... Args>
 void
 put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
@@ -662,83 +961,177 @@ put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
     (to_redis_string(pipe, std::forward<Args>(args)) && ...);
 }
 
+/**
+ * @struct Reply
+ * @brief Generic container for Redis command results
+ * 
+ * This structure holds the result of a Redis command execution,
+ * including success status, the typed result value, and the raw reply.
+ * 
+ * @tparam T The type of the result value
+ */
 template <typename T>
 struct Reply {
-    bool ok{};
-    T result{};
-    redis::reply_ptr raw{};
+    bool ok{};       ///< Whether the command was successful
+    T result{};      ///< The typed result of the command
+    redis::reply_ptr raw{}; ///< The raw Redis reply
+    std::string_view error; ///< Error from Redis
 };
 
+/**
+ * @struct Reply<void>
+ * @brief Specialization for commands that don't return a value
+ * 
+ * This specialization is used for Redis commands that don't return
+ * a meaningful value but only success/failure status.
+ */
 template <>
 struct Reply<void> {
-    bool ok{};
-    redis::reply_ptr raw{};
+    bool ok{};       ///< Whether the command was successful
+    redis::reply_ptr raw{}; ///< The raw Redis reply
+    std::string_view error; ///< Error from Redis
 };
 
+/**
+ * @struct Reply<bool>
+ * @brief Specialization for commands that return a boolean status
+ * 
+ * This specialization is used for Redis commands that return
+ * a boolean status indicating success or failure.
+ */
 template <>
 struct Reply<bool> {
-    bool ok{};
-    redis::reply_ptr raw{};
+    bool ok{};       ///< The boolean result
+    redis::reply_ptr raw{}; ///< The raw Redis reply
+    std::string_view error; ///< Error from Redis
 };
 
+/**
+ * @class IReply
+ * @brief Interface for Redis reply handlers
+ * 
+ * This abstract base class defines the interface for objects that
+ * process Redis replies. It's used primarily for asynchronous command handling.
+ */
 class IReply {
 public:
     IReply() = default;
     virtual ~IReply() = default;
-    virtual void operator()(redisReply *) = 0;
+
+    /**
+     * @brief Process a Redis reply
+     * @param reply The raw Redis reply to process
+     */
+    virtual void operator()(redisReply *reply) = 0;
 };
 
+/**
+ * @class TReply
+ * @brief Type-specific implementation of IReply
+ * 
+ * This class implements the IReply interface for a specific result type.
+ * It parses the Redis reply into the specified type and passes it to
+ * the provided callback function.
+ * 
+ * @tparam Func The callback function type
+ * @tparam T The type of the result value
+ */
 template <typename Func, typename T>
 class TReply final : public IReply {
     Func func;
 
 public:
+    /**
+     * @brief Constructs a TReply with the specified callback
+     * @param func Callback function to process the reply
+     */
     explicit TReply(Func &&func)
         : func(std::forward<Func>(func)) {}
     ~TReply() override = default;
+
+    /**
+     * @brief Process a Redis reply
+     * @param raw The raw Redis reply to process
+     */
     void
     operator()(redisReply *raw) final {
         try {
             func(Reply<T>{true, qb::redis::reply::parse<T>(*raw), reply_ptr(raw)});
-        } catch (...) {
-            func(Reply<T>{false, {}, reply_ptr(raw)});
+        } catch (const ProtoError &) {
+            func(Reply<T>{false, {}, reply_ptr(raw), {raw->str, raw->len}});
         }
     }
 };
 
+/**
+ * @class TReply<Func, void>
+ * @brief Specialization for void result type
+ * 
+ * This specialization handles Redis commands that don't return
+ * a meaningful value but only success/failure status.
+ * 
+ * @tparam Func The callback function type
+ */
 template <typename Func>
 class TReply<Func, void> final : public IReply {
     Func func;
 
 public:
+    /**
+     * @brief Constructs a TReply with the specified callback
+     * @param func Callback function to process the reply
+     */
     explicit TReply(Func &&func)
         : func(std::forward<Func>(func)) {}
     ~TReply() override = default;
+
+    /**
+     * @brief Process a Redis reply
+     * @param raw The raw Redis reply to process
+     */
     void
     operator()(redisReply *raw) final {
         try {
             qb::redis::reply::parse<void>(*raw);
             func(Reply<void>{true, reply_ptr(raw)});
-        } catch (...) {
-            func(Reply<void>{false, reply_ptr(raw)});
+        } catch (const ProtoError &) {
+            func(Reply<void>{false, reply_ptr(raw), {raw->str, raw->len}});
         }
     }
 };
 
+/**
+ * @class TReply<Func, bool>
+ * @brief Specialization for boolean result type
+ * 
+ * This specialization handles Redis commands that return
+ * a boolean status indicating success or failure.
+ * 
+ * @tparam Func The callback function type
+ */
 template <typename Func>
 class TReply<Func, bool> final : public IReply {
     Func func;
 
 public:
+    /**
+     * @brief Constructs a TReply with the specified callback
+     * @param func Callback function to process the reply
+     */
     explicit TReply(Func &&func)
         : func(std::forward<Func>(func)) {}
     ~TReply() override = default;
+
+    /**
+     * @brief Process a Redis reply
+     * @param raw The raw Redis reply to process
+     */
     void
     operator()(redisReply *raw) final {
         try {
             func(Reply<bool>{qb::redis::reply::parse<bool>(*raw), reply_ptr(raw)});
-        } catch (...) {
-            func(Reply<bool>{false, reply_ptr(raw)});
+        } catch (const ProtoError &) {
+            func(Reply<bool>{false, reply_ptr(raw), {raw->str, raw->len}});
         }
     }
 };

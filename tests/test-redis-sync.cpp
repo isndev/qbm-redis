@@ -20,7 +20,7 @@
 #include <thread>
 #include "redis/redis.h"
 #define REDIS_URI \
-    { "tcp://10.3.3.3:6379" }
+    { "tcp://localhost:6379" }
 
 using namespace qb::io;
 using namespace std::chrono;

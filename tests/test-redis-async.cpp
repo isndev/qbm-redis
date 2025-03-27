@@ -24,7 +24,7 @@
 using namespace qb::io;
 
 #define REDIS_URI \
-    { "tcp://10.3.3.3:6379" }
+    { "tcp://localhost:6379" }
 
 auto check_ok = [](auto &&reply) {
     EXPECT_TRUE(reply.ok);
