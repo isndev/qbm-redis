@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@
 #include "hyperloglog_commands.h"
 #include "geo_commands.h"
 #include "scripting_commands.h"
+#include "stream_commands.h"
 #include "publish_commands.h"
 #include "subscription_commands.h"
 #include "bitmap_commands.h"
@@ -52,6 +53,10 @@ namespace qb::protocol {
  */
 template <typename IO_>
 class redis final : public qb::io::async::AProtocol<IO_> {
+    constexpr IO_ &
+    derived() {
+        return static_cast<IO_ &>(*this);
+    }
 public:
     /**
      * @struct message
@@ -142,7 +147,10 @@ class connector : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, 
     friend class has_method_on<connector<QB_IO_, Derived>, void, qb::io::async::event::disconnected>;
     friend class qb::io::async::io<connector<QB_IO_, Derived>>;
     friend class qb::protocol::redis<connector<QB_IO_, Derived>>;
-
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
 public:
     using redis_protocol = qb::protocol::redis<connector<QB_IO_, Derived>>;
 
@@ -167,7 +175,7 @@ private:
      */
     void
     on(typename redis_protocol::message msg) {
-        static_cast<Derived &>(*this).on(msg);
+        derived().on(msg);
     }
 
     /**
@@ -177,7 +185,7 @@ private:
     void
     on(qb::io::async::event::disconnected &&ev) {
         LOG_WARN("[qbm][redis] has been disconnected");
-        static_cast<Derived &>(*this).on(std::forward<qb::io::async::event::disconnected>(ev));
+        derived().on(std::forward<qb::io::async::event::disconnected>(ev));
     }
 
 protected:
@@ -300,6 +308,7 @@ class Redis
     , public geo_commands<Redis<QB_IO_>>
     , public scripting_commands<Redis<QB_IO_>>
     , public publish_commands<Redis<QB_IO_>>
+    , public stream_commands<Redis<QB_IO_>>
     , public bitmap_commands<Redis<QB_IO_>>
     , public transaction_commands<Redis<QB_IO_>> {
     friend class connector<QB_IO_, Redis<QB_IO_>>;
@@ -399,6 +408,9 @@ public:
         command<Ret>(func, name, std::forward<Args>(args)...);
         await();
 
+        if (!value.ok())
+            throw std::runtime_error(std::string(value.error()));
+
         return value;
     }
 
@@ -442,7 +454,10 @@ class RedisConsumer
     friend class connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>;
     friend class connection_commands<Derived>;
     friend class subscription_commands<Derived>;
-
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
 public:
     using redis_protocol = typename connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>::redis_protocol;
 
@@ -502,7 +517,7 @@ private:
     command(Func &&func, std::string const &name, Args &&...args) {
         _command(name, std::forward<Args>(args)...);
         _replies.push(new TReply<Func, Ret>(std::forward<Func>(func)));
-        return static_cast<Derived &>(*this);
+        return derived();
     }
 
     /**
@@ -537,18 +552,18 @@ private:
         try {
             auto &raw = *msg.reply;
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-            if (!(reply::is_array(*msg.reply) || reply::is_push(*msg.reply)) || msg.reply->elements < 1 ||
+            if (!(qb::redis::is_array(*msg.reply) || qb::redis::is_push(*msg.reply)) || msg.reply->elements < 1 ||
                 msg.reply->element == nullptr) {
 #else
-            if (reply::is_array(*msg.reply) && msg.reply->elements > 0 && msg.reply->element) {
+            if (qb::redis::is_array(*msg.reply) && msg.reply->elements > 0 && msg.reply->element) {
 #endif
-                auto type = msg_type(reply::parse<std::string_view>(*raw.element[0]));
+                auto type = msg_type(qb::redis::parse<std::string_view>(*raw.element[0]));
                 switch (type) {
                 case MsgType::MESSAGE:
-                    static_cast<Derived &>(*this).on(reply::parse<reply::message>(raw));
+                    derived().on(qb::redis::parse<qb::redis::message>(raw));
                     return;
                 case MsgType::PMESSAGE:
-                    static_cast<Derived &>(*this).on(reply::parse<reply::pmessage>(raw));
+                    derived().on(qb::redis::parse<qb::redis::pmessage>(raw));
                     return;
                 case MsgType::SUBSCRIBE:
                 case MsgType::UNSUBSCRIBE:
@@ -570,7 +585,7 @@ private:
             } else
                 throw ProtoError("unknown message type.");
         } catch (std::exception &e) {
-            on(reply::error{e.what(), reply_ptr(msg.reply)});
+            on(qb::redis::error{e.what(), reply_ptr(msg.reply)});
         }
     }
 
@@ -585,7 +600,7 @@ private:
             on(typename redis_protocol::message{nullptr});
         }
         if constexpr (has_method_on<Derived, void, qb::io::async::event::disconnected>::value)
-            static_cast<Derived &>(*this).on(std::forward<qb::io::async::event::disconnected>(e));
+            derived().on(std::forward<qb::io::async::event::disconnected>(e));
     }
 
     /**
@@ -593,10 +608,10 @@ private:
      * @param error The error that occurred
      */
     void
-    on(reply::error &&error) {
+    on(qb::redis::error &&error) {
         LOG_WARN("[qbm][redis] failed to parse message : " << error.what);
-        if constexpr (has_method_on<Derived, void, reply::error>::value)
-            static_cast<Derived &>(*this).on(std::forward<reply::error>(error));
+        if constexpr (has_method_on<Derived, void, qb::redis::error>::value)
+            derived().on(std::forward<qb::redis::error>(error));
     }
 
 public:
@@ -633,7 +648,7 @@ public:
             qb::io::async::run(EVRUN_NOWAIT);
         } while (!_replies.empty());
 
-        return static_cast<Derived &>(*this);
+        return derived();
     }
 };
 
@@ -651,11 +666,11 @@ public:
  */
 template <typename QB_IO_>
 class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
-    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, reply::error>;
+    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::redis::error>;
     friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::io::async::event::disconnected>;
     friend RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>;
-    using cb_msg_t = std::function<void(reply::message &&)>;
-    using cb_err_t = std::function<void(reply::error &&)>;
+    using cb_msg_t = std::function<void(qb::redis::message &&)>;
+    using cb_err_t = std::function<void(qb::redis::error &&)>;
     using cb_disc_t = std::function<void(qb::io::async::event::disconnected &&)>;
 
     cb_msg_t _on_message;
@@ -667,8 +682,8 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
      * @param msg The received message
      */
     void
-    on(reply::message &&msg) {
-        _on_message(std::forward<reply::message>(msg));
+    on(qb::redis::message &&msg) {
+        _on_message(std::forward<qb::redis::message>(msg));
     }
 
     /**
@@ -676,8 +691,8 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
      * @param error The error that occurred
      */
     void
-    on(reply::error &&error) {
-        _on_error(std::forward<reply::error>(error));
+    on(qb::redis::error &&error) {
+        _on_error(std::forward<qb::redis::error>(error));
     }
 
     /**

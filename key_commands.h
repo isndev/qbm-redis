@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,12 @@ namespace qb::redis {
  */
 template <typename Derived>
 class key_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
+    
     /**
      * @class scanner
      * @brief Helper class for implementing incremental scanning of keys
@@ -44,25 +50,33 @@ class key_commands {
      * @tparam Func Callback function type
      */
     template <typename Func>
-    class scanner {
-        Derived &_handler;
+    class scanner : public qb::redis::IReply {
+        Derived &_derived;
         std::string _pattern;
         Func _func;
-        qb::redis::Reply<qb::redis::reply::scan<>> _reply;
+        size_t _cursor{0};
+        qb::redis::Reply<qb::redis::scan<>> _reply;
 
     public:
         /**
          * @brief Constructs a scanner for keys matching a pattern
          * 
-         * @param handler The Redis handler
+         * @param derived The Redis handler
          * @param pattern Pattern to match keys against
          * @param func Callback function to process results
          */
-        scanner(Derived &handler, std::string pattern, Func &&func)
-            : _handler(handler)
+        scanner(Derived &derived, std::string pattern, Func &&func)
+            : _derived(derived)
             , _pattern(std::move(pattern))
             , _func(std::forward<Func>(func)) {
-            _handler.scan(std::ref(*this), 0, _pattern, 100);
+            _derived.template command<qb::redis::scan<>>(
+                [this](qb::redis::Reply<qb::redis::scan<>> &&reply) {
+                    (*this)(std::forward<qb::redis::Reply<qb::redis::scan<>>>(reply));
+                },
+                "SCAN",
+                _cursor,
+                "MATCH",
+                _pattern);
         }
 
         /**
@@ -71,12 +85,20 @@ class key_commands {
          * @param reply The scan operation reply
          */
         void
-        operator()(qb::redis::Reply<qb::redis::reply::scan<>> &&reply) {
-            _reply.ok = reply.ok;
-            std::move(reply.result.items.begin(), reply.result.items.end(), std::back_inserter(_reply.result.items));
-            if (reply.ok && reply.result.cursor)
-                _handler.scan(std::ref(*this), reply.result.cursor, _pattern, 100);
-            else {
+        operator()(qb::redis::Reply<qb::redis::scan<>> &&reply) {
+            _reply.ok() = reply.ok();
+            std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
+            if (reply.ok() && reply.result().cursor) {
+                _cursor = reply.result().cursor;
+                _derived.template command<qb::redis::scan<>>(
+                    [this](qb::redis::Reply<qb::redis::scan<>> &&reply) {
+                        (*this)(std::forward<qb::redis::Reply<qb::redis::scan<>>>(reply));
+                    },
+                    "SCAN",
+                    _cursor,
+                    "MATCH",
+                    _pattern);
+            } else {
                 _func(std::move(_reply));
                 delete this;
             }
@@ -93,12 +115,12 @@ public:
     template <typename... Keys>
     long long
     del(Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>("DEL", std::forward<Keys>(keys)...).result;
+        return derived().template command<long long>("DEL", std::forward<Keys>(keys)...).result();
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     del(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "DEL", std::forward<Keys>(keys)...);
     }
 
@@ -112,12 +134,12 @@ public:
      */
     std::optional<std::string>
     dump(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("DUMP", key).result;
+        return derived().template command<std::optional<std::string>>("DUMP", key).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     dump(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>(
+        return derived().template command<std::optional<std::string>>(
             std::forward<Func>(func),
             "DUMP",
             key);
@@ -132,12 +154,12 @@ public:
     template <typename... Keys>
     long long
     exists(Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>("EXISTS", std::forward<Keys>(keys)...).result;
+        return derived().template command<long long>("EXISTS", std::forward<Keys>(keys)...).result();
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     exists(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "EXISTS", std::forward<Keys>(keys)...);
     }
 
@@ -152,12 +174,12 @@ public:
      */
     bool
     expire(const std::string &key, long long timeout) {
-        return static_cast<Derived &>(*this).template command<bool>("EXPIRE", key, timeout).ok;
+        return derived().template command<bool>("EXPIRE", key, timeout).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     expire(Func &&func, const std::string &key, long long timeout) {
-        return static_cast<Derived &>(*this).template command<bool>(std::forward<Func>(func), "EXPIRE", key, timeout);
+        return derived().template command<bool>(std::forward<Func>(func), "EXPIRE", key, timeout);
     }
 
     /**
@@ -190,12 +212,12 @@ public:
      */
     bool
     expireat(const std::string &key, long long timestamp) {
-        return static_cast<Derived &>(*this).template command<bool>("EXPIREAT", key, timestamp).ok;
+        return derived().template command<bool>("EXPIREAT", key, timestamp).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     expireat(Func &&func, const std::string &key, long long timestamp) {
-        return static_cast<Derived &>(*this).template command<bool>(
+        return derived().template command<bool>(
             std::forward<Func>(func),
             "EXPIREAT",
             key,
@@ -234,12 +256,12 @@ public:
      */
     std::vector<std::string>
     keys(const std::string &pattern = "*") {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>("KEYS", pattern).result;
+        return derived().template command<std::vector<std::string>>("KEYS", pattern).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     keys(Func &&func, const std::string &pattern = "*") {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>(
+        return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func),
             "KEYS",
             pattern);
@@ -256,12 +278,12 @@ public:
      */
     bool
     move(const std::string &key, long long destination_db) {
-        return static_cast<Derived &>(*this).template command<bool>("MOVE", key, destination_db).ok;
+        return derived().template command<bool>("MOVE", key, destination_db).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     move(Func &&func, const std::string &key, long long destination_db) {
-        return static_cast<Derived &>(*this).template command<bool>(
+        return derived().template command<bool>(
             std::forward<Func>(func),
             "MOVE",
             key,
@@ -278,12 +300,12 @@ public:
      */
     bool
     persist(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<bool>("PERSIST", key).ok;
+        return derived().template command<bool>("PERSIST", key).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     persist(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<bool>(std::forward<Func>(func), "PERSIST", key);
+        return derived().template command<bool>(std::forward<Func>(func), "PERSIST", key);
     }
 
     /**
@@ -297,12 +319,12 @@ public:
      */
     bool
     pexpire(const std::string &key, long long timeout) {
-        return static_cast<Derived &>(*this).template command<bool>("PEXPIRE", key, timeout).ok;
+        return derived().template command<bool>("PEXPIRE", key, timeout).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pexpire(Func &&func, const std::string &key, long long timeout) {
-        return static_cast<Derived &>(*this).template command<bool>(std::forward<Func>(func), "PEXPIRE", key, timeout);
+        return derived().template command<bool>(std::forward<Func>(func), "PEXPIRE", key, timeout);
     }
 
     /**
@@ -335,12 +357,12 @@ public:
      */
     bool
     pexpireat(const std::string &key, long long timestamp) {
-        return static_cast<Derived &>(*this).template command<bool>("PEXPIREAT", key, timestamp).ok;
+        return derived().template command<bool>("PEXPIREAT", key, timestamp).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pexpireat(Func &&func, const std::string &key, long long timestamp) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<bool>(std::forward<Func>(func), "PEXPIREAT", key, timestamp);
     }
 
@@ -375,12 +397,12 @@ public:
      */
     long long
     pttl(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>("PTTL", key).result;
+        return derived().template command<long long>("PTTL", key).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     pttl(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "PTTL", key);
+        return derived().template command<long long>(std::forward<Func>(func), "PTTL", key);
     }
 
     /**
@@ -391,30 +413,41 @@ public:
      */
     std::optional<std::string>
     randomkey() {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("RANDOMKEY").result;
+        return derived().template command<std::optional<std::string>>("RANDOMKEY").result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     randomkey(Func &&func) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>(
+        return derived().template command<std::optional<std::string>>(
             std::forward<Func>(func),
             "RANDOMKEY");
     }
 
     /**
-     * @brief Rename `key` to `newkey`.
-     * @param key Key to be renamed.
-     * @param newkey The new name of the key.
-     * @see https://redis.io/commands/rename
+     * @brief Renames a key
+     *
+     * @param key Key name to rename
+     * @param new_key New name for the key
+     * @return status object with the result
      */
-    bool
+    status
     rename(const std::string &key, const std::string &new_key) {
-        return static_cast<Derived &>(*this).template command<void>("RENAME", key, new_key).ok;
+        return derived().template command<status>("RENAME", key, new_key).result();
     }
+    
+    /**
+     * @brief Asynchronous version of rename
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param key Key name to rename
+     * @param new_key New name for the key
+     * @return Reference to the Redis handler for chaining
+     */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     rename(Func &&func, const std::string &key, const std::string &new_key) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "RENAME", key, new_key);
+        return derived().template command<status>(std::forward<Func>(func), "RENAME", key, new_key);
     }
 
     /**
@@ -428,61 +461,52 @@ public:
      */
     bool
     renamenx(const std::string &key, const std::string &new_key) {
-        return static_cast<Derived &>(*this).template command<bool>("RENAMENX", key, new_key).ok;
+        return derived().template command<bool>("RENAMENX", key, new_key).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     renamenx(Func &&func, const std::string &key, const std::string &new_key) {
-        return static_cast<Derived &>(*this).template command<bool>(std::forward<Func>(func), "RENAMENX", key, new_key);
+        return derived().template command<bool>(std::forward<Func>(func), "RENAMENX", key, new_key);
     }
 
     /**
-     * @brief Create a key with the value obtained by `Redis::dump`.
-     * @param key Key.
-     * @param val Value obtained by `Redis::dump`.
-     * @param ttl Timeout of the created key in milliseconds. If `ttl` is 0, set no timeout.
-     * @param replace Whether to overwrite an existing key.
-     *                If `replace` is `false` and key already exists, throw an exception.
-     * @see https://redis.io/commands/restore
+     * @brief Creates a key using the serialized value previously stored using DUMP
+     *
+     * @param key Key name to restore
+     * @param val Serialized value from DUMP
+     * @param ttl Time-to-live in milliseconds
+     * @param replace Whether to replace the key if it already exists
+     * @return status object with the result
      */
-    bool
+    status
     restore(const std::string &key, const std::string &val, long long ttl, bool replace = false) {
-        std::optional<std::string> opt;
-        if (replace)
-            opt = "REPLACE";
-        return static_cast<Derived &>(*this).template command<void>("RESTORE", key, ttl, val, opt).ok;
+        std::vector<std::string> opt;
+        if (replace) {
+            opt = {"REPLACE"};
+        }
+        return derived().template command<status>("RESTORE", key, ttl, val, opt).result();
     }
-    template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
-    restore(Func &&func, const std::string &key, const std::string &val, long long ttl, bool replace = false) {
-        std::optional<std::string> opt;
-        if (replace)
-            opt = "REPLACE";
-        return static_cast<Derived &>(*this)
-            .template command<void>(std::forward<Func>(func), "RESTORE", key, ttl, val, opt);
-    }
-
+    
     /**
-     * @brief Create a key with the value obtained by `Redis::dump`.
-     * @param key Key.
-     * @param val Value obtained by `Redis::dump`.
-     * @param ttl Timeout of the created key in milliseconds. If `ttl` is 0, set no timeout.
-     * @param replace Whether to overwrite an existing key.
-     *                If `replace` is `false` and key already exists, throw an exception.
-     * @see https://redis.io/commands/restore
+     * @brief Asynchronous version of restore
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param key Key name to restore
+     * @param val Serialized value from DUMP
+     * @param ttl Time-to-live in milliseconds
+     * @param replace Whether to replace the key if it already exists
+     * @return Reference to the Redis handler for chaining
      */
-    bool
-    restore(
-        const std::string &key, const std::string &val,
-        const std::chrono::milliseconds &ttl = std::chrono::milliseconds{0}, bool replace = false) {
-        return restore(key, val, ttl.count(), replace);
-    }
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
-    restore(
-        Func &&func, const std::string &key, const std::string &val,
-        const std::chrono::milliseconds &ttl = std::chrono::milliseconds{0}, bool replace = false) {
-        return restore(std::forward<Func>(func), key, val, ttl.count(), replace);
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    restore(Func &&func, const std::string &key, const std::string &val, long long ttl, bool replace = false) {
+        std::vector<std::string> opt;
+        if (replace) {
+            opt = {"REPLACE"};
+        }
+        return derived()
+            .template command<status>(std::forward<Func>(func), "RESTORE", key, ttl, val, opt);
     }
 
     /**
@@ -508,16 +532,16 @@ public:
      * @return scan.cursor the cursor to be used for the next scan operation.
      * @see https://redis.io/commands/scan
      */
-    reply::scan<>
+    qb::redis::scan<>
     scan(long long cursor, const std::string &pattern = "*", long long count = 10) {
-        return static_cast<Derived &>(*this)
-            .template command<reply::scan<>>("SCAN", cursor, "MATCH", pattern, "COUNT", count)
-            .result;
+        return derived()
+            .template command<qb::redis::scan<>>("SCAN", cursor, "MATCH", pattern, "COUNT", count)
+            .result();
     }
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::scan<>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<>> &&>, Derived &>
     scan(Func &&func, long long cursor, const std::string &pattern = "*", long long count = 10) {
-        return static_cast<Derived &>(*this).template command<reply::scan<>>(
+        return derived().template command<qb::redis::scan<>>(
             std::forward<Func>(func),
             "SCAN",
             cursor,
@@ -527,10 +551,10 @@ public:
             count);
     }
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::scan<>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<>> &&>, Derived &>
     scan(Func &&func, const std::string &pattern = "*") {
-        new scanner<Func>{static_cast<Derived &>(*this), pattern, std::forward<Func>(func)};
-        return static_cast<Derived &>(*this);
+        new scanner<Func>{derived(), pattern, std::forward<Func>(func)};
+        return derived();
     }
 
     /**
@@ -544,12 +568,12 @@ public:
     template <typename... Keys>
     long long
     touch(Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>("TOUCH", std::forward<Keys>(keys)...).result;
+        return derived().template command<long long>("TOUCH", std::forward<Keys>(keys)...).result();
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     touch(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>(
+        return derived().template command<long long>(
             std::forward<Func>(func),
             "TOUCH",
             std::forward<Keys>(keys)...);
@@ -568,12 +592,12 @@ public:
      */
     long long
     ttl(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>("TTL", key).result;
+        return derived().template command<long long>("TTL", key).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     ttl(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "TTL", key);
+        return derived().template command<long long>(std::forward<Func>(func), "TTL", key);
     }
 
     /**
@@ -584,12 +608,12 @@ public:
      */
     std::string
     type(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::string>("TYPE", key).result;
+        return derived().template command<std::string>("TYPE", key).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     type(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "TYPE", key);
+        return derived().template command<std::string>(std::forward<Func>(func), "TYPE", key);
     }
 
     /**
@@ -601,12 +625,12 @@ public:
     template <typename... Keys>
     long long
     unlink(Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>("UNLINK", std::forward<Keys>(keys)...).result;
+        return derived().template command<long long>("UNLINK", std::forward<Keys>(keys)...).result();
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     unlink(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>(
+        return derived().template command<long long>(
             std::forward<Func>(func),
             "UNLINK",
             std::forward<Keys>(keys)...);
@@ -623,12 +647,12 @@ public:
      */
     long long
     wait(long long num_slaves, long long timeout) {
-        return static_cast<Derived &>(*this).template command<long long>("WAIT", num_slaves, timeout).result;
+        return derived().template command<long long>("WAIT", num_slaves, timeout).result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     wait(Func &&func, long long num_slaves, long long timeout) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "WAIT", num_slaves, timeout);
     }
 

@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 
 #ifndef QBM_REDIS_SET_COMMANDS_H
 #define QBM_REDIS_SET_COMMANDS_H
+
 #include "reply.h"
 
 namespace qb::redis {
@@ -35,6 +36,12 @@ namespace qb::redis {
  */
 template <typename Derived>
 class set_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
+
     /**
      * @class scanner
      * @brief Helper class for implementing incremental scanning of sets
@@ -47,7 +54,8 @@ class set_commands {
         std::string _key;
         std::string _pattern;
         Func _func;
-        qb::redis::Reply<qb::redis::reply::scan<>> _reply;
+        size_t _cursor{0};
+        qb::redis::Reply<qb::redis::scan<>> _reply;
 
     public:
         /**
@@ -72,11 +80,11 @@ class set_commands {
          * @param reply The scan operation reply
          */
         void
-        operator()(qb::redis::Reply<qb::redis::reply::scan<>> &&reply) {
-            _reply.ok = reply.ok;
-            std::move(reply.result.items.begin(), reply.result.items.end(), std::back_inserter(_reply.result.items));
-            if (reply.ok && reply.result.cursor)
-                _handler.sscan(std::ref(*this), _key, reply.result.cursor, _pattern, 100);
+        operator()(qb::redis::Reply<qb::redis::scan<>> &&reply) {
+            _reply.ok() = reply.ok();
+            std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
+            if (reply.ok() && reply.result().cursor)
+                _handler.sscan(std::ref(*this), _key, reply.result().cursor, _pattern, 100);
             else {
                 _func(std::move(_reply));
                 delete this;
@@ -85,6 +93,8 @@ class set_commands {
     };
 
 public:
+    // =============== Basic Set Operations ===============
+
     /**
      * @brief Adds members to a set
      * 
@@ -92,13 +102,16 @@ public:
      * @param key Key where the set is stored
      * @param members Members to add to the set
      * @return Number of members that were added to the set
+     * @note Time complexity: O(1) for each element added
+     * @see https://redis.io/commands/sadd
      */
     template <typename... Members>
     long long
     sadd(const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
-            .template command<long long>("SADD", key, std::forward<Members>(members)...)
-            .result;
+        if (key.empty() || sizeof...(members) == 0) {
+            return 0;
+        }
+        return derived().template command<long long>("SADD", key, std::forward<Members>(members)...).result();
     }
 
     /**
@@ -109,13 +122,16 @@ public:
      * @param func Callback function
      * @param key Key where the set is stored
      * @param members Members to add to the set
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sadd
      */
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     sadd(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
-            .template command<long long>(std::forward<Func>(func), "SADD", key, std::forward<Members>(members)...);
+        if (key.empty() || sizeof...(members) == 0) {
+            return derived();
+        }
+        return derived().template command<long long>(std::forward<Func>(func), "SADD", key, std::forward<Members>(members)...);
     }
 
     /**
@@ -123,10 +139,15 @@ public:
      * 
      * @param key Key where the set is stored
      * @return Number of members in the set
+     * @note Time complexity: O(1)
+     * @see https://redis.io/commands/scard
      */
     long long
     scard(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>("SCARD", key).result;
+        if (key.empty()) {
+            return 0;
+        }
+        return derived().template command<long long>("SCARD", key).result();
     }
 
     /**
@@ -135,150 +156,227 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function
      * @param key Key where the set is stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/scard
      */
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     scard(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "SCARD", key);
+        if (key.empty()) {
+            return derived();
+        }
+        return derived().template command<long long>(std::forward<Func>(func), "SCARD", key);
     }
+
+    // =============== Set Operations ===============
 
     /**
      * @brief Subtracts multiple sets
      * 
-     * @tparam Keys Variadic types for key names
      * @param keys Keys where the sets are stored
      * @return Members of the resulting set (difference between first set and all others)
+     * @note Time complexity: O(N) where N is the total number of elements in all sets
+     * @see https://redis.io/commands/sdiff
      */
-    template <typename... Keys>
     std::vector<std::string>
-    sdiff(Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::string>>("SDIFF", std::forward<Keys>(keys)...)
-            .result;
+    sdiff(const std::vector<std::string> &keys) {
+        if (keys.size() == 0) {
+            return {};
+        }
+
+        return derived().template command<std::vector<std::string>>("SDIFF", keys).result();
     }
 
     /**
      * @brief Asynchronous version of sdiff
      * 
      * @tparam Func Callback function type
-     * @tparam Keys Variadic types for key names
      * @param func Callback function
      * @param keys Keys where the sets are stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sdiff
      */
-    template <typename Func, typename... Keys>
+    template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
-    sdiff(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>(
+    sdiff(Func &&func, const std::vector<std::string> &keys) {
+        if (keys.size() == 0) {
+            return derived();
+        }
+
+        return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func),
             "SDIFF",
-            std::forward<Keys>(keys)...);
+            keys);
     }
 
     /**
      * @brief Subtracts multiple sets and stores the result in a key
      * 
-     * @tparam Keys Variadic types for source key names
      * @param destination Destination key where the resulting set will be stored
      * @param keys Source keys where the sets are stored
      * @return Number of members in the resulting set
+     * @note Time complexity: O(N) where N is the total number of elements in all sets
+     * @see https://redis.io/commands/sdiffstore
      */
-    template <typename... Keys>
     long long
-    sdiffstore(const std::string &destination, Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<long long>("SDIFFSTORE", destination, std::forward<Keys>(keys)...)
-            .result;
+    sdiffstore(const std::string &destination, const std::vector<std::string> &keys) {
+        if (destination.empty() || keys.size() == 0) {
+            return 0;
+        }
+
+        return derived().template command<long long>("SDIFFSTORE", destination, keys).result();
     }
 
     /**
      * @brief Asynchronous version of sdiffstore
      * 
      * @tparam Func Callback function type
-     * @tparam Keys Variadic types for source key names
      * @param func Callback function
      * @param destination Destination key where the resulting set will be stored
      * @param keys Source keys where the sets are stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sdiffstore
      */
-    template <typename Func, typename... Keys>
+    template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    sdiffstore(Func &&func, const std::string &destination, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>(
+    sdiffstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
+        if (destination.empty() || keys.size() == 0) {
+            return derived();
+        }
+
+        return derived().template command<long long>(
             std::forward<Func>(func),
             "SDIFFSTORE",
             destination,
-            std::forward<Keys>(keys)...);
+            keys);
     }
 
     /**
      * @brief Intersects multiple sets
      * 
-     * @tparam Keys Variadic types for key names
      * @param keys Keys where the sets are stored
      * @return Members of the resulting set (intersection of all sets)
+     * @note Time complexity: O(N*M) worst case where N is the size of the smallest set and M is the number of sets
+     * @see https://redis.io/commands/sinter
      */
-    template <typename... Keys>
     std::vector<std::string>
-    sinter(Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::string>>("SINTER", std::forward<Keys>(keys)...)
-            .result;
+    sinter(const std::vector<std::string> &keys) {
+        if (keys.size() == 0) {
+            return {};
+        }
+        return derived().template command<std::vector<std::string>>("SINTER", keys).result();
     }
 
     /**
      * @brief Asynchronous version of sinter
      * 
      * @tparam Func Callback function type
-     * @tparam Keys Variadic types for key names
      * @param func Callback function
      * @param keys Keys where the sets are stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sinter
      */
-    template <typename Func, typename... Keys>
+    template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
-    sinter(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>(
+    sinter(Func &&func, const std::vector<std::string> &keys) {
+        if (keys.size() == 0) {
+            return derived();
+        }
+
+        return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func),
             "SINTER",
-            std::forward<Keys>(keys)...);
+            keys);
+    }
+
+    /**
+     * @brief Gets the cardinality of the intersection of multiple sets
+     * 
+     * @tparam Keys Variadic types for key names
+     * @param keys Keys where the sets are stored
+     * @param limit Maximum number of elements to count (optional)
+     * @return Number of elements in the intersection
+     * @note Time complexity: O(N*M) worst case where N is the size of the smallest set and M is the number of sets
+     * @see https://redis.io/commands/sintercard
+     */
+    long long
+    sintercard(const std::vector<std::string> &keys, std::optional<long long> limit = std::nullopt) {
+        if (keys.size() == 0) {
+            return 0;
+        }
+        std::vector<std::string> args;
+        args.reserve(2);
+        if (limit) {
+            args.push_back("LIMIT");
+            args.push_back(std::to_string(*limit));
+        }
+        return derived().template command<long long>("SINTERCARD", keys.size(), keys, args).result();
+    }
+
+    /**
+     * @brief Asynchronous version of sintercard
+     * 
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param keys Keys where the sets are stored
+     * @param limit Maximum number of elements to count (optional)
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sintercard
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
+    sintercard(Func &&func, const std::vector<std::string> &keys, std::optional<long long> limit = std::nullopt) {
+        if (keys.size() == 0) {
+            return derived();
+        }
+        std::vector<std::string> args;
+        args.reserve(2);
+        if (limit) {
+            args.push_back("LIMIT");
+            args.push_back(std::to_string(*limit));
+        }
+        return derived().template command<long long>(std::forward<Func>(func), "SINTERCARD", keys.size(), keys, args);
     }
 
     /**
      * @brief Intersects multiple sets and stores the result in a key
      * 
-     * @tparam Keys Variadic types for source key names
      * @param destination Destination key where the resulting set will be stored
      * @param keys Source keys where the sets are stored
      * @return Number of members in the resulting set
+     * @note Time complexity: O(N*M) worst case where N is the size of the smallest set and M is the number of sets
+     * @see https://redis.io/commands/sinterstore
      */
-    template <typename... Keys>
     long long
-    sinterstore(const std::string &destination, Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<long long>("SINTERSTORE", destination, std::forward<Keys>(keys)...)
-            .result;
+    sinterstore(const std::string &destination, const std::vector<std::string> &keys) {
+        if (destination.empty() || keys.size() == 0) {
+            return 0;
+        }
+        std::vector<std::string> args;
+        return derived().template command<long long>("SINTERSTORE", destination, keys).result();
     }
 
     /**
      * @brief Asynchronous version of sinterstore
      * 
      * @tparam Func Callback function type
-     * @tparam Keys Variadic types for source key names
      * @param func Callback function
      * @param destination Destination key where the resulting set will be stored
      * @param keys Source keys where the sets are stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sinterstore
      */
-    template <typename Func, typename... Keys>
+    template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    sinterstore(Func &&func, const std::string &destination, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>(
+    sinterstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
+        if (destination.empty() || keys.size() == 0) {
+            return derived();
+        }
+        return derived().template command<long long>(
             std::forward<Func>(func),
             "SINTERSTORE",
             destination,
-            std::forward<Keys>(keys)...);
+            keys);
     }
 
     /**
@@ -287,10 +385,15 @@ public:
      * @param key Key where the set is stored
      * @param member Member to check
      * @return true if the member exists in the set, false otherwise
+     * @note Time complexity: O(1)
+     * @see https://redis.io/commands/sismember
      */
     bool
     sismember(const std::string &key, const std::string &member) {
-        return static_cast<Derived &>(*this).template command<bool>("SISMEMBER", key, member).ok;
+        if (key.empty() || member.empty()) {
+            return false;
+        }
+        return derived().template command<bool>("SISMEMBER", key, member).result();
     }
 
     /**
@@ -300,51 +403,57 @@ public:
      * @param func Callback function
      * @param key Key where the set is stored
      * @param member Member to check
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sismember
      */
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     sismember(Func &&func, const std::string &key, const std::string &member) {
-        return static_cast<Derived &>(*this).template command<bool>(std::forward<Func>(func), "SISMEMBER", key, member);
+        if (key.empty() || member.empty()) {
+            return derived();
+        }
+        return derived().template command<bool>(std::forward<Func>(func), "SISMEMBER", key, member);
     }
 
     /**
-     * @brief Gets all members with a specific pattern from a set
+     * @brief Determines if multiple members are in a set
      * 
-     * @tparam Members Variadic types for member patterns
+     * @tparam Members Variadic types for members to check
      * @param key Key where the set is stored
-     * @param members Patterns to match members
-     * @return Set of matching members (as optional strings)
+     * @param members Members to check
+     * @return Vector of boolean values indicating membership
+     * @note Time complexity: O(N) where N is the number of members to check
+     * @see https://redis.io/commands/smismember
      */
     template <typename... Members>
-    std::enable_if_t<sizeof...(Members), qb::unordered_set<std::optional<std::string>>>
-    smembers(const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
-            .template command<qb::unordered_set<std::optional<std::string>>>(
-                "SMEMBERS",
-                key,
-                std::forward<Members>(members)...)
-            .result;
+    std::vector<bool>
+    smismember(const std::string &key, Members &&...members) {
+        if (key.empty() || sizeof...(members) == 0) {
+            return {};
+        }
+        return derived().template command<std::vector<bool>>("SMISMEMBER", key, std::forward<Members>(members)...).result();
     }
 
     /**
-     * @brief Asynchronous version of smembers with pattern matching
+     * @brief Asynchronous version of smismember
      * 
      * @tparam Func Callback function type
-     * @tparam Members Variadic types for member patterns
+     * @tparam Members Variadic types for members to check
      * @param func Callback function
      * @param key Key where the set is stored
-     * @param members Patterns to match members
-     * @return Reference to the Redis handler for chaining
+     * @param members Members to check
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/smismember
      */
     template <typename Func, typename... Members>
-    std::enable_if_t<
-        sizeof...(Members) && std::is_invocable_v<Func, Reply<qb::unordered_set<std::optional<std::string>>> &&>,
-        Derived &>
-    smembers(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this).template command<qb::unordered_set<std::optional<std::string>>>(
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<bool>> &&>, Derived &>
+    smismember(Func &&func, const std::string &key, Members &&...members) {
+        if (key.empty() || sizeof...(members) == 0) {
+            return derived();
+        }
+        return derived().template command<std::vector<bool>>(
             std::forward<Func>(func),
-            "SMEMBERS",
+            "SMISMEMBER",
             key,
             std::forward<Members>(members)...);
     }
@@ -354,10 +463,15 @@ public:
      * 
      * @param key Key where the set is stored
      * @return Set of all members
+     * @note Time complexity: O(N) where N is the size of the set
+     * @see https://redis.io/commands/smembers
      */
     qb::unordered_set<std::string>
     smembers(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<qb::unordered_set<std::string>>("SMEMBERS", key).result;
+        if (key.empty()) {
+            return {};
+        }
+        return derived().template command<qb::unordered_set<std::string>>("SMEMBERS", key).result();
     }
 
     /**
@@ -366,12 +480,16 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function
      * @param key Key where the set is stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/smembers
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::unordered_set<std::string>> &&>, Derived &>
     smembers(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<qb::unordered_set<std::string>>(
+        if (key.empty()) {
+            return derived();
+        }
+        return derived().template command<qb::unordered_set<std::string>>(
             std::forward<Func>(func),
             "SMEMBERS",
             key);
@@ -384,10 +502,15 @@ public:
      * @param destination Destination key where the set is stored
      * @param member Member to move
      * @return true if the member was moved, false if the member was not in the source set
+     * @note Time complexity: O(1)
+     * @see https://redis.io/commands/smove
      */
     bool
     smove(const std::string &source, const std::string &destination, const std::string &member) {
-        return static_cast<Derived &>(*this).template command<bool>("SMOVE", source, destination, member).ok;
+        if (source.empty() || destination.empty() || member.empty()) {
+            return false;
+        }
+        return derived().template command<bool>("SMOVE", source, destination, member).result();
     }
 
     /**
@@ -398,13 +521,21 @@ public:
      * @param source Source key where the set is stored
      * @param destination Destination key where the set is stored
      * @param member Member to move
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/smove
      */
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     smove(Func &&func, const std::string &source, const std::string &destination, const std::string &member) {
-        return static_cast<Derived &>(*this)
-            .template command<bool>(std::forward<Func>(func), "SMOVE", source, destination, member);
+        if (source.empty() || destination.empty() || member.empty()) {
+            return derived();
+        }
+        return derived().template command<bool>(
+            std::forward<Func>(func),
+            "SMOVE",
+            source,
+            destination,
+            member);
     }
 
     /**
@@ -412,10 +543,15 @@ public:
      * 
      * @param key Key where the set is stored
      * @return The removed member, or std::nullopt if the set is empty
+     * @note Time complexity: O(1)
+     * @see https://redis.io/commands/spop
      */
     std::optional<std::string>
     spop(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("SPOP", key).result;
+        if (key.empty()) {
+            return std::nullopt;
+        }
+        return derived().template command<std::optional<std::string>>("SPOP", key).result();
     }
 
     /**
@@ -424,12 +560,16 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function
      * @param key Key where the set is stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/spop
      */
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     spop(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>(
+        if (key.empty()) {
+            return derived();
+        }
+        return derived().template command<std::optional<std::string>>(
             std::forward<Func>(func),
             "SPOP",
             key);
@@ -441,10 +581,15 @@ public:
      * @param key Key where the set is stored
      * @param count Number of members to pop
      * @return Vector of removed members
+     * @note Time complexity: O(N) where N is the number of members to pop
+     * @see https://redis.io/commands/spop
      */
     std::vector<std::string>
     spop(const std::string &key, long long count) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>("SPOP", key, count).result;
+        if (key.empty() || count < 1) {
+            return {};
+        }
+        return derived().template command<std::vector<std::string>>("SPOP", key, count).result();
     }
 
     /**
@@ -454,13 +599,20 @@ public:
      * @param func Callback function
      * @param key Key where the set is stored
      * @param count Number of members to pop
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/spop
      */
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     spop(Func &&func, const std::string &key, long long count) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::string>>(std::forward<Func>(func), "SPOP", key, count);
+        if (key.empty() || count < 1) {
+            return derived();
+        }
+        return derived().template command<std::vector<std::string>>(
+            std::forward<Func>(func),
+            "SPOP",
+            key,
+            count);
     }
 
     /**
@@ -468,10 +620,15 @@ public:
      * 
      * @param key Key where the set is stored
      * @return A random member, or std::nullopt if the set is empty
+     * @note Time complexity: O(1)
+     * @see https://redis.io/commands/srandmember
      */
     std::optional<std::string>
     srandmember(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("SRANDMEMBER", key).result;
+        if (key.empty()) {
+            return std::nullopt;
+        }
+        return derived().template command<std::optional<std::string>>("SRANDMEMBER", key).result();
     }
 
     /**
@@ -480,12 +637,16 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function
      * @param key Key where the set is stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/srandmember
      */
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     srandmember(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>(
+        if (key.empty()) {
+            return derived();
+        }
+        return derived().template command<std::optional<std::string>>(
             std::forward<Func>(func),
             "SRANDMEMBER",
             key);
@@ -497,14 +658,15 @@ public:
      * @param key Key where the set is stored
      * @param count Number of members to return
      * @return Vector of random members
-     * @note If count is positive, result contains unique elements
-     *       If count is negative, result may contain duplicate elements
+     * @note Time complexity: O(N) where N is the absolute value of count
+     * @see https://redis.io/commands/srandmember
      */
     std::vector<std::string>
     srandmember(const std::string &key, long long count) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::string>>("SRANDMEMBER", key, count)
-            .result;
+        if (key.empty()) {
+            return {};
+        }
+        return derived().template command<std::vector<std::string>>("SRANDMEMBER", key, count).result();
     }
 
     /**
@@ -514,13 +676,20 @@ public:
      * @param func Callback function
      * @param key Key where the set is stored
      * @param count Number of members to return
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/srandmember
      */
     template <typename Func>
-    Derived &
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     srandmember(Func &&func, const std::string &key, long long count) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::string>>(std::forward<Func>(func), "SRANDMEMBER", key, count);
+        if (key.empty()) {
+            return derived();
+        }
+        return derived().template command<std::vector<std::string>>(
+            std::forward<Func>(func),
+            "SRANDMEMBER",
+            key,
+            count);
     }
 
     /**
@@ -530,13 +699,16 @@ public:
      * @param key Key where the set is stored
      * @param members Members to remove
      * @return Number of members that were removed
+     * @note Time complexity: O(N) where N is the number of members to be removed
+     * @see https://redis.io/commands/srem
      */
     template <typename... Members>
     long long
     srem(const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
-            .template command<long long>("SREM", key, std::forward<Members>(members)...)
-            .result;
+        if (key.empty() || sizeof...(members) == 0) {
+            return 0;
+        }
+        return derived().template command<long long>("SREM", key, std::forward<Members>(members)...).result();
     }
 
     /**
@@ -547,14 +719,23 @@ public:
      * @param func Callback function
      * @param key Key where the set is stored
      * @param members Members to remove
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/srem
      */
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     srem(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
-            .template command<long long>(std::forward<Func>(func), "SREM", key, std::forward<Members>(members)...);
+        if (key.empty() || sizeof...(members) == 0) {
+            return derived();
+        }
+        return derived().template command<long long>(
+            std::forward<Func>(func),
+            "SREM",
+            key,
+            std::forward<Members>(members)...);
     }
+
+    // =============== Set Scanning Operations ===============
 
     /**
      * @brief Incrementally iterates set elements
@@ -564,12 +745,23 @@ public:
      * @param pattern Pattern to filter members
      * @param count Hint for how many elements to return per call
      * @return Scan result containing next cursor and matching elements
+     * @note Time complexity: O(1) for every call. O(N) for a complete iteration
+     * @see https://redis.io/commands/sscan
      */
-    reply::scan<>
+    scan<>
     sscan(const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
-        return static_cast<Derived &>(*this)
-            .template command<reply::scan<>>("SSCAN", key, cursor, "MATCH", pattern, "COUNT", count)
-            .result;
+        if (key.empty()) {
+            return {};
+        }
+        return derived().template command<scan<>>(
+            "SSCAN",
+            key,
+            cursor,
+            "MATCH",
+            pattern,
+            "COUNT",
+            count)
+            .result();
     }
 
     /**
@@ -581,13 +773,16 @@ public:
      * @param cursor Cursor position to start iteration from
      * @param pattern Pattern to filter members
      * @param count Hint for how many elements to return per call
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sscan
      */
     template <typename Func>
-    Derived &
-    sscan(
-        Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
-        return static_cast<Derived &>(*this).template command<reply::scan<>>(
+    std::enable_if_t<std::is_invocable_v<Func, Reply<scan<>> &&>, Derived &>
+    sscan(Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
+        if (key.empty()) {
+            return derived();
+        }
+        return derived().template command<scan<>>(
             std::forward<Func>(func),
             "SSCAN",
             key,
@@ -608,82 +803,102 @@ public:
      * @param func Callback function to process complete results
      * @param key Key where the set is stored
      * @param pattern Pattern to filter members
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sscan
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::scan<>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<scan<>> &&>, Derived &>
     sscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
-        new scanner<Func>(static_cast<Derived &>(*this), key, pattern, std::forward<Func>(func));
-        return static_cast<Derived &>(*this);
+        if (key.empty()) {
+            return derived();
+        }
+        new scanner<Func>(derived(), key, pattern, std::forward<Func>(func));
+        return derived();
     }
+
+    // =============== Set Operations ===============
 
     /**
      * @brief Adds multiple sets
      * 
-     * @tparam Keys Variadic types for key names
      * @param keys Keys where the sets are stored
      * @return Members of the resulting set (union of all sets)
+     * @note Time complexity: O(N) where N is the total number of elements in all sets
+     * @see https://redis.io/commands/sunion
      */
-    template <typename... Keys>
     std::vector<std::string>
-    sunion(Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::string>>("SUNION", std::forward<Keys>(keys)...)
-            .result;
+    sunion(const std::vector<std::string> &keys) {
+        if (keys.size() == 0) {
+            return {};
+        }
+        std::vector<std::string> args;
+        args.reserve(keys.size());
+        args.insert(args.end(), keys.begin(), keys.end());
+        return derived().template command<std::vector<std::string>>("SUNION", args).result();
     }
 
     /**
      * @brief Asynchronous version of sunion
      * 
      * @tparam Func Callback function type
-     * @tparam Keys Variadic types for key names
      * @param func Callback function
      * @param keys Keys where the sets are stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sunion
      */
-    template <typename Func, typename... Keys>
+    template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
-    sunion(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>(
+    sunion(Func &&func, const std::vector<std::string> &keys) {
+        if (keys.size() == 0) {
+            return derived();
+        }
+        std::vector<std::string> args;
+        args.reserve(keys.size());
+        args.insert(args.end(), keys.begin(), keys.end());
+        return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func),
             "SUNION",
-            std::forward<Keys>(keys)...);
+            args);
     }
 
     /**
      * @brief Adds multiple sets and stores the result in a key
      * 
-     * @tparam Keys Variadic types for source key names
      * @param destination Destination key where the resulting set will be stored
      * @param keys Source keys where the sets are stored
      * @return Number of members in the resulting set
+     * @note Time complexity: O(N) where N is the total number of elements in all sets
+     * @see https://redis.io/commands/sunionstore
      */
-    template <typename... Keys>
     long long
-    sunionstore(const std::string &destination, Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<long long>("SUNIONSTORE", destination, std::forward<Keys>(keys)...)
-            .result;
+    sunionstore(const std::string &destination, const std::vector<std::string> &keys) {
+        if (destination.empty() || keys.size() == 0) {
+            return 0;
+        }
+        return derived().template command<long long>("SUNIONSTORE", destination, keys).result();
     }
 
     /**
      * @brief Asynchronous version of sunionstore
      * 
      * @tparam Func Callback function type
-     * @tparam Keys Variadic types for source key names
      * @param func Callback function
      * @param destination Destination key where the resulting set will be stored
      * @param keys Source keys where the sets are stored
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/sunionstore
      */
-    template <typename Func, typename... Keys>
+    template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    sunionstore(Func &&func, const std::string &destination, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>(
+    sunionstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
+        if (destination.empty() || keys.size() == 0) {
+            return derived();
+        }
+        return derived().template command<long long>(
             std::forward<Func>(func),
             "SUNIONSTORE",
             destination,
-            std::forward<Keys>(keys)...);
+            keys);
     }
 };
 

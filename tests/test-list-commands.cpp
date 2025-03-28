@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 
 using namespace qb::io;
 using namespace std::chrono;
+using namespace qb::redis;
 
 // Generates unique key prefixes to avoid collisions between tests
 inline std::string
@@ -68,6 +69,35 @@ protected:
     }
 };
 
+class TestListCommands : public list_commands<TestListCommands> {
+public:
+    template<typename T>
+    Reply<T> command(const std::string &cmd, const std::initializer_list<std::string> &args) {
+        return Reply<T>();
+    }
+
+    template<typename T>
+    Reply<T> command(const std::string &cmd, const std::vector<std::string> &args) {
+        return Reply<T>();
+    }
+
+    template<typename T, typename Func>
+    Reply<T> command(Func &&func, const std::string &cmd, const std::initializer_list<std::string> &args) {
+        return Reply<T>();
+    }
+
+    template<typename T, typename Func>
+    Reply<T> command(Func &&func, const std::string &cmd, const std::vector<std::string> &args) {
+        return Reply<T>();
+    }
+
+    template<typename T, typename Func>
+    Reply<T> command(Func &&func, const std::string &cmd, const std::vector<std::string>::const_iterator begin,
+                    const std::vector<std::string>::const_iterator end) {
+        return Reply<T>();
+    }
+};
+
 /*
  * SYNCHRONOUS TESTS
  */
@@ -100,7 +130,11 @@ TEST_F(RedisTest, SYNC_LIST_COMMANDS_POP) {
     std::string key = test_key("pop");
     
     // Setup list
-    redis.rpush(key, "item1", "item2", "item3", "item4", "item5");
+    redis.rpush(key, "item1");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item3");
+    redis.rpush(key, "item4");
+    redis.rpush(key, "item5");
     
     // Test LPOP (pop from left)
     auto left_item = redis.lpop(key);
@@ -138,7 +172,11 @@ TEST_F(RedisTest, SYNC_LIST_COMMANDS_RANGE) {
     std::string key = test_key("range");
     
     // Setup list
-    redis.rpush(key, "item1", "item2", "item3", "item4", "item5");
+    redis.rpush(key, "item1");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item3");
+    redis.rpush(key, "item4");
+    redis.rpush(key, "item5");
     
     // Test LRANGE
     auto all_items = redis.lrange(key, 0, -1);
@@ -167,7 +205,11 @@ TEST_F(RedisTest, SYNC_LIST_COMMANDS_INDEX) {
     std::string key = test_key("index");
     
     // Setup list
-    redis.rpush(key, "item1", "item2", "item3", "item4", "item5");
+    redis.rpush(key, "item1");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item3");
+    redis.rpush(key, "item4");
+    redis.rpush(key, "item5");
     
     // Test LINDEX
     auto item = redis.lindex(key, 2);
@@ -188,7 +230,7 @@ TEST_F(RedisTest, SYNC_LIST_COMMANDS_INDEX) {
     EXPECT_EQ(*modified_item, "replaced");
     
     // Test invalid index
-    EXPECT_THROW(redis.lset(key, 10, "invalid"), std::exception);
+    EXPECT_THROW(redis.lset(key, 10, "invalid"), std::runtime_error);
     
     // Cleanup
     redis.del(key);
@@ -199,7 +241,11 @@ TEST_F(RedisTest, SYNC_LIST_COMMANDS_TRIM) {
     std::string key = test_key("trim");
     
     // Setup list
-    redis.rpush(key, "item1", "item2", "item3", "item4", "item5");
+    redis.rpush(key, "item1");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item3");
+    redis.rpush(key, "item4");
+    redis.rpush(key, "item5");
     
     // Test LTRIM
     EXPECT_TRUE(redis.ltrim(key, 1, 3));
@@ -219,7 +265,13 @@ TEST_F(RedisTest, SYNC_LIST_COMMANDS_REMOVE) {
     std::string key = test_key("remove");
     
     // Setup list with duplicates
-    redis.rpush(key, "item1", "item2", "item3", "item2", "item4", "item2", "item5");
+    redis.rpush(key, "item1");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item3");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item4");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item5");
     
     // Test LREM (remove 2 occurrences of "item2")
     EXPECT_EQ(redis.lrem(key, 2, "item2"), 2);
@@ -252,8 +304,8 @@ TEST_F(RedisTest, SYNC_LIST_COMMANDS_BLOCKING) {
     auto result = redis.blpop({key1, key2}, 1);
     EXPECT_TRUE(result.has_value());
     if (result.has_value()) {
-        EXPECT_EQ(result->key, key1);
-        EXPECT_EQ(result->element, "item1");
+        EXPECT_EQ(result->first, key1);
+        EXPECT_EQ(result->second, "item1");
     }
     
     // Test BLPOP on empty lists with short timeout
@@ -265,12 +317,163 @@ TEST_F(RedisTest, SYNC_LIST_COMMANDS_BLOCKING) {
     auto rpop_result = redis.brpop({key1, key2}, 1);
     EXPECT_TRUE(rpop_result.has_value());
     if (rpop_result.has_value()) {
-        EXPECT_EQ(rpop_result->key, key2);
-        EXPECT_EQ(rpop_result->element, "item2");
+        EXPECT_EQ(rpop_result->first, key2);
+        EXPECT_EQ(rpop_result->second, "item2");
     }
     
     // Cleanup
     redis.del(key1, key2);
+}
+
+// Test LMOVE operation
+TEST_F(RedisTest, SYNC_LIST_COMMANDS_MOVE) {
+    std::string source = test_key("source");
+    std::string dest = test_key("dest");
+    
+    // Setup source list
+    redis.rpush(source, "item1");
+    redis.rpush(source, "item2");
+    redis.rpush(source, "item3");
+    
+    // Test moving from right to left
+    auto moved = redis.lmove(source, dest, ListPosition::RIGHT, ListPosition::LEFT);
+    EXPECT_TRUE(moved.has_value());
+    EXPECT_EQ(*moved, "item3");
+    
+    // Verify source and destination
+    auto source_items = redis.lrange(source, 0, -1);
+    auto dest_items = redis.lrange(dest, 0, -1);
+    EXPECT_EQ(source_items.size(), 2);
+    EXPECT_EQ(dest_items.size(), 1);
+    EXPECT_EQ(dest_items[0], "item3");
+    
+    // Test moving from left to right
+    moved = redis.lmove(source, dest, ListPosition::LEFT, ListPosition::RIGHT);
+    EXPECT_TRUE(moved.has_value());
+    EXPECT_EQ(*moved, "item1");
+    
+    // Verify final state
+    source_items = redis.lrange(source, 0, -1);
+    dest_items = redis.lrange(dest, 0, -1);
+    EXPECT_EQ(source_items.size(), 1);
+    EXPECT_EQ(dest_items.size(), 2);
+    EXPECT_EQ(dest_items[1], "item1");
+    
+    // Cleanup
+    redis.del(source, dest);
+}
+
+// Test LMPOP operation
+//TEST_F(RedisTest, SYNC_LIST_COMMANDS_MPOP) {
+//    std::string key1 = test_key("mpop1");
+//    std::string key2 = test_key("mpop2");
+//    std::string key3 = test_key("mpop3");
+//
+//    // Setup lists
+//    redis.rpush(key1, "item1");
+//    redis.rpush(key1, "item2");
+//    redis.rpush(key1, "item3");
+//    redis.rpush(key2, "item4");
+//    redis.rpush(key2, "item5");
+//    redis.rpush(key2, "item6");
+//
+//    // Test popping from left
+//    auto result = redis.lmpop({key1, key2, key3}, ListPosition::LEFT, 2);
+//    EXPECT_TRUE(result.has_value());
+//    EXPECT_EQ(result->first, key1);
+//    EXPECT_EQ(result->second.size(), 2);
+//    EXPECT_EQ(result->second[0], "item1");
+//    EXPECT_EQ(result->second[1], "item2");
+//
+//    // Test popping from right
+//    result = redis.lmpop({key1, key2, key3}, ListPosition::RIGHT, 2);
+//    EXPECT_TRUE(result.has_value());
+//    EXPECT_EQ(result->first, key2);
+//    EXPECT_EQ(result->second.size(), 2);
+//    EXPECT_EQ(result->second[0], "item6");
+//    EXPECT_EQ(result->second[1], "item5");
+//
+//    // Test popping from empty lists
+//    result = redis.lmpop({key1, key2, key3}, ListPosition::LEFT, 1);
+//    EXPECT_FALSE(result.has_value());
+//
+//    // Cleanup
+//    redis.del(key1, key2, key3);
+//}
+
+// Test LPOS operation
+TEST_F(RedisTest, SYNC_LIST_COMMANDS_POS) {
+    std::string key = test_key("pos");
+    
+    // Setup list with duplicates
+    redis.rpush(key, "item1");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item3");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item4");
+    redis.rpush(key, "item2");
+    redis.rpush(key, "item5");
+    
+    // Test basic LPOS
+    auto positions = redis.lpos(key, "item2");
+    EXPECT_EQ(positions.size(), 3);
+    EXPECT_EQ(positions[0], 1);
+    EXPECT_EQ(positions[1], 3);
+    EXPECT_EQ(positions[2], 5);
+    
+    // Test LPOS with rank
+    positions = redis.lpos(key, "item2", 2);
+    EXPECT_EQ(positions.size(), 2);
+    EXPECT_EQ(positions[0], 3);
+    
+    // Test LPOS with count
+    positions = redis.lpos(key, "item2", std::nullopt, 2);
+    EXPECT_EQ(positions.size(), 2);
+    EXPECT_EQ(positions[0], 1);
+    EXPECT_EQ(positions[1], 3);
+    
+    // Test LPOS with maxlen
+    positions = redis.lpos(key, "item2", std::nullopt, std::nullopt, 4);
+    EXPECT_EQ(positions.size(), 2);
+    EXPECT_EQ(positions[0], 1);
+    EXPECT_EQ(positions[1], 3);
+    
+    // Test LPOS for non-existent element
+    positions = redis.lpos(key, "nonexistent");
+    EXPECT_TRUE(positions.empty());
+    
+    // Cleanup
+    redis.del(key);
+}
+
+// Test multiple push operations
+TEST_F(RedisTest, SYNC_LIST_COMMANDS_MULTIPLE_PUSH) {
+    std::string key = test_key("multiple-push");
+    
+    // Test multiple LPUSH
+    EXPECT_EQ(redis.lpush(key, "item1"), 1);
+    EXPECT_EQ(redis.lpush(key, "item2"), 2);
+    EXPECT_EQ(redis.lpush(key, "item3"), 3);
+    
+    // Verify order (should be reversed)
+    auto items = redis.lrange(key, 0, -1);
+    EXPECT_EQ(items.size(), 3);
+    EXPECT_EQ(items[0], "item3");
+    EXPECT_EQ(items[2], "item1");
+    
+    // Test multiple RPUSH
+    EXPECT_EQ(redis.rpush(key, "item4"), 4);
+    EXPECT_EQ(redis.rpush(key, "item5"), 5);
+    EXPECT_EQ(redis.rpush(key, "item6"), 6);
+    
+    // Verify order
+    items = redis.lrange(key, 0, -1);
+    EXPECT_EQ(items.size(), 6);
+    EXPECT_EQ(items[3], "item4");
+    EXPECT_EQ(items[5], "item6");
+    
+    // Cleanup
+    redis.del(key);
 }
 
 /*
@@ -287,8 +490,8 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_PUSH) {
     // Test LPUSH async
     redis.lpush(
         [&lpush_called](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result, 1);
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 1);
             lpush_called = true;
         },
         key,
@@ -301,8 +504,8 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_PUSH) {
     // Test RPUSH async
     redis.rpush(
         [&rpush_called](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result, 2);
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 2);
             rpush_called = true;
         },
         key,
@@ -315,8 +518,8 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_PUSH) {
     // Test LLEN async
     redis.llen(
         [&llen_called](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result, 2);
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 2);
             llen_called = true;
         },
         key
@@ -339,8 +542,8 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_POP) {
     // Setup list asynchronously
     redis.rpush(
         [&setup_called](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result, 3);
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 3);
             setup_called = true;
         },
         key,
@@ -353,9 +556,9 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_POP) {
     // Test LPOP async
     redis.lpop(
         [&lpop_called](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_TRUE(reply.result.has_value());
-            EXPECT_EQ(*reply.result, "item1");
+            EXPECT_TRUE(reply.ok());
+            EXPECT_TRUE(reply.result().has_value());
+            EXPECT_EQ(*reply.result(), "item1");
             lpop_called = true;
         },
         key
@@ -367,9 +570,9 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_POP) {
     // Test RPOP async
     redis.rpop(
         [&rpop_called](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_TRUE(reply.result.has_value());
-            EXPECT_EQ(*reply.result, "item3");
+            EXPECT_TRUE(reply.ok());
+            EXPECT_TRUE(reply.result().has_value());
+            EXPECT_EQ(*reply.result(), "item3");
             rpop_called = true;
         },
         key
@@ -391,8 +594,8 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_RANGE) {
     // Setup list asynchronously
     redis.rpush(
         [&setup_called](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result, 5);
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 5);
             setup_called = true;
         },
         key,
@@ -405,10 +608,10 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_RANGE) {
     // Test LRANGE async
     redis.lrange(
         [&lrange_called](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result.size(), 3);
-            EXPECT_EQ(reply.result[0], "item2");
-            EXPECT_EQ(reply.result[2], "item4");
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result().size(), 3);
+            EXPECT_EQ(reply.result()[0], "item2");
+            EXPECT_EQ(reply.result()[2], "item4");
             lrange_called = true;
         },
         key,
@@ -438,8 +641,8 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_CHAINING) {
     // Chain multiple commands (they will be buffered and sent together)
     redis.lpush(
         [&](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result, 1);
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 1);
             completion_callback(reply);
         },
         key,
@@ -448,8 +651,8 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_CHAINING) {
     
     redis.lpush(
         [&](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result, 2);
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 2);
             completion_callback(reply);
         },
         key,
@@ -458,8 +661,8 @@ TEST_F(RedisTest, ASYNC_LIST_COMMANDS_CHAINING) {
     
     redis.rpush(
         [&](auto&& reply) {
-            EXPECT_TRUE(reply.ok);
-            EXPECT_EQ(reply.result, 3);
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 3);
             completion_callback(reply);
         },
         key,

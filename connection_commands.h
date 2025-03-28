@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,16 +32,21 @@ namespace qb::redis {
  */
 template <typename Derived>
 class connection_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
 public:
     /**
      * @brief Authenticates the client to the Redis server
      *
      * @param password Authentication password
-     * @return true if authentication was successful, false otherwise
+     * @return status object with the authentication result
      */
-    bool
+    status
     auth(const std::string &password) {
-        return static_cast<Derived &>(*this).template command<void>("AUTH", password).ok;
+        return derived().template command<status>("AUTH", password).result();
     }
     
     /**
@@ -53,9 +58,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     auth(Func &&func, const std::string &password) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "AUTH", password);
+        return derived().template command<status>(std::forward<Func>(func), "AUTH", password);
     }
 
     /**
@@ -63,11 +68,11 @@ public:
      *
      * @param user Username for authentication
      * @param password Password for authentication
-     * @return true if authentication was successful, false otherwise
+     * @return status object with the authentication result
      */
-    bool
+    status
     auth(const std::string &user, const std::string &password) {
-        return static_cast<Derived &>(*this).template command<void>("AUTH", user, password).ok;
+        return derived().template command<status>("AUTH", user, password).result();
     }
     
     /**
@@ -80,9 +85,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     auth(Func &&func, const std::string &user, const std::string &password) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "AUTH", user, password);
+        return derived().template command<status>(std::forward<Func>(func), "AUTH", user, password);
     }
 
     /**
@@ -93,7 +98,7 @@ public:
      */
     std::string
     echo(const std::string &message) {
-        return static_cast<Derived &>(*this).template command<std::string>("ECHO", message).result;
+        return derived().template command<std::string>("ECHO", message).result();
     }
     
     /**
@@ -107,7 +112,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     echo(Func &&func, const std::string &message) {
-        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "ECHO", message);
+        return derived().template command<std::string>(std::forward<Func>(func), "ECHO", message);
     }
 
     /**
@@ -117,7 +122,7 @@ public:
      */
     std::string
     ping() {
-        return static_cast<Derived &>(*this).template command<std::string>("PING").result;
+        return derived().template command<std::string>("PING").result();
     }
     
     /**
@@ -130,7 +135,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     ping(Func &&func) {
-        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "PING");
+        return derived().template command<std::string>(std::forward<Func>(func), "PING");
     }
 
     /**
@@ -141,7 +146,7 @@ public:
      */
     std::string
     ping(const std::string &message) {
-        return static_cast<Derived &>(*this).template command<std::string>("PING", message).result;
+        return derived().template command<std::string>("PING", message).result();
     }
     
     /**
@@ -155,17 +160,17 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     ping(Func &&func, const std::string &message) {
-        return static_cast<Derived &>(*this).template command<std::string>(std::forward<Func>(func), "PING", message);
+        return derived().template command<std::string>(std::forward<Func>(func), "PING", message);
     }
 
     /**
      * @brief Closes the connection
      *
-     * @return true if the command was acknowledged, false otherwise
+     * @return status object with the result
      */
-    bool
+    status
     quit() {
-        return static_cast<Derived &>(*this).template command<void>("QUIT").ok;
+        return derived().template command<status>("QUIT").result();
     }
     
     /**
@@ -176,20 +181,20 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     quit(Func &&func) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "QUIT");
+        return derived().template command<status>(std::forward<Func>(func), "QUIT");
     }
 
     /**
      * @brief Selects the Redis logical database
      *
      * @param index Database index
-     * @return true if the database was selected, false otherwise
+     * @return status object with the result
      */
-    bool
+    status
     select(long long index) {
-        return static_cast<Derived &>(*this).template command<void>("SELECT", index).ok;
+        return derived().template command<status>("SELECT", index).result();
     }
     
     /**
@@ -201,9 +206,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     select(Func &&func, long long index) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "SELECT", index);
+        return derived().template command<status>(std::forward<Func>(func), "SELECT", index);
     }
 
     /**
@@ -211,11 +216,11 @@ public:
      *
      * @param index1 Index of the first database
      * @param index2 Index of the second database
-     * @return true if the databases were swapped successfully, false otherwise
+     * @return status object with the result
      */
-    bool
+    status
     swapdb(long long index1, long long index2) {
-        return static_cast<Derived &>(*this).template command<void>("SWAPDB", index1, index2).ok;
+        return derived().template command<status>("SWAPDB", index1, index2).result();
     }
     
     /**
@@ -228,9 +233,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     swapdb(Func &&func, long long index1, long long index2) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "SWAPDB", index1, index2);
+        return derived().template command<status>(std::forward<Func>(func), "SWAPDB", index1, index2);
     }
 };
 

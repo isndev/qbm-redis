@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,11 @@ namespace qb::redis {
  */
 template <typename Derived>
 class geo_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
 public:
     /**
      * @brief Adds geospatial items to a sorted set
@@ -45,9 +50,9 @@ public:
     template <typename... Members>
     long long
     geoadd(const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>("GEOADD", key, std::forward<Members>(members)...)
-            .result;
+            .result();
     }
 
     /**
@@ -63,7 +68,7 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     geoadd(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "GEOADD", key, std::forward<Members>(members)...);
     }
 
@@ -78,9 +83,9 @@ public:
      */
     std::optional<double>
     geodist(const std::string &key, const std::string &member1, const std::string &member2, GeoUnit unit = GeoUnit::M) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<std::optional<double>>("GEODIST", key, member1, member2, std::to_string(unit))
-            .result;
+            .result();
     }
 
     /**
@@ -99,7 +104,7 @@ public:
     geodist(
         Func &&func, const std::string &key, const std::string &member1, const std::string &member2,
         GeoUnit unit = GeoUnit::M) {
-        return static_cast<Derived &>(*this).template command<std::optional<double>>(
+        return derived().template command<std::optional<double>>(
             std::forward<Func>(func),
             "GEODIST",
             key,
@@ -119,12 +124,12 @@ public:
     template <typename... Members>
     std::vector<std::optional<std::string>>
     geohash(const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<std::vector<std::optional<std::string>>>(
                 "GEOHASH",
                 key,
                 std::forward<Members>(members)...)
-            .result;
+            .result();
     }
 
     /**
@@ -140,7 +145,7 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
     geohash(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::optional<std::string>>>(
+        return derived().template command<std::vector<std::optional<std::string>>>(
             std::forward<Func>(func),
             "GEOHASH",
             key,
@@ -156,14 +161,14 @@ public:
      * @return Vector of optional coordinate pairs, where nullopt indicates that the member was not found
      */
     template <typename... Members>
-    std::vector<std::optional<std::pair<double, double>>>
+    std::vector<std::optional<geo_pos>>
     geopos(const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::optional<std::pair<double, double>>>>(
+        return derived()
+            .template command<std::vector<std::optional<geo_pos>>>(
                 "GEOPOS",
                 key,
                 std::forward<Members>(members)...)
-            .result;
+            .result();
     }
 
     /**
@@ -178,13 +183,126 @@ public:
      */
     template <typename Func, typename... Members>
     std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::optional<std::pair<double, double>>>> &&>, Derived &>
+        std::is_invocable_v<Func, Reply<std::vector<std::optional<geo_pos>>> &&>, Derived &>
     geopos(Func &&func, const std::string &key, Members &&...members) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::optional<std::pair<double, double>>>>(
+        return derived().template command<std::vector<std::optional<geo_pos>>>(
             std::forward<Func>(func),
             "GEOPOS",
             key,
             std::forward<Members>(members)...);
+    }
+
+    /**
+     * @brief Returns members of a geospatial index that are within a radius of a given point
+     *
+     * @param key Key where the geospatial data is stored
+     * @param longitude Center point longitude
+     * @param latitude Center point latitude
+     * @param radius Radius of the search
+     * @param unit Unit of distance (m, km, mi, ft)
+     * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH, COUNT, SORT)
+     * @return Vector of members within the radius
+     */
+    std::vector<std::string>
+    georadius(const std::string &key, double longitude, double latitude, double radius, GeoUnit unit = GeoUnit::M,
+              const std::vector<std::string> &options = {}) {
+        return derived().template command<std::vector<std::string>>("GEORADIUS", key, longitude, latitude,
+                                        radius, std::to_string(unit), options).result();
+    }
+
+    /**
+     * @brief Asynchronous version of georadius
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param key Key where the geospatial data is stored
+     * @param longitude Center point longitude
+     * @param latitude Center point latitude
+     * @param radius Radius of the search
+     * @param unit Unit of distance (m, km, mi, ft)
+     * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH, COUNT, SORT)
+     * @return Reference to the Redis handler for chaining
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    georadius(Func &&func, const std::string &key, double longitude, double latitude, double radius,
+              GeoUnit unit = GeoUnit::M, const std::vector<std::string> &options = {}) {
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEORADIUS", key, longitude, latitude,
+                                        radius, std::to_string(unit), options);
+    }
+
+    /**
+     * @brief Returns members of a geospatial index that are within a radius of a given member
+     *
+     * @param key Key where the geospatial data is stored
+     * @param member Member to use as center point
+     * @param radius Radius of the search
+     * @param unit Unit of distance (m, km, mi, ft)
+     * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH, COUNT, SORT)
+     * @return Vector of members within the radius
+     */
+    std::vector<std::string>
+    georadiusbymember(const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
+                     const std::vector<std::string> &options = {}) {
+        return derived().template command<std::vector<std::string>>("GEORADIUSBYMEMBER", key, member, radius, std::to_string(unit), options).result();
+    }
+
+    /**
+     * @brief Asynchronous version of georadiusbymember
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param key Key where the geospatial data is stored
+     * @param member Member to use as center point
+     * @param radius Radius of the search
+     * @param unit Unit of distance (m, km, mi, ft)
+     * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH, COUNT, SORT)
+     * @return Reference to the Redis handler for chaining
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    georadiusbymember(Func &&func, const std::string &key, const std::string &member, double radius,
+                     GeoUnit unit = GeoUnit::M, const std::vector<std::string> &options = {}) {
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEORADIUSBYMEMBER", key, member, std::to_string(radius), std::to_string(unit)    , options);
+    }
+
+    /**
+     * @brief Search for members in a geospatial index using various search criteria
+     *
+     * @param key Key where the geospatial data is stored
+     * @param longitude Center point longitude (for FROMMEMBER)
+     * @param latitude Center point latitude (for FROMMEMBER)
+     * @param member Member to use as center point (for FROMMEMBER)
+     * @param radius Radius of the search
+     * @param unit Unit of distance (m, km, mi, ft)
+     * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH, COUNT, SORT)
+     * @return Vector of members matching the search criteria
+     */
+    std::vector<std::string>
+    geosearch(const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
+              const std::vector<std::string> &options = {}) {
+        return derived().template command<std::vector<std::string>>("GEOSEARCH", key, "FROMMEMBER", member, "BYRADIUS", std::to_string(radius),
+                                        std::to_string(unit), options).result();
+    }
+
+    /**
+     * @brief Asynchronous version of geosearch
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param key Key where the geospatial data is stored
+     * @param member Member to use as center point
+     * @param radius Radius of the search
+     * @param unit Unit of distance (m, km, mi, ft)
+     * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH, COUNT, SORT)
+     * @return Reference to the Redis handler for chaining
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    geosearch(Func &&func, const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
+              const std::vector<std::string> &options = {}) {
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEOSEARCH", key, "FROMMEMBER", member, "BYRADIUS", std::to_string(radius),
+                                        std::to_string(unit), options);
     }
 };
 

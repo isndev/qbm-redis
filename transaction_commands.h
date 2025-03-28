@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 
 #ifndef QBM_REDIS_TRANSACTION_COMMANDS_H
 #define QBM_REDIS_TRANSACTION_COMMANDS_H
+
 #include "reply.h"
 
 namespace qb::redis {
@@ -26,183 +27,231 @@ namespace qb::redis {
  * @brief Provides Redis transaction command implementations.
  *
  * This class implements Redis commands for handling transactions, including
- * MULTI, EXEC, DISCARD, WATCH, and UNWATCH.
+ * MULTI, EXEC, DISCARD, WATCH, and UNWATCH. Each command has both synchronous
+ * and asynchronous versions.
+ *
+ * Redis transactions allow the execution of a group of commands in a single step,
+ * with two important guarantees:
+ * 1. All commands in a transaction are serialized and executed sequentially
+ * 2. Either all of the commands or none are processed
  *
  * @tparam Derived The derived class type (CRTP pattern)
  */
 template <typename Derived>
 class transaction_commands {
 private:
-    bool exec_flag_ = false;
-
-    Derived &
+    constexpr Derived &
     derived() {
         return static_cast<Derived &>(*this);
     }
-
+    bool exec_flag_ = false;
 public:
     /**
-     * @brief Marks the start of a transaction block
+     * @brief Marks the start of a transaction block.
+     * 
+     * All commands after this call will be queued for atomic execution using EXEC.
      *
-     * @return true if the transaction started successfully, false otherwise
+     * @return status object with the result
+     * @note Time complexity: O(1)
+     * @see https://redis.io/commands/multi
      */
-    bool
+    status
     multi() {
-        auto reply = derived().template command<void>("MULTI");
-        exec_flag_ = reply.ok;
-        return reply.ok;
+        auto reply = derived().template command<status>("MULTI");
+        exec_flag_ = reply.ok();
+        return reply.result();
     }
 
     /**
-     * @brief Asynchronous version of multi
+     * @brief Asynchronous version of multi.
      *
-     * @tparam Func Callback function type
-     * @param func Callback function
-     * @return Reference to the Redis handler for chaining
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/multi
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     multi(Func &&func) {
-        return derived().template command<void>(
-            [self = derived(), func = std::forward<Func>(func)](auto &&reply) mutable {
-                self.exec_flag_ = reply.ok;
-                Reply<bool> r;
-                r.ok = reply.ok;
-                std::move(func)(std::move(r));
+        return derived().template command<status>(
+            [this, func = std::forward<Func>(func)](auto &&reply) mutable {
+                exec_flag_ = reply.ok();
+                std::move(func)(std::forward<decltype(reply)>(reply));
             },
             "MULTI");
     }
 
     /**
-     * @brief Executes all commands issued after MULTI
+     * @brief Executes all commands issued after MULTI.
+     *
+     * Executes all previously queued commands in a transaction and restores
+     * the connection state to normal.
      *
      * @tparam Result Result type for the transaction commands
      * @return Vector containing the results of all commands in the transaction
+     * @note Time complexity: O(N) where N is the number of commands in the transaction
+     * @see https://redis.io/commands/exec
      */
     template <typename Result>
     std::vector<Result>
     exec() {
-        return derived().template command<std::vector<Result>>("EXEC").result;
+        exec_flag_ = false;
+        return derived().template command<std::vector<Result>>("EXEC").result();
     }
 
     /**
-     * @brief Asynchronous version of exec
+     * @brief Asynchronous version of exec.
      *
-     * @tparam Func Callback function type
      * @tparam Result Result type for the transaction commands
-     * @param func Callback function
-     * @return Reference to the Redis handler for chaining
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/exec
      */
-    template <typename Func, typename Result>
+    template <typename Result, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<Result>> &&>, Derived &>
     exec(Func &&func) {
         exec_flag_ = false;
-        return derived().template command<std::vector<Result>>(std::forward<Func>(func), "EXEC");
+        return derived().template command<std::vector<Result>>(
+            [this, func = std::forward<Func>(func)](auto &&reply) mutable {
+                exec_flag_ = false;
+                std::move(func)(std::forward<decltype(reply)>(reply));
+            },
+            "EXEC");
     }
 
     /**
-     * @brief Discards all commands issued after MULTI
+     * @brief Discards all commands issued after MULTI.
      *
-     * @return true if the transaction was discarded successfully, false otherwise
+     * Flushes all previously queued commands in a transaction and restores
+     * the connection state to normal.
+     *
+     * @return status object with the result
+     * @note Time complexity: O(1)
+     * @see https://redis.io/commands/discard
      */
-    bool
+    status
     discard() {
         exec_flag_ = false;
-        return derived().template command<void>("DISCARD").ok;
+        return derived().template command<status>("DISCARD").result();
     }
 
     /**
-     * @brief Asynchronous version of discard
+     * @brief Asynchronous version of discard.
      *
-     * @tparam Func Callback function type
-     * @param func Callback function
-     * @return Reference to the Redis handler for chaining
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/discard
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     discard(Func &&func) {
-        exec_flag_ = false;
-        return derived().template command<void>(std::forward<Func>(func), "DISCARD");
+        return derived().template command<status>(
+            [this, func = std::forward<Func>(func)](auto &&reply) mutable {
+                exec_flag_ = false;
+                std::move(func)(std::forward<decltype(reply)>(reply));
+            },
+            "DISCARD");
     }
 
     /**
-     * @brief Watches the given keys for changes
+     * @brief Watches the given keys for changes.
+     *
+     * Marks the given keys to be watched for conditional execution of a transaction.
      *
      * @param key Key to watch
-     * @return true if successful, false otherwise
+     * @return status object with the result
+     * @note Time complexity: O(1) for every key
+     * @see https://redis.io/commands/watch
      */
-    bool
+    status
     watch(const std::string &key) {
-        return derived().template command<void>("WATCH", key).ok;
+        if (key.empty()) {
+            return status("");
+        }
+        return derived().template command<status>("WATCH", key).result();
     }
 
     /**
-     * @brief Asynchronous version of watch for a single key
+     * @brief Asynchronous version of watch for a single key.
      *
-     * @tparam Func Callback function type
-     * @param func Callback function
+     * @param func Callback function to handle the result
      * @param key Key to watch
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/watch
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     watch(Func &&func, const std::string &key) {
-        return derived().template command<void>(std::forward<Func>(func), "WATCH", key);
+        if (key.empty()) {
+            return derived();
+        }
+        return derived().template command<status>(std::forward<Func>(func), "WATCH", key);
     }
 
     /**
-     * @brief Watches multiple keys for changes
+     * @brief Watches multiple keys for changes.
      *
      * @param keys Vector of keys to watch
-     * @return true if successful, false otherwise
+     * @return status object with the result
+     * @note Time complexity: O(N) where N is the number of keys to watch
+     * @see https://redis.io/commands/watch
      */
-    bool
+    status
     watch(const std::vector<std::string> &keys) {
-        return derived().template command_argv<void>("WATCH", keys).ok;
+        if (keys.empty()) {
+            return status("");
+        }
+        return derived().template command<status>("WATCH", keys).result();
     }
 
     /**
-     * @brief Asynchronous version of watch for multiple keys
+     * @brief Asynchronous version of watch for multiple keys.
      *
-     * @tparam Func Callback function type
-     * @param func Callback function
+     * @param func Callback function to handle the result
      * @param keys Vector of keys to watch
-     * @return Reference to the Redis handler for chaining
-     */
-    template <typename Func, typename... Args>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
-    watch(Func &&func, Args &&...args) {
-        return static_cast<Derived &>(*this).template command<void>(
-            std::forward<Func>(func), "WATCH", std::forward<Args>(args)...);
-    }
-
-    /**
-     * @brief Unwatches all previously watched keys
-     *
-     * @return true if successful, false otherwise
-     */
-    bool
-    unwatch() {
-        return derived().template command<void>("UNWATCH").ok;
-    }
-
-    /**
-     * @brief Asynchronous version of unwatch
-     *
-     * @tparam Func Callback function type
-     * @param func Callback function
-     * @return Reference to the Redis handler for chaining
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/watch
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
-    unwatch(Func &&func) {
-        return derived().template command<void>(std::forward<Func>(func), "UNWATCH");
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    watch(Func &&func, const std::vector<std::string> &keys) {
+        if (keys.empty()) {
+            return derived();
+        }
+        return derived().template command<status>(std::forward<Func>(func), "WATCH", keys);
     }
 
     /**
-     * @brief Checks if currently in a transaction
+     * @brief Unwatches all previously watched keys.
+     *
+     * Flushes all the watched keys for a transaction.
+     *
+     * @return status object with the result
+     * @note Time complexity: O(1)
+     * @see https://redis.io/commands/unwatch
+     */
+    status
+    unwatch() {
+        return derived().template command<status>("UNWATCH").result();
+    }
+
+    /**
+     * @brief Asynchronous version of unwatch.
+     *
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/unwatch
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    unwatch(Func &&func) {
+        return derived().template command<status>(std::forward<Func>(func), "UNWATCH");
+    }
+
+    /**
+     * @brief Checks if currently in a transaction.
      *
      * @return true if in a transaction, false otherwise
+     * @note Time complexity: O(1)
      */
     bool
     is_in_multi() const {
