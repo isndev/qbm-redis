@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,11 @@ namespace qb::redis {
  */
 template <typename Derived>
 class scripting_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
 public:
     /**
      * @brief Executes a Lua script on the Redis server
@@ -44,11 +49,12 @@ public:
      * @return Result of the script execution, typed as Ret
      */
     template <typename Ret>
-    inline Ret
+    auto
     eval(
         const std::string &script, const std::vector<std::string> &keys = {},
         const std::vector<std::string> &args = {}) {
-        return static_cast<Derived &>(*this).template command<Ret>("EVAL", script, keys.size(), keys, args).result;
+
+        return derived().template command<Ret>("EVAL", script, keys.size(), keys, args).result();
     }
     
     /**
@@ -62,12 +68,12 @@ public:
      * @param args Vector of additional arguments to the script
      * @return Reference to the Redis handler for chaining
      */
-    template <typename Func, typename Ret>
+    template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     eval(
         Func &&func, const std::string &script, const std::vector<std::string> &keys = {},
         const std::vector<std::string> &args = {}) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<Ret>(std::forward<Func>(func), "EVAL", script, keys.size(), keys, args);
     }
 
@@ -81,11 +87,11 @@ public:
      * @return Result of the script execution, typed as Ret
      */
     template <typename Ret>
-    inline Ret
+    Ret
     evalsha(
         const std::string &script, const std::vector<std::string> &keys = {},
         const std::vector<std::string> &args = {}) {
-        return static_cast<Derived &>(*this).template command<Ret>("EVALSHA", script, keys.size(), keys, args).result;
+        return derived().template command<Ret>("EVALSHA", script, keys.size(), keys, args).result();
     }
     
     /**
@@ -99,12 +105,12 @@ public:
      * @param args Vector of additional arguments to the script
      * @return Reference to the Redis handler for chaining
      */
-    template <typename Func, typename Ret>
+    template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     evalsha(
         Func &&func, const std::string &script, const std::vector<std::string> &keys = {},
         const std::vector<std::string> &args = {}) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<Ret>(std::forward<Func>(func), "EVALSHA", script, keys.size(), keys, args);
     }
 
@@ -118,9 +124,9 @@ public:
     template <typename... Keys>
     std::vector<bool>
     script_exists(Keys &&...keys) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<std::vector<bool>>("SCRIPT", "EXISTS", std::forward<Keys>(keys)...)
-            .result;
+            .result();
     }
     
     /**
@@ -135,7 +141,7 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<bool>> &&>, Derived &>
     script_exists(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<std::vector<bool>>(
+        return derived().template command<std::vector<bool>>(
             std::forward<Func>(func),
             "SCRIPT",
             "EXISTS",
@@ -145,11 +151,11 @@ public:
     /**
      * @brief Removes all scripts from the script cache
      *
-     * @return true if the operation was successful, false otherwise
+     * @return status object with the result
      */
-    inline bool
+    status
     script_flush() {
-        return static_cast<Derived &>(*this).template command<void>("SCRIPT", "FLUSH").ok;
+        return derived().template command<status>("SCRIPT", "FLUSH").result();
     }
     
     /**
@@ -160,19 +166,19 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     script_flush(Func &&func) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "SCRIPT", "FLUSH");
+        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "FLUSH");
     }
 
     /**
      * @brief Kills the currently executing Lua script
      *
-     * @return true if the operation was successful, false otherwise
+     * @return status object with the result
      */
-    inline bool
+    status
     script_kill() {
-        return static_cast<Derived &>(*this).template command<void>("SCRIPT", "KILL").ok;
+        return derived().template command<status>("SCRIPT", "KILL").result();
     }
     
     /**
@@ -183,9 +189,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     script_kill(Func &&func) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "SCRIPT", "KILL");
+        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "KILL");
     }
 
     /**
@@ -196,7 +202,7 @@ public:
      */
     inline std::string
     script_load(std::string const &script) {
-        return static_cast<Derived &>(*this).template command<std::string>("SCRIPT", "LOAD", script).result;
+        return derived().template command<std::string>("SCRIPT", "LOAD", script).result();
     }
     
     /**
@@ -208,9 +214,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
-    script_kill(Func &&func, std::string const &script) {
-        return static_cast<Derived &>(*this)
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
+    script_load(Func &&func, std::string const &script) {
+        return derived()
             .template command<std::string>(std::forward<Func>(func), "SCRIPT", "LOAD", script);
     }
 };

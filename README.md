@@ -129,7 +129,7 @@ for (const auto& tag : tags) {
 ```cpp
 // Asynchronous SET
 redis.set([](auto&& reply) {
-    if (reply.ok) {
+    if (reply.ok()) {
         std::cout << "SET operation succeeded" << std::endl;
     } else {
         std::cerr << "SET operation failed: " << reply.error << std::endl;
@@ -138,9 +138,9 @@ redis.set([](auto&& reply) {
 
 // Asynchronous GET
 redis.get([](auto&& reply) {
-    if (reply.ok && reply.result) {
-        std::cout << "Value: " << *reply.result << std::endl;
-    } else if (reply.ok) {
+    if (reply.ok() && reply.result()) {
+        std::cout << "Value: " << *reply.result() << std::endl;
+    } else if (reply.ok()) {
         std::cout << "Key does not exist" << std::endl;
     } else {
         std::cerr << "GET operation failed: " << reply.error << std::endl;
@@ -161,8 +161,8 @@ redis.incr("counter");
 
 // Execute the transaction
 auto results = redis.exec();
-if (results.ok) {
-    for (const auto& result : results.result) {
+if (results.ok()) {
+    for (const auto& result : results.result()) {
         // Process each result
     }
 } else {
@@ -246,12 +246,12 @@ All commands return a `Reply` object that includes:
 
 ```cpp
 auto reply = redis.get("nonexistent");
-if (!reply.ok) {
+if (!reply.ok()) {
     std::cerr << "Error: " << reply.error << std::endl;
-} else if (!reply.result) {
+} else if (!reply.result()) {
     std::cout << "Key does not exist" << std::endl;
 } else {
-    std::cout << "Value: " << *reply.result << std::endl;
+    std::cout << "Value: " << *reply.result() << std::endl;
 }
 ```
 
@@ -262,3 +262,5 @@ The Redis module is not thread-safe. Each thread should use its own connection t
 ## License
 
 Apache License, Version 2.0
+
+

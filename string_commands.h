@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,6 +46,11 @@ namespace qb::redis {
  */
 template <typename Derived>
 class string_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
 public:
     /**
      * @brief Append a value to the end of a string stored at key.
@@ -63,7 +68,7 @@ public:
      */
     long long
     append(const std::string &key, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<long long>("APPEND", key, val).result;
+        return derived().template command<long long>("APPEND", key, val).result();
     }
 
     /**
@@ -78,7 +83,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     append(Func &&func, const std::string &key, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "APPEND", key, val);
+        return derived().template command<long long>(std::forward<Func>(func), "APPEND", key, val);
     }
 
     /**
@@ -98,7 +103,7 @@ public:
      */
     long long
     decr(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>("DECR", key).result;
+        return derived().template command<long long>("DECR", key).result();
     }
 
     /**
@@ -112,7 +117,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     decr(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "DECR", key);
+        return derived().template command<long long>(std::forward<Func>(func), "DECR", key);
     }
 
     /**
@@ -133,7 +138,7 @@ public:
      */
     long long
     decrby(const std::string &key, long long decrement) {
-        return static_cast<Derived &>(*this).template command<long long>("DECRBY", key, decrement).result;
+        return derived().template command<long long>("DECRBY", key, decrement).result();
     }
 
     /**
@@ -148,7 +153,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     decrby(Func &&func, const std::string &key, long long decrement) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "DECRBY", key, decrement);
     }
 
@@ -167,7 +172,7 @@ public:
      */
     std::optional<std::string>
     get(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("GET", key).result;
+        return derived().template command<std::optional<std::string>>("GET", key).result();
     }
 
     /**
@@ -181,7 +186,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     get(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>(
+        return derived().template command<std::optional<std::string>>(
             std::forward<Func>(func),
             "GET",
             key);
@@ -205,7 +210,7 @@ public:
      */
     std::string
     getrange(const std::string &key, long long start, long long end) {
-        return static_cast<Derived &>(*this).template command<std::string>("GETRANGE", key, start, end).result;
+        return derived().template command<std::string>("GETRANGE", key, start, end).result();
     }
 
     /**
@@ -221,7 +226,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     getrange(Func &&func, const std::string &key, long long start, long long end) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<std::string>(std::forward<Func>(func), "GETRANGE", key, start, end);
     }
 
@@ -241,7 +246,7 @@ public:
      */
     std::optional<std::string>
     getset(const std::string &key, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("GETSET", key, val).result;
+        return derived().template command<std::optional<std::string>>("GETSET", key, val).result();
     }
 
     /**
@@ -256,7 +261,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     getset(Func &&func, const std::string &key, const std::string &val) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<std::optional<std::string>>(std::forward<Func>(func), "GETSET", key, val);
     }
 
@@ -277,7 +282,7 @@ public:
      */
     long long
     incr(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>("INCR", key).result;
+        return derived().template command<long long>("INCR", key).result();
     }
 
     /**
@@ -291,7 +296,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     incr(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "INCR", key);
+        return derived().template command<long long>(std::forward<Func>(func), "INCR", key);
     }
 
     /**
@@ -312,7 +317,7 @@ public:
      */
     long long
     incrby(const std::string &key, long long increment) {
-        return static_cast<Derived &>(*this).template command<long long>("INCRBY", key, increment).result;
+        return derived().template command<long long>("INCRBY", key, increment).result();
     }
 
     /**
@@ -327,7 +332,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     incrby(Func &&func, const std::string &key, long long increment) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "INCRBY", key, increment);
     }
 
@@ -348,7 +353,7 @@ public:
      */
     double
     incrbyfloat(const std::string &key, double increment) {
-        return static_cast<Derived &>(*this).template command<double>("INCRBYFLOAT", key, increment).result;
+        return derived().template command<double>("INCRBYFLOAT", key, increment).result();
     }
 
     /**
@@ -363,7 +368,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<double> &&>, Derived &>
     incrbyfloat(Func &&func, const std::string &key, double increment) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<double>(std::forward<Func>(func), "INCRBYFLOAT", key, increment);
     }
 
@@ -371,75 +376,66 @@ public:
      * @brief Get the values of multiple keys atomically.
      * 
      * Returns the values of all specified keys. For every key that does not exist
-     * or holds a non-string value, std::nullopt is returned. This command is atomic,
-     * so all the values are retrieved in a single operation.
+     * or is not a string, a null value is returned.
      *
-     * @param keys Keys to retrieve values for (variadic - can be individual strings or containers of strings)
-     * @return A vector of optional strings corresponding to the values of each key
-     * @note For any key that doesn't exist or holds a non-string value, std::nullopt is returned
+     * @param keys Keys to retrieve values for
+     * @return Vector of optional strings containing the values
      * @note Time complexity: O(N) where N is the number of keys requested
      * @see https://redis.io/commands/mget
      */
-    template <typename... Keys>
     std::vector<std::optional<std::string>>
-    mget(Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<std::vector<std::optional<std::string>>>("MGET", std::forward<Keys>(keys)...)
-            .result;
+    mget(const std::vector<std::string> &keys) {
+        if (keys.size() == 0) {
+            return {};
+        }
+        return derived()
+            .template command<std::vector<std::optional<std::string>>>("MGET", keys)
+            .result();
     }
 
     /**
      * @brief Asynchronous version of the MGET command.
      *
      * @param func Callback function to be invoked when the operation completes
-     * @param keys Keys to retrieve values for (variadic - can be individual strings or containers of strings)
+     * @param keys Keys to retrieve values for
      * @return Reference to the derived Redis client for method chaining
      * @see https://redis.io/commands/mget
      */
-    template <typename Func, typename... Keys>
+    template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
-    mget(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::optional<std::string>>>(
-            std::forward<Func>(func),
-            "MGET",
-            std::forward<Keys>(keys)...);
+    mget(Func &&func, const std::vector<std::string> &keys) {
+        return derived()
+            .template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "MGET", keys);
     }
 
     /**
-     * @brief Set multiple key-value pairs in a single atomic operation.
+     * @brief Set multiple key-value pairs.
      * 
-     * Sets the given keys to their respective values. MSET replaces existing values
-     * with new values, just like regular SET. This command is atomic, so all the keys
-     * are set in a single operation.
+     * Sets multiple key-value pairs in a single atomic operation. This command
+     * overwrites existing values for the keys being set.
      *
-     * @param keys Key-value pairs to set (variadic - can be individual key/value strings or containers)
-     * @return Always returns true as MSET cannot fail
-     * @note This operation overwrites existing keys
-     * @note The number of arguments must be even (each key must have a corresponding value)
+     * @param keys Vector of key-value pairs to set
+     * @return status object indicating success or failure
      * @note Time complexity: O(N) where N is the number of key-value pairs
      * @see https://redis.io/commands/mset
      */
-    template <typename... Keys>
-    bool
-    mset(Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<void>("MSET", std::forward<Keys>(keys)...).ok;
+    status
+    mset(const std::vector<std::pair<std::string, std::string>> &keys) {
+        return derived().template command<status>("MSET", keys).result();
     }
 
     /**
      * @brief Asynchronous version of the MSET command.
      *
      * @param func Callback function to be invoked when the operation completes
-     * @param keys Key-value pairs to set (variadic - can be individual key/value strings or containers)
+     * @param keys Vector of key-value pairs to set
      * @return Reference to the derived Redis client for method chaining
      * @see https://redis.io/commands/mset
      */
-    template <typename Func, typename... Keys>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
-    mset(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<void>(
-            std::forward<Func>(func),
-            "MSET",
-            std::forward<Keys>(keys)...);
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    mset(Func &&func, const std::vector<std::pair<std::string, std::string>> &keys) {
+        return derived().template command<status>(std::forward<Func>(func), "MSET", keys);
     }
 
     /**
@@ -447,35 +443,33 @@ public:
      * 
      * Sets the given keys to their respective values, only if all the keys do not exist.
      * If any of the specified keys already exist, none of the operations are performed.
-     * This command is atomic, making it useful for conditional multi-key updates.
      *
-     * @param keys Key-value pairs to set (variadic - can be individual key/value strings or containers)
+     * @param keys Key-value pairs to set
      * @return true if all keys were set, false if no operation was performed because at least one key exists
-     * @note The number of arguments must be even (each key must have a corresponding value)
-     * @note Time complexity: O(N) where N is the number of key-value pairs
      * @see https://redis.io/commands/msetnx
      */
-    template <typename... Keys>
     bool
-    msetnx(Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<bool>("MSETNX", std::forward<Keys>(keys)...).ok;
+    msetnx(const std::vector<std::pair<std::string, std::string>> &keys) {
+        if (keys.size() == 0) {
+            return false;
+        }
+        return derived()
+            .template command<long long>("MSETNX", keys).result();
     }
 
     /**
      * @brief Asynchronous version of the MSETNX command.
      *
      * @param func Callback function to be invoked when the operation completes
-     * @param keys Key-value pairs to set (variadic - can be individual key/value strings or containers)
+     * @param keys Key-value pairs to set
      * @return Reference to the derived Redis client for method chaining
      * @see https://redis.io/commands/msetnx
      */
-    template <typename Func, typename... Keys>
+    template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
-    msetnx(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<bool>(
-            std::forward<Func>(func),
-            "MSETNX",
-            std::forward<Keys>(keys)...);
+    msetnx(Func &&func, const std::vector<std::pair<std::string, std::string>> &keys) {
+        return derived()
+            .template command<long long>(std::forward<Func>(func), "MSETNX", keys);
     }
 
     /**
@@ -487,13 +481,13 @@ public:
      * @param key The key to set
      * @param ttl Time-to-live in milliseconds
      * @param val The string value to set
-     * @return Always returns true as PSETEX cannot fail
+     * @return status object indicating success or failure
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/psetex
      */
-    bool
+    status
     psetex(const std::string &key, long long ttl, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<void>("PSETEX", key, ttl, val).ok;
+        return derived().template command<status>("PSETEX", key, ttl, val).result();
     }
 
     /**
@@ -507,9 +501,9 @@ public:
      * @see https://redis.io/commands/psetex
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     psetex(Func &&func, const std::string &key, long long ttl, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "PSETEX", key, ttl, val);
+        return derived().template command<status>(std::forward<Func>(func), "PSETEX", key, ttl, val);
     }
 
     /**
@@ -521,11 +515,11 @@ public:
      * @param key The key to set
      * @param ttl Time-to-live as a std::chrono::milliseconds object
      * @param val The string value to set
-     * @return Always returns true as PSETEX cannot fail
+     * @return status object indicating success or failure
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/psetex
      */
-    bool
+    status
     psetex(const std::string &key, std::chrono::milliseconds const &ttl, const std::string &val) {
         return psetex(key, ttl.count(), val);
     }
@@ -541,7 +535,7 @@ public:
      * @see https://redis.io/commands/psetex
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     psetex(Func &&func, const std::string &key, std::chrono::milliseconds const &ttl, const std::string &val) {
         return psetex(std::forward<Func>(func), key, ttl.count(), val);
     }
@@ -558,17 +552,17 @@ public:
      *             - UpdateType::EXIST: Only set if key already exists
      *             - UpdateType::NOT_EXIST: Only set if key does not exist
      *             - UpdateType::ALWAYS: Always set (default)
-     * @return true if the key was set, false if the key was not set due to the provided condition
+     * @return status object indicating success or failure
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/set
      */
-    bool
+    status
     set(const std::string &key, const std::string &val, UpdateType type = UpdateType::ALWAYS) {
         std::optional<std::string> opt;
         if (type != UpdateType::ALWAYS)
             opt = std::to_string(type);
 
-        return static_cast<Derived &>(*this).template command<reply::set>("SET", key, val, opt).result.status;
+        return derived().template command<status>("SET", key, val, opt).result();
     }
 
     /**
@@ -582,14 +576,14 @@ public:
      * @see https://redis.io/commands/set
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::set> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     set(Func &&func, const std::string &key, const std::string &val, UpdateType type = UpdateType::ALWAYS) {
         std::optional<std::string> opt;
         if (type != UpdateType::ALWAYS)
             opt = std::to_string(type);
 
-        return static_cast<Derived &>(*this)
-            .template command<reply::set>(std::forward<Func>(func), "SET", key, val, opt);
+        return derived()
+            .template command<status>(std::forward<Func>(func), "SET", key, val, opt);
     }
 
     /**
@@ -602,16 +596,16 @@ public:
      * @param val The string value to set
      * @param ttl Time-to-live in milliseconds
      * @param type Update condition (EXIST, NOT_EXIST, or ALWAYS)
-     * @return true if the key was set, false if the key was not set due to the provided condition
+     * @return status object indicating success or failure
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/set
      */
-    bool
+    status
     set(const std::string &key, const std::string &val, long long ttl, UpdateType type = UpdateType::ALWAYS) {
         std::optional<std::string> opt;
         if (type != UpdateType::ALWAYS)
             opt = std::to_string(type);
-        return static_cast<Derived &>(*this).template command<reply::set>("SET", key, val, "PX", ttl, opt).result.status;
+        return derived().template command<status>("SET", key, val, "PX", ttl, opt).result();
     }
 
     /**
@@ -626,14 +620,14 @@ public:
      * @see https://redis.io/commands/set
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::set> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     set(Func &&func, const std::string &key, const std::string &val, long long ttl,
         UpdateType type = UpdateType::ALWAYS) {
         std::optional<std::string> opt;
         if (type != UpdateType::ALWAYS)
             opt = std::to_string(type);
-        return static_cast<Derived &>(*this)
-            .template command<reply::set>(std::forward<Func>(func), "SET", key, val, "PX", ttl, opt);
+        return derived()
+            .template command<status>(std::forward<Func>(func), "SET", key, val, "PX", ttl, opt);
     }
 
     /**
@@ -646,11 +640,11 @@ public:
      * @param val The string value to set
      * @param ttl Time-to-live as a std::chrono::milliseconds object
      * @param type Update condition (EXIST, NOT_EXIST, or ALWAYS)
-     * @return true if the key was set, false if the key was not set due to the provided condition
+     * @return status object indicating success or failure
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/set
      */
-    bool
+    status
     set(const std::string &key, const std::string &val, const std::chrono::milliseconds &ttl,
         UpdateType type = UpdateType::ALWAYS) {
         return set(key, val, static_cast<long long>(ttl.count()), type);
@@ -668,62 +662,12 @@ public:
      * @see https://redis.io/commands/set
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::set> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     set(Func &&func, const std::string &key, const std::string &val, const std::chrono::milliseconds &ttl,
         UpdateType type = UpdateType::ALWAYS) {
         return set(std::forward<Func>(func), key, val, static_cast<long long>(ttl.count()), type);
     }
 
-    /**
-     * @brief Set a key-value pair with KEEPTTL option and conditions.
-     * 
-     * Sets the string value at key with an option to retain the existing TTL
-     * and optional update conditions.
-     *
-     * @param key The key to set
-     * @param val The string value to set
-     * @param keepttl Whether to retain the existing TTL (if true) or reset it (if false)
-     * @param type Update condition (EXIST, NOT_EXIST, or ALWAYS)
-     * @return true if the key was set, false if the key was not set due to the provided condition
-     * @note Time complexity: O(1)
-     * @note The KEEPTTL option is available since Redis 6.0
-     * @see https://redis.io/commands/set
-     */
-    bool
-    set(const std::string &key, const std::string &val, bool keepttl, UpdateType type = UpdateType::ALWAYS) {
-        std::optional<std::string> opt;
-        if (keepttl)
-            opt = "KEEPTTL";
-        std::optional<std::string> opt2;
-        if (type != UpdateType::ALWAYS)
-            opt2 = std::to_string(type);
-        return static_cast<Derived &>(*this).template command<reply::set>("SET", key, val, opt, opt2).status;
-    }
-
-    /**
-     * @brief Asynchronous version of the SET command with KEEPTTL option and conditions.
-     *
-     * @param func Callback function to be invoked when the operation completes
-     * @param key The key to set
-     * @param val The string value to set
-     * @param keepttl Whether to retain the existing TTL (if true) or reset it (if false)
-     * @param type Update condition (EXIST, NOT_EXIST, or ALWAYS)
-     * @return Reference to the derived Redis client for method chaining
-     * @see https://redis.io/commands/set
-     */
-    template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::set> &&>, Derived &>
-    set(Func &&func, const std::string &key, const std::string &val, bool keepttl,
-        UpdateType type = UpdateType::ALWAYS) {
-        std::optional<std::string> opt;
-        if (keepttl)
-            opt = "KEEPTTL";
-        std::optional<std::string> opt2;
-        if (type != UpdateType::ALWAYS)
-            opt2 = std::to_string(type);
-        return static_cast<Derived &>(*this)
-            .template command<reply::set>(std::forward<Func>(func), "SET", key, val, opt, opt2);
-    }
 
     /**
      * @brief Set a key-value pair with a second precision timeout.
@@ -734,13 +678,13 @@ public:
      * @param key The key to set
      * @param ttl Time-to-live in seconds
      * @param val The string value to set
-     * @return Always returns true as SETEX cannot fail
+     * @return status object indicating success or failure
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/setex
      */
-    bool
+    status
     setex(const std::string &key, long long ttl, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<void>("SETEX", key, ttl, val).ok;
+        return derived().template command<status>("SETEX", key, ttl, val).result();
     }
 
     /**
@@ -754,9 +698,9 @@ public:
      * @see https://redis.io/commands/setex
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     setex(Func &&func, const std::string &key, long long ttl, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<void>(std::forward<Func>(func), "SETEX", key, ttl, val);
+        return derived().template command<status>(std::forward<Func>(func), "SETEX", key, ttl, val);
     }
 
     /**
@@ -768,11 +712,11 @@ public:
      * @param key The key to set
      * @param ttl Time-to-live as a std::chrono::seconds object
      * @param val The string value to set
-     * @return Always returns true as SETEX cannot fail
+     * @return status object indicating success or failure
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/setex
      */
-    bool
+    status
     setex(const std::string &key, std::chrono::seconds const &ttl, const std::string &val) {
         return setex(key, ttl.count(), val);
     }
@@ -788,7 +732,7 @@ public:
      * @see https://redis.io/commands/setex
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     setex(Func &&func, const std::string &key, std::chrono::seconds const &ttl, const std::string &val) {
         return setex(std::forward<Func>(func), key, ttl.count(), val);
     }
@@ -807,7 +751,7 @@ public:
      */
     bool
     setnx(const std::string &key, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<bool>("SETNX", key, val).ok;
+        return derived().template command<bool>("SETNX", key, val).result();
     }
 
     /**
@@ -822,7 +766,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     setnx(Func &&func, const std::string &key, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<bool>(std::forward<Func>(func), "SETNX", key, val);
+        return derived().template command<bool>(std::forward<Func>(func), "SETNX", key, val);
     }
 
     /**
@@ -842,7 +786,7 @@ public:
      */
     long long
     setrange(const std::string &key, long long offset, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<long long>("SETRANGE", key, offset, val).result;
+        return derived().template command<long long>("SETRANGE", key, offset, val).result();
     }
 
     /**
@@ -858,7 +802,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     setrange(Func &&func, const std::string &key, long long offset, const std::string &val) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "SETRANGE", key, offset, val);
     }
 
@@ -875,7 +819,7 @@ public:
      */
     long long
     strlen(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>("STRLEN", key).result;
+        return derived().template command<long long>("STRLEN", key).result();
     }
 
     /**
@@ -889,7 +833,153 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     strlen(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "STRLEN", key);
+        return derived().template command<long long>(std::forward<Func>(func), "STRLEN", key);
+    }
+
+    /**
+     * @brief Get the value of a key and delete it.
+     * 
+     * Returns the value of the key and deletes it. This command is atomic.
+     * If the key does not exist, returns null.
+     *
+     * @param key The key to get and delete
+     * @return The value of the key if it exists, nullopt otherwise
+     * @note Time complexity: O(1)
+     * @note Available since Redis 6.2.0
+     * @see https://redis.io/commands/getdel
+     */
+    std::optional<std::string>
+    getdel(const std::string &key) {
+        return derived()
+            .template command<std::optional<std::string>>("GETDEL", key)
+            .result();
+    }
+
+    /**
+     * @brief Asynchronous version of the GETDEL command.
+     *
+     * @param func Callback function to be invoked when the operation completes
+     * @param key The key to get and delete
+     * @return Reference to the derived Redis client for method chaining
+     * @note Available since Redis 6.2.0
+     * @see https://redis.io/commands/getdel
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    getdel(Func &&func, const std::string &key) {
+        return derived()
+            .template command<std::optional<std::string>>(std::forward<Func>(func), "GETDEL", key);
+    }
+
+    /**
+     * @brief Get the value of a key and set its expiration.
+     * 
+     * Returns the value of the key and sets its expiration. This command is atomic.
+     * If the key does not exist, returns null.
+     *
+     * @param key The key to get and set expiration for
+     * @param ttl Time-to-live in seconds
+     * @return The value of the key if it exists, nullopt otherwise
+     * @note Time complexity: O(1)
+     * @note Available since Redis 6.2.0
+     * @see https://redis.io/commands/getex
+     */
+    std::optional<std::string>
+    getex(const std::string &key, long long ttl) {
+        return derived()
+            .template command<std::optional<std::string>>("GETEX", key, "EX", ttl)
+            .result();
+    }
+
+    /**
+     * @brief Get the value of a key and set its expiration in milliseconds.
+     * 
+     * Returns the value of the key and sets its expiration in milliseconds.
+     * This command is atomic. If the key does not exist, returns null.
+     *
+     * @param key The key to get and set expiration for
+     * @param ttl Time-to-live in milliseconds
+     * @return The value of the key if it exists, nullopt otherwise
+     * @note Time complexity: O(1)
+     * @note Available since Redis 6.2.0
+     * @see https://redis.io/commands/getex
+     */
+    std::optional<std::string>
+    getex(const std::string &key, std::chrono::milliseconds const &ttl) {
+        return derived()
+            .template command<std::optional<std::string>>("GETEX", key, "PX", ttl.count())
+            .result();
+    }
+
+    /**
+     * @brief Asynchronous version of the GETEX command.
+     *
+     * @param func Callback function to be invoked when the operation completes
+     * @param key The key to get and set expiration for
+     * @param ttl Time-to-live in seconds
+     * @return Reference to the derived Redis client for method chaining
+     * @note Available since Redis 6.2.0
+     * @see https://redis.io/commands/getex
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    getex(Func &&func, const std::string &key, long long ttl) {
+        return derived()
+            .template command<std::optional<std::string>>(std::forward<Func>(func), "GETEX", key, "EX", ttl);
+    }
+
+    /**
+     * @brief Asynchronous version of the GETEX command with millisecond precision.
+     *
+     * @param func Callback function to be invoked when the operation completes
+     * @param key The key to get and set expiration for
+     * @param ttl Time-to-live in milliseconds
+     * @return Reference to the derived Redis client for method chaining
+     * @note Available since Redis 6.2.0
+     * @see https://redis.io/commands/getex
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    getex(Func &&func, const std::string &key, std::chrono::milliseconds const &ttl) {
+        return derived()
+            .template command<std::optional<std::string>>(std::forward<Func>(func), "GETEX", key, "PX", ttl.count());
+    }
+
+    /**
+     * @brief Find the longest common subsequence between two strings.
+     * 
+     * Returns the longest common subsequence between two strings.
+     * This command is useful for finding similar strings or implementing diff-like functionality.
+     *
+     * @param key1 First string key
+     * @param key2 Second string key
+     * @return The longest common subsequence or its length if len is true
+     * @note Time complexity: O(N*M) where N and M are the lengths of the strings
+     * @note Available since Redis 7.0.0
+     * @see https://redis.io/commands/lcs
+     */
+    std::string
+    lcs(const std::string &key1, const std::string &key2, bool len = false) {
+        return derived()
+            .template command<std::string>("LCS", key1, key2)
+            .result();
+    }
+
+    /**
+     * @brief Asynchronous version of the LCS command.
+     *
+     * @param func Callback function to be invoked when the operation completes
+     * @param key1 First string key
+     * @param key2 Second string key
+     * @return Reference to the derived Redis client for method chaining
+     * @note Available since Redis 7.0.0
+     * @see https://redis.io/commands/lcs
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
+    lcs(Func &&func, const std::string &key1, const std::string &key2) {
+        return derived()
+            .template command<std::string>(std::forward<Func>(func), "LCS", key1, key2);
     }
 };
 

@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,11 @@ namespace qb::redis {
  */
 template <typename Derived>
 class hyperloglog_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
 public:
     /**
      * @brief Adds elements to a HyperLogLog data structure
@@ -46,9 +51,9 @@ public:
     template <typename... Elements>
     bool
     pfadd(const std::string &key, Elements &&...elements) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<bool>("PFADD", key, std::forward<Elements>(elements)...)
-            .ok;
+            .result();
     }
     
     /**
@@ -64,7 +69,7 @@ public:
     template <typename Func, typename... Elements>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pfadd(Func &&func, const std::string &key, Elements &&...elements) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<bool>(std::forward<Func>(func), "PFADD", key, std::forward<Elements>(elements)...);
     }
 
@@ -78,7 +83,7 @@ public:
     template <typename... Keys>
     long long
     pfcount(Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>("PFCOUNT", std::forward<Keys>(keys)...).result;
+        return derived().template command<long long>("PFCOUNT", std::forward<Keys>(keys)...).result();
     }
     
     /**
@@ -93,7 +98,7 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     pfcount(Func &&func, Keys &&...keys) {
-        return static_cast<Derived &>(*this).template command<long long>(
+        return derived().template command<long long>(
             std::forward<Func>(func),
             "PFCOUNT",
             std::forward<Keys>(keys)...);
@@ -105,14 +110,13 @@ public:
      * @tparam Keys Variadic types for source key names
      * @param destination Destination key where the merged HyperLogLog will be stored
      * @param keys Source keys containing HyperLogLog structures to merge
-     * @return true if the operation was successful, false otherwise
+     * @return status object indicating success or failure
      */
     template <typename... Keys>
-    bool
+    status
     pfmerge(const std::string &destination, Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<void>("PFMERGE", destination, std::forward<Keys>(keys)...)
-            .ok;
+        return derived()
+            .template command<status>("PFMERGE", destination, std::forward<Keys>(keys)...).result();
     }
     
     /**
@@ -126,10 +130,10 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func, typename... Keys>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<void> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     pfmerge(Func &&func, const std::string &destination, Keys &&...keys) {
-        return static_cast<Derived &>(*this)
-            .template command<void>(std::forward<Func>(func), "PFMERGE", destination, std::forward<Keys>(keys)...);
+        return derived()
+            .template command<status>(std::forward<Func>(func), "PFMERGE", destination, std::forward<Keys>(keys)...);
     }
 };
 

@@ -1,6 +1,6 @@
 #
 # qb - C++ Actor Framework
-# Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+# Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,32 +15,31 @@
 #         limitations under the License.
 #
 
-qb_register_module_gtest(
-    NAME redis
-    TESTNAME command-sync
-    SOURCES test-redis-sync.cpp
+# Define test files and their corresponding test names
+set(REDIS_TESTS
+    connection-commands
+    server-commands
+    key-commands
+    string-commands
+    bitmap-commands
+    list-commands
+    hash-commands
+    transaction-commands
+    set-commands
+    sorted-set-commands
+    hyperloglog-commands
+    geo-commands
+    scripting-commands
+    subscription-commands
+    publish-commands
+    stream-commands
 )
 
-qb_register_module_gtest(
-    NAME redis
-    TESTNAME command-async
-    SOURCES test-redis-async.cpp
-)
-
-qb_register_module_gtest(
-    NAME redis
-    TESTNAME string-commands
-    SOURCES test-string-commands.cpp
-)
-
-qb_register_module_gtest(
-    NAME redis
-    TESTNAME list-commands
-    SOURCES test-list-commands.cpp
-)
-
-qb_register_module_gtest(
-    NAME redis
-    TESTNAME hash-commands
-    SOURCES test-hash-commands.cpp
-)
+# Register each test
+foreach(TEST ${REDIS_TESTS})
+    qb_register_module_gtest(
+        NAME redis
+        TESTNAME ${TEST}
+        SOURCES test-${TEST}.cpp
+    )
+endforeach()

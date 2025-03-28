@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -356,4 +356,16 @@ to_string(qb::redis::InsertPosition pos) {
     }
     return {};
 }
+
+std::string
+to_string(qb::redis::ListPosition pos) {
+    switch (pos) {
+        case qb::redis::ListPosition::LEFT:
+            return "LEFT";
+        case qb::redis::ListPosition::RIGHT:
+            return "RIGHT";
+    }
+    return {};
+}
+
 } // namespace std

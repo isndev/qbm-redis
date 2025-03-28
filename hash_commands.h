@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+ * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,12 @@ namespace qb::redis {
  */
 template <typename Derived>
 class hash_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
+    
     /**
      * @class scanner
      * @brief Helper class for implementing incremental scanning of hashes
@@ -47,7 +53,7 @@ class hash_commands {
         std::string _key;
         std::string _pattern;
         Func _func;
-        qb::redis::Reply<qb::redis::reply::scan<>> _reply;
+        qb::redis::Reply<qb::redis::scan<>> _reply;
 
     public:
         /**
@@ -72,11 +78,11 @@ class hash_commands {
          * @param reply The scan operation reply
          */
         void
-        operator()(qb::redis::Reply<qb::redis::reply::scan<>> &&reply) {
-            _reply.ok = reply.ok;
-            std::move(reply.result.items.begin(), reply.result.items.end(), std::back_inserter(_reply.result.items));
-            if (reply.ok && reply.result.cursor)
-                _handler.hscan(std::ref(*this), _key, reply.result.cursor, _pattern, 100);
+        operator()(qb::redis::Reply<qb::redis::scan<>> &&reply) {
+            _reply.ok() = reply.ok();
+            std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
+            if (reply.ok() && reply.result().cursor)
+                _handler.hscan(std::ref(*this), _key, reply.result().cursor, _pattern, 100);
             else {
                 _func(std::move(_reply));
                 delete this;
@@ -112,8 +118,8 @@ class hash_commands {
                 for (auto it = _keys.begin(); it != std::end(_keys); ++it) {
                     handler.hvals(
                         [this, is_last = ((it + 1) == _keys.end())](auto &&reply) {
-                            _reply.ok &= reply.ok;
-                            std::move(reply.result.begin(), reply.result.end(), std::back_inserter(_reply.result));
+                            _reply.ok() &= reply.ok();
+                            std::move(reply.result().begin(), reply.result().end(), std::back_inserter(_reply.result()));
                             if (is_last) {
                                 this->_func(std::move(_reply));
                                 delete this;
@@ -140,9 +146,9 @@ public:
     template <typename... Fields>
     long long
     hdel(const std::string &key, Fields &&...fields) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>("HDEL", key, std::forward<Fields>(fields)...)
-            .result;
+            .result();
     }
 
     /**
@@ -158,7 +164,7 @@ public:
     template <typename Func, typename... Fields>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     hdel(Func &&func, const std::string &key, Fields &&...fields) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "HDEL", key, std::forward<Fields>(fields)...);
     }
 
@@ -171,7 +177,7 @@ public:
      */
     bool
     hexists(const std::string &key, const std::string &field) {
-        return static_cast<Derived &>(*this).template command<bool>("HEXISTS", key, field).ok;
+        return derived().template command<bool>("HEXISTS", key, field).result();
     }
 
     /**
@@ -186,7 +192,7 @@ public:
     template <typename Func>
     Derived &
     hexists(Func &&func, const std::string &key, const std::string &field) {
-        return static_cast<Derived &>(*this).template command<bool>(std::forward<Func>(func), "HEXISTS", key, field);
+        return derived().template command<bool>(std::forward<Func>(func), "HEXISTS", key, field);
     }
 
     /**
@@ -198,7 +204,7 @@ public:
      */
     std::optional<std::string>
     hget(const std::string &key, const std::string &field) {
-        return static_cast<Derived &>(*this).template command<std::optional<std::string>>("HGET", key, field).result;
+        return derived().template command<std::optional<std::string>>("HGET", key, field).result();
     }
 
     /**
@@ -213,7 +219,7 @@ public:
     template <typename Func>
     Derived &
     hget(Func &&func, const std::string &key, const std::string &field) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<std::optional<std::string>>(std::forward<Func>(func), "HGET", key, field);
     }
 
@@ -225,9 +231,9 @@ public:
      */
     qb::unordered_map<std::string, std::string>
     hgetall(const std::string &key) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<qb::unordered_map<std::string, std::string>>("HGETALL", key)
-            .result;
+            .result();
     }
 
     /**
@@ -241,7 +247,7 @@ public:
     template <typename Func>
     Derived &
     hgetall(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<qb::unordered_map<std::string, std::string>>(
+        return derived().template command<qb::unordered_map<std::string, std::string>>(
             std::forward<Func>(func),
             "HGETALL",
             key);
@@ -257,7 +263,7 @@ public:
      */
     long long
     hincrby(const std::string &key, const std::string &field, long long increment) {
-        return static_cast<Derived &>(*this).template command<long long>("HINCRBY", key, field, increment).result;
+        return derived().template command<long long>("HINCRBY", key, field, increment).result();
     }
 
     /**
@@ -273,7 +279,7 @@ public:
     template <typename Func>
     Derived &
     hincrby(Func &&func, const std::string &key, const std::string &field, long long increment) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "HINCRBY", key, field, increment);
     }
 
@@ -287,7 +293,7 @@ public:
      */
     double
     hincrbyfloat(const std::string &key, const std::string &field, double increment) {
-        return static_cast<Derived &>(*this).template command<double>("HINCRBYFLOAT", key, field, increment).result;
+        return derived().template command<double>("HINCRBYFLOAT", key, field, increment).result();
     }
 
     /**
@@ -303,7 +309,7 @@ public:
     template <typename Func>
     Derived &
     hincrbyfloat(Func &&func, const std::string &key, const std::string &field, double increment) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<double>(std::forward<Func>(func), "HINCRBYFLOAT", key, field, increment);
     }
 
@@ -315,7 +321,7 @@ public:
      */
     std::vector<std::string>
     hkeys(const std::string &pattern = "*") {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>("HKEYS", pattern).result;
+        return derived().template command<std::vector<std::string>>("HKEYS", pattern).result();
     }
 
     /**
@@ -329,7 +335,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     hkeys(Func &&func, const std::string &pattern = "*") {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>(
+        return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func),
             "HKEYS",
             pattern);
@@ -343,7 +349,7 @@ public:
      */
     long long
     hlen(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>("HLEN", key).result;
+        return derived().template command<long long>("HLEN", key).result();
     }
 
     /**
@@ -357,7 +363,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     hlen(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<long long>(std::forward<Func>(func), "HLEN", key);
+        return derived().template command<long long>(std::forward<Func>(func), "HLEN", key);
     }
 
     /**
@@ -371,9 +377,9 @@ public:
     template <typename... Fields>
     std::vector<std::optional<std::string>>
     hmget(const std::string &key, Fields &&...fields) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<std::vector<std::optional<std::string>>>("HMGET", key, std::forward<Fields>(fields)...)
-            .result;
+            .result();
     }
 
     /**
@@ -389,7 +395,7 @@ public:
     template <typename Func, typename... Fields>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
     hmget(Func &&func, const std::string &key, Fields &&...fields) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::optional<std::string>>>(
+        return derived().template command<std::vector<std::optional<std::string>>>(
             std::forward<Func>(func),
             "HMGET",
             key,
@@ -402,14 +408,13 @@ public:
      * @tparam FieldValues Variadic types for field-value pairs
      * @param key Key where the hash is stored
      * @param field_values Field-value pairs to set
-     * @return true if the operation was successful, false otherwise
+     * @return status object indicating success or failure
      */
     template <typename... FieldValues>
-    bool
+    status
     hmset(const std::string &key, FieldValues &&...field_values) {
-        return static_cast<Derived &>(*this)
-            .template command<void>("HMSET", key, std::forward<FieldValues>(field_values)...)
-            .ok;
+        return derived()
+            .template command<status>("HMSET", key, std::forward<FieldValues>(field_values)...).result();
     }
 
     /**
@@ -423,10 +428,10 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func, typename... FieldValues>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     hmset(Func &&func, const std::string &key, FieldValues &&...field_values) {
-        return static_cast<Derived &>(*this)
-            .template command<void>(std::forward<Func>(func), "HMSET", key, std::forward<FieldValues>(field_values)...);
+        return derived()
+            .template command<status>(std::forward<Func>(func), "HMSET", key, std::forward<FieldValues>(field_values)...);
     }
 
     /**
@@ -439,12 +444,15 @@ public:
      * @param count Hint for how many field-value pairs to return per call
      * @return Scan result containing next cursor and matching field-value pairs
      */
-    template <typename Out = std::vector<std::string>>
-    reply::scan<Out>
+    template <typename Out = qb::unordered_map<std::string, std::string>>
+    qb::redis::scan<Out>
     hscan(const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
-        return static_cast<Derived &>(*this)
-            .template command<reply::scan<Out>>("HSCAN", key, cursor, "MATCH", pattern, "COUNT", count)
-            .result;
+        if (key.empty()) {
+            return {};
+        }
+        return derived()
+            .template command<qb::redis::scan<Out>>("HSCAN", key, cursor, "MATCH", pattern, "COUNT", count)
+            .result();
     }
 
     /**
@@ -459,11 +467,13 @@ public:
      * @param count Hint for how many field-value pairs to return per call
      * @return Reference to the Redis handler for chaining
      */
-    template <typename Func, typename Out = std::vector<std::string>>
-    Derived &
-    hscan(
-        Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
-        return static_cast<Derived &>(*this).template command<reply::scan<Out>>(
+    template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
+    hscan(Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
+        if (key.empty()) {
+            return derived();
+        }
+        return derived().template command<qb::redis::scan<Out>>(
             std::forward<Func>(func),
             "HSCAN",
             key,
@@ -486,11 +496,11 @@ public:
      * @param pattern Pattern to filter fields
      * @return Reference to the Redis handler for chaining
      */
-    template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<reply::scan<>> &&>, Derived &>
+    template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
     hscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
-        new scanner<Func>(static_cast<Derived &>(*this), key, pattern, std::forward<Func>(func));
-        return static_cast<Derived &>(*this);
+        new scanner<Func>(derived(), key, pattern, std::forward<Func>(func));
+        return derived();
     }
 
     /**
@@ -503,7 +513,7 @@ public:
      */
     long long
     hset(const std::string &key, const std::string &field, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<long long>("HSET", key, field, val).result;
+        return derived().template command<long long>("HSET", key, field, val).result();
     }
 
     /**
@@ -519,7 +529,7 @@ public:
     template <typename Func>
     Derived &
     hset(Func &&func, const std::string &key, const std::string &field, const std::string &val) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "HSET", key, field, val);
     }
 
@@ -560,7 +570,7 @@ public:
      */
     bool
     hsetnx(const std::string &key, const std::string &field, const std::string &val) {
-        return static_cast<Derived &>(*this).template command<bool>("HSETNX", key, field, val).ok;
+        return derived().template command<bool>("HSETNX", key, field, val).result();
     }
 
     /**
@@ -576,7 +586,7 @@ public:
     template <typename Func>
     Derived &
     hsetnx(Func &&func, const std::string &key, const std::string &field, const std::string &val) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<bool>(std::forward<Func>(func), "HSETNX", key, field, val);
     }
 
@@ -616,7 +626,7 @@ public:
      */
     long long
     hstrlen(const std::string &key, const std::string &field) {
-        return static_cast<Derived &>(*this).template command<long long>("HSTRLEN", key, field).result;
+        return derived().template command<long long>("HSTRLEN", key, field).result();
     }
 
     /**
@@ -631,7 +641,7 @@ public:
     template <typename Func>
     Derived &
     hstrlen(Func &&func, const std::string &key, const std::string &field) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "HSTRLEN", key, field);
     }
 
@@ -643,7 +653,7 @@ public:
      */
     std::vector<std::string>
     hvals(const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>("HVALS", key).result;
+        return derived().template command<std::vector<std::string>>("HVALS", key).result();
     }
 
     /**
@@ -657,7 +667,7 @@ public:
     template <typename Func>
     Derived &
     hvals(Func &&func, const std::string &key) {
-        return static_cast<Derived &>(*this).template command<std::vector<std::string>>(
+        return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func),
             "HVALS",
             key);
@@ -674,8 +684,8 @@ public:
     template <typename Func>
     Derived &
     hvals(Func &&func, std::vector<std::string> keys) {
-        new multi_hvals<Func>(static_cast<Derived &>(*this), std::move(keys), std::forward<Func>(func));
-        return static_cast<Derived &>(*this);
+        new multi_hvals<Func>(derived(), std::move(keys), std::forward<Func>(func));
+        return derived();
     }
 };
 

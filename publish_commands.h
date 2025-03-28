@@ -1,6 +1,6 @@
 /*
 * qb - C++ Actor Framework
-* Copyright (C) 2011-2021 isndev (www.qbaf.io). All rights reserved.
+* Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,37 +27,56 @@ namespace qb::redis {
  *
  * This class implements Redis Pub/Sub publishing functionality, allowing
  * applications to send messages to channels that can be received by subscribers.
+ * Each command has both synchronous and asynchronous versions.
+ *
+ * The PUBLISH command sends a message to all clients that have subscribed to the given channel.
+ * The command returns the number of clients that received the message.
  *
  * @tparam Derived The derived class type (CRTP pattern)
  */
 template <typename Derived>
 class publish_commands {
+private:
+    constexpr Derived &
+    derived() {
+        return static_cast<Derived &>(*this);
+    }
 public:
     /**
      * @brief Publishes a message to a channel
      *
+     * This command sends a message to all clients that have subscribed to the given channel.
+     * The command returns the number of clients that received the message.
+     *
      * @param channel Channel name to publish the message to
      * @param message Message content to publish
-     * @return Number of clients that received the message
+     * @return Number of clients that received the message (0 if no subscribers)
+     * @throws std::runtime_error if channel is empty
+     * @see https://redis.io/commands/publish
      */
     long long
     publish(const std::string &channel, const std::string &message) {
-        return static_cast<Derived &>(*this).template command<long long>("PUBLISH", channel, message).result;
+        return derived().template command<long long>("PUBLISH", channel, message).result();
     }
     
     /**
      * @brief Asynchronous version of publish
      *
+     * This command sends a message to all clients that have subscribed to the given channel.
+     * The callback receives the number of clients that received the message.
+     *
      * @tparam Func Callback function type
-     * @param func Callback function
+     * @param func Callback function to handle the result
      * @param channel Channel name to publish the message to
      * @param message Message content to publish
      * @return Reference to the Redis handler for chaining
+     * @throws std::runtime_error if channel is empty
+     * @see https://redis.io/commands/publish
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     publish(Func &&func, const std::string &channel, const std::string &message) {
-        return static_cast<Derived &>(*this)
+        return derived()
             .template command<long long>(std::forward<Func>(func), "PUBLISH", channel, message);
     }
 };
