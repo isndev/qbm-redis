@@ -122,7 +122,7 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XDEL) {
 
     // Add entries
     auto id1 = redis.xadd(key, entries);
-    auto id2 = redis.xadd(key, entries);
+    redis.xadd(key, entries);
 
     // Test xdel
     EXPECT_EQ(redis.xdel(key, id1), 1);
@@ -144,7 +144,7 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XGROUP) {
             {"field2", "value2"},
             {"field3", "value3"}
     };
-    auto id = redis.xadd(key, entries);
+    redis.xadd(key, entries);
     redis.xadd(key, entries);
     redis.xadd(key, entries);
     redis.xadd(key, entries);
@@ -214,7 +214,7 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XPENDING) {
     std::vector<std::pair<std::string, std::string>> entries = {
             {"field1", "value1"}
     };
-    auto id = redis.xadd(key, entries);
+    redis.xadd(key, entries);
 
     // Test xpending without any message read (should be 0)
     EXPECT_EQ(redis.xpending(key, group), 0);
@@ -245,8 +245,8 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XREADGROUP) {
             {"field1", "value1"},
             {"field2", "value2"}
     };
-    auto id1 = redis.xadd(key, entries);
-    auto id2 = redis.xadd(key, entries);
+    redis.xadd(key, entries);
+    redis.xadd(key, entries);
 
     // Test xreadgroup with ">"
     auto unread_entries = redis.xreadgroup(key, group, consumer, ">");
@@ -323,7 +323,7 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XREAD) {
             {"field1", "value1"},
             {"field2", "value2"}
     };
-    auto id1 = redis.xadd(key, entries);
+    redis.xadd(key, entries);
     auto id2 = redis.xadd(key, entries);
 
     // Test xread with "0" to read all messages
@@ -643,7 +643,7 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XPENDING) {
     std::vector<std::pair<std::string, std::string>> entries = {
             {"field1", "value1"}
     };
-    auto id = redis.xadd(key, entries);
+    redis.xadd(key, entries);
     
     // Read the message with the consumer to make it pending
     auto messages = redis.xreadgroup(key, group, consumer, ">");
