@@ -965,30 +965,10 @@ struct Reply {
     bool _ok{};       ///< Whether the command was successful
     T _result{};      ///< The typed result of the command
     redis::reply_ptr _raw{}; ///< The raw Redis reply
-    std::string_view _error; ///< Error from Redis
+    std::string_view _error{}; ///< Error from Redis
 
     inline bool &ok() { return _ok; }
     inline T &result() { return _result; }
-    inline redis::reply_ptr &raw() { return _raw; }
-    inline std::string_view &error() { return _error; }
-};
-
-/**
- * @struct Reply<bool>
- * @brief Specialization for commands that return a boolean status
- * 
- * This specialization is used for Redis commands that return
- * a boolean status indicating success or failure.
- */
-template <>
-struct Reply<bool> {
-    bool _ok{};       ///< The boolean result
-    bool _result{};
-    redis::reply_ptr _raw{}; ///< The raw Redis reply
-    std::string_view _error; ///< Error from Redis
-
-    inline bool &ok() { return _ok; }
-    inline bool &result() { return _result; }
     inline redis::reply_ptr &raw() { return _raw; }
     inline std::string_view &error() { return _error; }
 };
@@ -1046,43 +1026,6 @@ public:
             func(Reply<T>{true, qb::redis::reply::parse<T>(*raw), reply_ptr(raw)});
         } catch (const ProtoError &) {
             func(Reply<T>{false, {}, reply_ptr(raw), {raw->str, raw->len}});
-        }
-    }
-};
-
-/**
- * @class TReply<Func, bool>
- * @brief Specialization for boolean result type
- * 
- * This specialization handles Redis commands that return
- * a boolean status indicating success or failure.
- * 
- * @tparam Func The callback function type
- */
-template <typename Func>
-class TReply<Func, bool> final : public IReply {
-    Func func;
-
-public:
-    /**
-     * @brief Constructs a TReply with the specified callback
-     * @param func Callback function to process the reply
-     */
-    explicit TReply(Func &&func)
-        : func(std::forward<Func>(func)) {}
-    ~TReply() override = default;
-
-    /**
-     * @brief Process a Redis reply
-     * @param raw The raw Redis reply to process
-     */
-    void
-    operator()(redisReply *raw) final {
-        try {
-            auto result = qb::redis::parse<bool>(*raw);
-            func(Reply<bool>{true, result, reply_ptr(raw)});
-        } catch (const ProtoError &) {
-            func(Reply<bool>{false, false, reply_ptr(raw), {raw->str, raw->len}});
         }
     }
 };

@@ -959,7 +959,7 @@ public:
      * @see https://redis.io/commands/lcs
      */
     std::string
-    lcs(const std::string &key1, const std::string &key2, bool len = false) {
+    lcs(const std::string &key1, const std::string &key2) {
         return derived()
             .template command<std::string>("LCS", key1, key2)
             .result();

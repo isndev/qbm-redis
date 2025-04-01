@@ -183,6 +183,7 @@ TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_KILL) {
     // It's more of a smoke test to verify the command works
     try {
         bool killed = redis.script_kill();
+        (void) killed; // hide warning
     } catch (...) {}
     // We don't assert the result as it depends on the Redis server state
 }
