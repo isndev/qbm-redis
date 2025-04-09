@@ -21,8 +21,7 @@
 #include "../redis.h"
 
 // Redis Configuration
-#define REDIS_URI \
-    { "tcp://localhost:6379" }
+#define REDIS_URI {"tcp://localhost:6379"}
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -30,8 +29,8 @@ using namespace std::chrono;
 // Generates unique key prefixes to avoid collisions between tests
 inline std::string
 key_prefix(const std::string &key = "") {
-    static int counter = 0;
-    std::string prefix = "qb::redis::hash-test:" + std::to_string(++counter);
+    static int  counter = 0;
+    std::string prefix  = "qb::redis::hash-test:" + std::to_string(++counter);
 
     if (key.empty()) {
         return prefix;
@@ -51,7 +50,8 @@ class RedisTest : public ::testing::Test {
 protected:
     qb::redis::tcp::client redis{REDIS_URI};
 
-    void SetUp() override {
+    void
+    SetUp() override {
         async::init();
         if (!redis.connect() || !redis.flushall())
             throw std::runtime_error("Unable to connect to Redis");
@@ -61,7 +61,8 @@ protected:
         TearDown();
     }
 
-    void TearDown() override {
+    void
+    TearDown() override {
         // Cleanup after tests
         redis.flushall();
         redis.await();
@@ -112,7 +113,8 @@ TEST_F(RedisTest, SYNC_HASH_COMMANDS_HMSET_HMGET) {
     std::string key = test_key("hmset");
 
     // Test HMSET
-    EXPECT_TRUE(redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3"));
+    EXPECT_TRUE(
+        redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3"));
 
     // Test HMGET
     auto values = redis.hmget(key, "field1", "field2", "field3", "field4");
@@ -217,14 +219,15 @@ TEST_F(RedisTest, SYNC_HASH_COMMANDS_HSCAN) {
 
     // Test HSCAN with pattern
     auto scan_result = redis.hscan(key, 0, "field:1*");
-    EXPECT_TRUE(scan_result.items.size() > 0); // Should find at least "field:1", "field:10"-"field:19"
+    EXPECT_TRUE(scan_result.items.size() >
+                0); // Should find at least "field:1", "field:10"-"field:19"
 
     // Count all fields with cursor-based iteration
-    std::size_t cursor = 0;
+    std::size_t cursor       = 0;
     std::size_t total_fields = 0;
     do {
         auto result = redis.hscan(key, cursor);
-        cursor = result.cursor;
+        cursor      = result.cursor;
         total_fields += result.items.size(); // Each field-value pair is two items
     } while (cursor != 0);
 
@@ -240,65 +243,56 @@ TEST_F(RedisTest, SYNC_HASH_COMMANDS_HSCAN) {
 
 // Test basic HSET and HGET operations asynchronously
 TEST_F(RedisTest, ASYNC_HASH_COMMANDS_HSET_HGET) {
-    std::string key = test_key("async-basic");
-    bool hset_called = false;
-    bool hget_called = false;
-    bool hexists_called = false;
-    bool hdel_called = false;
+    std::string key            = test_key("async-basic");
+    bool        hset_called    = false;
+    bool        hget_called    = false;
+    bool        hexists_called = false;
+    bool        hdel_called    = false;
 
     // Test HSET async
     redis.hset(
-            [&hset_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result(), 1); // Created a new field
-                hset_called = true;
-            },
-            key,
-            "field1",
-            "value1"
-    );
+        [&hset_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 1); // Created a new field
+            hset_called = true;
+        },
+        key, "field1", "value1");
 
     redis.await();
     EXPECT_TRUE(hset_called);
 
     // Test HGET async
     redis.hget(
-            [&hget_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_TRUE(reply.result().has_value());
-                EXPECT_EQ(*reply.result(), "value1");
-                hget_called = true;
-            },
-            key,
-            "field1"
-    );
+        [&hget_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_TRUE(reply.result().has_value());
+            EXPECT_EQ(*reply.result(), "value1");
+            hget_called = true;
+        },
+        key, "field1");
 
     redis.await();
     EXPECT_TRUE(hget_called);
 
     // Test HEXISTS async
     redis.hexists(
-            [&hexists_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                hexists_called = true;
-            },
-            key,
-            "field1"
-    );
+        [&hexists_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            hexists_called = true;
+        },
+        key, "field1");
 
     redis.await();
     EXPECT_TRUE(hexists_called);
 
     // Test HDEL async
     redis.hdel(
-            [&hdel_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result(), 1);
-                hdel_called = true;
-            },
-            key,
-            "field1"
-    );
+        [&hdel_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 1);
+            hdel_called = true;
+        },
+        key, "field1");
 
     redis.await();
     EXPECT_TRUE(hdel_called);
@@ -309,58 +303,51 @@ TEST_F(RedisTest, ASYNC_HASH_COMMANDS_HSET_HGET) {
 
 // Test HMSET and HMGET operations asynchronously
 TEST_F(RedisTest, ASYNC_HASH_COMMANDS_HMSET_HMGET) {
-    std::string key = test_key("async-hmset");
-    bool hmset_called = false;
-    bool hmget_called = false;
-    bool hgetall_called = false;
+    std::string key            = test_key("async-hmset");
+    bool        hmset_called   = false;
+    bool        hmget_called   = false;
+    bool        hgetall_called = false;
 
     // Test HMSET async
     redis.hmset(
-            [&hmset_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                hmset_called = true;
-            },
-            key,
-            "field1", "value1",
-            "field2", "value2",
-            "field3", "value3"
-    );
+        [&hmset_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            hmset_called = true;
+        },
+        key, "field1", "value1", "field2", "value2", "field3", "value3");
 
     redis.await();
     EXPECT_TRUE(hmset_called);
 
     // Test HMGET async
     redis.hmget(
-            [&hmget_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result().size(), 3);
-                EXPECT_TRUE(reply.result()[0].has_value());
-                EXPECT_EQ(*reply.result()[0], "value1");
-                EXPECT_TRUE(reply.result()[1].has_value());
-                EXPECT_EQ(*reply.result()[1], "value2");
-                EXPECT_TRUE(reply.result()[2].has_value());
-                EXPECT_EQ(*reply.result()[2], "value3");
-                hmget_called = true;
-            },
-            key,
-            "field1", "field2", "field3"
-    );
+        [&hmget_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result().size(), 3);
+            EXPECT_TRUE(reply.result()[0].has_value());
+            EXPECT_EQ(*reply.result()[0], "value1");
+            EXPECT_TRUE(reply.result()[1].has_value());
+            EXPECT_EQ(*reply.result()[1], "value2");
+            EXPECT_TRUE(reply.result()[2].has_value());
+            EXPECT_EQ(*reply.result()[2], "value3");
+            hmget_called = true;
+        },
+        key, "field1", "field2", "field3");
 
     redis.await();
     EXPECT_TRUE(hmget_called);
 
     // Test HGETALL async
     redis.hgetall(
-            [&hgetall_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result().size(), 3);
-                EXPECT_EQ(reply.result()["field1"], "value1");
-                EXPECT_EQ(reply.result()["field2"], "value2");
-                EXPECT_EQ(reply.result()["field3"], "value3");
-                hgetall_called = true;
-            },
-            key
-    );
+        [&hgetall_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result().size(), 3);
+            EXPECT_EQ(reply.result()["field1"], "value1");
+            EXPECT_EQ(reply.result()["field2"], "value2");
+            EXPECT_EQ(reply.result()["field3"], "value3");
+            hgetall_called = true;
+        },
+        key);
 
     redis.await();
     EXPECT_TRUE(hgetall_called);
@@ -371,36 +358,30 @@ TEST_F(RedisTest, ASYNC_HASH_COMMANDS_HMSET_HMGET) {
 
 // Test increment operations asynchronously
 TEST_F(RedisTest, ASYNC_HASH_COMMANDS_INCR) {
-    std::string key = test_key("async-incr");
-    bool hincrby_called = false;
-    bool hincrbyfloat_called = false;
+    std::string key                 = test_key("async-incr");
+    bool        hincrby_called      = false;
+    bool        hincrbyfloat_called = false;
 
     // Test HINCRBY async
     redis.hincrby(
-            [&hincrby_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result(), 1);
-                hincrby_called = true;
-            },
-            key,
-            "counter",
-            1
-    );
+        [&hincrby_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 1);
+            hincrby_called = true;
+        },
+        key, "counter", 1);
 
     redis.await();
     EXPECT_TRUE(hincrby_called);
 
     // Test HINCRBYFLOAT async
     redis.hincrbyfloat(
-            [&hincrbyfloat_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_FLOAT_EQ(reply.result(), 10.5);
-                hincrbyfloat_called = true;
-            },
-            key,
-            "float",
-            10.5
-    );
+        [&hincrbyfloat_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_FLOAT_EQ(reply.result(), 10.5);
+            hincrbyfloat_called = true;
+        },
+        key, "float", 10.5);
 
     redis.await();
     EXPECT_TRUE(hincrbyfloat_called);
@@ -411,69 +392,67 @@ TEST_F(RedisTest, ASYNC_HASH_COMMANDS_INCR) {
 
 // Test keys and values operations asynchronously
 TEST_F(RedisTest, ASYNC_HASH_COMMANDS_KEYS_VALUES) {
-    std::string key = test_key("async-keys-values");
-    bool hmset_called = false;
-    bool hkeys_called = false;
-    bool hvals_called = false;
-    bool hstrlen_called = false;
+    std::string key            = test_key("async-keys-values");
+    bool        hmset_called   = false;
+    bool        hkeys_called   = false;
+    bool        hvals_called   = false;
+    bool        hstrlen_called = false;
 
     // Setup hash
     redis.hmset(
-            [&hmset_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                hmset_called = true;
-            },
-            key,
-            "field1", "value1",
-            "field2", "value2",
-            "field3", "value3"
-    );
+        [&hmset_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            hmset_called = true;
+        },
+        key, "field1", "value1", "field2", "value2", "field3", "value3");
 
     redis.await();
     EXPECT_TRUE(hmset_called);
 
     // Test HKEYS async
     redis.hkeys(
-            [&hkeys_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result().size(), 3);
-                EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(), "field1") != reply.result().end());
-                EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(), "field2") != reply.result().end());
-                EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(), "field3") != reply.result().end());
-                hkeys_called = true;
-            },
-            key
-    );
+        [&hkeys_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result().size(), 3);
+            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
+                                  "field1") != reply.result().end());
+            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
+                                  "field2") != reply.result().end());
+            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
+                                  "field3") != reply.result().end());
+            hkeys_called = true;
+        },
+        key);
 
     redis.await();
     EXPECT_TRUE(hkeys_called);
 
     // Test HVALS async
     redis.hvals(
-            [&hvals_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result().size(), 3);
-                EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(), "value1") != reply.result().end());
-                EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(), "value2") != reply.result().end());
-                EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(), "value3") != reply.result().end());
-                hvals_called = true;
-            },
-            key
-    );
+        [&hvals_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result().size(), 3);
+            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
+                                  "value1") != reply.result().end());
+            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
+                                  "value2") != reply.result().end());
+            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
+                                  "value3") != reply.result().end());
+            hvals_called = true;
+        },
+        key);
 
     redis.await();
     EXPECT_TRUE(hvals_called);
 
     // Test HSTRLEN async
     redis.hstrlen(
-            [&hstrlen_called](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result(), 6); // Length of "value1"
-                hstrlen_called = true;
-            },
-            key,
-            "field1"
-    );
+        [&hstrlen_called](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 6); // Length of "value1"
+            hstrlen_called = true;
+        },
+        key, "field1");
 
     redis.await();
     EXPECT_TRUE(hstrlen_called);
@@ -484,9 +463,9 @@ TEST_F(RedisTest, ASYNC_HASH_COMMANDS_KEYS_VALUES) {
 
 // Test command chaining instead of explicit pipeline
 TEST_F(RedisTest, ASYNC_HASH_COMMANDS_CHAINING) {
-    std::string key = test_key("hash-chaining");
-    bool all_commands_completed = false;
-    int command_count = 0;
+    std::string key                    = test_key("hash-chaining");
+    bool        all_commands_completed = false;
+    int         command_count          = 0;
 
     // Setup callback to track completion
     auto completion_callback = [&command_count, &all_commands_completed](auto &&) {
@@ -497,37 +476,28 @@ TEST_F(RedisTest, ASYNC_HASH_COMMANDS_CHAINING) {
 
     // Chain multiple commands (they will be buffered and sent together)
     redis.hset(
-            [&](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result(), 1);
-                completion_callback(reply);
-            },
-            key,
-            "field1",
-            "value1"
-    );
+        [&](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 1);
+            completion_callback(reply);
+        },
+        key, "field1", "value1");
 
     redis.hset(
-            [&](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result(), 1);
-                completion_callback(reply);
-            },
-            key,
-            "field2",
-            "value2"
-    );
+        [&](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 1);
+            completion_callback(reply);
+        },
+        key, "field2", "value2");
 
     redis.hincrby(
-            [&](auto &&reply) {
-                EXPECT_TRUE(reply.ok());
-                EXPECT_EQ(reply.result(), 5);
-                completion_callback(reply);
-            },
-            key,
-            "counter",
-            5
-    );
+        [&](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.result(), 5);
+            completion_callback(reply);
+        },
+        key, "counter", 5);
 
     // Trigger the async operations and wait for completion
     redis.await();
@@ -545,7 +515,8 @@ TEST_F(RedisTest, ASYNC_HASH_COMMANDS_CHAINING) {
 }
 
 // Main function to run the tests
-int main(int argc, char **argv) {
+int
+main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
-} 
+}

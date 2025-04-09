@@ -20,8 +20,7 @@
 #include "../redis.h"
 
 // Configuration Redis
-#define REDIS_URI \
-    { "tcp://localhost:6379" }
+#define REDIS_URI {"tcp://localhost:6379"}
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -29,8 +28,8 @@ using namespace std::chrono;
 // Generates unique key prefixes to avoid collisions between tests
 inline std::string
 key_prefix(const std::string &key = "") {
-    static int counter = 0;
-    std::string prefix = "qb::redis::set-test:" + std::to_string(++counter);
+    static int  counter = 0;
+    std::string prefix  = "qb::redis::set-test:" + std::to_string(++counter);
 
     if (key.empty()) {
         return prefix;
@@ -50,7 +49,8 @@ class RedisTest : public ::testing::Test {
 protected:
     qb::redis::tcp::client redis{REDIS_URI};
 
-    void SetUp() override {
+    void
+    SetUp() override {
         async::init();
         if (!redis.connect() || !redis.flushall())
             throw std::runtime_error("Impossible de se connecter à Redis");
@@ -60,7 +60,8 @@ protected:
         TearDown();
     }
 
-    void TearDown() override {
+    void
+    TearDown() override {
         // Cleanup after tests
         redis.flushall();
         redis.await();
@@ -181,7 +182,7 @@ TEST_F(RedisTest, SYNC_SET_COMMANDS_SMEMBERS) {
 // Test SMOVE
 TEST_F(RedisTest, SYNC_SET_COMMANDS_SMOVE) {
     std::string source = test_key("smove_source");
-    std::string dest = test_key("smove_dest");
+    std::string dest   = test_key("smove_dest");
 
     // Add a member to the source
     redis.sadd(source, "member1");
@@ -251,10 +252,10 @@ TEST_F(RedisTest, SYNC_SET_COMMANDS_SSCAN) {
 
     // Scan members
     std::unordered_set<std::string> res;
-    long long cursor = 0;
+    long long                       cursor = 0;
     while (true) {
         auto scan = redis.sscan(key, cursor, "member*", 2);
-        cursor = scan.cursor;
+        cursor    = scan.cursor;
         std::move(scan.items.begin(), scan.items.end(), std::inserter(res, res.end()));
         if (cursor == 0) {
             break;
@@ -272,7 +273,7 @@ TEST_F(RedisTest, SYNC_SET_COMMANDS_SSCAN) {
     cursor = 0;
     while (true) {
         auto scan = redis.sscan(key, cursor, "*", 2);
-        cursor = scan.cursor;
+        cursor    = scan.cursor;
         std::move(scan.items.begin(), scan.items.end(), std::inserter(res, res.end()));
         if (cursor == 0) {
             break;
@@ -294,11 +295,16 @@ TEST_F(RedisTest, SYNC_SET_COMMANDS_SUNION) {
     // Calculate the union
     auto union_result = redis.sunion({key1, key2});
     EXPECT_EQ(union_result.size(), 5);
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "a") != union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "b") != union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "c") != union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "d") != union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "e") != union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "a") !=
+                union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "b") !=
+                union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "c") !=
+                union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "d") !=
+                union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "e") !=
+                union_result.end());
 
     // Store the union
     EXPECT_EQ(redis.sunionstore(dest, {key1, key2}), 5);
@@ -319,22 +325,19 @@ TEST_F(RedisTest, SYNC_SET_COMMANDS_SUNION) {
 
 // Test asynchrone SADD/SCARD
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SADD_SCARD) {
-    std::string key = test_key("async_sadd_scard");
-    long long sadd_result = 0;
-    long long scard_result = 0;
+    std::string key          = test_key("async_sadd_scard");
+    long long   sadd_result  = 0;
+    long long   scard_result = 0;
 
     // Add members asynchronously
-    redis.sadd([&](auto &&reply) {
-        sadd_result = reply.result();
-    }, key, "member1", "member2", "member3");
+    redis.sadd([&](auto &&reply) { sadd_result = reply.result(); }, key, "member1",
+               "member2", "member3");
 
     redis.await();
     EXPECT_EQ(sadd_result, 3);
 
     // Verify the number of members asynchronously
-    redis.scard([&](auto &&reply) {
-        scard_result = reply.result();
-    }, key);
+    redis.scard([&](auto &&reply) { scard_result = reply.result(); }, key);
 
     redis.await();
     EXPECT_EQ(scard_result, 3);
@@ -342,30 +345,29 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SADD_SCARD) {
 
 // Test asynchrone SDIFF/SDIFFSTORE
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SDIFF_SDIFFSTORE) {
-    std::string key1 = test_key("async_sdiff1");
-    std::string key2 = test_key("async_sdiff2");
-    std::string dest = test_key("async_sdiff_dest");
+    std::string              key1 = test_key("async_sdiff1");
+    std::string              key2 = test_key("async_sdiff2");
+    std::string              dest = test_key("async_sdiff_dest");
     std::vector<std::string> diff_result;
-    long long diffstore_result = 0;
+    long long                diffstore_result = 0;
 
     // Create the sets
     redis.sadd(key1, "a", "b", "c");
     redis.sadd(key2, "c", "d", "e");
 
     // Calculate the difference asynchronously
-    redis.sdiff([&](auto &&reply) {
-        diff_result = reply.result();
-    }, {key1, key2});
+    redis.sdiff([&](auto &&reply) { diff_result = reply.result(); }, {key1, key2});
 
     redis.await();
     EXPECT_EQ(diff_result.size(), 2);
-    EXPECT_TRUE(std::find(diff_result.begin(), diff_result.end(), "a") != diff_result.end());
-    EXPECT_TRUE(std::find(diff_result.begin(), diff_result.end(), "b") != diff_result.end());
+    EXPECT_TRUE(std::find(diff_result.begin(), diff_result.end(), "a") !=
+                diff_result.end());
+    EXPECT_TRUE(std::find(diff_result.begin(), diff_result.end(), "b") !=
+                diff_result.end());
 
     // Store the difference asynchronously
-    redis.sdiffstore([&](auto &&reply) {
-        diffstore_result = reply.result();
-    }, dest, {key1, key2});
+    redis.sdiffstore([&](auto &&reply) { diffstore_result = reply.result(); }, dest,
+                     {key1, key2});
 
     redis.await();
     EXPECT_EQ(diffstore_result, 2);
@@ -373,39 +375,37 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SDIFF_SDIFFSTORE) {
 
 // Test asynchrone SINTER/SINTERSTORE/SINTERCARD
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SINTER) {
-    std::string key1 = test_key("async_sinter1");
-    std::string key2 = test_key("async_sinter2");
-    std::string dest = test_key("async_sinter_dest");
+    std::string              key1 = test_key("async_sinter1");
+    std::string              key2 = test_key("async_sinter2");
+    std::string              dest = test_key("async_sinter_dest");
     std::vector<std::string> inter_result;
-    long long interstore_result = 0;
-    long long intercard_result = 0;
+    long long                interstore_result = 0;
+    long long                intercard_result  = 0;
 
     // Create the sets
     redis.sadd(key1, "a", "b", "c");
     redis.sadd(key2, "b", "c", "d");
 
     // Calculate the intersection asynchronously
-    redis.sinter([&](auto &&reply) {
-        inter_result = reply.result();
-    }, {key1, key2});
+    redis.sinter([&](auto &&reply) { inter_result = reply.result(); }, {key1, key2});
 
     redis.await();
     EXPECT_EQ(inter_result.size(), 2);
-    EXPECT_TRUE(std::find(inter_result.begin(), inter_result.end(), "b") != inter_result.end());
-    EXPECT_TRUE(std::find(inter_result.begin(), inter_result.end(), "c") != inter_result.end());
+    EXPECT_TRUE(std::find(inter_result.begin(), inter_result.end(), "b") !=
+                inter_result.end());
+    EXPECT_TRUE(std::find(inter_result.begin(), inter_result.end(), "c") !=
+                inter_result.end());
 
     // Store the intersection asynchronously
-    redis.sinterstore([&](auto &&reply) {
-        interstore_result = reply.result();
-    }, dest, {key1, key2});
+    redis.sinterstore([&](auto &&reply) { interstore_result = reply.result(); }, dest,
+                      {key1, key2});
 
     redis.await();
     EXPECT_EQ(interstore_result, 2);
 
     // Verify the cardinality of the intersection asynchronously
-    redis.sintercard([&](auto &&reply) {
-        intercard_result = reply.result();
-    }, {key1, key2});
+    redis.sintercard([&](auto &&reply) { intercard_result = reply.result(); },
+                     {key1, key2});
 
     redis.await();
     EXPECT_EQ(intercard_result, 2);
@@ -413,25 +413,22 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SINTER) {
 
 // Test asynchrone SISMEMBER/SMISMEMBER
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SISMEMBER) {
-    std::string key = test_key("async_sismember");
-    bool ismember_result = false;
+    std::string       key             = test_key("async_sismember");
+    bool              ismember_result = false;
     std::vector<bool> mismember_result;
 
     // Ajouter des membres
     redis.sadd(key, "member1", "member2", "member3");
 
     // Verify membership asynchronously
-    redis.sismember([&](auto &&reply) {
-        ismember_result = reply.ok();
-    }, key, "member1");
+    redis.sismember([&](auto &&reply) { ismember_result = reply.ok(); }, key, "member1");
 
     redis.await();
     EXPECT_TRUE(ismember_result);
 
     // Verify multiple membership asynchronously
-    redis.smismember([&](auto &&reply) {
-        mismember_result = reply.result();
-    }, key, "member1", "member2", "member4");
+    redis.smismember([&](auto &&reply) { mismember_result = reply.result(); }, key,
+                     "member1", "member2", "member4");
 
     redis.await();
     EXPECT_EQ(mismember_result.size(), 3);
@@ -442,16 +439,14 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SISMEMBER) {
 
 // Test asynchrone SMEMBERS
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SMEMBERS) {
-    std::string key = test_key("async_smembers");
+    std::string                    key = test_key("async_smembers");
     qb::unordered_set<std::string> members_result;
 
     // Ajouter des membres
     redis.sadd(key, "member1", "member2", "member3");
 
     // Retrieve all members asynchronously
-    redis.smembers([&](auto &&reply) {
-        members_result = reply.result();
-    }, key);
+    redis.smembers([&](auto &&reply) { members_result = reply.result(); }, key);
 
     redis.await();
     EXPECT_EQ(members_result.size(), 3);
@@ -462,17 +457,16 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SMEMBERS) {
 
 // Test asynchrone SMOVE
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SMOVE) {
-    std::string source = test_key("async_smove_source");
-    std::string dest = test_key("async_smove_dest");
-    bool smove_result = false;
+    std::string source       = test_key("async_smove_source");
+    std::string dest         = test_key("async_smove_dest");
+    bool        smove_result = false;
 
     // Add a member to the source
     redis.sadd(source, "member1");
 
     // Move the member asynchronously
-    redis.smove([&](auto &&reply) {
-        smove_result = reply.ok();
-    }, source, dest, "member1");
+    redis.smove([&](auto &&reply) { smove_result = reply.ok(); }, source, dest,
+                "member1");
 
     redis.await();
     EXPECT_TRUE(smove_result);
@@ -480,25 +474,21 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SMOVE) {
 
 // Test asynchrone SPOP
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SPOP) {
-    std::string key = test_key("async_spop");
+    std::string                key = test_key("async_spop");
     std::optional<std::string> pop_result;
-    std::vector<std::string> pop_many_result;
+    std::vector<std::string>   pop_many_result;
 
     // Ajouter des membres
     redis.sadd(key, "member1", "member2", "member3");
 
     // Pop a member asynchronously
-    redis.spop([&](auto &&reply) {
-        pop_result = reply.result();
-    }, key);
+    redis.spop([&](auto &&reply) { pop_result = reply.result(); }, key);
 
     redis.await();
     EXPECT_TRUE(pop_result.has_value());
 
     // Pop multiple members asynchronously
-    redis.spop([&](auto &&reply) {
-        pop_many_result = reply.result();
-    }, key, 2);
+    redis.spop([&](auto &&reply) { pop_many_result = reply.result(); }, key, 2);
 
     redis.await();
     EXPECT_EQ(pop_many_result.size(), 2);
@@ -506,25 +496,21 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SPOP) {
 
 // Test asynchrone SRANDMEMBER
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SRANDMEMBER) {
-    std::string key = test_key("async_srandmember");
+    std::string                key = test_key("async_srandmember");
     std::optional<std::string> rand_result;
-    std::vector<std::string> rand_many_result;
+    std::vector<std::string>   rand_many_result;
 
     // Ajouter des membres
     redis.sadd(key, "member1", "member2", "member3");
 
     // Get a random member asynchronously
-    redis.srandmember([&](auto &&reply) {
-        rand_result = reply.result();
-    }, key);
+    redis.srandmember([&](auto &&reply) { rand_result = reply.result(); }, key);
 
     redis.await();
     EXPECT_TRUE(rand_result.has_value());
 
     // Get multiple random members asynchronously
-    redis.srandmember([&](auto &&reply) {
-        rand_many_result = reply.result();
-    }, key, 2);
+    redis.srandmember([&](auto &&reply) { rand_many_result = reply.result(); }, key, 2);
 
     redis.await();
     EXPECT_EQ(rand_many_result.size(), 2);
@@ -532,16 +518,15 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SRANDMEMBER) {
 
 // Test asynchrone SREM
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SREM) {
-    std::string key = test_key("async_srem");
-    long long srem_result = 0;
+    std::string key         = test_key("async_srem");
+    long long   srem_result = 0;
 
     // Ajouter des membres
     redis.sadd(key, "member1", "member2", "member3");
 
     // Remove members asynchronously
-    redis.srem([&](auto &&reply) {
-        srem_result = reply.result();
-    }, key, "member1", "member2");
+    redis.srem([&](auto &&reply) { srem_result = reply.result(); }, key, "member1",
+               "member2");
 
     redis.await();
     EXPECT_EQ(srem_result, 2);
@@ -549,18 +534,21 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SREM) {
 
 // Test asynchrone SSCAN
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SSCAN) {
-    std::string key = test_key("async_sscan");
+    std::string                     key = test_key("async_sscan");
     std::unordered_set<std::string> scan_result;
-    bool scan_completed = false;
+    bool                            scan_completed = false;
 
     // Ajouter des membres
     redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
 
     // Scan members asynchronously
-    redis.sscan([&](auto &&reply) {
-        std::move(reply.result().items.begin(), reply.result().items.end(), std::inserter(scan_result, scan_result.end()));
-        scan_completed = true;
-    }, key, 0, "member*", 2);
+    redis.sscan(
+        [&](auto &&reply) {
+            std::move(reply.result().items.begin(), reply.result().items.end(),
+                      std::inserter(scan_result, scan_result.end()));
+            scan_completed = true;
+        },
+        key, 0, "member*", 2);
 
     redis.await();
     EXPECT_TRUE(scan_completed);
@@ -569,34 +557,36 @@ TEST_F(RedisTest, ASYNC_SET_COMMANDS_SSCAN) {
 
 // Test asynchrone SUNION/SUNIONSTORE
 TEST_F(RedisTest, ASYNC_SET_COMMANDS_SUNION) {
-    std::string key1 = test_key("async_sunion1");
-    std::string key2 = test_key("async_sunion2");
-    std::string dest = test_key("async_sunion_dest");
+    std::string              key1 = test_key("async_sunion1");
+    std::string              key2 = test_key("async_sunion2");
+    std::string              dest = test_key("async_sunion_dest");
     std::vector<std::string> union_result;
-    long long unionstore_result = 0;
+    long long                unionstore_result = 0;
 
     // Create the sets
     redis.sadd(key1, "a", "b", "c");
     redis.sadd(key2, "c", "d", "e");
 
     // Calculate the union asynchronously
-    redis.sunion([&](auto &&reply) {
-        union_result = reply.result();
-    }, {key1, key2});
+    redis.sunion([&](auto &&reply) { union_result = reply.result(); }, {key1, key2});
 
     redis.await();
     EXPECT_EQ(union_result.size(), 5);
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "a") != union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "b") != union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "c") != union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "d") != union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "e") != union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "a") !=
+                union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "b") !=
+                union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "c") !=
+                union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "d") !=
+                union_result.end());
+    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "e") !=
+                union_result.end());
 
     // Store the union asynchronously
-    redis.sunionstore([&](auto &&reply) {
-        unionstore_result = reply.result();
-    }, dest, {key1, key2});
+    redis.sunionstore([&](auto &&reply) { unionstore_result = reply.result(); }, dest,
+                      {key1, key2});
 
     redis.await();
     EXPECT_EQ(unionstore_result, 5);
-} 
+}

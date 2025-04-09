@@ -45,10 +45,11 @@ private:
         return static_cast<Derived &>(*this);
     }
     bool exec_flag_ = false;
+
 public:
     /**
      * @brief Marks the start of a transaction block.
-     * 
+     *
      * All commands after this call will be queued for atomic execution using EXEC.
      *
      * @return status object with the result
@@ -184,7 +185,8 @@ public:
         if (key.empty()) {
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "WATCH", key);
+        return derived().template command<status>(std::forward<Func>(func), "WATCH",
+                                                  key);
     }
 
     /**
@@ -217,7 +219,8 @@ public:
         if (keys.empty()) {
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "WATCH", keys);
+        return derived().template command<status>(std::forward<Func>(func), "WATCH",
+                                                  keys);
     }
 
     /**
@@ -261,4 +264,4 @@ public:
 
 } // namespace qb::redis
 
-#endif // QBM_REDIS_TRANSACTION_COMMANDS_H 
+#endif // QBM_REDIS_TRANSACTION_COMMANDS_H

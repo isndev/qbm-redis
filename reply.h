@@ -53,10 +53,10 @@ public:
     explicit Error(std::string msg)
         : _msg(std::move(msg)) {}
 
-    Error(const Error &) = default;
+    Error(const Error &)            = default;
     Error &operator=(const Error &) = default;
 
-    Error(Error &&) = default;
+    Error(Error &&)            = default;
     Error &operator=(Error &&) = default;
 
     ~Error() override = default;
@@ -87,10 +87,10 @@ public:
     explicit ProtoError(const std::string &msg)
         : Error(msg) {}
 
-    ProtoError(const ProtoError &) = default;
+    ProtoError(const ProtoError &)            = default;
     ProtoError &operator=(const ProtoError &) = default;
 
-    ProtoError(ProtoError &&) = default;
+    ProtoError(ProtoError &&)            = default;
     ProtoError &operator=(ProtoError &&) = default;
 
     ~ProtoError() override = default;
@@ -112,16 +112,17 @@ public:
     ParseError(const std::string &expect_type, const redisReply &reply)
         : ProtoError(_err_info(expect_type, reply)) {}
 
-    ParseError(const ParseError &) = default;
+    ParseError(const ParseError &)            = default;
     ParseError &operator=(const ParseError &) = default;
 
-    ParseError(ParseError &&) = default;
+    ParseError(ParseError &&)            = default;
     ParseError &operator=(ParseError &&) = default;
 
     ~ParseError() override = default;
 
 private:
-    [[nodiscard]] static std::string _err_info(const std::string &type, const redisReply &reply);
+    [[nodiscard]] static std::string _err_info(const std::string &type,
+                                               const redisReply  &reply);
 };
 
 namespace reply {
@@ -137,33 +138,35 @@ parse(redisReply &reply) {
     return parse(ParseTag<T>(), reply);
 }
 
-std::string_view parse(ParseTag<std::string_view>, redisReply &reply);
-std::string parse(ParseTag<std::string>, redisReply &reply);
-long long parse(ParseTag<long long>, redisReply &reply);
-double parse(ParseTag<double>, redisReply &reply);
-bool parse(ParseTag<bool>, redisReply &reply);
-qb::redis::message parse(ParseTag<qb::redis::message>, redisReply &reply);
-qb::redis::pmessage parse(ParseTag<qb::redis::pmessage>, redisReply &reply);
+std::string_view        parse(ParseTag<std::string_view>, redisReply &reply);
+std::string             parse(ParseTag<std::string>, redisReply &reply);
+long long               parse(ParseTag<long long>, redisReply &reply);
+double                  parse(ParseTag<double>, redisReply &reply);
+bool                    parse(ParseTag<bool>, redisReply &reply);
+qb::redis::message      parse(ParseTag<qb::redis::message>, redisReply &reply);
+qb::redis::pmessage     parse(ParseTag<qb::redis::pmessage>, redisReply &reply);
 qb::redis::subscription parse(ParseTag<qb::redis::subscription>, redisReply &reply);
-qb::redis::status parse(ParseTag<qb::redis::status>, redisReply &reply);
+qb::redis::status       parse(ParseTag<qb::redis::status>, redisReply &reply);
 
 // Add parse function declarations for our new types
-std::vector<char> parse(ParseTag<std::vector<char>>, redisReply &reply);
+std::vector<char>         parse(ParseTag<std::vector<char>>, redisReply &reply);
 std::chrono::milliseconds parse(ParseTag<std::chrono::milliseconds>, redisReply &reply);
-std::chrono::seconds parse(ParseTag<std::chrono::seconds>, redisReply &reply);
-qb::redis::geo_pos parse(ParseTag<qb::redis::geo_pos>, redisReply &reply);
-qb::redis::stream_id parse(ParseTag<qb::redis::stream_id>, redisReply &reply);
-qb::redis::stream_entry parse(ParseTag<qb::redis::stream_entry>, redisReply &reply);
-stream_entry_list parse(ParseTag<stream_entry_list>, redisReply &reply);
-map_stream_entry_list parse(ParseTag<map_stream_entry_list>, redisReply &reply);
-qb::redis::score parse(ParseTag<qb::redis::score>, redisReply &reply);
-qb::redis::score_member parse(ParseTag<qb::redis::score_member>, redisReply &reply);
-std::vector<qb::redis::score_member> parse(ParseTag<std::vector<qb::redis::score_member>>, redisReply &reply);
-qb::redis::search_result parse(ParseTag<qb::redis::search_result>, redisReply &reply);
-qb::redis::cluster_node parse(ParseTag<qb::redis::cluster_node>, redisReply &reply);
-qb::redis::memory_info parse(ParseTag<qb::redis::memory_info>, redisReply &reply);
-qb::redis::pipeline_result parse(ParseTag<qb::redis::pipeline_result>, redisReply &reply);
-qb::redis::json_value parse(ParseTag<qb::redis::json_value>, redisReply &reply);
+std::chrono::seconds      parse(ParseTag<std::chrono::seconds>, redisReply &reply);
+qb::redis::geo_pos        parse(ParseTag<qb::redis::geo_pos>, redisReply &reply);
+qb::redis::stream_id      parse(ParseTag<qb::redis::stream_id>, redisReply &reply);
+qb::redis::stream_entry   parse(ParseTag<qb::redis::stream_entry>, redisReply &reply);
+stream_entry_list         parse(ParseTag<stream_entry_list>, redisReply &reply);
+map_stream_entry_list     parse(ParseTag<map_stream_entry_list>, redisReply &reply);
+qb::redis::score          parse(ParseTag<qb::redis::score>, redisReply &reply);
+qb::redis::score_member   parse(ParseTag<qb::redis::score_member>, redisReply &reply);
+std::vector<qb::redis::score_member>
+parse(ParseTag<std::vector<qb::redis::score_member>>, redisReply &reply);
+qb::redis::search_result   parse(ParseTag<qb::redis::search_result>, redisReply &reply);
+qb::redis::cluster_node    parse(ParseTag<qb::redis::cluster_node>, redisReply &reply);
+qb::redis::memory_info     parse(ParseTag<qb::redis::memory_info>, redisReply &reply);
+qb::redis::pipeline_result parse(ParseTag<qb::redis::pipeline_result>,
+                                 redisReply &reply);
+qb::redis::json_value      parse(ParseTag<qb::redis::json_value>, redisReply &reply);
 
 template <typename T>
 std::optional<T> parse(ParseTag<std::optional<T>>, redisReply &reply);
@@ -185,9 +188,11 @@ Variant<Args...> parse(ParseTag<Variant<Args...>>, redisReply &reply);
 
 #endif
 
-template <typename T, typename std::enable_if<is_sequence_container<T>::value, int>::type = 0>
+template <typename T,
+          typename std::enable_if<is_sequence_container<T>::value, int>::type = 0>
 T parse(ParseTag<T>, redisReply &reply);
-template <typename T, typename std::enable_if<is_associative_container<T>::value, int>::type = 0>
+template <typename T,
+          typename std::enable_if<is_associative_container<T>::value, int>::type = 0>
 T parse(ParseTag<T>, redisReply &reply);
 template <typename Output>
 long long parse_scan_reply(redisReply &reply, Output output);
@@ -203,12 +208,11 @@ parse(ParseTag<scan<Out>>, redisReply &reply) {
 }
 
 std::string type_to_string(int type);
-status to_status(redisReply &reply);
+status      to_status(redisReply &reply);
 template <typename Output>
 void to_array(redisReply &reply, Output output);
 // Parse set reply to bool type
 bool parse_set_reply(redisReply &reply);
-
 
 } // namespace reply
 
@@ -222,7 +226,8 @@ template <typename Output>
 void
 to_array(redisReply &reply, Output output) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-    if (!qb::redis::is_array(reply) && !qb::redis::is_map(reply) && !qb::redis::is_set(reply)) {
+    if (!qb::redis::is_array(reply) && !qb::redis::is_map(reply) &&
+        !qb::redis::is_set(reply)) {
         throw ParseError("ARRAY or MAP or SET", reply);
     }
 #else
@@ -269,10 +274,11 @@ to_flat_array(redisReply &reply, Output output) {
             throw ProtoError("Null string array reply");
         }
 
-        using Pair = typename iterator_type<Output>::type;
-        using FirstType = typename std::decay<typename Pair::first_type>::type;
+        using Pair       = typename iterator_type<Output>::type;
+        using FirstType  = typename std::decay<typename Pair::first_type>::type;
         using SecondType = typename std::decay<typename Pair::second_type>::type;
-        *output = std::make_pair(parse<FirstType>(*key_reply), parse<SecondType>(*val_reply));
+        *output =
+            std::make_pair(parse<FirstType>(*key_reply), parse<SecondType>(*val_reply));
 
         ++output;
     }
@@ -313,7 +319,8 @@ parse_tuple(redisReply **reply, std::size_t idx) ->
     typename std::enable_if<sizeof...(Args) != 0, std::tuple<T, Args...>>::type {
     assert(reply != nullptr);
 
-    return std::tuple_cat(parse_tuple<T>(reply, idx), parse_tuple<Args...>(reply, idx + 1));
+    return std::tuple_cat(parse_tuple<T>(reply, idx),
+                          parse_tuple<Args...>(reply, idx + 1));
 }
 
 #ifdef REDIS_PLUS_PLUS_HAS_VARIANT
@@ -326,10 +333,9 @@ parse_variant(redisReply &reply) {
 
 template <typename T, typename... Args>
 auto
-parse_variant(redisReply &reply) -> typename std::enable_if<sizeof...(Args) != 0, Variant<T, Args...>>::type {
-    auto return_var = [](auto &&arg) {
-        return Variant<T, Args...>(std::move(arg));
-    };
+parse_variant(redisReply &reply) ->
+    typename std::enable_if<sizeof...(Args) != 0, Variant<T, Args...>>::type {
+    auto return_var = [](auto &&arg) { return Variant<T, Args...>(std::move(arg)); };
 
     try {
         return std::visit(return_var, parse_variant<T>(reply));
@@ -383,13 +389,14 @@ parse(ParseTag<std::pair<T, U>>, redisReply &reply) {
         throw ProtoError("NOT key-value PAIR reply");
     }
 
-    auto *first = reply.element[0];
+    auto *first  = reply.element[0];
     auto *second = reply.element[1];
     if (first == nullptr || second == nullptr) {
         throw ProtoError("Null pair reply");
     }
 
-    return std::make_pair(parse<typename std::decay<T>::type>(*first), parse<typename std::decay<U>::type>(*second));
+    return std::make_pair(parse<typename std::decay<T>::type>(*first),
+                          parse<typename std::decay<U>::type>(*second));
 }
 
 template <typename... Args>
@@ -404,9 +411,9 @@ parse(ParseTag<std::tuple<Args...>>, redisReply &reply) {
     }
 
     if (reply.elements != size) {
-        throw ProtoError(
-            "Expect tuple reply with " + std::to_string(size) + " elements" + ", but got " +
-            std::to_string(reply.elements) + " elements");
+        throw ProtoError("Expect tuple reply with " + std::to_string(size) +
+                         " elements" + ", but got " + std::to_string(reply.elements) +
+                         " elements");
     }
 
     if (reply.element == nullptr) {
@@ -426,7 +433,8 @@ parse(ParseTag<Variant<Args...>>, redisReply &reply) {
 
 #endif
 
-template <typename T, typename std::enable_if<is_sequence_container<T>::value, int>::type>
+template <typename T,
+          typename std::enable_if<is_sequence_container<T>::value, int>::type>
 T
 parse(ParseTag<T>, redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
@@ -445,11 +453,13 @@ parse(ParseTag<T>, redisReply &reply) {
     return container;
 }
 
-template <typename T, typename std::enable_if<is_associative_container<T>::value, int>::type>
+template <typename T,
+          typename std::enable_if<is_associative_container<T>::value, int>::type>
 T
 parse(ParseTag<T>, redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-    if (!qb::redis::is_array(reply) && !qb::redis::is_map(reply) && !qb::redis::is_set(reply)) {
+    if (!qb::redis::is_array(reply) && !qb::redis::is_map(reply) &&
+        !qb::redis::is_set(reply)) {
 #else
     if (!qb::redis::is_array(reply)) {
 #endif
@@ -471,12 +481,12 @@ parse_scan_reply(redisReply &reply, Output output) {
     }
 
     auto *cursor_reply = reply.element[0];
-    auto *data_reply = reply.element[1];
+    auto *data_reply   = reply.element[1];
     if (cursor_reply == nullptr || data_reply == nullptr) {
         throw ProtoError("Invalid cursor reply or data reply");
     }
 
-    auto cursor_str = reply::parse<std::string>(*cursor_reply);
+    auto      cursor_str = reply::parse<std::string>(*cursor_reply);
     long long new_cursor = 0;
     try {
         new_cursor = std::stoll(cursor_str);
@@ -493,7 +503,8 @@ template <typename Output>
 void
 to_array(redisReply &reply, Output output) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-    if (!qb::redis::is_array(reply) && !qb::redis::is_map(reply) && !qb::redis::is_set(reply)) {
+    if (!qb::redis::is_array(reply) && !qb::redis::is_map(reply) &&
+        !qb::redis::is_set(reply)) {
         throw ParseError("ARRAY or MAP or SET", reply);
     }
 #else
@@ -570,7 +581,8 @@ redis_count(std::optional<T> const &opt) {
 /**
  * @brief Counts the number of elements in a container for Redis protocol
  * @param cnt Container to count
- * @return Number of elements in the container multiplied by the count of a single element
+ * @return Number of elements in the container multiplied by the count of a single
+ * element
  */
 template <typename T>
 std::size_t
@@ -598,7 +610,8 @@ to_redis_string(qb::allocator::pipe<char> &pipe, std::string const &val) {
  */
 template <typename T>
 bool
-to_redis_string(qb::allocator::pipe<char> &pipe, T const &val, std::enable_if_t<std::is_arithmetic_v<T>> * = 0) {
+to_redis_string(qb::allocator::pipe<char> &pipe, T const &val,
+                std::enable_if_t<std::is_arithmetic_v<T>> * = 0) {
     return to_redis_string(pipe, std::to_string(val));
 }
 
@@ -663,7 +676,8 @@ to_redis_string(qb::allocator::pipe<char> &pipe, std::pair<Args...> const &p) {
  */
 template <typename T>
 bool
-to_redis_string(qb::allocator::pipe<char> &pipe, T const &cnt, std::enable_if_t<qb::is_container<T>::value> * = 0) {
+to_redis_string(qb::allocator::pipe<char> &pipe, T const &cnt,
+                std::enable_if_t<qb::is_container<T>::value> * = 0) {
     if constexpr (is_map_iterator<decltype(cnt.begin())>::value) {
         for (const auto &el : cnt) {
             to_redis_string(pipe, el.first);
@@ -769,10 +783,10 @@ to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::score_member const &
 inline bool
 to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::search_result const &sr) {
     to_redis_string(pipe, sr.key);
-    for (const auto& field : sr.fields) {
+    for (const auto &field : sr.fields) {
         to_redis_string(pipe, field);
     }
-    for (const auto& value : sr.values) {
+    for (const auto &value : sr.values) {
         to_redis_string(pipe, value);
     }
     return true;
@@ -799,7 +813,7 @@ to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::cluster_node const &
 inline bool
 to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::json_value const &json) {
     using Type = qb::redis::json_value::Type;
-    
+
     switch (json.type) {
         case Type::Null:
             to_redis_string(pipe, "null");
@@ -814,12 +828,15 @@ to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::json_value const &js
             to_redis_string(pipe, std::get<std::string>(json.data));
             break;
         case Type::Array:
-            for (const auto& val : std::get<std::vector<qb::redis::json_value>>(json.data)) {
+            for (const auto &val :
+                 std::get<std::vector<qb::redis::json_value>>(json.data)) {
                 to_redis_string(pipe, val);
             }
             break;
         case Type::Object:
-            for (const auto& [key, val] : std::get<qb::unordered_map<std::string, qb::redis::json_value>>(json.data)) {
+            for (const auto &[key, val] :
+                 std::get<qb::unordered_map<std::string, qb::redis::json_value>>(
+                     json.data)) {
                 to_redis_string(pipe, key);
                 to_redis_string(pipe, val);
             }
@@ -906,7 +923,7 @@ redis_count(qb::redis::stream_id const &) {
 inline std::size_t
 redis_count(qb::redis::json_value const &json) {
     using Type = qb::redis::json_value::Type;
-    
+
     switch (json.type) {
         case Type::Null:
         case Type::Boolean:
@@ -914,17 +931,19 @@ redis_count(qb::redis::json_value const &json) {
         case Type::String:
             return 1;
         case Type::Array: {
-            const auto& arr = std::get<std::vector<qb::redis::json_value>>(json.data);
+            const auto &arr   = std::get<std::vector<qb::redis::json_value>>(json.data);
             std::size_t count = 0;
-            for (const auto& val : arr) {
+            for (const auto &val : arr) {
                 count += redis_count(val);
             }
             return count;
         }
         case Type::Object: {
-            const auto& obj = std::get<qb::unordered_map<std::string, qb::redis::json_value>>(json.data);
+            const auto &obj =
+                std::get<qb::unordered_map<std::string, qb::redis::json_value>>(
+                    json.data);
             std::size_t count = 0;
-            for (const auto& [key, val] : obj) {
+            for (const auto &[key, val] : obj) {
                 count += 1; // key
                 count += redis_count(val);
             }
@@ -937,10 +956,10 @@ redis_count(qb::redis::json_value const &json) {
 
 /**
  * @brief Formats and writes Redis commands to a pipe
- * 
+ *
  * This function formats the provided arguments according to the Redis protocol
  * and writes them to the pipe. It handles the command array formatting.
- * 
+ *
  * @param pipe Output pipe to write to
  * @param args Command arguments to format and write
  */
@@ -954,35 +973,47 @@ put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
 /**
  * @struct Reply
  * @brief Generic container for Redis command results
- * 
+ *
  * This structure holds the result of a Redis command execution,
  * including success status, the typed result value, and the raw reply.
- * 
+ *
  * @tparam T The type of the result value
  */
 template <typename T>
 struct Reply {
-    bool _ok{};       ///< Whether the command was successful
-    T _result{};      ///< The typed result of the command
-    redis::reply_ptr _raw{}; ///< The raw Redis reply
-    std::string_view _error{}; ///< Error from Redis
+    bool             _ok{};     ///< Whether the command was successful
+    T                _result{}; ///< The typed result of the command
+    redis::reply_ptr _raw{};    ///< The raw Redis reply
+    std::string_view _error{};  ///< Error from Redis
 
-    inline bool &ok() { return _ok; }
-    inline T &result() { return _result; }
-    inline redis::reply_ptr &raw() { return _raw; }
-    inline std::string_view &error() { return _error; }
+    inline bool &
+    ok() {
+        return _ok;
+    }
+    inline T &
+    result() {
+        return _result;
+    }
+    inline redis::reply_ptr &
+    raw() {
+        return _raw;
+    }
+    inline std::string_view &
+    error() {
+        return _error;
+    }
 };
 
 /**
  * @class IReply
  * @brief Interface for Redis reply handlers
- * 
+ *
  * This abstract base class defines the interface for objects that
  * process Redis replies. It's used primarily for asynchronous command handling.
  */
 class IReply {
 public:
-    IReply() = default;
+    IReply()          = default;
     virtual ~IReply() = default;
 
     /**
@@ -995,11 +1026,11 @@ public:
 /**
  * @class TReply
  * @brief Type-specific implementation of IReply
- * 
+ *
  * This class implements the IReply interface for a specific result type.
  * It parses the Redis reply into the specified type and passes it to
  * the provided callback function.
- * 
+ *
  * @tparam Func The callback function type
  * @tparam T The type of the result value
  */

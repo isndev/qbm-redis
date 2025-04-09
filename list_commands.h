@@ -43,6 +43,7 @@ private:
     derived() {
         return static_cast<Derived &>(*this);
     }
+
 public:
     // =============== Basic List Operations ===============
 
@@ -57,9 +58,7 @@ public:
         if (key.empty()) {
             return 0;
         }
-        return derived()
-            .template command<long long>("LLEN", key)
-            .result();
+        return derived().template command<long long>("LLEN", key).result();
     }
 
     /**
@@ -72,8 +71,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     llen(Func &&func, const std::string &key) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "LLEN", key);
+        return derived().template command<long long>(std::forward<Func>(func), "LLEN",
+                                                     key);
     }
 
     // =============== Push Operations ===============
@@ -107,12 +106,13 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lpush(Func &&func, const std::string &key, Args &&...args) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "LPUSH", key, std::forward<Args>(args)...);
+        return derived().template command<long long>(std::forward<Func>(func), "LPUSH",
+                                                     key, std::forward<Args>(args)...);
     }
 
     /**
-     * @brief Push an element to the beginning of the list, only if the list already exists.
+     * @brief Push an element to the beginning of the list, only if the list already
+     * exists.
      * @param key Key where the list is stored.
      * @param val Element to be pushed.
      * @return The length of the list after the operation.
@@ -130,7 +130,8 @@ public:
     }
 
     /**
-     * @brief Push an element to the beginning of the list asynchronously, only if the list exists.
+     * @brief Push an element to the beginning of the list asynchronously, only if the
+     * list exists.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
      * @param val Element to be pushed.
@@ -140,8 +141,8 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lpushx(Func &&func, const std::string &key, Args &&...args) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "LPUSHX", key, std::forward<Args>(args)...);
+        return derived().template command<long long>(std::forward<Func>(func), "LPUSHX",
+                                                     key, std::forward<Args>(args)...);
     }
 
     /**
@@ -170,11 +171,11 @@ public:
      * @return Reference to the derived class.
      * @see https://redis.io/commands/rpush
      */
-    template <typename Func, typename ...Args>
+    template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     rpush(Func &&func, const std::string &key, Args &&...args) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "RPUSH", key, std::forward<Args>(args)...);
+        return derived().template command<long long>(std::forward<Func>(func), "RPUSH",
+                                                     key, std::forward<Args>(args)...);
     }
 
     /**
@@ -190,13 +191,12 @@ public:
         if (key.empty() || val.empty()) {
             return 0;
         }
-        return derived()
-            .template command<long long>("RPUSHX", key, val)
-            .result();
+        return derived().template command<long long>("RPUSHX", key, val).result();
     }
 
     /**
-     * @brief Push an element to the end of the list asynchronously, only if the list exists.
+     * @brief Push an element to the end of the list asynchronously, only if the list
+     * exists.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
      * @param val Element to be pushed.
@@ -204,10 +204,10 @@ public:
      * @see https://redis.io/commands/rpushx
      */
     template <typename Func, typename... Args>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &> 
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     rpushx(Func &&func, const std::string &key, Args &&...args) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "RPUSHX", key, std::forward<Args>(args)...);
+        return derived().template command<long long>(std::forward<Func>(func), "RPUSHX",
+                                                     key, std::forward<Args>(args)...);
     }
 
     // =============== Pop Operations ===============
@@ -239,14 +239,11 @@ public:
      * @see https://redis.io/commands/lpop
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
     lpop(Func &&func, const std::string &key, long long count) {
-        return derived()
-            .template command<std::vector<std::string>>(
-                std::forward<Func>(func),
-                "LPOP",
-                key,
-                count);
+        return derived().template command<std::vector<std::string>>(
+            std::forward<Func>(func), "LPOP", key, count);
     }
 
     /**
@@ -270,12 +267,12 @@ public:
      * @see https://redis.io/commands/lpop
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
     lpop(Func &&func, const std::string &key) {
-        return derived()
-            .template command<std::optional<std::string>>(std::forward<Func>(func), "LPOP", key);
+        return derived().template command<std::optional<std::string>>(
+            std::forward<Func>(func), "LPOP", key);
     }
-
 
     /**
      * @brief Pop the last element(s) of the list.
@@ -304,14 +301,11 @@ public:
      * @see https://redis.io/commands/rpop
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
     rpop(Func &&func, const std::string &key, long long count) {
-        return derived()
-            .template command<std::vector<std::string>>(
-                std::forward<Func>(func),
-                "RPOP",
-                key,
-                count);
+        return derived().template command<std::vector<std::string>>(
+            std::forward<Func>(func), "RPOP", key, count);
     }
 
     /**
@@ -333,12 +327,13 @@ public:
      * @param key Key where the list is stored.
      * @return Reference to the derived class.
      * @see https://redis.io/commands/rpop
-     */ 
+     */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
     rpop(Func &&func, const std::string &key) {
-        return derived()
-            .template command<std::optional<std::string>>(std::forward<Func>(func), "RPOP", key);
+        return derived().template command<std::optional<std::string>>(
+            std::forward<Func>(func), "RPOP", key);
     }
 
     // =============== Blocking Operations ===============
@@ -358,9 +353,7 @@ public:
         }
         return derived()
             .template command<std::optional<std::pair<std::string, std::string>>>(
-                "BLPOP",
-                keys,
-                timeout)
+                "BLPOP", keys, timeout)
             .result();
     }
 
@@ -373,11 +366,15 @@ public:
      * @see https://redis.io/commands/blpop
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>, Derived &>
+    std::enable_if_t<
+        std::is_invocable_v<
+            Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>,
+        Derived &>
     blpop(Func &&func, const std::vector<std::string> &keys, long long timeout) {
         return derived()
-            .template command<std::optional<std::pair<std::string, std::string>>>(std::forward<Func>(func), "BLPOP", keys, timeout);
-    }   
+            .template command<std::optional<std::pair<std::string, std::string>>>(
+                std::forward<Func>(func), "BLPOP", keys, timeout);
+    }
 
     /**
      * @brief Pop the first element of the list in a blocking way.
@@ -398,10 +395,14 @@ public:
      * @param timeout Timeout duration.
      * @return Reference to the derived class.
      * @see https://redis.io/commands/blpop
-     */ 
+     */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>, Derived &>
-    blpop(Func &&func, const std::vector<std::string> &keys, const std::chrono::seconds &timeout) {
+    std::enable_if_t<
+        std::is_invocable_v<
+            Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>,
+        Derived &>
+    blpop(Func &&func, const std::vector<std::string> &keys,
+          const std::chrono::seconds &timeout) {
         return blpop(func, keys, timeout.count());
     }
 
@@ -420,9 +421,7 @@ public:
         }
         return derived()
             .template command<std::optional<std::pair<std::string, std::string>>>(
-                "BRPOP",
-                keys,
-                timeout)
+                "BRPOP", keys, timeout)
             .result();
     }
 
@@ -435,10 +434,14 @@ public:
      * @see https://redis.io/commands/brpop
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>, Derived &>
+    std::enable_if_t<
+        std::is_invocable_v<
+            Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>,
+        Derived &>
     brpop(Func &&func, const std::vector<std::string> &keys, long long timeout) {
         return derived()
-            .template command<std::optional<std::pair<std::string, std::string>>>(std::forward<Func>(func), "BRPOP", keys, timeout);
+            .template command<std::optional<std::pair<std::string, std::string>>>(
+                std::forward<Func>(func), "BRPOP", keys, timeout);
     }
 
     /**
@@ -454,7 +457,7 @@ public:
         return brpop(keys, timeout.count());
     }
 
-    /** 
+    /**
      * @brief Pop the last element of the list in a blocking way asynchronously.
      * @param func Callback function to handle the result.
      * @param keys List of keys to check.
@@ -463,8 +466,12 @@ public:
      * @see https://redis.io/commands/brpop
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>, Derived &>    
-    brpop(Func &&func, const std::vector<std::string> &keys, const std::chrono::seconds &timeout) {
+    std::enable_if_t<
+        std::is_invocable_v<
+            Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>,
+        Derived &>
+    brpop(Func &&func, const std::vector<std::string> &keys,
+          const std::chrono::seconds &timeout) {
         return brpop(func, keys, timeout.count());
     }
 
@@ -496,17 +503,19 @@ public:
      * @see https://redis.io/commands/lindex
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
     lindex(Func &&func, const std::string &key, long long index) {
-        return derived()
-            .template command<std::optional<std::string>>(std::forward<Func>(func), "LINDEX", key, index);
+        return derived().template command<std::optional<std::string>>(
+            std::forward<Func>(func), "LINDEX", key, index);
     }
 
     /**
      * @brief Insert an element to a list before or after the pivot element.
      * @param key Key where the list is stored.
      * @param position Before or after the pivot element.
-     * @param pivot The pivot value. The `pivot` is the value of the element, not the index.
+     * @param pivot The pivot value. The `pivot` is the value of the element, not the
+     * index.
      * @param val Element to be inserted.
      * @return The length of the list after the operation.
      * @note If the pivot value is not found, `linsert` returns -1.
@@ -514,37 +523,43 @@ public:
      * @see https://redis.io/commands/linsert
      */
     long long
-    linsert(const std::string &key, InsertPosition position, const std::string &pivot, const std::string &val) {
+    linsert(const std::string &key, InsertPosition position, const std::string &pivot,
+            const std::string &val) {
         if (key.empty() || pivot.empty() || val.empty()) {
             return -1;
         }
         return derived()
-            .template command<long long>("LINSERT", key, std::to_string(position), pivot, val)
+            .template command<long long>("LINSERT", key, std::to_string(position), pivot,
+                                         val)
             .result();
     }
 
     /**
-     * @brief Insert an element to a list before or after the pivot element asynchronously.
+     * @brief Insert an element to a list before or after the pivot element
+     * asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
      * @param position Before or after the pivot element.
-     * @param pivot The pivot value. The `pivot` is the value of the element, not the index.
+     * @param pivot The pivot value. The `pivot` is the value of the element, not the
+     * index.
      * @param val Element to be inserted.
      * @return Reference to the derived class.
      * @see https://redis.io/commands/linsert
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    linsert(Func &&func, const std::string &key, InsertPosition position, const std::string &pivot,
-            const std::string &val) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "LINSERT", key, std::to_string(position), pivot, val);
+    linsert(Func &&func, const std::string &key, InsertPosition position,
+            const std::string &pivot, const std::string &val) {
+        return derived().template command<long long>(std::forward<Func>(func), "LINSERT",
+                                                     key, std::to_string(position),
+                                                     pivot, val);
     }
 
     /**
      * @brief Get elements in the given range of the given list.
      * @param key Key where the list is stored.
-     * @param start Start index of the range. Index can be negative, which mean index from the end.
+     * @param start Start index of the range. Index can be negative, which mean index
+     * from the end.
      * @param stop End index of the range.
      * @return All elements found in a std::vector<std::string>.
      * @see https://redis.io/commands/lrange
@@ -563,16 +578,18 @@ public:
      * @brief Get elements in the given range of the given list asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
-     * @param start Start index of the range. Index can be negative, which mean index from the end.
+     * @param start Start index of the range. Index can be negative, which mean index
+     * from the end.
      * @param stop End index of the range.
      * @return Reference to the derived class.
      * @see https://redis.io/commands/lrange
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
     lrange(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived()
-            .template command<std::vector<std::string>>(std::forward<Func>(func), "LRANGE", key, start, stop);
+        return derived().template command<std::vector<std::string>>(
+            std::forward<Func>(func), "LRANGE", key, start, stop);
     }
 
     /**
@@ -589,13 +606,12 @@ public:
         if (key.empty() || val.empty()) {
             return 0;
         }
-        return derived()
-            .template command<long long>("LREM", key, count, val)
-            .result();
+        return derived().template command<long long>("LREM", key, count, val).result();
     }
 
     /**
-     * @brief Remove the first `count` occurrences of elements equal to `val` asynchronously.
+     * @brief Remove the first `count` occurrences of elements equal to `val`
+     * asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
      * @param count Number of occurrences to be removed.
@@ -606,8 +622,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lrem(Func &&func, const std::string &key, long long count, const std::string &val) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "LREM", key, count, val);
+        return derived().template command<long long>(std::forward<Func>(func), "LREM",
+                                                     key, count, val);
     }
 
     /**
@@ -623,8 +639,7 @@ public:
         if (key.empty() || val.empty()) {
             return {};
         }
-        return derived()
-            .template command<status>("LSET", key, index, val).result();
+        return derived().template command<status>("LSET", key, index, val).result();
     }
 
     /**
@@ -639,8 +654,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     lset(Func &&func, const std::string &key, long long index, const std::string &val) {
-        return derived()
-            .template command<status>(std::forward<Func>(func), "LSET", key, index, val);
+        return derived().template command<status>(std::forward<Func>(func), "LSET", key,
+                                                  index, val);
     }
 
     /**
@@ -656,8 +671,7 @@ public:
         if (key.empty()) {
             return {};
         }
-        return derived()
-            .template command<status>("LTRIM", key, start, stop).result();
+        return derived().template command<status>("LTRIM", key, start, stop).result();
     }
 
     /**
@@ -672,8 +686,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     ltrim(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived()
-            .template command<status>(std::forward<Func>(func), "LTRIM", key, start, stop);
+        return derived().template command<status>(std::forward<Func>(func), "LTRIM", key,
+                                                  start, stop);
     }
 
     // =============== Advanced List Operations ===============
@@ -692,12 +706,14 @@ public:
             return std::nullopt;
         }
         return derived()
-            .template command<std::optional<std::string>>("RPOPLPUSH", source, destination)
+            .template command<std::optional<std::string>>("RPOPLPUSH", source,
+                                                          destination)
             .result();
     }
 
     /**
-     * @brief Pop last element of one list and push it to the left of another list asynchronously.
+     * @brief Pop last element of one list and push it to the left of another list
+     * asynchronously.
      * @param func Callback function to handle the result.
      * @param source Key of the source list.
      * @param destination Key of the destination list.
@@ -705,10 +721,11 @@ public:
      * @see https://redis.io/commands/brpoplpush
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
     rpoplpush(Func &&func, const std::string &source, const std::string &destination) {
-        return derived()
-            .template command<std::optional<std::string>>(std::forward<Func>(func), "RPOPLPUSH", source, destination);
+        return derived().template command<std::optional<std::string>>(
+            std::forward<Func>(func), "RPOPLPUSH", source, destination);
     }
 
     /**
@@ -722,12 +739,15 @@ public:
      * @see https://redis.io/commands/lmove
      */
     std::optional<std::string>
-    lmove(const std::string &source, const std::string &destination, ListPosition wherefrom, ListPosition whereto) {
+    lmove(const std::string &source, const std::string &destination,
+          ListPosition wherefrom, ListPosition whereto) {
         if (source.empty() || destination.empty()) {
             return std::nullopt;
         }
         return derived()
-            .template command<std::optional<std::string>>("LMOVE", source, destination, std::to_string(wherefrom), std::to_string(whereto))
+            .template command<std::optional<std::string>>("LMOVE", source, destination,
+                                                          std::to_string(wherefrom),
+                                                          std::to_string(whereto))
             .result();
     }
 
@@ -739,17 +759,21 @@ public:
      * @param wherefrom Where to pop from (LEFT or RIGHT).
      * @param whereto Where to push to (LEFT or RIGHT).
      * @return Reference to the derived class.
-     * @see https://redis.io/commands/lmove 
+     * @see https://redis.io/commands/lmove
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
-    lmove(Func &&func, const std::string &source, const std::string &destination, ListPosition wherefrom, ListPosition whereto) {
-        return derived()
-            .template command<std::optional<std::string>>(std::forward<Func>(func), "LMOVE", source, destination, std::to_string(wherefrom), std::to_string(whereto));
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
+    lmove(Func &&func, const std::string &source, const std::string &destination,
+          ListPosition wherefrom, ListPosition whereto) {
+        return derived().template command<std::optional<std::string>>(
+            std::forward<Func>(func), "LMOVE", source, destination,
+            std::to_string(wherefrom), std::to_string(whereto));
     }
 
     /**
-     * @brief Pop elements from the first non-empty list key from the list of provided key names.
+     * @brief Pop elements from the first non-empty list key from the list of provided
+     * key names.
      * @param keys List of keys to check.
      * @param position Where to pop from (LEFT or RIGHT).
      * @param count Number of elements to pop (optional).
@@ -759,12 +783,14 @@ public:
      */
     // Todo : implement lmpop
     // std::optional<std::pair<std::string, std::vector<std::string>>>
-    // lmpop(const std::vector<std::string> &keys, ListPosition position, long long count) {
+    // lmpop(const std::vector<std::string> &keys, ListPosition position, long long
+    // count) {
     //     if (keys.size() == 0 || count < 1) {
     //         return std::nullopt;
     //     }
     //     return derived()
-    //         .template command<std::optional<std::pair<std::string, std::vector<std::string>>>>(
+    //         .template command<std::optional<std::pair<std::string,
+    //         std::vector<std::string>>>>(
     //             "LMPOP",
     //             1,
     //             keys,
@@ -780,11 +806,14 @@ public:
     // * @param count Number of elements to pop (optional).
     // * @return Reference to the derived class.
     // */
-    //template <typename Func>
-    //std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>, Derived &>
-    //lmpop(Func &&func, const std::vector<std::string> &keys, ListPosition position, long long count) {
+    // template <typename Func>
+    // std::enable_if_t<std::is_invocable_v<Func,
+    // Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>,
+    // Derived &> lmpop(Func &&func, const std::vector<std::string> &keys, ListPosition
+    // position, long long count) {
     //    return derived()
-    //        .template command<std::optional<std::pair<std::string, std::vector<std::string>>>>(
+    //        .template command<std::optional<std::pair<std::string,
+    //        std::vector<std::string>>>>(
     //            std::forward<Func>(func),
     //            "LMPOP",
     //            1,
@@ -805,14 +834,16 @@ public:
      * @see https://redis.io/commands/lpos
      */
     std::vector<long long>
-    lpos(const std::string &key, const std::string &element, std::optional<long long> rank = std::nullopt,
-         std::optional<long long> count = std::nullopt, std::optional<long long> maxlen = std::nullopt) {
+    lpos(const std::string &key, const std::string &element,
+         std::optional<long long> rank   = std::nullopt,
+         std::optional<long long> count  = std::nullopt,
+         std::optional<long long> maxlen = std::nullopt) {
         if (key.empty() || element.empty()) {
             return {};
         }
         std::vector<std::string> args;
-        args.reserve(6);  // Reserve space for all possible arguments
-        
+        args.reserve(6); // Reserve space for all possible arguments
+
         if (rank) {
             args.push_back("RANK");
             args.push_back(std::to_string(*rank));
@@ -823,7 +854,7 @@ public:
             args.push_back("MAXLEN");
             args.push_back(std::to_string(*maxlen));
         }
-        
+
         return derived()
             .template command<std::vector<long long>>("LPOS", key, element, args)
             .result();
@@ -840,14 +871,17 @@ public:
      * @return Reference to the derived class.
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<long long>> &&>, Derived &>
-    lpos(Func &&func, const std::string &key, const std::string &element, std::optional<long long> rank = std::nullopt,
-         std::optional<long long> count = std::nullopt, std::optional<long long> maxlen = std::nullopt) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<long long>> &&>,
+                     Derived &>
+    lpos(Func &&func, const std::string &key, const std::string &element,
+         std::optional<long long> rank   = std::nullopt,
+         std::optional<long long> count  = std::nullopt,
+         std::optional<long long> maxlen = std::nullopt) {
         if (key.empty() || element.empty()) {
             return derived();
         }
         std::vector<std::string> args;
-        args.reserve(6);  // Reserve space for all possible arguments
+        args.reserve(6); // Reserve space for all possible arguments
 
         if (rank) {
             args.push_back("RANK");
@@ -859,9 +893,9 @@ public:
             args.push_back("MAXLEN");
             args.push_back(std::to_string(*maxlen));
         }
-        
-        return derived()
-            .template command<std::vector<long long>>(std::forward<Func>(func), "LPOS", key, element, args);
+
+        return derived().template command<std::vector<long long>>(
+            std::forward<Func>(func), "LPOS", key, element, args);
     }
 };
 

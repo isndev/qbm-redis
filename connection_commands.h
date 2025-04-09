@@ -37,6 +37,7 @@ private:
     derived() {
         return static_cast<Derived &>(*this);
     }
+
 public:
     /**
      * @brief Authenticates the client to the Redis server
@@ -48,7 +49,7 @@ public:
     auth(const std::string &password) {
         return derived().template command<status>("AUTH", password).result();
     }
-    
+
     /**
      * @brief Asynchronous version of auth
      *
@@ -60,7 +61,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     auth(Func &&func, const std::string &password) {
-        return derived().template command<status>(std::forward<Func>(func), "AUTH", password);
+        return derived().template command<status>(std::forward<Func>(func), "AUTH",
+                                                  password);
     }
 
     /**
@@ -74,7 +76,7 @@ public:
     auth(const std::string &user, const std::string &password) {
         return derived().template command<status>("AUTH", user, password).result();
     }
-    
+
     /**
      * @brief Asynchronous version of auth with username and password
      *
@@ -87,7 +89,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     auth(Func &&func, const std::string &user, const std::string &password) {
-        return derived().template command<status>(std::forward<Func>(func), "AUTH", user, password);
+        return derived().template command<status>(std::forward<Func>(func), "AUTH", user,
+                                                  password);
     }
 
     /**
@@ -100,7 +103,7 @@ public:
     echo(const std::string &message) {
         return derived().template command<std::string>("ECHO", message).result();
     }
-    
+
     /**
      * @brief Asynchronous version of echo
      *
@@ -112,7 +115,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     echo(Func &&func, const std::string &message) {
-        return derived().template command<std::string>(std::forward<Func>(func), "ECHO", message);
+        return derived().template command<std::string>(std::forward<Func>(func), "ECHO",
+                                                       message);
     }
 
     /**
@@ -124,7 +128,7 @@ public:
     ping() {
         return derived().template command<std::string>("PING").result();
     }
-    
+
     /**
      * @brief Asynchronous version of ping
      *
@@ -148,7 +152,7 @@ public:
     ping(const std::string &message) {
         return derived().template command<std::string>("PING", message).result();
     }
-    
+
     /**
      * @brief Asynchronous version of ping with custom message
      *
@@ -160,7 +164,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     ping(Func &&func, const std::string &message) {
-        return derived().template command<std::string>(std::forward<Func>(func), "PING", message);
+        return derived().template command<std::string>(std::forward<Func>(func), "PING",
+                                                       message);
     }
 
     /**
@@ -172,7 +177,7 @@ public:
     quit() {
         return derived().template command<status>("QUIT").result();
     }
-    
+
     /**
      * @brief Asynchronous version of quit
      *
@@ -196,7 +201,7 @@ public:
     select(long long index) {
         return derived().template command<status>("SELECT", index).result();
     }
-    
+
     /**
      * @brief Asynchronous version of select
      *
@@ -208,7 +213,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     select(Func &&func, long long index) {
-        return derived().template command<status>(std::forward<Func>(func), "SELECT", index);
+        return derived().template command<status>(std::forward<Func>(func), "SELECT",
+                                                  index);
     }
 
     /**
@@ -222,7 +228,7 @@ public:
     swapdb(long long index1, long long index2) {
         return derived().template command<status>("SWAPDB", index1, index2).result();
     }
-    
+
     /**
      * @brief Asynchronous version of swapdb
      *
@@ -235,7 +241,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     swapdb(Func &&func, long long index1, long long index2) {
-        return derived().template command<status>(std::forward<Func>(func), "SWAPDB", index1, index2);
+        return derived().template command<status>(std::forward<Func>(func), "SWAPDB",
+                                                  index1, index2);
     }
 };
 

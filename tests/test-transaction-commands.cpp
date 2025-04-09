@@ -21,8 +21,7 @@
 #include "../redis.h"
 
 // Configuration Redis
-#define REDIS_URI \
-    { "tcp://localhost:6379" }
+#define REDIS_URI {"tcp://localhost:6379"}
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -30,8 +29,8 @@ using namespace std::chrono;
 // Generates unique key prefixes to avoid collisions between tests
 inline std::string
 key_prefix(const std::string &key = "") {
-    static int counter = 0;
-    std::string prefix = "qb::redis::transaction-test:" + std::to_string(++counter);
+    static int  counter = 0;
+    std::string prefix  = "qb::redis::transaction-test:" + std::to_string(++counter);
 
     if (key.empty()) {
         return prefix;
@@ -51,7 +50,8 @@ class RedisTest : public ::testing::Test {
 protected:
     qb::redis::tcp::client redis{REDIS_URI};
 
-    void SetUp() override {
+    void
+    SetUp() override {
         async::init();
         if (!redis.connect() || !redis.flushall())
             throw std::runtime_error("Impossible de se connecter à Redis");
@@ -61,7 +61,8 @@ protected:
         TearDown();
     }
 
-    void TearDown() override {
+    void
+    TearDown() override {
         // Cleanup after tests
         redis.flushall();
         redis.await();
@@ -114,14 +115,14 @@ TEST_F(RedisTest, SYNC_TRANSACTION_COMMANDS_DISCARD) {
 
     // Check that the command is executed
     EXPECT_TRUE(redis.get(key).has_value());
-    
+
     // Discard the transaction
     EXPECT_TRUE(redis.discard());
     EXPECT_FALSE(redis.is_in_multi());
-    
+
     // Check that the command was not executed after discard
     EXPECT_FALSE(redis.get(key).has_value());
-    
+
     // Verify we can start a new transaction
     EXPECT_TRUE(redis.multi());
     EXPECT_TRUE(redis.is_in_multi());
@@ -162,7 +163,7 @@ TEST_F(RedisTest, SYNC_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
 TEST_F(RedisTest, SYNC_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
     std::string key1 = test_key("watch1");
     std::string key2 = test_key("watch2");
-    
+
     // Set initial values
     redis.set(key1, "initial1");
     redis.set(key2, "initial2");
@@ -201,15 +202,13 @@ TEST_F(RedisTest, SYNC_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
 
 // Test asynchrone MULTI/EXEC
 TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_MULTI_EXEC) {
-    std::string key1 = test_key("async_multi_exec1");
-    std::string key2 = test_key("async_multi_exec2");
-    bool multi_success = false;
+    std::string              key1          = test_key("async_multi_exec1");
+    std::string              key2          = test_key("async_multi_exec2");
+    bool                     multi_success = false;
     std::vector<std::string> exec_results;
 
     // Start a transaction asynchronously
-    redis.multi([&](auto &&reply) {
-        multi_success = reply.ok();
-    });
+    redis.multi([&](auto &&reply) { multi_success = reply.ok(); });
 
     redis.await();
     EXPECT_TRUE(multi_success);
@@ -220,9 +219,7 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_MULTI_EXEC) {
     redis.set(key2, "value2");
 
     // Execute the transaction asynchronously
-    redis.exec<std::string>([&](auto &&reply) {
-        exec_results = reply.result();
-    });
+    redis.exec<std::string>([&](auto &&reply) { exec_results = reply.result(); });
 
     redis.await();
     EXPECT_EQ(exec_results.size(), 2);
@@ -232,13 +229,9 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_MULTI_EXEC) {
 
     // Check the results
     std::optional<std::string> value1, value2;
-    redis.get([&](auto &&reply) {
-        value1 = reply.result();
-    }, key1);
+    redis.get([&](auto &&reply) { value1 = reply.result(); }, key1);
 
-    redis.get([&](auto &&reply) {
-        value2 = reply.result();
-    }, key2);
+    redis.get([&](auto &&reply) { value2 = reply.result(); }, key2);
 
     redis.await();
     EXPECT_TRUE(value1.has_value());
@@ -249,14 +242,12 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_MULTI_EXEC) {
 
 // Test asynchrone DISCARD
 TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_DISCARD) {
-    std::string key = test_key("async_discard");
-    bool multi_success = false;
-    bool discard_success = false;
+    std::string key             = test_key("async_discard");
+    bool        multi_success   = false;
+    bool        discard_success = false;
 
     // Start a transaction asynchronously
-    redis.multi([&](auto &&reply) {
-        multi_success = reply.ok();
-    });
+    redis.multi([&](auto &&reply) { multi_success = reply.ok(); });
 
     redis.await();
     EXPECT_TRUE(multi_success);
@@ -266,9 +257,7 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_DISCARD) {
     redis.set(key, "value");
 
     // Cancel the transaction asynchronously
-    redis.discard([&](auto &&reply) {
-        discard_success = reply.ok();
-    });
+    redis.discard([&](auto &&reply) { discard_success = reply.ok(); });
 
     redis.await();
     EXPECT_TRUE(discard_success);
@@ -276,9 +265,7 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_DISCARD) {
 
     // Check that the command was not executed
     std::optional<std::string> value;
-    redis.get([&](auto &&reply) {
-        value = reply.result();
-    }, key);
+    redis.get([&](auto &&reply) { value = reply.result(); }, key);
 
     redis.await();
     EXPECT_FALSE(value.has_value());
@@ -286,15 +273,13 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_DISCARD) {
 
 // Test asynchrone WATCH/UNWATCH
 TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
-    std::string key = test_key("async_watch");
-    bool watch_success = false;
-    bool multi_success = false;
+    std::string              key           = test_key("async_watch");
+    bool                     watch_success = false;
+    bool                     multi_success = false;
     std::vector<std::string> exec_results;
 
     // Watch the key asynchronously
-    redis.watch([&](auto &&reply) {
-        watch_success = reply.ok();
-    }, key);
+    redis.watch([&](auto &&reply) { watch_success = reply.ok(); }, key);
 
     redis.await();
     EXPECT_TRUE(watch_success);
@@ -306,9 +291,7 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
     other_client.await();
 
     // Start a transaction asynchronously
-    redis.multi([&](auto &&reply) {
-        multi_success = reply.ok();
-    });
+    redis.multi([&](auto &&reply) { multi_success = reply.ok(); });
 
     redis.await();
     EXPECT_TRUE(multi_success);
@@ -316,18 +299,14 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
     redis.set(key, "new_value");
 
     // Execute the transaction asynchronously
-    redis.exec<std::string>([&](auto &&reply) {
-        exec_results = reply.result();
-    });
+    redis.exec<std::string>([&](auto &&reply) { exec_results = reply.result(); });
 
     redis.await();
     EXPECT_TRUE(exec_results.empty());
 
     // Check that the value hasn't changed
     std::optional<std::string> value;
-    redis.get([&](auto &&reply) {
-        value = reply.result();
-    }, key);
+    redis.get([&](auto &&reply) { value = reply.result(); }, key);
 
     redis.await();
     EXPECT_TRUE(value.has_value());
@@ -335,9 +314,7 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
 
     // Arrêter la surveillance de manière asynchrone
     bool unwatch_success = false;
-    redis.unwatch([&](auto &&reply) {
-        unwatch_success = reply.ok();
-    });
+    redis.unwatch([&](auto &&reply) { unwatch_success = reply.ok(); });
 
     redis.await();
     EXPECT_TRUE(unwatch_success);
@@ -345,10 +322,10 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
 
 // Test asynchrone WATCH avec plusieurs clés
 TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
-    std::string key1 = test_key("async_watch1");
-    std::string key2 = test_key("async_watch2");
-    bool watch_success = false;
-    bool multi_success = false;
+    std::string              key1          = test_key("async_watch1");
+    std::string              key2          = test_key("async_watch2");
+    bool                     watch_success = false;
+    bool                     multi_success = false;
     std::vector<std::string> exec_results;
 
     // Mettre des valeurs initiales
@@ -356,9 +333,7 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
     redis.set(key2, "initial2");
 
     // Surveiller les deux clés de manière asynchrone
-    redis.watch([&](auto &&reply) {
-        watch_success = reply.ok();
-    }, {key1, key2});
+    redis.watch([&](auto &&reply) { watch_success = reply.ok(); }, {key1, key2});
 
     redis.await();
     EXPECT_TRUE(watch_success);
@@ -370,9 +345,7 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
     other_client.await();
 
     // Démarrer une transaction de manière asynchrone
-    redis.multi([&](auto &&reply) {
-        multi_success = reply.ok();
-    });
+    redis.multi([&](auto &&reply) { multi_success = reply.ok(); });
 
     redis.await();
     EXPECT_TRUE(multi_success);
@@ -381,26 +354,20 @@ TEST_F(RedisTest, ASYNC_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
     redis.set(key2, "new_value2");
 
     // Exécuter la transaction de manière asynchrone
-    redis.exec<std::string>([&](auto &&reply) {
-        exec_results = reply.result();
-    });
+    redis.exec<std::string>([&](auto &&reply) { exec_results = reply.result(); });
 
     redis.await();
     EXPECT_TRUE(exec_results.empty());
 
     // Vérifier que les valeurs n'ont pas changé
     std::optional<std::string> value1, value2;
-    redis.get([&](auto &&reply) {
-        value1 = reply.result();
-    }, key1);
+    redis.get([&](auto &&reply) { value1 = reply.result(); }, key1);
 
-    redis.get([&](auto &&reply) {
-        value2 = reply.result();
-    }, key2);
+    redis.get([&](auto &&reply) { value2 = reply.result(); }, key2);
 
     redis.await();
     EXPECT_TRUE(value1.has_value());
     EXPECT_TRUE(value2.has_value());
     EXPECT_EQ(*value1, "modified1");
     EXPECT_EQ(*value2, "initial2");
-} 
+}

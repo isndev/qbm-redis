@@ -22,14 +22,14 @@ namespace {
 // Constants for infinity representations in Redis range queries
 const std::string NEGATIVE_INFINITY_NUMERIC = "-inf";
 const std::string POSITIVE_INFINITY_NUMERIC = "+inf";
-const std::string NEGATIVE_INFINITY_STRING = "-";
-const std::string POSITIVE_INFINITY_STRING = "+";
+const std::string NEGATIVE_INFINITY_STRING  = "-";
+const std::string POSITIVE_INFINITY_STRING  = "+";
 
 /**
  * @brief Creates an unbounded representation of a value
- * 
+ *
  * Prepends "(" to the value to indicate an open bound in Redis range queries.
- * 
+ *
  * @param bnd The value to convert to unbounded format
  * @return String representation of the unbounded value
  */
@@ -37,9 +37,9 @@ std::string unbound(const std::string &bnd);
 
 /**
  * @brief Creates a bounded representation of a value
- * 
+ *
  * Prepends "[" to the value to indicate a closed bound in Redis range queries.
- * 
+ *
  * @param bnd The value to convert to bounded format
  * @return String representation of the bounded value
  */
@@ -69,7 +69,7 @@ UnboundedInterval<double>::upper() const {
 
 /**
  * @brief Constructs a bounded interval for double values
- * 
+ *
  * @param min Minimum value of the interval
  * @param max Maximum value of the interval
  * @param type Type of bounds (open, closed, etc.)
@@ -78,47 +78,47 @@ BoundedInterval<double>::BoundedInterval(double min, double max, BoundType type)
     : _min(std::to_string(min))
     , _max(std::to_string(max)) {
     switch (type) {
-    case BoundType::CLOSED:
-        // Do nothing
-        break;
+        case BoundType::CLOSED:
+            // Do nothing
+            break;
 
-    case BoundType::OPEN:
-        _min = unbound(_min);
-        _max = unbound(_max);
-        break;
+        case BoundType::OPEN:
+            _min = unbound(_min);
+            _max = unbound(_max);
+            break;
 
-    case BoundType::LEFT_OPEN:
-        _min = unbound(_min);
-        break;
+        case BoundType::LEFT_OPEN:
+            _min = unbound(_min);
+            break;
 
-    case BoundType::RIGHT_OPEN:
-        _max = unbound(_max);
-        break;
+        case BoundType::RIGHT_OPEN:
+            _max = unbound(_max);
+            break;
 
-    default:
-        throw Error("Unknow BoundType");
+        default:
+            throw Error("Unknow BoundType");
     }
 }
 
 /**
  * @brief Constructs a left-bounded interval for double values
- * 
+ *
  * @param min Minimum value of the interval
  * @param type Type of bounds (open or right-open)
  */
 LeftBoundedInterval<double>::LeftBoundedInterval(double min, BoundType type)
     : _min(std::to_string(min)) {
     switch (type) {
-    case BoundType::OPEN:
-        _min = unbound(_min);
-        break;
+        case BoundType::OPEN:
+            _min = unbound(_min);
+            break;
 
-    case BoundType::RIGHT_OPEN:
-        // Do nothing.
-        break;
+        case BoundType::RIGHT_OPEN:
+            // Do nothing.
+            break;
 
-    default:
-        throw Error("Bound type can only be OPEN or RIGHT_OPEN");
+        default:
+            throw Error("Bound type can only be OPEN or RIGHT_OPEN");
     }
 }
 
@@ -133,23 +133,23 @@ LeftBoundedInterval<double>::upper() const {
 
 /**
  * @brief Constructs a right-bounded interval for double values
- * 
+ *
  * @param max Maximum value of the interval
  * @param type Type of bounds (open or left-open)
  */
 RightBoundedInterval<double>::RightBoundedInterval(double max, BoundType type)
     : _max(std::to_string(max)) {
     switch (type) {
-    case BoundType::OPEN:
-        _max = unbound(_max);
-        break;
+        case BoundType::OPEN:
+            _max = unbound(_max);
+            break;
 
-    case BoundType::LEFT_OPEN:
-        // Do nothing.
-        break;
+        case BoundType::LEFT_OPEN:
+            // Do nothing.
+            break;
 
-    default:
-        throw Error("Bound type can only be OPEN or LEFT_OPEN");
+        default:
+            throw Error("Bound type can only be OPEN or LEFT_OPEN");
     }
 }
 
@@ -182,56 +182,58 @@ UnboundedInterval<std::string>::upper() const {
 
 /**
  * @brief Constructs a bounded interval for string values
- * 
+ *
  * @param min Minimum value of the interval
  * @param max Maximum value of the interval
  * @param type Type of bounds (open, closed, etc.)
  */
-BoundedInterval<std::string>::BoundedInterval(const std::string &min, const std::string &max, BoundType type) {
+BoundedInterval<std::string>::BoundedInterval(const std::string &min,
+                                              const std::string &max, BoundType type) {
     switch (type) {
-    case BoundType::CLOSED:
-        _min = bound(min);
-        _max = bound(max);
-        break;
+        case BoundType::CLOSED:
+            _min = bound(min);
+            _max = bound(max);
+            break;
 
-    case BoundType::OPEN:
-        _min = unbound(min);
-        _max = unbound(max);
-        break;
+        case BoundType::OPEN:
+            _min = unbound(min);
+            _max = unbound(max);
+            break;
 
-    case BoundType::LEFT_OPEN:
-        _min = unbound(min);
-        _max = bound(max);
-        break;
+        case BoundType::LEFT_OPEN:
+            _min = unbound(min);
+            _max = bound(max);
+            break;
 
-    case BoundType::RIGHT_OPEN:
-        _min = bound(min);
-        _max = unbound(max);
-        break;
+        case BoundType::RIGHT_OPEN:
+            _min = bound(min);
+            _max = unbound(max);
+            break;
 
-    default:
-        throw Error("Unknow BoundType");
+        default:
+            throw Error("Unknow BoundType");
     }
 }
 
 /**
  * @brief Constructs a left-bounded interval for string values
- * 
+ *
  * @param min Minimum value of the interval
  * @param type Type of bounds (open or right-open)
  */
-LeftBoundedInterval<std::string>::LeftBoundedInterval(const std::string &min, BoundType type) {
+LeftBoundedInterval<std::string>::LeftBoundedInterval(const std::string &min,
+                                                      BoundType          type) {
     switch (type) {
-    case BoundType::OPEN:
-        _min = unbound(min);
-        break;
+        case BoundType::OPEN:
+            _min = unbound(min);
+            break;
 
-    case BoundType::RIGHT_OPEN:
-        _min = bound(min);
-        break;
+        case BoundType::RIGHT_OPEN:
+            _min = bound(min);
+            break;
 
-    default:
-        throw Error("Bound type can only be OPEN or RIGHT_OPEN");
+        default:
+            throw Error("Bound type can only be OPEN or RIGHT_OPEN");
     }
 }
 
@@ -246,22 +248,23 @@ LeftBoundedInterval<std::string>::upper() const {
 
 /**
  * @brief Constructs a right-bounded interval for string values
- * 
+ *
  * @param max Maximum value of the interval
  * @param type Type of bounds (open or left-open)
  */
-RightBoundedInterval<std::string>::RightBoundedInterval(const std::string &max, BoundType type) {
+RightBoundedInterval<std::string>::RightBoundedInterval(const std::string &max,
+                                                        BoundType          type) {
     switch (type) {
-    case BoundType::OPEN:
-        _max = unbound(max);
-        break;
+        case BoundType::OPEN:
+            _max = unbound(max);
+            break;
 
-    case BoundType::LEFT_OPEN:
-        _max = bound(max);
-        break;
+        case BoundType::LEFT_OPEN:
+            _max = bound(max);
+            break;
 
-    default:
-        throw Error("Bound type can only be OPEN or LEFT_OPEN");
+        default:
+            throw Error("Bound type can only be OPEN or LEFT_OPEN");
     }
 }
 
@@ -294,14 +297,14 @@ namespace std {
 std::string
 to_string(qb::redis::BitOp op) {
     switch (op) {
-    case qb::redis::BitOp::AND:
-        return "AND";
-    case qb::redis::BitOp::OR:
-        return "OR";
-    case qb::redis::BitOp::XOR:
-        return "XOR";
-    case qb::redis::BitOp::NOT:
-        return "NOT";
+        case qb::redis::BitOp::AND:
+            return "AND";
+        case qb::redis::BitOp::OR:
+            return "OR";
+        case qb::redis::BitOp::XOR:
+            return "XOR";
+        case qb::redis::BitOp::NOT:
+            return "NOT";
     }
     return {};
 }
@@ -309,24 +312,24 @@ to_string(qb::redis::BitOp op) {
 std::string
 to_string(qb::redis::UpdateType op) {
     switch (op) {
-    case qb::redis::UpdateType::EXIST:
-        return "XX";
-    case qb::redis::UpdateType::NOT_EXIST:
-        return "NX";
-    default:
-        return {};
+        case qb::redis::UpdateType::EXIST:
+            return "XX";
+        case qb::redis::UpdateType::NOT_EXIST:
+            return "NX";
+        default:
+            return {};
     }
 }
 
 std::string
 to_string(qb::redis::Aggregation op) {
     switch (op) {
-    case qb::redis::Aggregation::SUM:
-        return "SUM";
-    case qb::redis::Aggregation::MIN:
-        return "MIN";
-    case qb::redis::Aggregation::MAX:
-        return "MAX";
+        case qb::redis::Aggregation::SUM:
+            return "SUM";
+        case qb::redis::Aggregation::MIN:
+            return "MIN";
+        case qb::redis::Aggregation::MAX:
+            return "MAX";
     }
     return {};
 }
@@ -334,14 +337,14 @@ to_string(qb::redis::Aggregation op) {
 std::string
 to_string(qb::redis::GeoUnit op) {
     switch (op) {
-    case qb::redis::GeoUnit::M:
-        return "m";
-    case qb::redis::GeoUnit::KM:
-        return "km";
-    case qb::redis::GeoUnit::MI:
-        return "mi";
-    case qb::redis::GeoUnit::FT:
-        return "ft";
+        case qb::redis::GeoUnit::M:
+            return "m";
+        case qb::redis::GeoUnit::KM:
+            return "km";
+        case qb::redis::GeoUnit::MI:
+            return "mi";
+        case qb::redis::GeoUnit::FT:
+            return "ft";
     }
     return {};
 }
@@ -349,10 +352,10 @@ to_string(qb::redis::GeoUnit op) {
 std::string
 to_string(qb::redis::InsertPosition pos) {
     switch (pos) {
-    case qb::redis::InsertPosition::BEFORE:
-        return "BEFORE";
-    case qb::redis::InsertPosition::AFTER:
-        return "AFTER";
+        case qb::redis::InsertPosition::BEFORE:
+            return "BEFORE";
+        case qb::redis::InsertPosition::AFTER:
+            return "AFTER";
     }
     return {};
 }

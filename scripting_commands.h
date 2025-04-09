@@ -25,8 +25,8 @@ namespace qb::redis {
  * @class scripting_commands
  * @brief Provides Redis Lua scripting command implementations.
  *
- * This class implements Redis Lua scripting commands for executing scripts 
- * on the Redis server. Lua scripting allows for more complex operations 
+ * This class implements Redis Lua scripting commands for executing scripts
+ * on the Redis server. Lua scripting allows for more complex operations
  * to be performed atomically and can reduce network roundtrips.
  *
  * @tparam Derived The derived class type (CRTP pattern)
@@ -38,6 +38,7 @@ private:
     derived() {
         return static_cast<Derived &>(*this);
     }
+
 public:
     /**
      * @brief Executes a Lua script on the Redis server
@@ -50,13 +51,13 @@ public:
      */
     template <typename Ret>
     auto
-    eval(
-        const std::string &script, const std::vector<std::string> &keys = {},
-        const std::vector<std::string> &args = {}) {
-
-        return derived().template command<Ret>("EVAL", script, keys.size(), keys, args).result();
+    eval(const std::string &script, const std::vector<std::string> &keys = {},
+         const std::vector<std::string> &args = {}) {
+        return derived()
+            .template command<Ret>("EVAL", script, keys.size(), keys, args)
+            .result();
     }
-    
+
     /**
      * @brief Asynchronous version of eval
      *
@@ -70,11 +71,11 @@ public:
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
-    eval(
-        Func &&func, const std::string &script, const std::vector<std::string> &keys = {},
-        const std::vector<std::string> &args = {}) {
-        return derived()
-            .template command<Ret>(std::forward<Func>(func), "EVAL", script, keys.size(), keys, args);
+    eval(Func &&func, const std::string &script,
+         const std::vector<std::string> &keys = {},
+         const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "EVAL", script,
+                                               keys.size(), keys, args);
     }
 
     /**
@@ -88,12 +89,13 @@ public:
      */
     template <typename Ret>
     Ret
-    evalsha(
-        const std::string &script, const std::vector<std::string> &keys = {},
-        const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>("EVALSHA", script, keys.size(), keys, args).result();
+    evalsha(const std::string &script, const std::vector<std::string> &keys = {},
+            const std::vector<std::string> &args = {}) {
+        return derived()
+            .template command<Ret>("EVALSHA", script, keys.size(), keys, args)
+            .result();
     }
-    
+
     /**
      * @brief Asynchronous version of evalsha
      *
@@ -107,11 +109,11 @@ public:
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
-    evalsha(
-        Func &&func, const std::string &script, const std::vector<std::string> &keys = {},
-        const std::vector<std::string> &args = {}) {
-        return derived()
-            .template command<Ret>(std::forward<Func>(func), "EVALSHA", script, keys.size(), keys, args);
+    evalsha(Func &&func, const std::string &script,
+            const std::vector<std::string> &keys = {},
+            const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "EVALSHA",
+                                               script, keys.size(), keys, args);
     }
 
     /**
@@ -125,10 +127,11 @@ public:
     std::vector<bool>
     script_exists(Keys &&...keys) {
         return derived()
-            .template command<std::vector<bool>>("SCRIPT", "EXISTS", std::forward<Keys>(keys)...)
+            .template command<std::vector<bool>>("SCRIPT", "EXISTS",
+                                                 std::forward<Keys>(keys)...)
             .result();
     }
-    
+
     /**
      * @brief Asynchronous version of script_exists
      *
@@ -142,10 +145,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<bool>> &&>, Derived &>
     script_exists(Func &&func, Keys &&...keys) {
         return derived().template command<std::vector<bool>>(
-            std::forward<Func>(func),
-            "SCRIPT",
-            "EXISTS",
-            std::forward<Keys>(keys)...);
+            std::forward<Func>(func), "SCRIPT", "EXISTS", std::forward<Keys>(keys)...);
     }
 
     /**
@@ -157,7 +157,7 @@ public:
     script_flush() {
         return derived().template command<status>("SCRIPT", "FLUSH").result();
     }
-    
+
     /**
      * @brief Asynchronous version of script_flush
      *
@@ -168,7 +168,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     script_flush(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "FLUSH");
+        return derived().template command<status>(std::forward<Func>(func), "SCRIPT",
+                                                  "FLUSH");
     }
 
     /**
@@ -180,7 +181,7 @@ public:
     script_kill() {
         return derived().template command<status>("SCRIPT", "KILL").result();
     }
-    
+
     /**
      * @brief Asynchronous version of script_kill
      *
@@ -191,7 +192,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     script_kill(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "KILL");
+        return derived().template command<status>(std::forward<Func>(func), "SCRIPT",
+                                                  "KILL");
     }
 
     /**
@@ -202,9 +204,11 @@ public:
      */
     inline std::string
     script_load(std::string const &script) {
-        return derived().template command<std::string>("SCRIPT", "LOAD", script).result();
+        return derived()
+            .template command<std::string>("SCRIPT", "LOAD", script)
+            .result();
     }
-    
+
     /**
      * @brief Asynchronous version of script_load
      *
@@ -216,8 +220,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     script_load(Func &&func, std::string const &script) {
-        return derived()
-            .template command<std::string>(std::forward<Func>(func), "SCRIPT", "LOAD", script);
+        return derived().template command<std::string>(std::forward<Func>(func),
+                                                       "SCRIPT", "LOAD", script);
     }
 };
 

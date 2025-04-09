@@ -29,7 +29,8 @@ namespace qb::redis {
  */
 std::string
 ParseError::_err_info(const std::string &expect_type, const redisReply &reply) {
-    return "expect " + expect_type + " reply, but got " + reply::type_to_string(reply.type) + " reply";
+    return "expect " + expect_type + " reply, but got " +
+           reply::type_to_string(reply.type) + " reply";
 }
 
 namespace reply {
@@ -42,26 +43,26 @@ namespace reply {
 std::string
 type_to_string(int type) {
     switch (type) {
-    case REDIS_REPLY_ERROR:
-        return "ERROR";
+        case REDIS_REPLY_ERROR:
+            return "ERROR";
 
-    case REDIS_REPLY_NIL:
-        return "NULL";
+        case REDIS_REPLY_NIL:
+            return "NULL";
 
-    case REDIS_REPLY_STRING:
-        return "STRING";
+        case REDIS_REPLY_STRING:
+            return "STRING";
 
-    case REDIS_REPLY_STATUS:
-        return "STATUS";
+        case REDIS_REPLY_STATUS:
+            return "STATUS";
 
-    case REDIS_REPLY_INTEGER:
-        return "INTEGER";
+        case REDIS_REPLY_INTEGER:
+            return "INTEGER";
 
-    case REDIS_REPLY_ARRAY:
-        return "ARRAY";
+        case REDIS_REPLY_ARRAY:
+            return "ARRAY";
 
-    default:
-        return "UNKNOWN";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -97,7 +98,8 @@ to_status(redisReply &reply) {
 std::string_view
 parse(ParseTag<std::string_view>, redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-    if (!qb::redis::is_string(reply) && !qb::redis::is_status(reply) && !qb::redis::is_verb(reply) && !qb::redis::is_bignum(reply)) {
+    if (!qb::redis::is_string(reply) && !qb::redis::is_status(reply) &&
+        !qb::redis::is_verb(reply) && !qb::redis::is_bignum(reply)) {
         throw ParseError("STRING or STATUS or VERB or BIGNUM", reply);
     }
 #else
@@ -325,36 +327,36 @@ parse(ParseTag<status>, redisReply &reply) {
     return status(std::string(reply.str, reply.len));
 }
 
-    inline std::vector<char>
-    parse(ParseTag<std::vector<char>>, redisReply &reply) {
-        if (!qb::redis::is_string(reply)) {
-            throw ParseError("STRING", reply);
-        }
-
-        if (reply.len == 0 || reply.str == nullptr) {
-            return {};
-        }
-
-        return std::vector<char>(reply.str, reply.str + reply.len);
+inline std::vector<char>
+parse(ParseTag<std::vector<char>>, redisReply &reply) {
+    if (!qb::redis::is_string(reply)) {
+        throw ParseError("STRING", reply);
     }
 
-    inline std::chrono::milliseconds
-    parse(ParseTag<std::chrono::milliseconds>, redisReply &reply) {
-        if (!qb::redis::is_integer(reply)) {
-            throw ParseError("INTEGER", reply);
-        }
-
-        return std::chrono::milliseconds(reply.integer);
+    if (reply.len == 0 || reply.str == nullptr) {
+        return {};
     }
 
-    inline std::chrono::seconds
-    parse(ParseTag<std::chrono::seconds>, redisReply &reply) {
-        if (!qb::redis::is_integer(reply)) {
-            throw ParseError("INTEGER", reply);
-        }
+    return std::vector<char>(reply.str, reply.str + reply.len);
+}
 
-        return std::chrono::seconds(reply.integer);
+inline std::chrono::milliseconds
+parse(ParseTag<std::chrono::milliseconds>, redisReply &reply) {
+    if (!qb::redis::is_integer(reply)) {
+        throw ParseError("INTEGER", reply);
     }
+
+    return std::chrono::milliseconds(reply.integer);
+}
+
+inline std::chrono::seconds
+parse(ParseTag<std::chrono::seconds>, redisReply &reply) {
+    if (!qb::redis::is_integer(reply)) {
+        throw ParseError("INTEGER", reply);
+    }
+
+    return std::chrono::seconds(reply.integer);
+}
 
 /**
  * @brief Parses a Redis reply into a geo_pos
@@ -363,56 +365,54 @@ parse(ParseTag<status>, redisReply &reply) {
  * @return GeoPos value containing longitude and latitude
  * @throws ParseError if the reply is not an array with 2 elements
  */
-    qb::redis::geo_pos
-    parse(ParseTag<qb::redis::geo_pos>, redisReply &reply) {
-        if (!qb::redis::is_array(reply)) {
-            throw ParseError("ARRAY", reply);
-        }
-
-        if (reply.elements != 2 || reply.element == nullptr) {
-            throw ProtoError("Invalid GEO position reply");
-        }
-
-        auto *longitude_reply = reply.element[0];
-        auto *latitude_reply = reply.element[1];
-
-        if (longitude_reply == nullptr || latitude_reply == nullptr) {
-            throw ProtoError("Null longitude or latitude reply");
-        }
-
-        return qb::redis::geo_pos{
-                parse<double>(*longitude_reply),
-                parse<double>(*latitude_reply)
-        };
+qb::redis::geo_pos
+parse(ParseTag<qb::redis::geo_pos>, redisReply &reply) {
+    if (!qb::redis::is_array(reply)) {
+        throw ParseError("ARRAY", reply);
     }
 
-    qb::redis::stream_id
-    parse(ParseTag<qb::redis::stream_id>, redisReply &reply) {
-        if (!qb::redis::is_string(reply)) {
-            throw ParseError("STRING", reply);
-        }
-
-        if (reply.len == 0 || reply.str == nullptr) {
-            return {};
-        }
-
-        std::string id_str(reply.str, reply.len);
-        auto pos = id_str.find('-');
-
-        if (pos == std::string::npos) {
-            throw ProtoError("Invalid stream ID format: " + id_str);
-        }
-
-        qb::redis::stream_id id;
-        try {
-            id.timestamp = std::stoll(id_str.substr(0, pos));
-            id.sequence = std::stoll(id_str.substr(pos + 1));
-        } catch (const std::exception &) {
-            throw ProtoError("Invalid stream ID: " + id_str);
-        }
-
-        return id;
+    if (reply.elements != 2 || reply.element == nullptr) {
+        throw ProtoError("Invalid GEO position reply");
     }
+
+    auto *longitude_reply = reply.element[0];
+    auto *latitude_reply  = reply.element[1];
+
+    if (longitude_reply == nullptr || latitude_reply == nullptr) {
+        throw ProtoError("Null longitude or latitude reply");
+    }
+
+    return qb::redis::geo_pos{parse<double>(*longitude_reply),
+                              parse<double>(*latitude_reply)};
+}
+
+qb::redis::stream_id
+parse(ParseTag<qb::redis::stream_id>, redisReply &reply) {
+    if (!qb::redis::is_string(reply)) {
+        throw ParseError("STRING", reply);
+    }
+
+    if (reply.len == 0 || reply.str == nullptr) {
+        return {};
+    }
+
+    std::string id_str(reply.str, reply.len);
+    auto        pos = id_str.find('-');
+
+    if (pos == std::string::npos) {
+        throw ProtoError("Invalid stream ID format: " + id_str);
+    }
+
+    qb::redis::stream_id id;
+    try {
+        id.timestamp = std::stoll(id_str.substr(0, pos));
+        id.sequence  = std::stoll(id_str.substr(pos + 1));
+    } catch (const std::exception &) {
+        throw ProtoError("Invalid stream ID: " + id_str);
+    }
+
+    return id;
+}
 
 /**
  * @brief Parses a Redis reply into a stream_entry
@@ -420,45 +420,46 @@ parse(ParseTag<status>, redisReply &reply) {
  * @param reply Redis reply to parse
  * @return Parsed stream_entry
  */
-    qb::redis::stream_entry
-    parse(ParseTag<qb::redis::stream_entry>, redisReply &reply) {
-        if (!qb::redis::is_array(reply)) {
-            throw ParseError("ARRAY", reply);
-        }
-
-        if (reply.elements != 2 || reply.element == nullptr) {
-            throw ProtoError("Invalid stream entry reply");
-        }
-
-        auto *id_reply = reply.element[0];
-        auto *fields_reply = reply.element[1];
-
-        if (id_reply == nullptr || fields_reply == nullptr) {
-            throw ProtoError("Null ID or fields reply");
-        }
-
-        qb::redis::stream_entry entry;
-        entry.id = parse<qb::redis::stream_id>(*id_reply);
-        entry.fields = parse<qb::unordered_map<std::string, std::string>>(*fields_reply);
-
-        return entry;
+qb::redis::stream_entry
+parse(ParseTag<qb::redis::stream_entry>, redisReply &reply) {
+    if (!qb::redis::is_array(reply)) {
+        throw ParseError("ARRAY", reply);
     }
+
+    if (reply.elements != 2 || reply.element == nullptr) {
+        throw ProtoError("Invalid stream entry reply");
+    }
+
+    auto *id_reply     = reply.element[0];
+    auto *fields_reply = reply.element[1];
+
+    if (id_reply == nullptr || fields_reply == nullptr) {
+        throw ProtoError("Null ID or fields reply");
+    }
+
+    qb::redis::stream_entry entry;
+    entry.id     = parse<qb::redis::stream_id>(*id_reply);
+    entry.fields = parse<qb::unordered_map<std::string, std::string>>(*fields_reply);
+
+    return entry;
+}
 
 namespace detail {
 
 /**
  * @brief Checks if a Redis array reply is a flat array
- * 
+ *
  * A flat array is an array whose elements are not arrays themselves.
  * This is used for determining how to parse key-value pairs from Redis.
- * 
+ *
  * @param reply The Redis reply to check
  * @return true if the reply is a flat array, false otherwise
  */
 bool
 is_flat_array(redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-    assert(qb::redis::is_array(reply) || qb::redis::is_map(reply) || qb::redis::is_set(reply));
+    assert(qb::redis::is_array(reply) || qb::redis::is_map(reply) ||
+           qb::redis::is_set(reply));
 #else
     assert(qb::redis::is_array(reply));
 #endif
@@ -490,7 +491,8 @@ is_flat_array(redisReply &reply) {
 qb::redis::score
 parse(ParseTag<qb::redis::score>, redisReply &reply) {
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-    if (!qb::redis::is_double(reply) && !qb::redis::is_integer(reply) && !qb::redis::is_string(reply)) {
+    if (!qb::redis::is_double(reply) && !qb::redis::is_integer(reply) &&
+        !qb::redis::is_string(reply)) {
         throw ParseError("DOUBLE or INTEGER or STRING", reply);
     }
 #else
@@ -520,14 +522,14 @@ parse(ParseTag<qb::redis::score_member>, redisReply &reply) {
     }
 
     auto *member_reply = reply.element[0];
-    auto *score_reply = reply.element[1];
+    auto *score_reply  = reply.element[1];
 
     if (score_reply == nullptr || member_reply == nullptr) {
         throw ProtoError("Null score or member reply");
     }
 
     qb::redis::score_member sm;
-    sm.score = parse<double>(*score_reply);
+    sm.score  = parse<double>(*score_reply);
     sm.member = parse<std::string>(*member_reply);
 
     return sm;
@@ -593,50 +595,51 @@ parse(ParseTag<qb::redis::cluster_node>, redisReply &reply) {
     }
 
     qb::redis::cluster_node node;
-    std::string node_info = parse<std::string>(reply);
-    
+    std::string             node_info = parse<std::string>(reply);
+
     // Parse node info string
-    // Format: <id> <ip:port@cport> <flags> <master> <ping-sent> <pong-recv> <epoch> <link-state> <slot> <slot> ... <slot>
+    // Format: <id> <ip:port@cport> <flags> <master> <ping-sent> <pong-recv> <epoch>
+    // <link-state> <slot> <slot> ... <slot>
     std::istringstream iss(node_info);
-    std::string token;
-    
+    std::string        token;
+
     // Node ID
     if (!(iss >> node.id)) {
         throw ProtoError("Failed to parse node ID from: " + node_info);
     }
-    
+
     // IP:port@cport
     if (!(iss >> token)) {
         throw ProtoError("Failed to parse node address from: " + node_info);
     }
-    
+
     size_t colon_pos = token.find(':');
-    size_t at_pos = token.find('@');
-    
+    size_t at_pos    = token.find('@');
+
     if (colon_pos == std::string::npos) {
         throw ProtoError("Invalid address format (missing colon): " + token);
     }
-    
+
     node.ip = token.substr(0, colon_pos);
-    
+
     std::string port_str;
     if (at_pos != std::string::npos) {
         port_str = token.substr(colon_pos + 1, at_pos - colon_pos - 1);
     } else {
         port_str = token.substr(colon_pos + 1);
     }
-    
+
     try {
         node.port = std::stoi(port_str);
     } catch (const std::exception &) {
         throw ProtoError("Invalid port: " + port_str);
     }
-    
+
     // Flags
     if (!(iss >> token)) {
         throw ProtoError("Failed to parse node flags from: " + node_info);
     }
-    
+
     size_t start = 0;
     size_t comma_pos;
     do {
@@ -645,41 +648,41 @@ parse(ParseTag<qb::redis::cluster_node>, redisReply &reply) {
             node.flags.push_back(token.substr(start));
             break;
         }
-        
+
         node.flags.push_back(token.substr(start, comma_pos - start));
         start = comma_pos + 1;
     } while (true);
-    
+
     // Master
     if (!(iss >> node.master)) {
         throw ProtoError("Failed to parse node master from: " + node_info);
     }
-    
+
     // Ping sent
     if (!(iss >> node.ping_sent)) {
         throw ProtoError("Failed to parse ping sent from: " + node_info);
     }
-    
+
     // Pong received
     if (!(iss >> node.pong_received)) {
         throw ProtoError("Failed to parse pong received from: " + node_info);
     }
-    
+
     // Epoch
     if (!(iss >> node.epoch)) {
         throw ProtoError("Failed to parse epoch from: " + node_info);
     }
-    
+
     // Link state
     if (!(iss >> node.link_state)) {
         throw ProtoError("Failed to parse link state from: " + node_info);
     }
-    
+
     // Slots
     while (iss >> token) {
         node.slots.push_back(token);
     }
-    
+
     return node;
 }
 
@@ -695,65 +698,66 @@ parse(ParseTag<qb::redis::memory_info>, redisReply &reply) {
     if (!qb::redis::is_array(reply)) {
         throw ParseError("ARRAY", reply);
     }
-    
+
     qb::redis::memory_info info;
-    
+
     // INFO reply is typically an array of string pairs
     if (reply.elements == 0 || reply.element == nullptr) {
         return info;
     }
-    
+
     qb::unordered_map<std::string, std::string> info_map;
-    
+
     // Parse all key-value pairs
     for (size_t i = 0; i < reply.elements; i += 2) {
         if (i + 1 >= reply.elements) {
             break;
         }
-        
+
         auto *key_reply = reply.element[i];
         auto *val_reply = reply.element[i + 1];
-        
+
         if (key_reply == nullptr || val_reply == nullptr) {
             continue;
         }
-        
+
         std::string key = parse<std::string>(*key_reply);
         std::string val = parse<std::string>(*val_reply);
-        
+
         info_map[key] = val;
     }
-    
+
     // Extract memory info from the map
-    auto get_size_t = [&info_map](const std::string& key) -> size_t {
+    auto get_size_t = [&info_map](const std::string &key) -> size_t {
         auto it = info_map.find(key);
-        if (it == info_map.end()) return 0;
-        
+        if (it == info_map.end())
+            return 0;
+
         try {
             return std::stoull(it->second);
-        } catch (const std::exception&) {
+        } catch (const std::exception &) {
             return 0;
         }
     };
-    
-    info.used_memory = get_size_t("used_memory");
-    info.used_memory_peak = get_size_t("used_memory_peak");
-    info.used_memory_lua = get_size_t("used_memory_lua");
-    info.used_memory_scripts = get_size_t("used_memory_scripts");
-    info.number_of_keys = get_size_t("db0");  // This is a simplification
-    info.number_of_expires = get_size_t("expired_keys");
-    info.number_of_connected_clients = get_size_t("connected_clients");
-    info.number_of_slaves = get_size_t("connected_slaves");
-    info.number_of_replicas = get_size_t("connected_slaves");  // Same as slaves
+
+    info.used_memory                  = get_size_t("used_memory");
+    info.used_memory_peak             = get_size_t("used_memory_peak");
+    info.used_memory_lua              = get_size_t("used_memory_lua");
+    info.used_memory_scripts          = get_size_t("used_memory_scripts");
+    info.number_of_keys               = get_size_t("db0"); // This is a simplification
+    info.number_of_expires            = get_size_t("expired_keys");
+    info.number_of_connected_clients  = get_size_t("connected_clients");
+    info.number_of_slaves             = get_size_t("connected_slaves");
+    info.number_of_replicas           = get_size_t("connected_slaves"); // Same as slaves
     info.number_of_commands_processed = get_size_t("total_commands_processed");
-    info.total_connections_received = get_size_t("total_connections_received");
-    info.total_commands_processed = get_size_t("total_commands_processed");
-    info.instantaneous_ops_per_sec = get_size_t("instantaneous_ops_per_sec");
-    info.total_net_input_bytes = get_size_t("total_net_input_bytes");
-    info.total_net_output_bytes = get_size_t("total_net_output_bytes");
-    info.instantaneous_input_kbps = get_size_t("instantaneous_input_kbps");
-    info.instantaneous_output_kbps = get_size_t("instantaneous_output_kbps");
-    
+    info.total_connections_received   = get_size_t("total_connections_received");
+    info.total_commands_processed     = get_size_t("total_commands_processed");
+    info.instantaneous_ops_per_sec    = get_size_t("instantaneous_ops_per_sec");
+    info.total_net_input_bytes        = get_size_t("total_net_input_bytes");
+    info.total_net_output_bytes       = get_size_t("total_net_output_bytes");
+    info.instantaneous_input_kbps     = get_size_t("instantaneous_input_kbps");
+    info.instantaneous_output_kbps    = get_size_t("instantaneous_output_kbps");
+
     return info;
 }
 
@@ -769,29 +773,29 @@ parse(ParseTag<qb::redis::pipeline_result>, redisReply &reply) {
     if (!qb::redis::is_array(reply)) {
         throw ParseError("ARRAY", reply);
     }
-    
+
     qb::redis::pipeline_result result;
-    
+
     if (reply.elements == 0 || reply.element == nullptr) {
         return result;
     }
-    
+
     result.replies.reserve(reply.elements);
-    
+
     for (size_t i = 0; i < reply.elements; ++i) {
         auto *sub_reply = reply.element[i];
         if (sub_reply == nullptr) {
             result.all_succeeded = false;
             continue;
         }
-        
+
         if (qb::redis::is_error(*sub_reply)) {
             result.all_succeeded = false;
         }
-        
+
         result.replies.push_back(reply_ptr(sub_reply));
     }
-    
+
     return result;
 }
 
@@ -804,28 +808,25 @@ parse(ParseTag<qb::redis::pipeline_result>, redisReply &reply) {
 qb::redis::json_value
 parse(ParseTag<qb::redis::json_value>, redisReply &reply) {
     qb::redis::json_value value;
-    
+
     if (qb::redis::is_nil(reply)) {
         value.type = qb::redis::json_value::Type::Null;
         value.data = nullptr;
-    }
-    else if (qb::redis::is_integer(reply) 
+    } else if (qb::redis::is_integer(reply)
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-             || qb::redis::is_double(reply)
+               || qb::redis::is_double(reply)
 #endif
     ) {
         value.type = qb::redis::json_value::Type::Number;
         value.data = parse<double>(reply);
-    }
-    else if (qb::redis::is_string(reply) || qb::redis::is_status(reply)) {
+    } else if (qb::redis::is_string(reply) || qb::redis::is_status(reply)) {
         std::string str = parse<std::string>(reply);
-        
+
         // Check if the string is a boolean
         if (str == "true") {
             value.type = qb::redis::json_value::Type::Boolean;
             value.data = true;
-        } 
-        else if (str == "false") {
+        } else if (str == "false") {
             value.type = qb::redis::json_value::Type::Boolean;
             value.data = false;
         }
@@ -833,17 +834,16 @@ parse(ParseTag<qb::redis::json_value>, redisReply &reply) {
         else if (str == "null") {
             value.type = qb::redis::json_value::Type::Null;
             value.data = nullptr;
-        }
-        else {
+        } else {
             value.type = qb::redis::json_value::Type::String;
             value.data = std::move(str);
         }
-    }
-    else if (qb::redis::is_array(reply)) {
+    } else if (qb::redis::is_array(reply)) {
         // If array has 0 or odd number of elements, treat as array
-        // If array has even number of elements and each odd index is a string, treat as object
+        // If array has even number of elements and each odd index is a string, treat as
+        // object
         bool is_object = reply.elements > 0 && (reply.elements % 2 == 0);
-        
+
         if (is_object) {
             // Check if all odd indices are strings
             for (size_t i = 0; i < reply.elements; i += 2) {
@@ -854,32 +854,31 @@ parse(ParseTag<qb::redis::json_value>, redisReply &reply) {
                 }
             }
         }
-        
+
         if (is_object) {
             value.type = qb::redis::json_value::Type::Object;
             qb::unordered_map<std::string, qb::redis::json_value> object;
-            
+
             for (size_t i = 0; i < reply.elements; i += 2) {
                 auto *key_reply = reply.element[i];
                 auto *val_reply = reply.element[i + 1];
-                
+
                 if (key_reply == nullptr || val_reply == nullptr) {
                     continue;
                 }
-                
-                std::string key = parse<std::string>(*key_reply);
+
+                std::string           key = parse<std::string>(*key_reply);
                 qb::redis::json_value val = parse<qb::redis::json_value>(*val_reply);
-                
+
                 object[key] = std::move(val);
             }
-            
+
             value.data = std::move(object);
-        } 
-        else {
+        } else {
             value.type = qb::redis::json_value::Type::Array;
             std::vector<qb::redis::json_value> array;
             array.reserve(reply.elements);
-            
+
             for (size_t i = 0; i < reply.elements; ++i) {
                 auto *element_reply = reply.element[i];
                 if (element_reply == nullptr) {
@@ -888,7 +887,7 @@ parse(ParseTag<qb::redis::json_value>, redisReply &reply) {
                     array.push_back(parse<qb::redis::json_value>(*element_reply));
                 }
             }
-            
+
             value.data = std::move(array);
         }
     }
@@ -896,32 +895,30 @@ parse(ParseTag<qb::redis::json_value>, redisReply &reply) {
     else if (qb::redis::is_bool(reply)) {
         value.type = qb::redis::json_value::Type::Boolean;
         value.data = reply.integer != 0;
-    }
-    else if (qb::redis::is_map(reply)) {
+    } else if (qb::redis::is_map(reply)) {
         value.type = qb::redis::json_value::Type::Object;
         qb::unordered_map<std::string, qb::redis::json_value> object;
-        
+
         for (size_t i = 0; i < reply.elements; i += 2) {
             auto *key_reply = reply.element[i];
             auto *val_reply = reply.element[i + 1];
-            
+
             if (key_reply == nullptr || val_reply == nullptr) {
                 continue;
             }
-            
-            std::string key = parse<std::string>(*key_reply);
+
+            std::string           key = parse<std::string>(*key_reply);
             qb::redis::json_value val = parse<qb::redis::json_value>(*val_reply);
-            
+
             object[key] = std::move(val);
         }
-        
+
         value.data = std::move(object);
-    }
-    else if (qb::redis::is_set(reply)) {
+    } else if (qb::redis::is_set(reply)) {
         value.type = qb::redis::json_value::Type::Array;
         std::vector<qb::redis::json_value> array;
         array.reserve(reply.elements);
-        
+
         for (size_t i = 0; i < reply.elements; ++i) {
             auto *element_reply = reply.element[i];
             if (element_reply == nullptr) {
@@ -930,11 +927,11 @@ parse(ParseTag<qb::redis::json_value>, redisReply &reply) {
                 array.push_back(parse<qb::redis::json_value>(*element_reply));
             }
         }
-        
+
         value.data = std::move(array);
     }
 #endif
-    
+
     return value;
 }
 
@@ -956,7 +953,7 @@ parse(ParseTag<std::vector<qb::redis::score_member>>, redisReply &reply) {
     }
 
     if (reply.elements % 2) {
-            throw ProtoError("Invalid array length for string-double pairs");
+        throw ProtoError("Invalid array length for string-double pairs");
     }
 
     std::vector<qb::redis::score_member> result;
@@ -965,7 +962,7 @@ parse(ParseTag<std::vector<qb::redis::score_member>>, redisReply &reply) {
     auto copy_reply = reply;
     for (size_t i = 0; i < reply.elements; i += 2) {
         copy_reply.elements = 2;
-        copy_reply.element = reply.element + i;
+        copy_reply.element  = reply.element + i;
 
         result.push_back(parse<qb::redis::score_member>(copy_reply));
     }
@@ -999,16 +996,14 @@ parse(ParseTag<std::vector<std::pair<std::string, double>>>, redisReply &reply) 
         }
 
         auto *member_reply = reply.element[i];
-        auto *score_reply = reply.element[i + 1];
+        auto *score_reply  = reply.element[i + 1];
 
         if (member_reply == nullptr || score_reply == nullptr) {
             throw ProtoError("Null array element");
         }
 
-        result.emplace_back(
-            parse<std::string>(*member_reply),
-            parse<double>(*score_reply)
-        );
+        result.emplace_back(parse<std::string>(*member_reply),
+                            parse<double>(*score_reply));
     }
 
     return result;
@@ -1016,85 +1011,85 @@ parse(ParseTag<std::vector<std::pair<std::string, double>>>, redisReply &reply) 
 
 /**
  * @brief Parses a Redis reply into an optional vector of stream entries
- * 
+ *
  * This function handles parsing a Redis reply into an optional vector of stream entries.
  * Returns std::nullopt if the reply is nil, and a vector of stream entries otherwise.
- * 
+ *
  * @param tag Type tag for optional vector of stream entries
  * @param reply Redis reply to parse
  * @return Optional vector of stream entries or std::nullopt if nil
  */
-    stream_entry_list
-    parse(ParseTag<stream_entry_list>, redisReply &reply) {
-        if (!qb::redis::is_array(reply)) {
-            throw ParseError("ARRAY", reply);
-        }
-
-        stream_entry_list result;
-        // Empty array
-        if (reply.elements && reply.element) {
-            result.reserve(reply.elements);
-
-            for (size_t i = 0; i < reply.elements; ++i) {
-                if (reply.element[i] == nullptr) {
-                    throw ProtoError("Null stream entry in array");
-                }
-                result.push_back(parse<qb::redis::stream_entry>(*reply.element[i]));
-            }
-        }
-        return result;
+stream_entry_list
+parse(ParseTag<stream_entry_list>, redisReply &reply) {
+    if (!qb::redis::is_array(reply)) {
+        throw ParseError("ARRAY", reply);
     }
 
-    /**
-     * @brief Parses a Redis reply into an optional unordered map of string to stream entry
-     * 
-     * This function handles parsing a Redis reply into an optional unordered map where
-     * keys are strings and values are stream entries. Returns std::nullopt if the reply
-     * is nil, and a map otherwise. This is typically used for commands like XREAD or
-     * XREADGROUP that return data from multiple streams.
-     * 
-     * @param tag Type tag for optional unordered map of string to stream entry
-     * @param reply Redis reply to parse
-     * @return Optional unordered map or std::nullopt if nil
-     */
-    map_stream_entry_list
-    parse(ParseTag<map_stream_entry_list>, redisReply &reply) {
-        if (!qb::redis::is_array(reply)) {
-            throw ParseError("ARRAY", reply);
-        }
-        // Empty array
-        if (qb::redis::is_nil(reply) || !reply.elements|| !reply.element ) {
-            return {};
-        }
+    stream_entry_list result;
+    // Empty array
+    if (reply.elements && reply.element) {
+        result.reserve(reply.elements);
 
-        map_stream_entry_list result;
         for (size_t i = 0; i < reply.elements; ++i) {
-            auto &sub_reply= *reply.element[i];
-
-            for (size_t j = 0; j < sub_reply.elements; j += 2) {
-                if (!qb::redis::is_array(sub_reply)) {
-                    throw ParseError("SUB_ARRAY", sub_reply);
-                }
-                if (j + 1 >= sub_reply.elements) {
-                    throw ProtoError("Invalid array length for stream key-entry pairs");
-                }
-
-                auto *key_reply = sub_reply.element[j];
-                auto *entry_reply = sub_reply.element[j + 1];
-
-                if (key_reply == nullptr || entry_reply == nullptr) {
-                    throw ProtoError("Null key or entry in stream reply");
-                }
-
-                auto key = parse<std::string>(*key_reply);
-                auto entry = parse<stream_entry_list>(*entry_reply);
-
-                result.emplace(std::move(key), std::move(entry));
+            if (reply.element[i] == nullptr) {
+                throw ProtoError("Null stream entry in array");
             }
+            result.push_back(parse<qb::redis::stream_entry>(*reply.element[i]));
         }
-
-        return result;
     }
+    return result;
+}
+
+/**
+ * @brief Parses a Redis reply into an optional unordered map of string to stream entry
+ *
+ * This function handles parsing a Redis reply into an optional unordered map where
+ * keys are strings and values are stream entries. Returns std::nullopt if the reply
+ * is nil, and a map otherwise. This is typically used for commands like XREAD or
+ * XREADGROUP that return data from multiple streams.
+ *
+ * @param tag Type tag for optional unordered map of string to stream entry
+ * @param reply Redis reply to parse
+ * @return Optional unordered map or std::nullopt if nil
+ */
+map_stream_entry_list
+parse(ParseTag<map_stream_entry_list>, redisReply &reply) {
+    if (!qb::redis::is_array(reply)) {
+        throw ParseError("ARRAY", reply);
+    }
+    // Empty array
+    if (qb::redis::is_nil(reply) || !reply.elements || !reply.element) {
+        return {};
+    }
+
+    map_stream_entry_list result;
+    for (size_t i = 0; i < reply.elements; ++i) {
+        auto &sub_reply = *reply.element[i];
+
+        for (size_t j = 0; j < sub_reply.elements; j += 2) {
+            if (!qb::redis::is_array(sub_reply)) {
+                throw ParseError("SUB_ARRAY", sub_reply);
+            }
+            if (j + 1 >= sub_reply.elements) {
+                throw ProtoError("Invalid array length for stream key-entry pairs");
+            }
+
+            auto *key_reply   = sub_reply.element[j];
+            auto *entry_reply = sub_reply.element[j + 1];
+
+            if (key_reply == nullptr || entry_reply == nullptr) {
+                throw ProtoError("Null key or entry in stream reply");
+            }
+
+            auto key   = parse<std::string>(*key_reply);
+            auto entry = parse<stream_entry_list>(*entry_reply);
+
+            result.emplace(std::move(key), std::move(entry));
+        }
+    }
+
+    return result;
+}
 
 } // namespace reply
 

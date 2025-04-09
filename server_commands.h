@@ -68,8 +68,8 @@ private:
     static qb::redis::memory_info
     parse_info_to_memory_info(const std::string &info_str) {
         qb::redis::memory_info info;
-        std::istringstream iss(info_str);
-        std::string line;
+        std::istringstream     iss(info_str);
+        std::string            line;
 
         while (std::getline(iss, line)) {
             // Skip empty lines and comments
@@ -95,10 +95,10 @@ private:
                     } else if (key == "connected_clients") {
                         info.number_of_connected_clients = std::stoull(val);
                     } else if (key == "connected_slaves") {
-                        info.number_of_slaves = std::stoull(val);
+                        info.number_of_slaves   = std::stoull(val);
                         info.number_of_replicas = std::stoull(val);
                     } else if (key == "total_commands_processed") {
-                        info.total_commands_processed = std::stoull(val);
+                        info.total_commands_processed     = std::stoull(val);
                         info.number_of_commands_processed = std::stoull(val);
                     } else if (key == "total_connections_received") {
                         info.total_connections_received = std::stoull(val);
@@ -116,16 +116,18 @@ private:
                         // Extract number of keys from db0:keys=1,expires=0,avg_ttl=0
                         size_t key_pos = val.find("keys=");
                         if (key_pos != std::string::npos) {
-                            size_t comma_pos = val.find(',', key_pos);
-                            std::string keys_count = val.substr(key_pos + 5, comma_pos - (key_pos + 5));
+                            size_t      comma_pos = val.find(',', key_pos);
+                            std::string keys_count =
+                                val.substr(key_pos + 5, comma_pos - (key_pos + 5));
                             info.number_of_keys += std::stoull(keys_count);
                         }
 
                         // Extract number of expires from db0:keys=1,expires=0,avg_ttl=0
                         size_t expires_pos = val.find("expires=");
                         if (expires_pos != std::string::npos) {
-                            size_t comma_pos = val.find(',', expires_pos);
-                            std::string expires_count = val.substr(expires_pos + 8, comma_pos - (expires_pos + 8));
+                            size_t      comma_pos     = val.find(',', expires_pos);
+                            std::string expires_count = val.substr(
+                                expires_pos + 8, comma_pos - (expires_pos + 8));
                             info.number_of_expires += std::stoull(expires_count);
                         }
                     }
@@ -137,12 +139,13 @@ private:
 
         return info;
     }
+
 public:
     // =============== Client Management Commands ===============
 
     /**
      * @brief Kills the client at the specified address
-     * 
+     *
      * @param addr Client address to kill
      * @param id Client ID to kill
      * @param type Client type to kill
@@ -150,7 +153,8 @@ public:
      * @return status object with the result
      */
     status
-    client_kill(const std::string &addr = "", long long id = 0, const std::string &type = "", bool skipme = true) {
+    client_kill(const std::string &addr = "", long long id = 0,
+                const std::string &type = "", bool skipme = true) {
         std::vector<std::string> args;
         if (!addr.empty()) {
             args.push_back("ADDR");
@@ -170,10 +174,10 @@ public:
         }
         return derived().template command<status>("CLIENT", "KILL", args).result();
     }
-    
+
     /**
      * @brief Asynchronous version of client_kill
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @param addr Client address to kill
@@ -184,7 +188,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    client_kill(Func &&func, const std::string &addr = "", long long id = 0, const std::string &type = "", bool skipme = true) {
+    client_kill(Func &&func, const std::string &addr = "", long long id = 0,
+                const std::string &type = "", bool skipme = true) {
         std::vector<std::string> args;
         if (!addr.empty()) {
             args.push_back("ADDR");
@@ -202,12 +207,13 @@ public:
             args.push_back("SKIPME");
             args.push_back("yes");
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "KILL", args);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
+                                                  "KILL", args);
     }
 
     /**
      * @brief Lists client connections
-     * 
+     *
      * @return Vector of client connection strings
      * @see https://redis.io/commands/client-list
      */
@@ -215,7 +221,7 @@ public:
     client_list() {
         auto result = derived().template command<std::string>("CLIENT", "LIST").result();
         std::vector<std::string> clients;
-        size_t pos = 0;
+        size_t                   pos = 0;
         while ((pos = result.find('\n')) != std::string::npos) {
             clients.push_back(result.substr(0, pos));
             result.erase(0, pos + 1);
@@ -228,13 +234,14 @@ public:
 
     /**
      * @brief Asynchronous version of client_list
-     * 
+     *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
      * @see https://redis.io/commands/client-list
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
     client_list(Func &&func) {
         return derived().template command<std::string>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
@@ -242,7 +249,7 @@ public:
                 r.ok() = reply.ok();
                 if (reply.ok()) {
                     std::string result = reply.result();
-                    size_t pos = 0;
+                    size_t      pos    = 0;
                     while ((pos = result.find('\n')) != std::string::npos) {
                         r.result().push_back(result.substr(0, pos));
                         result.erase(0, pos + 1);
@@ -258,19 +265,22 @@ public:
 
     /**
      * @brief Gets the current client name
-     * 
+     *
      * @return Optional client name
      */
     std::optional<std::string>
     client_getname() {
-        return derived().template command<std::optional<std::string>>("CLIENT", "GETNAME").result();
+        return derived()
+            .template command<std::optional<std::string>>("CLIENT", "GETNAME")
+            .result();
     }
 
     /**
      * @brief Asynchronous version of client_getname
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
     client_getname(Func &&func) {
         return derived().template command<std::optional<std::string>>(
             std::forward<Func>(func), "CLIENT", "GETNAME");
@@ -278,7 +288,7 @@ public:
 
     /**
      * @brief Sets the current client name
-     * 
+     *
      * @param name New client name
      * @return status object with the result
      */
@@ -293,25 +303,27 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_setname(Func &&func, const std::string &name) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CLIENT", "SETNAME", name);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
+                                                  "SETNAME", name);
     }
 
     /**
      * @brief Stops processing commands from clients for specified milliseconds
-     * 
+     *
      * @param timeout Time in milliseconds to block commands
      * @param mode Type of commands to block (WRITE or ALL)
      * @return status object with the result
      */
     status
     client_pause(long long timeout, const std::string &mode = "ALL") {
-        return derived().template command<status>("CLIENT", "PAUSE", timeout, mode).result();
+        return derived()
+            .template command<status>("CLIENT", "PAUSE", timeout, mode)
+            .result();
     }
-    
+
     /**
      * @brief Asynchronous version of client_pause
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @param timeout Time in milliseconds to block commands
@@ -321,18 +333,21 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_pause(Func &&func, long long timeout, const std::string &mode = "ALL") {
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "PAUSE", timeout, mode);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
+                                                  "PAUSE", timeout, mode);
     }
 
     /**
      * @brief Enables or disables client tracking
-     * 
+     *
      * @param enabled Whether to enable tracking
      * @return status object with the result
      */
     status
     client_tracking(bool enabled = true) {
-        return derived().template command<status>("CLIENT", "TRACKING", enabled ? "ON" : "OFF").result();
+        return derived()
+            .template command<status>("CLIENT", "TRACKING", enabled ? "ON" : "OFF")
+            .result();
     }
 
     /**
@@ -341,13 +356,13 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_tracking(Func &&func, bool enabled = true) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CLIENT", "TRACKING", enabled ? "ON" : "OFF");
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
+                                                  "TRACKING", enabled ? "ON" : "OFF");
     }
 
     /**
      * @brief Unblocks a client by ID
-     * 
+     *
      * @param client_id ID of client to unblock
      * @param error Whether to unblock with an error (default: false)
      * @return status object with the result
@@ -365,10 +380,10 @@ public:
             return {};
         }
     }
-    
+
     /**
      * @brief Asynchronous version of client_unblock
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @param client_id ID of client to unblock
@@ -382,21 +397,25 @@ public:
         if (error) {
             args.push_back("ERROR");
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT", args);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
+                                                  args);
     }
 
     // =============== Configuration Commands ===============
 
     /**
      * @brief Gets a configuration parameter
-     * 
+     *
      * @param parameter Parameter name
      * @return Vector of parameter-value pairs
      * @see https://redis.io/commands/config-get
      */
     std::vector<std::pair<std::string, std::string>>
     config_get(const std::string &parameter) {
-        auto result = derived().template command<std::vector<std::string>>("CONFIG", "GET", parameter).result();
+        auto result =
+            derived()
+                .template command<std::vector<std::string>>("CONFIG", "GET", parameter)
+                .result();
         std::vector<std::pair<std::string, std::string>> pairs;
         for (size_t i = 0; i < result.size(); i += 2) {
             if (i + 1 < result.size()) {
@@ -408,14 +427,17 @@ public:
 
     /**
      * @brief Asynchronous version of config_get
-     * 
+     *
      * @param func Callback function to handle the result
      * @param parameter Parameter name
      * @return Reference to the derived class
      * @see https://redis.io/commands/config-get
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, std::string>>> &&>, Derived &>
+    std::enable_if_t<
+        std::is_invocable_v<Func,
+                            Reply<std::vector<std::pair<std::string, std::string>>> &&>,
+        Derived &>
     config_get(Func &&func, const std::string &parameter) {
         return derived().template command<std::vector<std::string>>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
@@ -424,27 +446,28 @@ public:
                 if (reply.ok()) {
                     for (size_t i = 0; i < reply.result().size(); i += 2) {
                         if (i + 1 < reply.result().size()) {
-                            r.result().emplace_back(reply.result()[i], reply.result()[i + 1]);
+                            r.result().emplace_back(reply.result()[i],
+                                                    reply.result()[i + 1]);
                         }
                     }
                 }
                 f(std::move(r));
             },
-            "CONFIG",
-            "GET",
-            parameter);
+            "CONFIG", "GET", parameter);
     }
 
     /**
      * @brief Sets a configuration parameter
-     * 
+     *
      * @param parameter Parameter name
      * @param value Parameter value
      * @return status object with the result
      */
     status
     config_set(const std::string &parameter, const std::string &value) {
-        return derived().template command<status>("CONFIG", "SET", parameter, value).result();
+        return derived()
+            .template command<status>("CONFIG", "SET", parameter, value)
+            .result();
     }
 
     /**
@@ -453,13 +476,13 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     config_set(Func &&func, const std::string &parameter, const std::string &value) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CONFIG", "SET", parameter, value);
+        return derived().template command<status>(std::forward<Func>(func), "CONFIG",
+                                                  "SET", parameter, value);
     }
 
     /**
      * @brief Resets server statistics
-     * 
+     *
      * @return status object with the result
      */
     status
@@ -473,13 +496,13 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     config_resetstat(Func &&func) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CONFIG", "RESETSTAT");
+        return derived().template command<status>(std::forward<Func>(func), "CONFIG",
+                                                  "RESETSTAT");
     }
 
     /**
      * @brief Rewrites the configuration file
-     * 
+     *
      * @return status object with the result
      */
     status
@@ -493,22 +516,25 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     config_rewrite(Func &&func) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CONFIG", "REWRITE");
+        return derived().template command<status>(std::forward<Func>(func), "CONFIG",
+                                                  "REWRITE");
     }
 
     // =============== Command Information Commands ===============
 
     /**
      * @brief Gets information about Redis commands
-     * 
+     *
      * @param command_names Optional list of command names to get info about
      * @return Vector of command information
      * @see https://redis.io/commands/command-info
      */
     std::vector<std::map<std::string, std::string>>
     command_info(const std::vector<std::string> &command_names = {}) {
-        auto result = derived().template command<std::vector<std::vector<std::string>>>("COMMAND", "INFO", command_names).result();
+        auto result = derived()
+                          .template command<std::vector<std::vector<std::string>>>(
+                              "COMMAND", "INFO", command_names)
+                          .result();
         std::vector<std::map<std::string, std::string>> info;
         for (const auto &cmd : result) {
             std::map<std::string, std::string> cmd_info;
@@ -524,14 +550,17 @@ public:
 
     /**
      * @brief Asynchronous version of command_info
-     * 
+     *
      * @param func Callback function to handle the result
      * @param command_names Optional list of command names to get info about
      * @return Reference to the derived class
      * @see https://redis.io/commands/command-info
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::map<std::string, std::string>>> &&>, Derived &>
+    std::enable_if_t<
+        std::is_invocable_v<Func,
+                            Reply<std::vector<std::map<std::string, std::string>>> &&>,
+        Derived &>
     command_info(Func &&func, const std::vector<std::string> &command_names = {}) {
         return derived().template command<std::vector<std::vector<std::string>>>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
@@ -550,24 +579,22 @@ public:
                 }
                 f(std::move(r));
             },
-            "COMMAND",
-            "INFO",
-            command_names);
+            "COMMAND", "INFO", command_names);
     }
 
     /**
      * @brief Get the number of commands in the command list
-     * 
+     *
      * @return The number of commands
      */
     long long
     command_count() {
         return derived().template command<long long>("COMMAND", "COUNT").result();
     }
-    
+
     /**
      * @brief Asynchronous version of command_count
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @return Reference to the derived class
@@ -575,27 +602,33 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     command_count(Func &&func) {
-        return derived().template command<long long>(std::forward<Func>(func), "COMMAND", "COUNT");
+        return derived().template command<long long>(std::forward<Func>(func), "COMMAND",
+                                                     "COUNT");
     }
 
     /**
      * @brief Gets the keys from a command
-     * 
+     *
      * @param command Command to get keys from
      * @param args Command arguments
      * @return Vector of key names
      */
     std::vector<std::string>
     command_getkeys(const std::string &command, const std::vector<std::string> &args) {
-        return derived().template command<std::vector<std::string>>("COMMAND", "GETKEYS", command, args).result();
+        return derived()
+            .template command<std::vector<std::string>>("COMMAND", "GETKEYS", command,
+                                                        args)
+            .result();
     }
 
     /**
      * @brief Asynchronous version of command_getkeys
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
-    command_getkeys(Func &&func, const std::string &command, const std::vector<std::string> &args) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
+    command_getkeys(Func &&func, const std::string &command,
+                    const std::vector<std::string> &args) {
         return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func), "COMMAND", "GETKEYS", command, args);
     }
@@ -604,7 +637,7 @@ public:
 
     /**
      * @brief Gets debugging information about a key
-     * 
+     *
      * @param key Key to debug
      * @return Debug information
      * @see https://redis.io/commands/debug-object
@@ -616,7 +649,7 @@ public:
 
     /**
      * @brief Asynchronous version of debug_object
-     * 
+     *
      * @param func Callback function to handle the result
      * @param key Key to debug
      * @return Reference to the derived class
@@ -625,8 +658,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     debug_object(Func &&func, const std::string &key) {
-        return derived().template command<std::string>(
-            std::forward<Func>(func), "DEBUG", "OBJECT", key);
+        return derived().template command<std::string>(std::forward<Func>(func), "DEBUG",
+                                                       "OBJECT", key);
     }
 
     /**
@@ -645,13 +678,13 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     debug_segfault(Func &&func) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "DEBUG", "SEGFAULT");
+        return derived().template command<status>(std::forward<Func>(func), "DEBUG",
+                                                  "SEGFAULT");
     }
 
     /**
      * @brief Sleeps for a specified time (for testing)
-     * 
+     *
      * @param delay Delay in seconds
      * @return status object with the result
      */
@@ -666,15 +699,15 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     debug_sleep(Func &&func, double delay) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "DEBUG", "SLEEP", delay);
+        return derived().template command<status>(std::forward<Func>(func), "DEBUG",
+                                                  "SLEEP", delay);
     }
 
     // =============== Memory Commands ===============
 
     /**
      * @brief Gets a report about memory usage
-     * 
+     *
      * @return Memory report
      * @see https://redis.io/commands/memory-doctor
      */
@@ -685,7 +718,7 @@ public:
 
     /**
      * @brief Asynchronous version of memory_doctor
-     * 
+     *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
      * @see https://redis.io/commands/memory-doctor
@@ -693,25 +726,28 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     memory_doctor(Func &&func) {
-        return derived().template command<std::string>(
-            std::forward<Func>(func), "MEMORY", "DOCTOR");
+        return derived().template command<std::string>(std::forward<Func>(func),
+                                                       "MEMORY", "DOCTOR");
     }
 
     /**
      * @brief Gets help about memory commands
-     * 
+     *
      * @return Help text
      */
     std::vector<std::string>
     memory_help() {
-        return derived().template command<std::vector<std::string>>("MEMORY", "HELP").result();
+        return derived()
+            .template command<std::vector<std::string>>("MEMORY", "HELP")
+            .result();
     }
 
     /**
      * @brief Asynchronous version of memory_help
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
     memory_help(Func &&func) {
         return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func), "MEMORY", "HELP");
@@ -719,12 +755,14 @@ public:
 
     /**
      * @brief Gets malloc statistics
-     * 
+     *
      * @return Malloc statistics
      */
     std::string
     memory_malloc_stats() {
-        return derived().template command<std::string>("MEMORY", "MALLOC-STATS").result();
+        return derived()
+            .template command<std::string>("MEMORY", "MALLOC-STATS")
+            .result();
     }
 
     /**
@@ -733,13 +771,13 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     memory_malloc_stats(Func &&func) {
-        return derived().template command<std::string>(
-            std::forward<Func>(func), "MEMORY", "MALLOC-STATS");
+        return derived().template command<std::string>(std::forward<Func>(func),
+                                                       "MEMORY", "MALLOC-STATS");
     }
 
     /**
      * @brief Purges memory
-     * 
+     *
      * @return status object with the result
      */
     status
@@ -753,13 +791,13 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     memory_purge(Func &&func) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "MEMORY", "PURGE");
+        return derived().template command<status>(std::forward<Func>(func), "MEMORY",
+                                                  "PURGE");
     }
 
     /**
      * @brief Gets memory statistics
-     * 
+     *
      * This command returns memory usage statistics about the server.
      * It includes information about peak memory usage, allocator statistics,
      * and other memory-related metrics that are useful for diagnostics.
@@ -769,18 +807,21 @@ public:
      */
     std::map<std::string, long long>
     memory_stats() {
-        return derived().template command<std::map<std::string, long long>>("MEMORY", "STATS").result();
+        return derived()
+            .template command<std::map<std::string, long long>>("MEMORY", "STATS")
+            .result();
     }
 
     /**
      * @brief Asynchronous version of memory_stats
-     * 
+     *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
      * @see https://redis.io/commands/memory-stats
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::map<std::string, long long>> &&>, Derived &>
+    std::enable_if_t<
+        std::is_invocable_v<Func, Reply<std::map<std::string, long long>> &&>, Derived &>
     memory_stats(Func &&func) {
         return derived().template command<std::map<std::string, long long>>(
             std::forward<Func>(func), "MEMORY", "STATS");
@@ -788,7 +829,7 @@ public:
 
     /**
      * @brief Gets memory usage of a key
-     * 
+     *
      * @param key Key to check
      * @param samples Number of samples for sampling
      * @return Memory usage in bytes
@@ -800,7 +841,9 @@ public:
             args.push_back("SAMPLES");
             args.push_back(std::to_string(samples));
         }
-        return derived().template command<long long>("MEMORY", "USAGE", key, args).result();
+        return derived()
+            .template command<long long>("MEMORY", "USAGE", key, args)
+            .result();
     }
 
     /**
@@ -814,15 +857,15 @@ public:
             args.push_back("SAMPLES");
             args.push_back(std::to_string(samples));
         }
-        return derived().template command<long long>(
-            std::forward<Func>(func), "MEMORY", "USAGE", key, args);
+        return derived().template command<long long>(std::forward<Func>(func), "MEMORY",
+                                                     "USAGE", key, args);
     }
 
     // =============== Monitor Commands ===============
 
     /**
      * @brief Monitors Redis commands in real-time
-     * 
+     *
      * @param func Callback function to receive commands
      * @return Reference to the Redis handler for chaining
      * @see https://redis.io/commands/monitor
@@ -830,15 +873,15 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     monitor(Func &&func) {
-        return derived().template command<std::string>(
-            std::forward<Func>(func), "MONITOR");
+        return derived().template command<std::string>(std::forward<Func>(func),
+                                                       "MONITOR");
     }
 
     // =============== Role Commands ===============
 
     /**
      * @brief Gets the role of the server
-     * 
+     *
      * @return Server role information
      * @see https://redis.io/commands/role
      */
@@ -849,13 +892,14 @@ public:
 
     /**
      * @brief Asynchronous version of role
-     * 
+     *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
      * @see https://redis.io/commands/role
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
     role(Func &&func) {
         return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func), "ROLE");
@@ -865,10 +909,10 @@ public:
 
     /**
      * @brief Synchronously saves the dataset to disk and then shuts down the server
-     * 
+     *
      * This command instructs the Redis server to stop accepting commands from clients
      * and save the dataset to disk before shutting down.
-     * 
+     *
      * @param save_option "SAVE" to save before shutdown, "NOSAVE" to not save
      * @return status object with the result
      */
@@ -879,10 +923,10 @@ public:
         }
         return derived().template command<status>("SHUTDOWN", save_option).result();
     }
-    
+
     /**
      * @brief Asynchronous version of shutdown
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @param save_option "SAVE" to save before shutdown, "NOSAVE" to not save
@@ -892,16 +936,18 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     shutdown(Func &&func, const std::string &save_option = "") {
         if (save_option.empty()) {
-            return derived().template command<status>(std::forward<Func>(func), "SHUTDOWN");
+            return derived().template command<status>(std::forward<Func>(func),
+                                                      "SHUTDOWN");
         }
-        return derived().template command<status>(std::forward<Func>(func), "SHUTDOWN", save_option);
+        return derived().template command<status>(std::forward<Func>(func), "SHUTDOWN",
+                                                  save_option);
     }
 
     // =============== Slave Commands ===============
 
     /**
      * @brief Configures replication
-     * 
+     *
      * @param host Master host
      * @param port Master port
      * @return status object with the result
@@ -914,7 +960,7 @@ public:
 
     /**
      * @brief Asynchronous version of slaveof
-     * 
+     *
      * @param func Callback function to handle the result
      * @param host Master host
      * @param port Master port
@@ -924,22 +970,25 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     slaveof(Func &&func, const std::string &host, long long port) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "SLAVEOF", host, port);
+        return derived().template command<status>(std::forward<Func>(func), "SLAVEOF",
+                                                  host, port);
     }
 
     // =============== Slowlog Commands ===============
 
     /**
      * @brief Gets slowlog entries
-     * 
+     *
      * @param count Number of entries to get
      * @return Vector of slowlog entries
      * @see https://redis.io/commands/slowlog-get
      */
     std::vector<std::map<std::string, std::string>>
     slowlog_get(long long count = 10) {
-        auto result = derived().template command<std::vector<std::vector<std::string>>>("SLOWLOG", "GET", count).result();
+        auto result = derived()
+                          .template command<std::vector<std::vector<std::string>>>(
+                              "SLOWLOG", "GET", count)
+                          .result();
         std::vector<std::map<std::string, std::string>> entries;
         for (const auto &entry : result) {
             std::map<std::string, std::string> entry_map;
@@ -955,14 +1004,17 @@ public:
 
     /**
      * @brief Asynchronous version of slowlog_get
-     * 
+     *
      * @param func Callback function to handle the result
      * @param count Number of entries to get
      * @return Reference to the derived class
      * @see https://redis.io/commands/slowlog-get
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::map<std::string, std::string>>> &&>, Derived &>
+    std::enable_if_t<
+        std::is_invocable_v<Func,
+                            Reply<std::vector<std::map<std::string, std::string>>> &&>,
+        Derived &>
     slowlog_get(Func &&func, long long count = 10) {
         return derived().template command<std::vector<std::vector<std::string>>>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
@@ -981,14 +1033,12 @@ public:
                 }
                 f(std::move(r));
             },
-            "SLOWLOG",
-            "GET",
-            count);
+            "SLOWLOG", "GET", count);
     }
 
     /**
      * @brief Gets the length of the slowlog
-     * 
+     *
      * @return Number of entries in the slowlog
      */
     long long
@@ -1002,13 +1052,13 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     slowlog_len(Func &&func) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "SLOWLOG", "LEN");
+        return derived().template command<long long>(std::forward<Func>(func), "SLOWLOG",
+                                                     "LEN");
     }
 
     /**
      * @brief Resets the slowlog
-     * 
+     *
      * @return status object with the result
      */
     status
@@ -1022,15 +1072,15 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     slowlog_reset(Func &&func) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "SLOWLOG", "RESET");
+        return derived().template command<status>(std::forward<Func>(func), "SLOWLOG",
+                                                  "RESET");
     }
 
     // =============== Sync Commands ===============
 
     /**
      * @brief Synchronizes with a master
-     * 
+     *
      * @return status object with the result
      * @see https://redis.io/commands/sync
      */
@@ -1041,7 +1091,7 @@ public:
 
     /**
      * @brief Asynchronous version of sync
-     * 
+     *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
      * @see https://redis.io/commands/sync
@@ -1049,20 +1099,21 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     sync(Func &&func) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "SYNC");
+        return derived().template command<status>(std::forward<Func>(func), "SYNC");
     }
 
     /**
      * @brief Partially synchronizes with a master
-     * 
+     *
      * @param replication_id Replication ID
      * @param offset Replication offset
      * @return status object with the result
      */
     status
     psync(const std::string &replication_id, long long offset) {
-        return derived().template command<status>("PSYNC", replication_id, offset).result();
+        return derived()
+            .template command<status>("PSYNC", replication_id, offset)
+            .result();
     }
 
     /**
@@ -1071,28 +1122,28 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     psync(Func &&func, const std::string &replication_id, long long offset) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "PSYNC", replication_id, offset);
+        return derived().template command<status>(std::forward<Func>(func), "PSYNC",
+                                                  replication_id, offset);
     }
 
     // =============== Persistence Commands ===============
 
     /**
      * @brief Asynchronously rewrites the append-only file
-     * 
+     *
      * This command initiates an AOF rewrite operation in the background.
      * The Redis server will create a new AOF file while still serving clients.
-     * 
+     *
      * @return status object with the result
      */
     status
     bgrewriteaof() {
         return derived().template command<status>("BGREWRITEAOF").result();
     }
-    
+
     /**
      * @brief Asynchronous version of bgrewriteaof
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @return Reference to the derived class
@@ -1100,15 +1151,16 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     bgrewriteaof(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "BGREWRITEAOF");
+        return derived().template command<status>(std::forward<Func>(func),
+                                                  "BGREWRITEAOF");
     }
 
     /**
      * @brief Asynchronously saves the dataset to disk
-     * 
+     *
      * This command initiates a background save operation to persist the current
      * Redis dataset to disk.
-     * 
+     *
      * @param schedule Whether to schedule the save operation
      * @return status object with the result
      */
@@ -1119,10 +1171,10 @@ public:
         }
         return derived().template command<status>("BGSAVE").result();
     }
-    
+
     /**
      * @brief Asynchronous version of bgsave
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @param schedule Whether to schedule the save operation
@@ -1132,17 +1184,18 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     bgsave(Func &&func, bool schedule = false) {
         if (schedule) {
-            return derived().template command<status>(std::forward<Func>(func), "BGSAVE", "SCHEDULE");
+            return derived().template command<status>(std::forward<Func>(func), "BGSAVE",
+                                                      "SCHEDULE");
         }
         return derived().template command<status>(std::forward<Func>(func), "BGSAVE");
     }
 
     /**
      * @brief Synchronously saves the dataset to disk
-     * 
+     *
      * This command initiates a synchronous save operation to persist the current
      * Redis dataset to disk, blocking the server until the operation completes.
-     * 
+     *
      * @return status object with the result
      */
     status
@@ -1152,7 +1205,7 @@ public:
 
     /**
      * @brief Asynchronous version of save
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @return Reference to the derived class
@@ -1165,7 +1218,7 @@ public:
 
     /**
      * @brief Gets the Unix timestamp of the last successful save to disk
-     * 
+     *
      * This command returns the Unix timestamp of the last successful save to disk.
      * It can be used to check the last time when the dataset was saved either
      * by an explicit command or by a background save.
@@ -1180,7 +1233,7 @@ public:
 
     /**
      * @brief Asynchronous version of lastsave
-     * 
+     *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
      * @see https://redis.io/commands/lastsave
@@ -1188,15 +1241,15 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lastsave(Func &&func) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "LASTSAVE");
+        return derived().template command<long long>(std::forward<Func>(func),
+                                                     "LASTSAVE");
     }
 
     // =============== Database Commands ===============
 
     /**
      * @brief Gets the number of keys in the current database
-     * 
+     *
      * @return Number of keys in the current database
      * @see https://redis.io/commands/dbsize
      */
@@ -1207,7 +1260,7 @@ public:
 
     /**
      * @brief Asynchronous version of dbsize
-     * 
+     *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
      * @see https://redis.io/commands/dbsize
@@ -1220,10 +1273,10 @@ public:
 
     /**
      * @brief Removes all keys from all databases
-     * 
-     * This command removes all keys from all existing databases, not just the 
+     *
+     * This command removes all keys from all existing databases, not just the
      * currently selected one.
-     * 
+     *
      * @param async Whether to perform the operation asynchronously on the server side
      * @return status object with the result
      */
@@ -1234,10 +1287,10 @@ public:
         }
         return derived().template command<status>("FLUSHALL").result();
     }
-    
+
     /**
      * @brief Asynchronous version of flushall
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @param async Whether to perform the operation asynchronously on the server side
@@ -1247,16 +1300,17 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     flushall(Func &&func, bool async = false) {
         if (async) {
-            return derived().template command<status>(std::forward<Func>(func), "FLUSHALL", "ASYNC");
+            return derived().template command<status>(std::forward<Func>(func),
+                                                      "FLUSHALL", "ASYNC");
         }
         return derived().template command<status>(std::forward<Func>(func), "FLUSHALL");
     }
 
     /**
      * @brief Removes all keys from the current database
-     * 
+     *
      * This command removes all keys from the currently selected database.
-     * 
+     *
      * @param async Whether to perform the operation asynchronously on the server side
      * @return status object with the result
      */
@@ -1267,10 +1321,10 @@ public:
         }
         return derived().template command<status>("FLUSHDB").result();
     }
-    
+
     /**
      * @brief Asynchronous version of flushdb
-     * 
+     *
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @param async Whether to perform the operation asynchronously on the server side
@@ -1280,7 +1334,8 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     flushdb(Func &&func, bool async = false) {
         if (async) {
-            return derived().template command<status>(std::forward<Func>(func), "FLUSHDB", "ASYNC");
+            return derived().template command<status>(std::forward<Func>(func),
+                                                      "FLUSHDB", "ASYNC");
         }
         return derived().template command<status>(std::forward<Func>(func), "FLUSHDB");
     }
@@ -1289,7 +1344,7 @@ public:
 
     /**
      * @brief Gets information and statistics about the server
-     * 
+     *
      * This command returns information and statistics about the Redis server in a format
      * that is simple to parse by computers and easily readable by humans.
      *
@@ -1302,26 +1357,27 @@ public:
         std::optional<std::string> param;
         if (!section.empty())
             param = section;
-        
+
         auto info_str = derived().template command<std::string>("INFO", param).result();
         return parse_info_to_memory_info(info_str);
     }
 
     /**
      * @brief Asynchronous version of info
-     * 
+     *
      * @param func Callback function to handle the result
      * @param section Optional section name to get specific information
      * @return Reference to the derived class
      * @see https://redis.io/commands/info
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::memory_info> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::memory_info> &&>,
+                     Derived &>
     info(Func &&func, const std::string &section = "") {
         std::optional<std::string> param;
         if (!section.empty())
             param = section;
-        
+
         return derived().template command<std::string>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
                 Reply<qb::redis::memory_info> r;
@@ -1336,7 +1392,7 @@ public:
 
     /**
      * @brief Gets the current server time
-     * 
+     *
      * This command returns the current server time as a pair of Unix timestamp
      * and the number of microseconds. This can be used for measuring performance
      * or for features that need high precision time measurements.
@@ -1348,26 +1404,29 @@ public:
     time() {
         auto res = derived().template command<std::vector<std::string>>("TIME");
         if (res.ok() && res.result().size() == 2)
-            return std::make_pair(std::stoll(res.result()[0]), std::stoll(res.result()[1]));
+            return std::make_pair(std::stoll(res.result()[0]),
+                                  std::stoll(res.result()[1]));
         return std::make_pair(0, 0);
     }
 
     /**
      * @brief Asynchronous version of time
-     * 
+     *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
      * @see https://redis.io/commands/time
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::pair<long long, long long>> &&>, Derived &>
+    std::enable_if_t<
+        std::is_invocable_v<Func, Reply<std::pair<long long, long long>> &&>, Derived &>
     time(Func &&func) {
         return derived().template command<std::vector<std::string>>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
                 Reply<std::pair<long long, long long>> r;
                 r.ok() = reply.ok();
                 if (reply.ok() && reply.result().size() == 2)
-                    r.result() = std::make_pair(std::stoll(reply.result()[0]), std::stoll(reply.result()[1]));
+                    r.result() = std::make_pair(std::stoll(reply.result()[0]),
+                                                std::stoll(reply.result()[1]));
                 f(std::move(r));
             },
             "TIME");

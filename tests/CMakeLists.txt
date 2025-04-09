@@ -17,29 +17,29 @@
 
 # Define test files and their corresponding test names
 set(REDIS_TESTS
-    connection-commands
-    server-commands
-    key-commands
-    string-commands
-    bitmap-commands
-    list-commands
-    hash-commands
-    transaction-commands
-    set-commands
-    sorted-set-commands
-    hyperloglog-commands
-    geo-commands
-    scripting-commands
-    subscription-commands
-    publish-commands
-    stream-commands
+        connection-commands
+        server-commands
+        key-commands
+        string-commands
+        bitmap-commands
+        list-commands
+        hash-commands
+        transaction-commands
+        set-commands
+        sorted-set-commands
+        hyperloglog-commands
+        geo-commands
+        scripting-commands
+        subscription-commands
+        publish-commands
+        stream-commands
 )
 
 # Register each test
-foreach(TEST ${REDIS_TESTS})
+foreach (TEST ${REDIS_TESTS})
     qb_register_module_gtest(
-        NAME redis
-        TESTNAME ${TEST}
-        SOURCES test-${TEST}.cpp
+            NAME redis
+            TESTNAME ${TEST}
+            SOURCES test-${TEST}.cpp
     )
-endforeach()
+endforeach ()

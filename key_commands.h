@@ -42,25 +42,25 @@ private:
     derived() {
         return static_cast<Derived &>(*this);
     }
-    
+
     /**
      * @class scanner
      * @brief Helper class for implementing incremental scanning of keys
-     * 
+     *
      * @tparam Func Callback function type
      */
     template <typename Func>
     class scanner : public qb::redis::IReply {
-        Derived &_derived;
-        std::string _pattern;
-        Func _func;
-        size_t _cursor{0};
+        Derived                            &_derived;
+        std::string                         _pattern;
+        Func                                _func;
+        size_t                              _cursor{0};
         qb::redis::Reply<qb::redis::scan<>> _reply;
 
     public:
         /**
          * @brief Constructs a scanner for keys matching a pattern
-         * 
+         *
          * @param derived The Redis handler
          * @param pattern Pattern to match keys against
          * @param func Callback function to process results
@@ -73,31 +73,27 @@ private:
                 [this](qb::redis::Reply<qb::redis::scan<>> &&reply) {
                     (*this)(std::forward<qb::redis::Reply<qb::redis::scan<>>>(reply));
                 },
-                "SCAN",
-                _cursor,
-                "MATCH",
-                _pattern);
+                "SCAN", _cursor, "MATCH", _pattern);
         }
 
         /**
          * @brief Processes scan results and continues scanning if needed
-         * 
+         *
          * @param reply The scan operation reply
          */
         void
         operator()(qb::redis::Reply<qb::redis::scan<>> &&reply) {
             _reply.ok() = reply.ok();
-            std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
+            std::move(reply.result().items.begin(), reply.result().items.end(),
+                      std::back_inserter(_reply.result().items));
             if (reply.ok() && reply.result().cursor) {
                 _cursor = reply.result().cursor;
                 _derived.template command<qb::redis::scan<>>(
                     [this](qb::redis::Reply<qb::redis::scan<>> &&reply) {
-                        (*this)(std::forward<qb::redis::Reply<qb::redis::scan<>>>(reply));
+                        (*this)(
+                            std::forward<qb::redis::Reply<qb::redis::scan<>>>(reply));
                     },
-                    "SCAN",
-                    _cursor,
-                    "MATCH",
-                    _pattern);
+                    "SCAN", _cursor, "MATCH", _pattern);
             } else {
                 _func(std::move(_reply));
                 delete this;
@@ -115,13 +111,15 @@ public:
     template <typename... Keys>
     long long
     del(Keys &&...keys) {
-        return derived().template command<long long>("DEL", std::forward<Keys>(keys)...).result();
+        return derived()
+            .template command<long long>("DEL", std::forward<Keys>(keys)...)
+            .result();
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     del(Func &&func, Keys &&...keys) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "DEL", std::forward<Keys>(keys)...);
+        return derived().template command<long long>(std::forward<Func>(func), "DEL",
+                                                     std::forward<Keys>(keys)...);
     }
 
     /**
@@ -134,15 +132,16 @@ public:
      */
     std::optional<std::string>
     dump(const std::string &key) {
-        return derived().template command<std::optional<std::string>>("DUMP", key).result();
+        return derived()
+            .template command<std::optional<std::string>>("DUMP", key)
+            .result();
     }
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
     dump(Func &&func, const std::string &key) {
         return derived().template command<std::optional<std::string>>(
-            std::forward<Func>(func),
-            "DUMP",
-            key);
+            std::forward<Func>(func), "DUMP", key);
     }
 
     /**
@@ -154,13 +153,15 @@ public:
     template <typename... Keys>
     long long
     exists(Keys &&...keys) {
-        return derived().template command<long long>("EXISTS", std::forward<Keys>(keys)...).result();
+        return derived()
+            .template command<long long>("EXISTS", std::forward<Keys>(keys)...)
+            .result();
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     exists(Func &&func, Keys &&...keys) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "EXISTS", std::forward<Keys>(keys)...);
+        return derived().template command<long long>(std::forward<Func>(func), "EXISTS",
+                                                     std::forward<Keys>(keys)...);
     }
 
     /**
@@ -179,7 +180,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     expire(Func &&func, const std::string &key, long long timeout) {
-        return derived().template command<bool>(std::forward<Func>(func), "EXPIRE", key, timeout);
+        return derived().template command<bool>(std::forward<Func>(func), "EXPIRE", key,
+                                                timeout);
     }
 
     /**
@@ -217,11 +219,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     expireat(Func &&func, const std::string &key, long long timestamp) {
-        return derived().template command<bool>(
-            std::forward<Func>(func),
-            "EXPIREAT",
-            key,
-            timestamp);
+        return derived().template command<bool>(std::forward<Func>(func), "EXPIREAT",
+                                                key, timestamp);
     }
 
     /**
@@ -234,15 +233,16 @@ public:
      * @see https://redis.io/commands/expireat
      */
     bool
-    expireat(
-        const std::string &key, const std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds> &tp) {
+    expireat(const std::string                                   &key,
+             const std::chrono::time_point<std::chrono::system_clock,
+                                           std::chrono::seconds> &tp) {
         return expireat(key, tp.time_since_epoch().count());
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
-    expireat(
-        Func &&func, const std::string &key,
-        const std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds> &tp) {
+    expireat(Func &&func, const std::string &key,
+             const std::chrono::time_point<std::chrono::system_clock,
+                                           std::chrono::seconds> &tp) {
         return expireat(std::forward<Func>(func), key, tp.time_since_epoch().count());
     }
 
@@ -250,21 +250,23 @@ public:
      * @brief Get all keys matching the given pattern.
      * @param pattern Pattern, supporting glob-style patterns.
      * @return All keys matching the given pattern.
-     * @note This command might block Redis server when used with large datasets, use with caution.
+     * @note This command might block Redis server when used with large datasets, use
+     * with caution.
      * @see `Redis::scan` for a non-blocking alternative
      * @see https://redis.io/commands/keys
      */
     std::vector<std::string>
     keys(const std::string &pattern = "*") {
-        return derived().template command<std::vector<std::string>>("KEYS", pattern).result();
+        return derived()
+            .template command<std::vector<std::string>>("KEYS", pattern)
+            .result();
     }
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
     keys(Func &&func, const std::string &pattern = "*") {
         return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func),
-            "KEYS",
-            pattern);
+            std::forward<Func>(func), "KEYS", pattern);
     }
 
     /**
@@ -273,7 +275,8 @@ public:
      * @param destination_db Destination database ID.
      * @return Whether we successfully moved the key.
      * @retval true If the key has been moved.
-     * @retval false If the key was not moved, because of some errors, e.g. key does not exist.
+     * @retval false If the key was not moved, because of some errors, e.g. key does not
+     * exist.
      * @see https://redis.io/commands/move
      */
     bool
@@ -283,11 +286,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     move(Func &&func, const std::string &key, long long destination_db) {
-        return derived().template command<bool>(
-            std::forward<Func>(func),
-            "MOVE",
-            key,
-            destination_db);
+        return derived().template command<bool>(std::forward<Func>(func), "MOVE", key,
+                                                destination_db);
     }
 
     /**
@@ -305,7 +305,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     persist(Func &&func, const std::string &key) {
-        return derived().template command<bool>(std::forward<Func>(func), "PERSIST", key);
+        return derived().template command<bool>(std::forward<Func>(func), "PERSIST",
+                                                key);
     }
 
     /**
@@ -324,7 +325,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pexpire(Func &&func, const std::string &key, long long timeout) {
-        return derived().template command<bool>(std::forward<Func>(func), "PEXPIRE", key, timeout);
+        return derived().template command<bool>(std::forward<Func>(func), "PEXPIRE", key,
+                                                timeout);
     }
 
     /**
@@ -342,7 +344,8 @@ public:
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
-    pexpire(Func &&func, const std::string &key, const std::chrono::milliseconds &timeout) {
+    pexpire(Func &&func, const std::string &key,
+            const std::chrono::milliseconds &timeout) {
         return pexpire(std::forward<Func>(func), key, timeout.count());
     }
 
@@ -362,8 +365,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pexpireat(Func &&func, const std::string &key, long long timestamp) {
-        return derived()
-            .template command<bool>(std::forward<Func>(func), "PEXPIREAT", key, timestamp);
+        return derived().template command<bool>(std::forward<Func>(func), "PEXPIREAT",
+                                                key, timestamp);
     }
 
     /**
@@ -376,16 +379,16 @@ public:
      * @see https://redis.io/commands/pexpireat
      */
     bool
-    pexpireat(
-        const std::string &key,
-        const std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> &tp) {
+    pexpireat(const std::string                                        &key,
+              const std::chrono::time_point<std::chrono::system_clock,
+                                            std::chrono::milliseconds> &tp) {
         return pexpireat(key, tp.time_since_epoch().count());
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
-    pexpireat(
-        Func &&func, const std::string &key,
-        const std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> &tp) {
+    pexpireat(Func &&func, const std::string &key,
+              const std::chrono::time_point<std::chrono::system_clock,
+                                            std::chrono::milliseconds> &tp) {
         return pexpireat(std::forward<Func>(func), key, tp.time_since_epoch().count());
     }
 
@@ -402,25 +405,29 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     pttl(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "PTTL", key);
+        return derived().template command<long long>(std::forward<Func>(func), "PTTL",
+                                                     key);
     }
 
     /**
      * @brief Get a random key from current database.
      * @return A random key.
-     * @note If the database is empty, `randomkey` returns `OptionalString{}` (`std::nullopt`).
+     * @note If the database is empty, `randomkey` returns `OptionalString{}`
+     * (`std::nullopt`).
      * @see https://redis.io/commands/randomkey
      */
     std::optional<std::string>
     randomkey() {
-        return derived().template command<std::optional<std::string>>("RANDOMKEY").result();
+        return derived()
+            .template command<std::optional<std::string>>("RANDOMKEY")
+            .result();
     }
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
     randomkey(Func &&func) {
         return derived().template command<std::optional<std::string>>(
-            std::forward<Func>(func),
-            "RANDOMKEY");
+            std::forward<Func>(func), "RANDOMKEY");
     }
 
     /**
@@ -434,7 +441,7 @@ public:
     rename(const std::string &key, const std::string &new_key) {
         return derived().template command<status>("RENAME", key, new_key).result();
     }
-    
+
     /**
      * @brief Asynchronous version of rename
      *
@@ -447,7 +454,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     rename(Func &&func, const std::string &key, const std::string &new_key) {
-        return derived().template command<status>(std::forward<Func>(func), "RENAME", key, new_key);
+        return derived().template command<status>(std::forward<Func>(func), "RENAME",
+                                                  key, new_key);
     }
 
     /**
@@ -466,7 +474,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     renamenx(Func &&func, const std::string &key, const std::string &new_key) {
-        return derived().template command<bool>(std::forward<Func>(func), "RENAMENX", key, new_key);
+        return derived().template command<bool>(std::forward<Func>(func), "RENAMENX",
+                                                key, new_key);
     }
 
     /**
@@ -479,14 +488,17 @@ public:
      * @return status object with the result
      */
     status
-    restore(const std::string &key, const std::string &val, long long ttl, bool replace = false) {
+    restore(const std::string &key, const std::string &val, long long ttl,
+            bool replace = false) {
         std::vector<std::string> opt;
         if (replace) {
             opt = {"REPLACE"};
         }
-        return derived().template command<status>("RESTORE", key, ttl, val, opt).result();
+        return derived()
+            .template command<status>("RESTORE", key, ttl, val, opt)
+            .result();
     }
-    
+
     /**
      * @brief Asynchronous version of restore
      *
@@ -500,13 +512,14 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    restore(Func &&func, const std::string &key, const std::string &val, long long ttl, bool replace = false) {
+    restore(Func &&func, const std::string &key, const std::string &val, long long ttl,
+            bool replace = false) {
         std::vector<std::string> opt;
         if (replace) {
             opt = {"REPLACE"};
         }
-        return derived()
-            .template command<status>(std::forward<Func>(func), "RESTORE", key, ttl, val, opt);
+        return derived().template command<status>(std::forward<Func>(func), "RESTORE",
+                                                  key, ttl, val, opt);
     }
 
     /**
@@ -535,20 +548,16 @@ public:
     qb::redis::scan<>
     scan(long long cursor, const std::string &pattern = "*", long long count = 10) {
         return derived()
-            .template command<qb::redis::scan<>>("SCAN", cursor, "MATCH", pattern, "COUNT", count)
+            .template command<qb::redis::scan<>>("SCAN", cursor, "MATCH", pattern,
+                                                 "COUNT", count)
             .result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<>> &&>, Derived &>
-    scan(Func &&func, long long cursor, const std::string &pattern = "*", long long count = 10) {
+    scan(Func &&func, long long cursor, const std::string &pattern = "*",
+         long long count = 10) {
         return derived().template command<qb::redis::scan<>>(
-            std::forward<Func>(func),
-            "SCAN",
-            cursor,
-            "MATCH",
-            pattern,
-            "COUNT",
-            count);
+            std::forward<Func>(func), "SCAN", cursor, "MATCH", pattern, "COUNT", count);
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<>> &&>, Derived &>
@@ -568,15 +577,15 @@ public:
     template <typename... Keys>
     long long
     touch(Keys &&...keys) {
-        return derived().template command<long long>("TOUCH", std::forward<Keys>(keys)...).result();
+        return derived()
+            .template command<long long>("TOUCH", std::forward<Keys>(keys)...)
+            .result();
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     touch(Func &&func, Keys &&...keys) {
-        return derived().template command<long long>(
-            std::forward<Func>(func),
-            "TOUCH",
-            std::forward<Keys>(keys)...);
+        return derived().template command<long long>(std::forward<Func>(func), "TOUCH",
+                                                     std::forward<Keys>(keys)...);
     }
 
     /**
@@ -597,7 +606,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     ttl(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "TTL", key);
+        return derived().template command<long long>(std::forward<Func>(func), "TTL",
+                                                     key);
     }
 
     /**
@@ -613,7 +623,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     type(Func &&func, const std::string &key) {
-        return derived().template command<std::string>(std::forward<Func>(func), "TYPE", key);
+        return derived().template command<std::string>(std::forward<Func>(func), "TYPE",
+                                                       key);
     }
 
     /**
@@ -625,53 +636,63 @@ public:
     template <typename... Keys>
     long long
     unlink(Keys &&...keys) {
-        return derived().template command<long long>("UNLINK", std::forward<Keys>(keys)...).result();
+        return derived()
+            .template command<long long>("UNLINK", std::forward<Keys>(keys)...)
+            .result();
     }
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     unlink(Func &&func, Keys &&...keys) {
-        return derived().template command<long long>(
-            std::forward<Func>(func),
-            "UNLINK",
-            std::forward<Keys>(keys)...);
+        return derived().template command<long long>(std::forward<Func>(func), "UNLINK",
+                                                     std::forward<Keys>(keys)...);
     }
 
     /**
      * @brief Wait until previous write commands are successfully replicated to at
-     *        least the specified number of replicas or the given timeout has been reached.
+     *        least the specified number of replicas or the given timeout has been
+     * reached.
      * @param numslaves Number of replicas.
      * @param timeout Timeout in milliseconds. If timeout is 0ms, wait forever.
-     * @return Number of replicas that have been successfully replicated these write commands.
-     * @note The return value might be less than `numslaves`, because timeout has been reached.
+     * @return Number of replicas that have been successfully replicated these write
+     * commands.
+     * @note The return value might be less than `numslaves`, because timeout has been
+     * reached.
      * @see https://redis.io/commands/wait
      */
     long long
     wait(long long num_slaves, long long timeout) {
-        return derived().template command<long long>("WAIT", num_slaves, timeout).result();
+        return derived()
+            .template command<long long>("WAIT", num_slaves, timeout)
+            .result();
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     wait(Func &&func, long long num_slaves, long long timeout) {
-        return derived()
-            .template command<long long>(std::forward<Func>(func), "WAIT", num_slaves, timeout);
+        return derived().template command<long long>(std::forward<Func>(func), "WAIT",
+                                                     num_slaves, timeout);
     }
 
     /**
      * @brief Wait until previous write commands are successfully replicated to at
-     *        least the specified number of replicas or the given timeout has been reached.
+     *        least the specified number of replicas or the given timeout has been
+     * reached.
      * @param numslaves Number of replicas.
      * @param timeout Timeout in milliseconds. If timeout is 0ms, wait forever.
-     * @return Number of replicas that have been successfully replicated these write commands.
-     * @note The return value might be less than `numslaves`, because timeout has been reached.
+     * @return Number of replicas that have been successfully replicated these write
+     * commands.
+     * @note The return value might be less than `numslaves`, because timeout has been
+     * reached.
      * @see https://redis.io/commands/wait
      */
     long long
-    wait(long long num_slaves, const std::chrono::milliseconds &ttl = std::chrono::milliseconds{0}) {
+    wait(long long                        num_slaves,
+         const std::chrono::milliseconds &ttl = std::chrono::milliseconds{0}) {
         return wait(num_slaves, ttl.count());
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    wait(Func &&func, long long num_slaves, const std::chrono::milliseconds &ttl = std::chrono::milliseconds{0}) {
+    wait(Func &&func, long long num_slaves,
+         const std::chrono::milliseconds &ttl = std::chrono::milliseconds{0}) {
         return wait(std::forward<Func>(func), num_slaves, ttl.count());
     }
 };

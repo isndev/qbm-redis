@@ -15,6 +15,11 @@
 #         limitations under the License.
 #
 
+if (NOT QB_FOUND)
+    message(STATUS "qb project not found, skipping Redis module")
+    return()
+endif ()
+
 project(qbm-redis)
 
 set(DISABLE_TESTS ON)
