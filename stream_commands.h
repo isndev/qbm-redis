@@ -53,9 +53,13 @@ public:
      * @return The ID of the added entry as a stream_id
      */
     stream_id
-    xadd(const std::string &key, const std::vector<std::pair<std::string, std::string>> &entries,
-         const std::optional<std::string> &id = std::nullopt) {
-        std::string id_str = derived().template command<std::string>("XADD", key, id ? *id : "*", entries).result();
+    xadd(const std::string                                      &key,
+         const std::vector<std::pair<std::string, std::string>> &entries,
+         const std::optional<std::string>                       &id = std::nullopt) {
+        std::string id_str =
+            derived()
+                .template command<std::string>("XADD", key, id ? *id : "*", entries)
+                .result();
         return parse_stream_id(id_str);
     }
 
@@ -73,10 +77,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_id> &&>, Derived &>
     xadd(Func &&func, const std::string &key,
          const std::vector<std::pair<std::string, std::string>> &entries,
-         const std::optional<std::string> &id = std::nullopt) {
-        return derived().template command<stream_id>(
-            std::forward<Func>(func),
-            "XADD", key, id ? *id : "*", entries);
+         const std::optional<std::string>                       &id = std::nullopt) {
+        return derived().template command<stream_id>(std::forward<Func>(func), "XADD",
+                                                     key, id ? *id : "*", entries);
     }
 
     /**
@@ -88,11 +91,11 @@ public:
     static stream_id
     parse_stream_id(const std::string &id_str) {
         stream_id result{};
-        auto pos = id_str.find('-');
+        auto      pos = id_str.find('-');
         if (pos != std::string::npos) {
             try {
                 result.timestamp = std::stoll(id_str.substr(0, pos));
-                result.sequence = std::stoll(id_str.substr(pos + 1));
+                result.sequence  = std::stoll(id_str.substr(pos + 1));
             } catch (const std::exception &) {
                 // In case of parsing error, return default values
             }
@@ -125,7 +128,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xlen(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "XLEN", key);
+        return derived().template command<long long>(std::forward<Func>(func), "XLEN",
+                                                     key);
     }
 
     /**
@@ -140,7 +144,9 @@ public:
     template <typename... Ids>
     long long
     xdel(const std::string &key, Ids &&...ids) {
-        return derived().template command<long long>("XDEL", key, std::forward<Ids>(ids)...).result();
+        return derived()
+            .template command<long long>("XDEL", key, std::forward<Ids>(ids)...)
+            .result();
     }
 
     /**
@@ -156,7 +162,8 @@ public:
     template <typename Func, typename... Ids>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xdel(Func &&func, const std::string &key, Ids &&...ids) {
-        return derived().template command<long long>(std::forward<Func>(func), "XDEL", key, std::forward<Ids>(ids)...);
+        return derived().template command<long long>(std::forward<Func>(func), "XDEL",
+                                                     key, std::forward<Ids>(ids)...);
     }
 
     /**
@@ -172,8 +179,8 @@ public:
      * @return status object indicating success or failure
      */
     status
-    xgroup_create(const std::string &key, const std::string &group, const std::string &id,
-                 bool mkstream = false) {
+    xgroup_create(const std::string &key, const std::string &group,
+                  const std::string &id, bool mkstream = false) {
         std::vector<std::string> args;
         args.push_back("CREATE");
         args.push_back(key);
@@ -198,8 +205,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    xgroup_create(Func &&func, const std::string &key, const std::string &group, const std::string &id,
-                 bool mkstream = false) {
+    xgroup_create(Func &&func, const std::string &key, const std::string &group,
+                  const std::string &id, bool mkstream = false) {
         std::vector<std::string> args;
         args.push_back("CREATE");
         args.push_back(key);
@@ -208,7 +215,8 @@ public:
         if (mkstream) {
             args.push_back("MKSTREAM");
         }
-        return derived().template command<status>(std::forward<Func>(func), "XGROUP", args);
+        return derived().template command<status>(std::forward<Func>(func), "XGROUP",
+                                                  args);
     }
 
     /**
@@ -223,7 +231,9 @@ public:
      */
     long long
     xgroup_destroy(const std::string &key, const std::string &group) {
-        return derived().template command<long long>("XGROUP", "DESTROY", key, group).result();
+        return derived()
+            .template command<long long>("XGROUP", "DESTROY", key, group)
+            .result();
     }
 
     /**
@@ -238,7 +248,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xgroup_destroy(Func &&func, const std::string &key, const std::string &group) {
-        return derived().template command<long long>(std::forward<Func>(func), "XGROUP", "DESTROY", key, group);
+        return derived().template command<long long>(std::forward<Func>(func), "XGROUP",
+                                                     "DESTROY", key, group);
     }
 
     /**
@@ -253,7 +264,8 @@ public:
      * @return The number of pending messages that were deleted
      */
     long long
-    xgroup_delconsumer(const std::string &key, const std::string &group, const std::string &consumer) {
+    xgroup_delconsumer(const std::string &key, const std::string &group,
+                       const std::string &consumer) {
         return derived()
             .template command<long long>("XGROUP", "DELCONSUMER", key, group, consumer)
             .result();
@@ -272,7 +284,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xgroup_delconsumer(Func &&func, const std::string &key, const std::string &group,
-                      const std::string &consumer) {
+                       const std::string &consumer) {
         return derived().template command<long long>(
             std::forward<Func>(func), "XGROUP", "DELCONSUMER", key, group, consumer);
     }
@@ -356,7 +368,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    xtrim(Func &&func, const std::string &key, long long maxlen, bool approximate = false) {
+    xtrim(Func &&func, const std::string &key, long long maxlen,
+          bool approximate = false) {
         std::vector<std::string> args;
         args.push_back(key);
         if (approximate) {
@@ -367,7 +380,8 @@ public:
             args.push_back("=");
         }
         args.push_back(std::to_string(maxlen));
-        return derived().template command<long long>(std::forward<Func>(func), "XTRIM", args);
+        return derived().template command<long long>(std::forward<Func>(func), "XTRIM",
+                                                     args);
     }
 
     /**
@@ -388,9 +402,9 @@ public:
         args.push_back(key);
         args.push_back(group);
         if (consumer) {
-            args.push_back("-");  // start
-            args.push_back("+");  // end
-            args.push_back("1");  // count
+            args.push_back("-"); // start
+            args.push_back("+"); // end
+            args.push_back("1"); // count
             args.push_back(*consumer);
         }
         return derived().template command<long long>("XPENDING", args).result();
@@ -414,12 +428,13 @@ public:
         args.push_back(key);
         args.push_back(group);
         if (consumer) {
-            args.push_back("-");  // start
-            args.push_back("+");  // end
-            args.push_back("1");  // count
+            args.push_back("-"); // start
+            args.push_back("+"); // end
+            args.push_back("1"); // count
             args.push_back(*consumer);
         }
-        return derived().template command<long long>(std::forward<Func>(func), "XPENDING", args);
+        return derived().template command<long long>(std::forward<Func>(func),
+                                                     "XPENDING", args);
     }
 
     /**
@@ -434,15 +449,19 @@ public:
      * @return Vector of stream entries, or nullopt if no messages available
      */
     map_stream_entry_list
-    xreadgroup(const std::string &key, const std::string &group, const std::string &consumer,
-               const std::string &id, std::optional<long long> count = std::nullopt,
+    xreadgroup(const std::string &key, const std::string &group,
+               const std::string &consumer, const std::string &id,
+               std::optional<long long> count = std::nullopt,
                std::optional<long long> block = std::nullopt) {
         std::vector<std::string> args = {"GROUP", group, consumer};
         if (count)
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        return derived().template command<map_stream_entry_list>("XREADGROUP", args, "STREAMS", key, id).result();
+        return derived()
+            .template command<map_stream_entry_list>("XREADGROUP", args, "STREAMS", key,
+                                                     id)
+            .result();
     }
 
     /**
@@ -459,9 +478,11 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>, Derived &>
-    xreadgroup(Func &&func, const std::string &key, const std::string &group, const std::string &consumer,
-               const std::string &id, std::optional<long long> count = std::nullopt,
+    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>,
+                     Derived &>
+    xreadgroup(Func &&func, const std::string &key, const std::string &group,
+               const std::string &consumer, const std::string &id,
+               std::optional<long long> count = std::nullopt,
                std::optional<long long> block = std::nullopt) {
         std::vector<std::string> args = {"GROUP", group, consumer};
         if (count)
@@ -484,21 +505,25 @@ public:
      * @return Map of stream entries by key, or nullopt if no messages available
      */
     map_stream_entry_list
-    xreadgroup(const std::vector<std::string> &keys, const std::string &group, const std::string &consumer,
-               const std::vector<std::string> &ids, std::optional<long long> count = std::nullopt,
+    xreadgroup(const std::vector<std::string> &keys, const std::string &group,
+               const std::string &consumer, const std::vector<std::string> &ids,
+               std::optional<long long> count = std::nullopt,
                std::optional<long long> block = std::nullopt) {
         if (keys.empty() || keys.size() != ids.size()) {
-            throw std::invalid_argument("Keys and IDs must be non-empty and have the same size");
+            throw std::invalid_argument(
+                "Keys and IDs must be non-empty and have the same size");
         }
-        
+
         std::vector<std::string> args = {"GROUP", group, consumer};
         if (count)
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        
-        return derived().template command<map_stream_entry_list>(
-            "XREADGROUP", args, "STREAMS", keys, ids).result();
+
+        return derived()
+            .template command<map_stream_entry_list>("XREADGROUP", args, "STREAMS", keys,
+                                                     ids)
+            .result();
     }
 
     /**
@@ -515,21 +540,24 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>, Derived &>
-    xreadgroup(Func &&func, const std::vector<std::string> &keys, const std::string &group,
-               const std::string &consumer, const std::vector<std::string> &ids,
-               std::optional<long long> count = std::nullopt,
-               std::optional<long long> block = std::nullopt) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>,
+                     Derived &>
+    xreadgroup(Func &&func, const std::vector<std::string> &keys,
+               const std::string &group, const std::string &consumer,
+               const std::vector<std::string> &ids,
+               std::optional<long long>        count = std::nullopt,
+               std::optional<long long>        block = std::nullopt) {
         if (keys.empty() || keys.size() != ids.size()) {
-            throw std::invalid_argument("Keys and IDs must be non-empty and have the same size");
+            throw std::invalid_argument(
+                "Keys and IDs must be non-empty and have the same size");
         }
-        
+
         std::vector<std::string> args = {"GROUP", group, consumer};
         if (count)
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        
+
         return derived().template command<map_stream_entry_list>(
             std::forward<Func>(func), "XREADGROUP", args, "STREAMS", keys, ids);
     }
@@ -552,9 +580,10 @@ public:
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        
-        return derived().template command<map_stream_entry_list>(
-            "XREAD", args, "STREAMS", key, id).result();
+
+        return derived()
+            .template command<map_stream_entry_list>("XREAD", args, "STREAMS", key, id)
+            .result();
     }
 
     /**
@@ -569,7 +598,8 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>,
+                     Derived &>
     xread(Func &&func, const std::string &key, const std::string &id,
           std::optional<long long> count = std::nullopt,
           std::optional<long long> block = std::nullopt) {
@@ -578,7 +608,7 @@ public:
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        
+
         return derived().template command<map_stream_entry_list>(
             std::forward<Func>(func), "XREAD", args, "STREAMS", key, id);
     }
@@ -597,17 +627,19 @@ public:
           std::optional<long long> count = std::nullopt,
           std::optional<long long> block = std::nullopt) {
         if (keys.empty() || keys.size() != ids.size()) {
-            throw std::invalid_argument("Keys and IDs must be non-empty and have the same size");
+            throw std::invalid_argument(
+                "Keys and IDs must be non-empty and have the same size");
         }
-        
+
         std::vector<std::string> args;
         if (count)
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        
-        return derived().template command<map_stream_entry_list>(
-            "XREAD", args, "STREAMS", keys, ids).result();
+
+        return derived()
+            .template command<map_stream_entry_list>("XREAD", args, "STREAMS", keys, ids)
+            .result();
     }
 
     /**
@@ -622,20 +654,23 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>, Derived &>
-    xread(Func &&func, const std::vector<std::string> &keys, const std::vector<std::string> &ids,
-          std::optional<long long> count = std::nullopt,
-          std::optional<long long> block = std::nullopt) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>,
+                     Derived &>
+    xread(Func &&func, const std::vector<std::string> &keys,
+          const std::vector<std::string> &ids,
+          std::optional<long long>        count = std::nullopt,
+          std::optional<long long>        block = std::nullopt) {
         if (keys.empty() || keys.size() != ids.size()) {
-            throw std::invalid_argument("Keys and IDs must be non-empty and have the same size");
+            throw std::invalid_argument(
+                "Keys and IDs must be non-empty and have the same size");
         }
-        
+
         std::vector<std::string> args;
         if (count)
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        
+
         return derived().template command<map_stream_entry_list>(
             std::forward<Func>(func), "XREAD", args, "STREAMS", keys, ids);
     }
@@ -643,4 +678,4 @@ public:
 
 } // namespace qb::redis
 
-#endif // QBM_REDIS_STREAM_COMMANDS_H 
+#endif // QBM_REDIS_STREAM_COMMANDS_H

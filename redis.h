@@ -57,6 +57,7 @@ class redis final : public qb::io::async::AProtocol<IO_> {
     derived() {
         return static_cast<IO_ &>(*this);
     }
+
 public:
     /**
      * @struct message
@@ -71,7 +72,7 @@ private:
 
 public:
     redis() = delete;
-    
+
     /**
      * @brief Constructs a Redis protocol handler
      * @param io The I/O object to use for communication
@@ -93,7 +94,8 @@ public:
      */
     std::size_t
     getMessageSize() noexcept final {
-        if (qb__unlikely(redisReaderFeed(reader_, this->_io.in().begin(), this->_io.in().size()) != REDIS_OK)) {
+        if (qb__unlikely(redisReaderFeed(reader_, this->_io.in().begin(),
+                                         this->_io.in().size()) != REDIS_OK)) {
             this->not_ok();
             return 0;
         }
@@ -110,7 +112,8 @@ public:
             return;
 
         message msg;
-        while (redisReaderGetReply(reader_, reinterpret_cast<void **>(&msg.reply)) == REDIS_OK &&
+        while (redisReaderGetReply(reader_, reinterpret_cast<void **>(&msg.reply)) ==
+                   REDIS_OK &&
                msg.reply != nullptr) {
             this->_io.on(msg);
         }
@@ -135,22 +138,25 @@ using namespace qb::io;
 /**
  * @class connector
  * @brief Base class for Redis client connections
- * 
+ *
  * Provides connection functionality for Redis clients, handling
  * the connection lifecycle and protocol switching.
- * 
+ *
  * @tparam QB_IO_ The QB I/O type to use
  * @tparam Derived The derived class (CRTP pattern)
  */
 template <typename QB_IO_, typename Derived>
-class connector : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, QB_IO_, void> {
-    friend class has_method_on<connector<QB_IO_, Derived>, void, qb::io::async::event::disconnected>;
+class connector
+    : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, QB_IO_, void> {
+    friend class has_method_on<connector<QB_IO_, Derived>, void,
+                               qb::io::async::event::disconnected>;
     friend class qb::io::async::io<connector<QB_IO_, Derived>>;
     friend class qb::protocol::redis<connector<QB_IO_, Derived>>;
     constexpr Derived &
     derived() {
         return static_cast<Derived &>(*this);
     }
+
 public:
     using redis_protocol = qb::protocol::redis<connector<QB_IO_, Derived>>;
 
@@ -190,7 +196,7 @@ private:
 
 protected:
     connector() = default;
-    
+
     /**
      * @brief Constructs a connector with the specified URI
      * @param uri The Redis server URI
@@ -233,7 +239,7 @@ public:
     connect(qb::io::uri uri, typename QB_IO_::transport_io_type &&raw_io) {
         if (this->transport().is_open())
             return false;
-        _uri = std::move(uri);
+        _uri              = std::move(uri);
         this->transport() = std::move(raw_io);
         start_async();
 
@@ -286,11 +292,11 @@ public:
 /**
  * @class Redis
  * @brief Main Redis client implementation
- * 
+ *
  * Implements a Redis client with support for all Redis commands.
  * This class inherits from all command trait classes to provide
  * the complete Redis API.
- * 
+ *
  * @tparam QB_IO_ The QB I/O type to use
  */
 template <typename QB_IO_>
@@ -360,7 +366,7 @@ public:
      * @brief Default constructor
      */
     Redis() = default;
-    
+
     /**
      * @brief Constructs a Redis client with the specified URI
      * @param uri The Redis server URI
@@ -370,7 +376,7 @@ public:
 
     /**
      * @brief Sends a command to Redis asynchronously
-     * 
+     *
      * @tparam Ret Return type of the command
      * @tparam Func Callback function type
      * @tparam Args Command argument types
@@ -389,7 +395,7 @@ public:
 
     /**
      * @brief Sends a command to Redis synchronously
-     * 
+     *
      * @tparam Ret Return type of the command
      * @tparam Args Command argument types
      * @param name Command name
@@ -401,9 +407,7 @@ public:
     command(std::string const &name, Args &&...args) {
         Reply<Ret> value{};
 
-        auto func = [&value](auto &&reply) {
-            value = std::forward<Reply<Ret>>(reply);
-        };
+        auto func = [&value](auto &&reply) { value = std::forward<Reply<Ret>>(reply); };
 
         command<Ret>(func, name, std::forward<Args>(args)...);
         await();
@@ -416,18 +420,18 @@ public:
 
     /**
      * @brief Waits for the completion of a command
-     * 
+     *
      * This method sends a PING command and waits until a response is received,
      * ensuring that all previous commands have been processed.
-     * 
+     *
      * @return Reference to this Redis client for chaining
      */
     Redis &
     await() {
-//        bool wait = true;
-//        this->ping([&wait](auto &&) {
-//            wait = false;
-//        });
+        //        bool wait = true;
+        //        this->ping([&wait](auto &&) {
+        //            wait = false;
+        //        });
         do {
             qb::io::async::run(EVRUN_NOWAIT);
         } while (!_replies.empty());
@@ -438,11 +442,11 @@ public:
 /**
  * @class RedisConsumer
  * @brief Redis client specialized for subscription operations
- * 
+ *
  * This class implements a Redis client optimized for Pub/Sub operations,
  * providing support for subscribing to channels and handling incoming
  * messages asynchronously.
- * 
+ *
  * @tparam QB_IO_ The I/O type to use
  * @tparam Derived The derived class type (CRTP pattern)
  */
@@ -458,16 +462,26 @@ class RedisConsumer
     derived() {
         return static_cast<Derived &>(*this);
     }
+
 public:
-    using redis_protocol = typename connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>::redis_protocol;
+    using redis_protocol =
+        typename connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>::redis_protocol;
 
 private:
     /**
      * @enum MsgType
      * @brief Types of messages that can be received in Pub/Sub mode
      */
-    enum class MsgType { SUBSCRIBE, UNSUBSCRIBE, PSUBSCRIBE, PUNSUBSCRIBE, MESSAGE, PMESSAGE, UNKNOWN };
-    
+    enum class MsgType {
+        SUBSCRIBE,
+        UNSUBSCRIBE,
+        PSUBSCRIBE,
+        PUNSUBSCRIBE,
+        MESSAGE,
+        PMESSAGE,
+        UNKNOWN
+    };
+
     /**
      * @brief Determines the type of a Pub/Sub message
      * @param type String representation of the message type
@@ -503,7 +517,7 @@ private:
 
     /**
      * @brief Sends a command to Redis asynchronously
-     * 
+     *
      * @tparam Ret Return type of the command
      * @tparam Func Callback function type
      * @tparam Args Command argument types
@@ -522,7 +536,7 @@ private:
 
     /**
      * @brief Sends a command to Redis synchronously
-     * 
+     *
      * @tparam Ret Return type of the command
      * @tparam Args Command argument types
      * @param name Command name
@@ -534,9 +548,7 @@ private:
     command(std::string const &name, Args &&...args) {
         Reply<Ret> value{};
 
-        auto func = [&value](auto &&reply) {
-            value = std::forward<Reply<Ret>>(reply);
-        };
+        auto func = [&value](auto &&reply) { value = std::forward<Reply<Ret>>(reply); };
 
         command<Ret>(func, name, std::forward<Args>(args)...).await();
 
@@ -552,25 +564,27 @@ private:
         try {
             auto &raw = *msg.reply;
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-            if (!(qb::redis::is_array(*msg.reply) || qb::redis::is_push(*msg.reply)) || msg.reply->elements < 1 ||
-                msg.reply->element == nullptr) {
+            if (!(qb::redis::is_array(*msg.reply) || qb::redis::is_push(*msg.reply)) ||
+                msg.reply->elements < 1 || msg.reply->element == nullptr) {
 #else
-            if (qb::redis::is_array(*msg.reply) && msg.reply->elements > 0 && msg.reply->element) {
+            if (qb::redis::is_array(*msg.reply) && msg.reply->elements > 0 &&
+                msg.reply->element) {
 #endif
-                auto type = msg_type(qb::redis::parse<std::string_view>(*raw.element[0]));
+                auto type =
+                    msg_type(qb::redis::parse<std::string_view>(*raw.element[0]));
                 switch (type) {
-                case MsgType::MESSAGE:
-                    derived().on(qb::redis::parse<qb::redis::message>(raw));
-                    return;
-                case MsgType::PMESSAGE:
-                    derived().on(qb::redis::parse<qb::redis::pmessage>(raw));
-                    return;
-                case MsgType::SUBSCRIBE:
-                case MsgType::UNSUBSCRIBE:
-                case MsgType::PSUBSCRIBE:
-                case MsgType::PUNSUBSCRIBE:
-                default:
-                    break;
+                    case MsgType::MESSAGE:
+                        derived().on(qb::redis::parse<qb::redis::message>(raw));
+                        return;
+                    case MsgType::PMESSAGE:
+                        derived().on(qb::redis::parse<qb::redis::pmessage>(raw));
+                        return;
+                    case MsgType::SUBSCRIBE:
+                    case MsgType::UNSUBSCRIBE:
+                    case MsgType::PSUBSCRIBE:
+                    case MsgType::PUNSUBSCRIBE:
+                    default:
+                        break;
                 }
             }
             if (!_replies.empty()) {
@@ -578,7 +592,8 @@ private:
                 try {
                     reply(&raw);
                 } catch (std::exception const &e) {
-                    LOG_WARN("[qbm][redis] consumer failed to consume message -> " << e.what());
+                    LOG_WARN("[qbm][redis] consumer failed to consume message -> "
+                             << e.what());
                 }
                 delete &reply;
                 _replies.pop();
@@ -599,7 +614,8 @@ private:
         while (!_replies.empty()) {
             on(typename redis_protocol::message{nullptr});
         }
-        if constexpr (has_method_on<Derived, void, qb::io::async::event::disconnected>::value)
+        if constexpr (has_method_on<Derived, void,
+                                    qb::io::async::event::disconnected>::value)
             derived().on(std::forward<qb::io::async::event::disconnected>(e));
     }
 
@@ -619,7 +635,7 @@ public:
      * @brief Default constructor
      */
     RedisConsumer() = default;
-    
+
     /**
      * @brief Constructs a RedisConsumer with the specified URI
      * @param uri The Redis server URI
@@ -629,20 +645,20 @@ public:
 
     /**
      * @brief Waits for pending operations to complete
-     * 
+     *
      * This method sends a PING command and waits until a response is received,
      * processing any messages that arrive in the meantime.
-     * 
+     *
      * @return Reference to the derived class for chaining
      */
     Derived &
     await() {
-//        bool wait = true;
-//        this->ping([&wait](auto &&) {
-//            wait = false;
-//        });
-//        while (wait)
-//            qb::io::async::run(EVRUN_NOWAIT);
+        //        bool wait = true;
+        //        this->ping([&wait](auto &&) {
+        //            wait = false;
+        //        });
+        //        while (wait)
+        //            qb::io::async::run(EVRUN_NOWAIT);
 
         do {
             qb::io::async::run(EVRUN_NOWAIT);
@@ -656,25 +672,27 @@ public:
 /**
  * @class RedisCallbackConsumer
  * @brief Redis consumer with callback-based message handling
- * 
+ *
  * This class extends RedisConsumer to provide a simpler callback-based interface
  * for handling Redis Pub/Sub messages, errors, and disconnection events.
  * Instead of subclassing, users can provide callback functions to handle
  * different event types.
- * 
+ *
  * @tparam QB_IO_ The I/O type to use
  */
 template <typename QB_IO_>
-class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
+class RedisCallbackConsumer
+    : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
     friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::redis::error>;
-    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::io::async::event::disconnected>;
+    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void,
+                               qb::io::async::event::disconnected>;
     friend RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>;
-    using cb_msg_t = std::function<void(qb::redis::message &&)>;
-    using cb_err_t = std::function<void(qb::redis::error &&)>;
+    using cb_msg_t  = std::function<void(qb::redis::message &&)>;
+    using cb_err_t  = std::function<void(qb::redis::error &&)>;
     using cb_disc_t = std::function<void(qb::io::async::event::disconnected &&)>;
 
-    cb_msg_t _on_message;
-    cb_err_t _on_error;
+    cb_msg_t  _on_message;
+    cb_err_t  _on_error;
     cb_disc_t _on_disconnected;
 
     /**
@@ -707,14 +725,15 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
 public:
     /**
      * @brief Constructs a RedisCallbackConsumer with optional callbacks
-     * 
+     *
      * @param uri The Redis server URI
      * @param on_message Callback for handling messages
      * @param on_error Callback for handling errors
      * @param on_disconnected Callback for handling disconnection events
      */
     explicit RedisCallbackConsumer(
-        qb::io::uri uri = {}, cb_msg_t &&on_message = [](auto &&) {}, cb_err_t &&on_error = [](auto &&) {},
+        qb::io::uri uri = {}, cb_msg_t &&on_message = [](auto &&) {},
+        cb_err_t  &&on_error        = [](auto &&) {},
         cb_disc_t &&on_disconnected = [](auto &&) {})
         : RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>(uri)
         , _on_message(std::forward<cb_msg_t>(on_message))
@@ -723,7 +742,7 @@ public:
 
     /**
      * @brief Sets the callback for handling messages
-     * 
+     *
      * @param cb The message callback function
      * @return Reference to this consumer for chaining
      */
@@ -735,7 +754,7 @@ public:
 
     /**
      * @brief Sets the callback for handling errors
-     * 
+     *
      * @param cb The error callback function
      * @return Reference to this consumer for chaining
      */
@@ -747,7 +766,7 @@ public:
 
     /**
      * @brief Sets the callback for handling disconnection events
-     * 
+     *
      * @param cb The disconnection callback function
      * @return Reference to this consumer for chaining
      */
@@ -762,7 +781,7 @@ public:
 
 /**
  * @brief Alias for Redis database client with custom I/O type
- * 
+ *
  * @tparam QB_IO_ The I/O type to use for the Redis client
  */
 template <typename QB_IO_>
@@ -771,7 +790,7 @@ using database = detail::Redis<QB_IO_>;
 /**
  * @struct tcp
  * @brief Namespace providing TCP-based Redis client and consumer types
- * 
+ *
  * This namespace contains typedefs for common Redis client and consumer
  * types that use TCP as the transport layer.
  */
@@ -780,15 +799,15 @@ struct tcp {
      * @brief TCP-based Redis client
      */
     using client = detail::Redis<qb::io::transport::tcp>;
-    
+
     /**
      * @brief TCP-based Redis consumer template
-     * 
+     *
      * @tparam Derived The derived class type for CRTP
      */
     template <typename Derived>
     using consumer = detail::RedisConsumer<qb::io::transport::tcp, Derived>;
-    
+
     /**
      * @brief TCP-based Redis callback consumer
      */
@@ -797,7 +816,7 @@ struct tcp {
     /**
      * @struct ssl
      * @brief Namespace providing SSL/TLS-secured Redis client and consumer types
-     * 
+     *
      * This namespace contains typedefs for Redis client and consumer types
      * that use SSL/TLS-secured TCP as the transport layer.
      */
@@ -806,15 +825,15 @@ struct tcp {
          * @brief SSL-secured Redis client
          */
         using client = detail::Redis<qb::io::transport::stcp>;
-        
+
         /**
          * @brief SSL-secured Redis consumer template
-         * 
+         *
          * @tparam Derived The derived class type for CRTP
          */
         template <typename Derived>
         using consumer = detail::RedisConsumer<qb::io::transport::stcp, Derived>;
-        
+
         /**
          * @brief SSL-secured Redis callback consumer
          */
@@ -825,7 +844,7 @@ struct tcp {
 
 /**
  * @brief No-operation callback function
- * 
+ *
  * A convenience function that does nothing, useful for optional callback parameters
  * when no action is needed.
  */

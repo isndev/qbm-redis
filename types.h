@@ -54,7 +54,7 @@ using reply_ptr = std::unique_ptr<redisReply, ReplyDeleter>;
 /**
  * @enum UpdateType
  * @brief Specifies update behavior for key-value operations
- * 
+ *
  * Used with SET-like operations to control when keys should be updated.
  */
 enum class UpdateType { EXIST, NOT_EXIST, ALWAYS };
@@ -62,7 +62,7 @@ enum class UpdateType { EXIST, NOT_EXIST, ALWAYS };
 /**
  * @enum InsertPosition
  * @brief Specifies insertion position for list operations
- * 
+ *
  * Used with list operations to specify whether to insert before or after a pivot.
  */
 enum class InsertPosition { BEFORE, AFTER };
@@ -70,7 +70,7 @@ enum class InsertPosition { BEFORE, AFTER };
 /**
  * @enum ListPosition
  * @brief Specifies position in a list
- * 
+ *
  * Used with list operations to specify whether to insert before or after a pivot.
  */
 enum class ListPosition { LEFT, RIGHT };
@@ -78,7 +78,7 @@ enum class ListPosition { LEFT, RIGHT };
 /**
  * @enum BoundType
  * @brief Specifies boundary type for interval operations
- * 
+ *
  * Controls whether interval boundaries are inclusive or exclusive.
  */
 enum class BoundType { CLOSED, OPEN, LEFT_OPEN, RIGHT_OPEN };
@@ -86,9 +86,9 @@ enum class BoundType { CLOSED, OPEN, LEFT_OPEN, RIGHT_OPEN };
 /**
  * @class UnboundedInterval
  * @brief Represents an unbounded interval (-inf, +inf)
- * 
+ *
  * Used for range queries with no bounds in either direction.
- * 
+ *
  * @tparam T Type of the interval values
  */
 template <typename T>
@@ -97,9 +97,9 @@ class UnboundedInterval;
 /**
  * @class BoundedInterval
  * @brief Represents a bounded interval [min, max], (min, max), (min, max], or [min, max)
- * 
+ *
  * Used for range queries with both lower and upper bounds.
- * 
+ *
  * @tparam T Type of the interval values
  */
 template <typename T>
@@ -108,9 +108,9 @@ class BoundedInterval;
 /**
  * @class LeftBoundedInterval
  * @brief Represents a left-bounded interval [min, +inf) or (min, +inf)
- * 
+ *
  * Used for range queries with only a lower bound.
- * 
+ *
  * @tparam T Type of the interval values
  */
 template <typename T>
@@ -119,9 +119,9 @@ class LeftBoundedInterval;
 /**
  * @class RightBoundedInterval
  * @brief Represents a right-bounded interval (-inf, max] or (-inf, max)
- * 
+ *
  * Used for range queries with only an upper bound.
- * 
+ *
  * @tparam T Type of the interval values
  */
 template <typename T>
@@ -187,7 +187,7 @@ class RightBoundedInterval<double> {
 public:
     /**
      * @brief Constructs a right-bounded interval with a maximum value
-     * 
+     *
      * @param max Maximum value for the interval
      * @param type Boundary type (open or closed)
      */
@@ -198,7 +198,7 @@ public:
      * @return String representation of the lower bound (-inf)
      */
     [[nodiscard]] const std::string &lower() const;
-    
+
     /**
      * @brief Gets the upper bound string representation
      * @return String representation of the upper bound
@@ -220,7 +220,7 @@ public:
      * @return String representation of the lower bound (-inf)
      */
     [[nodiscard]] const std::string &lower() const;
-    
+
     /**
      * @brief Gets the upper bound string representation
      * @return String representation of the upper bound (+inf)
@@ -233,13 +233,13 @@ class BoundedInterval<std::string> {
 public:
     /**
      * @brief Constructs a bounded interval with minimum and maximum values
-     * 
+     *
      * @param min Minimum value for the interval
      * @param max Maximum value for the interval
      * @param type Boundary type (open, closed, or partially open)
      */
     BoundedInterval(const std::string &min, const std::string &max, BoundType type);
-    
+
     /**
      * @brief Gets the lower bound string representation
      * @return String representation of the lower bound
@@ -248,7 +248,7 @@ public:
     lower() const {
         return _min;
     }
-    
+
     /**
      * @brief Gets the upper bound string representation
      * @return String representation of the upper bound
@@ -268,12 +268,12 @@ class LeftBoundedInterval<std::string> {
 public:
     /**
      * @brief Constructs a left-bounded interval with a minimum value
-     * 
+     *
      * @param min Minimum value for the interval
      * @param type Boundary type (open or closed)
      */
     LeftBoundedInterval(const std::string &min, BoundType type);
-    
+
     /**
      * @brief Gets the lower bound string representation
      * @return String representation of the lower bound
@@ -282,7 +282,7 @@ public:
     lower() const {
         return _min;
     }
-    
+
     /**
      * @brief Gets the upper bound string representation
      * @return String representation of the upper bound (+inf)
@@ -298,18 +298,18 @@ class RightBoundedInterval<std::string> {
 public:
     /**
      * @brief Constructs a right-bounded interval with a maximum value
-     * 
+     *
      * @param max Maximum value for the interval
      * @param type Boundary type (open or closed)
      */
     RightBoundedInterval(const std::string &max, BoundType type);
-    
+
     /**
      * @brief Gets the lower bound string representation
      * @return String representation of the lower bound (-inf)
      */
     [[nodiscard]] const std::string &lower() const;
-    
+
     /**
      * @brief Gets the upper bound string representation
      * @return String representation of the upper bound
@@ -326,12 +326,12 @@ private:
 /**
  * @struct LimitOptions
  * @brief Options for limiting query results
- * 
+ *
  * Used with Redis commands that support limiting the number of returned items.
  */
 struct LimitOptions {
     long long offset = 0;  ///< Starting offset for results
-    long long count = -1;  ///< Number of items to return (-1 for unlimited)
+    long long count  = -1; ///< Number of items to return (-1 for unlimited)
 };
 
 /**
@@ -366,11 +366,13 @@ struct geo_pos {
     double longitude{};
     double latitude{};
 
-    bool operator==(const geo_pos& other) const {
+    bool
+    operator==(const geo_pos &other) const {
         return longitude == other.longitude && latitude == other.latitude;
     }
 
-    bool operator!=(const geo_pos& other) const {
+    bool
+    operator!=(const geo_pos &other) const {
         return !(*this == other);
     }
 };
@@ -381,7 +383,7 @@ struct geo_pos {
  */
 struct geo_distance {
     std::string member;
-    double distance{};
+    double      distance{};
 };
 
 /**
@@ -392,21 +394,25 @@ struct stream_id {
     long long timestamp{};
     long long sequence{};
 
-    std::string to_string() const {
+    std::string
+    to_string() const {
         return std::to_string(timestamp) + "-" + std::to_string(sequence);
     }
 
-    bool operator==(const stream_id& other) const {
+    bool
+    operator==(const stream_id &other) const {
         return timestamp == other.timestamp && sequence == other.sequence;
     }
 
-    bool operator!=(const stream_id& other) const {
+    bool
+    operator!=(const stream_id &other) const {
         return !(*this == other);
     }
 
-    bool operator<(const stream_id& other) const {
+    bool
+    operator<(const stream_id &other) const {
         return timestamp < other.timestamp ||
-              (timestamp == other.timestamp && sequence < other.sequence);
+               (timestamp == other.timestamp && sequence < other.sequence);
     }
 };
 
@@ -415,11 +421,11 @@ struct stream_id {
  * @brief Container for Redis Stream entry
  */
 struct stream_entry {
-    stream_id id;
+    stream_id                                   id;
     qb::unordered_map<std::string, std::string> fields;
 };
 
-using stream_entry_list = std::vector<stream_entry>;
+using stream_entry_list     = std::vector<stream_entry>;
 using map_stream_entry_list = qb::unordered_map<std::string, stream_entry_list>;
 
 /**
@@ -428,12 +434,14 @@ using map_stream_entry_list = qb::unordered_map<std::string, stream_entry_list>;
  */
 struct score {
     double value{};
-    
-    bool operator==(const score& other) const {
+
+    bool
+    operator==(const score &other) const {
         return value == other.value;
     }
-    
-    bool operator<(const score& other) const {
+
+    bool
+    operator<(const score &other) const {
         return value < other.value;
     }
 };
@@ -443,10 +451,11 @@ struct score {
  * @brief Container for a Redis sorted set member with its score
  */
 struct score_member {
-    double score{};
+    double      score{};
     std::string member;
-    
-    bool operator==(const score_member& other) const {
+
+    bool
+    operator==(const score_member &other) const {
         return score == other.score && member == other.member;
     }
 };
@@ -456,7 +465,7 @@ struct score_member {
  * @brief Container for Redis search results
  */
 struct search_result {
-    std::string key;
+    std::string              key;
     std::vector<std::string> fields;
     std::vector<std::string> values;
 };
@@ -466,15 +475,15 @@ struct search_result {
  * @brief Container for Redis cluster node information
  */
 struct cluster_node {
-    std::string id;
-    std::string ip;
-    int port{};
+    std::string              id;
+    std::string              ip;
+    int                      port{};
     std::vector<std::string> flags;
-    std::string master;
-    long long ping_sent{};
-    long long pong_received{};
-    int epoch{};
-    std::string link_state;
+    std::string              master;
+    long long                ping_sent{};
+    long long                pong_received{};
+    int                      epoch{};
+    std::string              link_state;
     std::vector<std::string> slots;
 };
 
@@ -508,7 +517,7 @@ struct memory_info {
  */
 struct pipeline_result {
     std::vector<reply_ptr> replies;
-    bool all_succeeded{true};
+    bool                   all_succeeded{true};
 };
 
 /**
@@ -517,23 +526,36 @@ struct pipeline_result {
  */
 struct json_value {
     enum class Type { Null, Boolean, Number, String, Array, Object };
-    
+
     Type type{Type::Null};
-    std::variant<
-        std::nullptr_t,
-        bool,
-        double,
-        std::string,
-        std::vector<json_value>,
-        qb::unordered_map<std::string, json_value>
-    > data{nullptr};
-    
-    bool is_null() const { return type == Type::Null; }
-    bool is_bool() const { return type == Type::Boolean; }
-    bool is_number() const { return type == Type::Number; }
-    bool is_string() const { return type == Type::String; }
-    bool is_array() const { return type == Type::Array; }
-    bool is_object() const { return type == Type::Object; }
+    std::variant<std::nullptr_t, bool, double, std::string, std::vector<json_value>,
+                 qb::unordered_map<std::string, json_value>>
+        data{nullptr};
+
+    bool
+    is_null() const {
+        return type == Type::Null;
+    }
+    bool
+    is_bool() const {
+        return type == Type::Boolean;
+    }
+    bool
+    is_number() const {
+        return type == Type::Number;
+    }
+    bool
+    is_string() const {
+        return type == Type::String;
+    }
+    bool
+    is_array() const {
+        return type == Type::Array;
+    }
+    bool
+    is_object() const {
+        return type == Type::Object;
+    }
 };
 
 /**
@@ -544,7 +566,7 @@ struct message {
     std::string_view pattern;
     std::string_view channel;
     std::string_view message;
-    reply_ptr raw;
+    reply_ptr        raw;
 };
 
 /**
@@ -559,7 +581,7 @@ struct pmessage : public message {};
  */
 struct subscription {
     std::optional<std::string> channel;
-    long long num{};
+    long long                  num{};
 };
 
 /**
@@ -575,21 +597,23 @@ public:
      * @brief Default constructor
      */
     status() = default;
-    
+
     /**
      * @brief Constructor from string
      * @param str The status string
      */
-    explicit status(std::string str) : _str(std::move(str)) {}
-    
+    explicit status(std::string str)
+        : _str(std::move(str)) {}
+
     /**
      * @brief Get the status string
      * @return The status string
      */
-    [[nodiscard]] const std::string& str() const {
+    [[nodiscard]] const std::string &
+    str() const {
         return _str;
     }
-    
+
     /**
      * @brief Convert to string
      * @return The status string
@@ -597,7 +621,7 @@ public:
     operator std::string() const {
         return _str;
     }
-    
+
     /**
      * @brief Convert to bool, checking if status is "OK"
      * @return true if status is "OK", false otherwise
@@ -615,16 +639,18 @@ public:
      * @param other String to compare with
      * @return true if equal, false otherwise
      */
-    bool operator==(const std::string& other) const {
+    bool
+    operator==(const std::string &other) const {
         return _str == other;
     }
-    
+
     /**
      * @brief Compare status with a string
      * @param other String to compare with
      * @return true if not equal, false otherwise
      */
-    bool operator!=(const std::string& other) const {
+    bool
+    operator!=(const std::string &other) const {
         return _str != other;
     }
 };
@@ -637,7 +663,7 @@ public:
 template <typename Out = std::vector<std::string>>
 struct scan {
     std::size_t cursor;
-    Out items;
+    Out         items;
 };
 
 /**
@@ -646,7 +672,7 @@ struct scan {
  */
 struct error {
     std::string what;
-    reply_ptr raw;
+    reply_ptr   raw;
 };
 
 // Redis reply type checking functions

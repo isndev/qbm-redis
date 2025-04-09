@@ -39,6 +39,7 @@ private:
     derived() {
         return static_cast<Derived &>(*this);
     }
+
 public:
     /**
      * @brief Adds elements to a HyperLogLog data structure
@@ -55,7 +56,7 @@ public:
             .template command<bool>("PFADD", key, std::forward<Elements>(elements)...)
             .result();
     }
-    
+
     /**
      * @brief Asynchronous version of pfadd
      *
@@ -69,8 +70,8 @@ public:
     template <typename Func, typename... Elements>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pfadd(Func &&func, const std::string &key, Elements &&...elements) {
-        return derived()
-            .template command<bool>(std::forward<Func>(func), "PFADD", key, std::forward<Elements>(elements)...);
+        return derived().template command<bool>(std::forward<Func>(func), "PFADD", key,
+                                                std::forward<Elements>(elements)...);
     }
 
     /**
@@ -83,9 +84,11 @@ public:
     template <typename... Keys>
     long long
     pfcount(Keys &&...keys) {
-        return derived().template command<long long>("PFCOUNT", std::forward<Keys>(keys)...).result();
+        return derived()
+            .template command<long long>("PFCOUNT", std::forward<Keys>(keys)...)
+            .result();
     }
-    
+
     /**
      * @brief Asynchronous version of pfcount
      *
@@ -98,10 +101,8 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     pfcount(Func &&func, Keys &&...keys) {
-        return derived().template command<long long>(
-            std::forward<Func>(func),
-            "PFCOUNT",
-            std::forward<Keys>(keys)...);
+        return derived().template command<long long>(std::forward<Func>(func), "PFCOUNT",
+                                                     std::forward<Keys>(keys)...);
     }
 
     /**
@@ -116,9 +117,11 @@ public:
     status
     pfmerge(const std::string &destination, Keys &&...keys) {
         return derived()
-            .template command<status>("PFMERGE", destination, std::forward<Keys>(keys)...).result();
+            .template command<status>("PFMERGE", destination,
+                                      std::forward<Keys>(keys)...)
+            .result();
     }
-    
+
     /**
      * @brief Asynchronous version of pfmerge
      *
@@ -132,8 +135,9 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     pfmerge(Func &&func, const std::string &destination, Keys &&...keys) {
-        return derived()
-            .template command<status>(std::forward<Func>(func), "PFMERGE", destination, std::forward<Keys>(keys)...);
+        return derived().template command<status>(std::forward<Func>(func), "PFMERGE",
+                                                  destination,
+                                                  std::forward<Keys>(keys)...);
     }
 };
 

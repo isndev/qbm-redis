@@ -21,8 +21,7 @@
 #include "../redis.h"
 
 // Redis Configuration
-#define REDIS_URI \
-    { "tcp://localhost:6379" }
+#define REDIS_URI {"tcp://localhost:6379"}
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -31,8 +30,9 @@ using namespace std::chrono;
 class RedisConnectionTest : public ::testing::Test {
 protected:
     qb::redis::tcp::client redis{REDIS_URI};
-    
-    void SetUp() override {
+
+    void
+    SetUp() override {
         async::init();
         if (!redis.connect() || !redis.flushall())
             throw std::runtime_error("Failed to connect to Redis");
@@ -41,8 +41,9 @@ protected:
         redis.await();
         TearDown();
     }
-    
-    void TearDown() override {
+
+    void
+    TearDown() override {
         // Cleanup after tests
         redis.flushall();
         redis.await();
@@ -112,11 +113,9 @@ TEST_F(RedisConnectionTest, DISABLED_SYNC_CONNECTION_COMMANDS_QUIT) {
 // Test async AUTH with password only
 TEST_F(RedisConnectionTest, DISABLED_ASYNC_CONNECTION_COMMANDS_AUTH_PASSWORD) {
     bool auth_result = false;
-    
-    redis.auth([&](auto &&reply) {
-        auth_result = reply.ok();
-    }, "");
-    
+
+    redis.auth([&](auto &&reply) { auth_result = reply.ok(); }, "");
+
     redis.await();
     EXPECT_TRUE(auth_result);
 }
@@ -124,11 +123,9 @@ TEST_F(RedisConnectionTest, DISABLED_ASYNC_CONNECTION_COMMANDS_AUTH_PASSWORD) {
 // Test async AUTH with username and password
 TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_AUTH_USERNAME_PASSWORD) {
     bool auth_result = false;
-    
-    redis.auth([&](auto &&reply) {
-        auth_result = reply.ok();
-    }, "default", "");
-    
+
+    redis.auth([&](auto &&reply) { auth_result = reply.ok(); }, "default", "");
+
     redis.await();
     EXPECT_TRUE(auth_result);
 }
@@ -137,11 +134,9 @@ TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_AUTH_USERNAME_PASSWORD) {
 TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_ECHO) {
     std::string message = "Hello Redis!";
     std::string echo_result;
-    
-    redis.echo([&](auto &&reply) {
-        echo_result = reply.result();
-    }, message);
-    
+
+    redis.echo([&](auto &&reply) { echo_result = reply.result(); }, message);
+
     redis.await();
     EXPECT_EQ(echo_result, message);
 }
@@ -149,11 +144,9 @@ TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_ECHO) {
 // Test async PING without message
 TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_PING) {
     std::string ping_result;
-    
-    redis.ping([&](auto &&reply) {
-        ping_result = reply.result();
-    });
-    
+
+    redis.ping([&](auto &&reply) { ping_result = reply.result(); });
+
     redis.await();
     EXPECT_EQ(ping_result, "PONG");
 }
@@ -162,11 +155,9 @@ TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_PING) {
 TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_PING_WITH_MESSAGE) {
     std::string message = "Hello";
     std::string ping_result;
-    
-    redis.ping([&](auto &&reply) {
-        ping_result = reply.result();
-    }, message);
-    
+
+    redis.ping([&](auto &&reply) { ping_result = reply.result(); }, message);
+
     redis.await();
     EXPECT_EQ(ping_result, message);
 }
@@ -174,19 +165,15 @@ TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_PING_WITH_MESSAGE) {
 // Test async SELECT
 TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_SELECT) {
     bool select_result = false;
-    
-    redis.select([&](auto &&reply) {
-        select_result = reply.ok();
-    }, 1);
-    
+
+    redis.select([&](auto &&reply) { select_result = reply.ok(); }, 1);
+
     redis.await();
     EXPECT_TRUE(select_result);
-    
+
     // Switch back to default database
-    redis.select([&](auto &&reply) {
-        select_result = reply.ok();
-    }, 0);
-    
+    redis.select([&](auto &&reply) { select_result = reply.ok(); }, 0);
+
     redis.await();
     EXPECT_TRUE(select_result);
 }
@@ -194,19 +181,15 @@ TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_SELECT) {
 // Test async SWAPDB
 TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_SWAPDB) {
     bool swap_result = false;
-    
-    redis.swapdb([&](auto &&reply) {
-        swap_result = reply.ok();
-    }, 0, 1);
-    
+
+    redis.swapdb([&](auto &&reply) { swap_result = reply.ok(); }, 0, 1);
+
     redis.await();
     EXPECT_TRUE(swap_result);
-    
+
     // Swap back
-    redis.swapdb([&](auto &&reply) {
-        swap_result = reply.ok();
-    }, 0, 1);
-    
+    redis.swapdb([&](auto &&reply) { swap_result = reply.ok(); }, 0, 1);
+
     redis.await();
     EXPECT_TRUE(swap_result);
 }
@@ -214,11 +197,9 @@ TEST_F(RedisConnectionTest, ASYNC_CONNECTION_COMMANDS_SWAPDB) {
 // Test async QUIT
 TEST_F(RedisConnectionTest, DISABLED_ASYNC_CONNECTION_COMMANDS_QUIT) {
     bool quit_result = false;
-    
-    redis.quit([&](auto &&reply) {
-        quit_result = reply.ok();
-    });
-    
+
+    redis.quit([&](auto &&reply) { quit_result = reply.ok(); });
+
     redis.await();
     EXPECT_TRUE(quit_result);
-} 
+}
