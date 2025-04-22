@@ -442,16 +442,20 @@ TEST_F(RedisTest, SYNC_SORTED_SET_COMMANDS_UNION_INTER) {
     EXPECT_TRUE(union_members.count("c") > 0);
     EXPECT_TRUE(union_members.count("d") > 0);
 
-    // Verify scores individually
+    // Verify scores individually with weights
     for (const auto &item : union_result) {
-        if (item.member == "a")
+        if (item.member == "a") {
             EXPECT_DOUBLE_EQ(item.score, 1.0);
-        else if (item.member == "b")
+        }
+        else if (item.member == "b") {
             EXPECT_DOUBLE_EQ(item.score, 4.0);
-        else if (item.member == "c")
+        }
+        else if (item.member == "c") {
             EXPECT_DOUBLE_EQ(item.score, 6.0);
-        else if (item.member == "d")
+        }
+        else if (item.member == "d") {
             EXPECT_DOUBLE_EQ(item.score, 4.0);
+        }
     }
 
     // Test ZUNIONSTORE with weights
@@ -461,14 +465,18 @@ TEST_F(RedisTest, SYNC_SORTED_SET_COMMANDS_UNION_INTER) {
 
     // Verify scores individually with weights
     for (const auto &item : union_result) {
-        if (item.member == "a")
+        if (item.member == "a") {
             EXPECT_DOUBLE_EQ(item.score, 2.0); // 1.0 * 2.0
-        else if (item.member == "b")
+        }
+        else if (item.member == "b") {
             EXPECT_DOUBLE_EQ(item.score, 6.0); // 2.0 * 2.0 + 2.0 * 1.0
-        else if (item.member == "c")
+        }
+        else if (item.member == "c") {
             EXPECT_DOUBLE_EQ(item.score, 9.0); // 3.0 * 2.0 + 3.0 * 1.0
-        else if (item.member == "d")
+        }
+        else if (item.member == "d") {
             EXPECT_DOUBLE_EQ(item.score, 4.0); // 4.0 * 1.0
+        }
     }
 
     // Test ZINTERSTORE
@@ -486,10 +494,12 @@ TEST_F(RedisTest, SYNC_SORTED_SET_COMMANDS_UNION_INTER) {
 
     // Verify scores individually
     for (const auto &item : inter_result) {
-        if (item.member == "b")
+        if (item.member == "b") {
             EXPECT_DOUBLE_EQ(item.score, 4.0); // 2.0 + 2.0
-        else if (item.member == "c")
+        }
+        else if (item.member == "c") {
             EXPECT_DOUBLE_EQ(item.score, 6.0); // 3.0 + 3.0
+        }
     }
 
     // Test ZINTERSTORE with weights
@@ -499,10 +509,12 @@ TEST_F(RedisTest, SYNC_SORTED_SET_COMMANDS_UNION_INTER) {
 
     // Verify scores individually with weights
     for (const auto &item : inter_result) {
-        if (item.member == "b")
+        if (item.member == "b") {
             EXPECT_DOUBLE_EQ(item.score, 6.0); // 2.0 * 2.0 + 2.0 * 1.0
-        else if (item.member == "c")
+        }
+        else if (item.member == "c") {
             EXPECT_DOUBLE_EQ(item.score, 9.0); // 3.0 * 2.0 + 3.0 * 1.0
+        }
     }
 }
 
@@ -1115,14 +1127,18 @@ TEST_F(RedisTest, ASYNC_SORTED_SET_COMMANDS_UNION_INTER) {
 
     // Verify scores individually with weights
     for (const auto &item : union_members) {
-        if (item.member == "a")
+        if (item.member == "a") {
             EXPECT_DOUBLE_EQ(item.score, 2.0); // 1.0 * 2.0
-        else if (item.member == "b")
+        }
+        else if (item.member == "b") {
             EXPECT_DOUBLE_EQ(item.score, 6.0); // 2.0 * 2.0 + 2.0 * 1.0
-        else if (item.member == "c")
+        }
+        else if (item.member == "c") {
             EXPECT_DOUBLE_EQ(item.score, 9.0); // 3.0 * 2.0 + 3.0 * 1.0
-        else if (item.member == "d")
+        }
+        else if (item.member == "d") {
             EXPECT_DOUBLE_EQ(item.score, 4.0); // 4.0 * 1.0
+        }
     }
 
     // Test ZINTERSTORE asynchronously
@@ -1146,10 +1162,12 @@ TEST_F(RedisTest, ASYNC_SORTED_SET_COMMANDS_UNION_INTER) {
 
     // Verify scores individually with weights
     for (const auto &item : inter_members) {
-        if (item.member == "b")
+        if (item.member == "b") {
             EXPECT_DOUBLE_EQ(item.score, 6.0); // 2.0 * 2.0 + 2.0 * 1.0
-        else if (item.member == "c")
+        }
+        else if (item.member == "c") {
             EXPECT_DOUBLE_EQ(item.score, 9.0); // 3.0 * 2.0 + 3.0 * 1.0
+        }
     }
 }
 

@@ -732,9 +732,10 @@ public:
      * @param on_disconnected Callback for handling disconnection events
      */
     explicit RedisCallbackConsumer(
-        qb::io::uri uri = {}, cb_msg_t &&on_message = [](auto &&) {},
-        cb_err_t  &&on_error        = [](auto &&) {},
-        cb_disc_t &&on_disconnected = [](auto &&) {})
+        qb::io::uri uri = {}, 
+        cb_msg_t &&on_message = cb_msg_t{},
+        cb_err_t &&on_error = cb_err_t{},
+        cb_disc_t &&on_disconnected = cb_disc_t{})
         : RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>(uri)
         , _on_message(std::forward<cb_msg_t>(on_message))
         , _on_error(std::forward<cb_err_t>(on_error))
