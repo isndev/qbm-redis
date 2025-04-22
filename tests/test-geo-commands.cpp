@@ -306,7 +306,7 @@ TEST_F(RedisGeoTest, SYNC_GEO_COMMANDS_EDGE_CASES) {
     try {
         redis.geoadd(key, 181.0, 91.0, "InvalidCoord");
         FAIL() << "Expected geoadd to throw with invalid coordinates";
-    } catch (const std::exception &e) {
+    } catch (const std::exception &) {
         // Expected exception
     }
 }

@@ -15,12 +15,17 @@
 #         limitations under the License.
 #
 
+project(qbm-redis)
+
 if (NOT QB_FOUND)
     message(STATUS "qb project not found, skipping Redis module")
     return()
 endif ()
 
-project(qbm-redis)
+if (NOT OPENSSL_FOUND OR NOT QB_IO_WITH_SSL)
+    message(INFO: qbm-redis will not be loaded, missing openssl)
+    return()
+endif ()
 
 set(DISABLE_TESTS ON)
 add_subdirectory(not-qb/hiredis)
