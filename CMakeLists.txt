@@ -42,5 +42,6 @@ qb_register_module(
 target_include_directories(qbm-redis PUBLIC not-qb)
 
 if (QB_BUILD_TEST)
+    enable_testing()
     add_subdirectory(tests)
 endif ()

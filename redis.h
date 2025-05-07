@@ -38,6 +38,10 @@
 #include "subscription_commands.h"
 #include "bitmap_commands.h"
 #include "transaction_commands.h"
+#include "cluster_commands.h"
+#include "acl_commands.h"
+#include "module_commands.h"
+#include "function_commands.h"
 // !commands
 
 namespace qb::protocol {
@@ -316,12 +320,19 @@ class Redis
     , public publish_commands<Redis<QB_IO_>>
     , public stream_commands<Redis<QB_IO_>>
     , public bitmap_commands<Redis<QB_IO_>>
-    , public transaction_commands<Redis<QB_IO_>> {
+    , public transaction_commands<Redis<QB_IO_>>
+    , public cluster_commands<Redis<QB_IO_>>
+    , public acl_commands<Redis<QB_IO_>>
+    , public module_commands<Redis<QB_IO_>>
+    , public function_commands<Redis<QB_IO_>> {
     friend class connector<QB_IO_, Redis<QB_IO_>>;
 
 public:
     using redis_protocol = typename connector<QB_IO_, Redis<QB_IO_>>::redis_protocol;
     using publish_commands<Redis<QB_IO_>>::publish;
+
+    // Bring server_commands::command into scope to resolve overload ambiguity
+    using server_commands<Redis<QB_IO_>>::command;
 
 private:
     std::queue<IReply *> _replies;
