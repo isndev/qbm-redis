@@ -385,59 +385,6 @@ public:
     }
 
     /**
-     * @brief Get the number of pending messages in a consumer group
-     *
-     * Returns the number of pending messages for a consumer group, optionally
-     * filtered by consumer.
-     *
-     * @param key The key of the stream containing the group
-     * @param group The name of the consumer group
-     * @param consumer Optional consumer name to filter by
-     * @return The number of pending messages
-     */
-    long long
-    xpending(const std::string &key, const std::string &group,
-             const std::optional<std::string> &consumer = std::nullopt) {
-        std::vector<std::string> args;
-        args.push_back(key);
-        args.push_back(group);
-        if (consumer) {
-            args.push_back("-"); // start
-            args.push_back("+"); // end
-            args.push_back("1"); // count
-            args.push_back(*consumer);
-        }
-        return derived().template command<long long>("XPENDING", args).result();
-    }
-
-    /**
-     * @brief Asynchronous version of xpending
-     *
-     * @tparam Func Callback function type that accepts a Reply<long long>
-     * @param func Callback function to be called with the result
-     * @param key The key of the stream containing the group
-     * @param group The name of the consumer group
-     * @param consumer Optional consumer name to filter by
-     * @return Reference to the Redis handler for chaining
-     */
-    template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    xpending(Func &&func, const std::string &key, const std::string &group,
-             const std::optional<std::string> &consumer = std::nullopt) {
-        std::vector<std::string> args;
-        args.push_back(key);
-        args.push_back(group);
-        if (consumer) {
-            args.push_back("-"); // start
-            args.push_back("+"); // end
-            args.push_back("1"); // count
-            args.push_back(*consumer);
-        }
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "XPENDING", args);
-    }
-
-    /**
      * @brief Read entries from a stream using a consumer group
      *
      * @param key Stream key
@@ -446,9 +393,9 @@ public:
      * @param id ID to read from (">" for unread messages, "0" for all messages)
      * @param count Optional maximum number of entries to read
      * @param block Optional timeout in milliseconds to block waiting for new messages
-     * @return Vector of stream entries, or nullopt if no messages available
+     * @return qb::json structured representation of stream entries
      */
-    map_stream_entry_list
+    qb::json
     xreadgroup(const std::string &key, const std::string &group,
                const std::string &consumer, const std::string &id,
                std::optional<long long> count = std::nullopt,
@@ -459,8 +406,7 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
         return derived()
-            .template command<map_stream_entry_list>("XREADGROUP", args, "STREAMS", key,
-                                                     id)
+            .template command<qb::json>("XREADGROUP", args, "STREAMS", key, id)
             .result();
     }
 
@@ -478,8 +424,7 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xreadgroup(Func &&func, const std::string &key, const std::string &group,
                const std::string &consumer, const std::string &id,
                std::optional<long long> count = std::nullopt,
@@ -489,7 +434,7 @@ public:
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        return derived().template command<map_stream_entry_list>(
+        return derived().template command<qb::json>(
             std::forward<Func>(func), "XREADGROUP", args, "STREAMS", key, id);
     }
 
@@ -502,9 +447,9 @@ public:
      * @param ids Vector of IDs to read from, one per stream
      * @param count Optional maximum number of entries to read
      * @param block Optional timeout in milliseconds to block waiting for new messages
-     * @return Map of stream entries by key, or nullopt if no messages available
+     * @return qb::json structured representation of stream entries by key
      */
-    map_stream_entry_list
+    qb::json
     xreadgroup(const std::vector<std::string> &keys, const std::string &group,
                const std::string &consumer, const std::vector<std::string> &ids,
                std::optional<long long> count = std::nullopt,
@@ -521,8 +466,7 @@ public:
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
         return derived()
-            .template command<map_stream_entry_list>("XREADGROUP", args, "STREAMS", keys,
-                                                     ids)
+            .template command<qb::json>("XREADGROUP", args, "STREAMS", keys, ids)
             .result();
     }
 
@@ -540,13 +484,12 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xreadgroup(Func &&func, const std::vector<std::string> &keys,
                const std::string &group, const std::string &consumer,
                const std::vector<std::string> &ids,
-               std::optional<long long>        count = std::nullopt,
-               std::optional<long long>        block = std::nullopt) {
+               std::optional<long long> count = std::nullopt,
+               std::optional<long long> block = std::nullopt) {
         if (keys.empty() || keys.size() != ids.size()) {
             throw std::invalid_argument(
                 "Keys and IDs must be non-empty and have the same size");
@@ -558,7 +501,7 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<map_stream_entry_list>(
+        return derived().template command<qb::json>(
             std::forward<Func>(func), "XREADGROUP", args, "STREAMS", keys, ids);
     }
 
@@ -569,9 +512,9 @@ public:
      * @param id ID to read from ("$" for new messages only, "0" for all messages)
      * @param count Optional maximum number of entries to read
      * @param block Optional timeout in milliseconds to block waiting for new messages
-     * @return Map of stream entries by key, or nullopt if no messages available
+     * @return qb::json structured representation of stream entries
      */
-    map_stream_entry_list
+    qb::json
     xread(const std::string &key, const std::string &id,
           std::optional<long long> count = std::nullopt,
           std::optional<long long> block = std::nullopt) {
@@ -582,7 +525,7 @@ public:
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
         return derived()
-            .template command<map_stream_entry_list>("XREAD", args, "STREAMS", key, id)
+            .template command<qb::json>("XREAD", args, "STREAMS", key, id)
             .result();
     }
 
@@ -598,8 +541,7 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xread(Func &&func, const std::string &key, const std::string &id,
           std::optional<long long> count = std::nullopt,
           std::optional<long long> block = std::nullopt) {
@@ -609,7 +551,7 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<map_stream_entry_list>(
+        return derived().template command<qb::json>(
             std::forward<Func>(func), "XREAD", args, "STREAMS", key, id);
     }
 
@@ -620,9 +562,9 @@ public:
      * @param ids Vector of IDs to read from, one per stream
      * @param count Optional maximum number of entries to read
      * @param block Optional timeout in milliseconds to block waiting for new messages
-     * @return Map of stream entries by key, or nullopt if no messages available
+     * @return qb::json structured representation of stream entries by key
      */
-    map_stream_entry_list
+    qb::json
     xread(const std::vector<std::string> &keys, const std::vector<std::string> &ids,
           std::optional<long long> count = std::nullopt,
           std::optional<long long> block = std::nullopt) {
@@ -638,7 +580,7 @@ public:
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
         return derived()
-            .template command<map_stream_entry_list>("XREAD", args, "STREAMS", keys, ids)
+            .template command<qb::json>("XREAD", args, "STREAMS", keys, ids)
             .result();
     }
 
@@ -654,12 +596,11 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<map_stream_entry_list> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xread(Func &&func, const std::vector<std::string> &keys,
           const std::vector<std::string> &ids,
-          std::optional<long long>        count = std::nullopt,
-          std::optional<long long>        block = std::nullopt) {
+          std::optional<long long> count = std::nullopt,
+          std::optional<long long> block = std::nullopt) {
         if (keys.empty() || keys.size() != ids.size()) {
             throw std::invalid_argument(
                 "Keys and IDs must be non-empty and have the same size");
@@ -671,8 +612,188 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<map_stream_entry_list>(
+        return derived().template command<qb::json>(
             std::forward<Func>(func), "XREAD", args, "STREAMS", keys, ids);
+    }
+
+    /**
+     * @brief Get detailed information about a stream using XINFO STREAM
+     *
+     * Returns detailed information about the specified stream as a JSON object.
+     *
+     * @param key The key of the stream to get information about
+     * @return qb::json object with stream information
+     * @see https://redis.io/commands/xinfo-stream
+     */
+    qb::json
+    xinfo_stream(const std::string &key) {
+        return derived().template command<qb::json>("XINFO", "STREAM", key).result();
+    }
+
+    /**
+     * @brief Asynchronous version of xinfo_stream
+     *
+     * @param func Callback function to handle the result
+     * @param key The key of the stream to get information about
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xinfo-stream
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    xinfo_stream(Func &&func, const std::string &key) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "STREAM", key);
+    }
+
+    /**
+     * @brief Get information about consumer groups of a stream
+     *
+     * Returns information about all the consumer groups of the stream as a JSON array.
+     *
+     * @param key The key of the stream
+     * @return qb::json array of consumer group information
+     * @see https://redis.io/commands/xinfo-groups
+     */
+    qb::json
+    xinfo_groups(const std::string &key) {
+        return derived().template command<qb::json>("XINFO", "GROUPS", key).result();
+    }
+
+    /**
+     * @brief Asynchronous version of xinfo_groups
+     *
+     * @param func Callback function to handle the result
+     * @param key The key of the stream
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xinfo-groups
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    xinfo_groups(Func &&func, const std::string &key) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "GROUPS", key);
+    }
+
+    /**
+     * @brief Get information about consumers in a consumer group
+     *
+     * Returns information about consumers in the specified consumer group as a JSON array.
+     *
+     * @param key The key of the stream
+     * @param group The name of the consumer group
+     * @return qb::json array of consumer information
+     * @see https://redis.io/commands/xinfo-consumers
+     */
+    qb::json
+    xinfo_consumers(const std::string &key, const std::string &group) {
+        return derived().template command<qb::json>("XINFO", "CONSUMERS", key, group).result();
+    }
+
+    /**
+     * @brief Asynchronous version of xinfo_consumers
+     *
+     * @param func Callback function to handle the result
+     * @param key The key of the stream
+     * @param group The name of the consumer group
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xinfo-consumers
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    xinfo_consumers(Func &&func, const std::string &key, const std::string &group) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "CONSUMERS", key, group);
+    }
+
+    /**
+     * @brief Get help information about XINFO subcommands
+     *
+     * Returns the help text for the XINFO command as a JSON array.
+     *
+     * @return qb::json array with help information
+     * @see https://redis.io/commands/xinfo-help
+     */
+    qb::json
+    xinfo_help() {
+        return derived().template command<qb::json>("XINFO", "HELP").result();
+    }
+
+    /**
+     * @brief Asynchronous version of xinfo_help
+     *
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xinfo-help
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    xinfo_help(Func &&func) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "HELP");
+    }
+
+    /**
+     * @brief Get detailed information about pending messages in a consumer group
+     *
+     * This advanced version of XPENDING returns detailed information about pending
+     * messages as a structured JSON object.
+     *
+     * @param key The key of the stream
+     * @param group The name of the consumer group
+     * @param start The start of the ID range (e.g., "-" for minimum ID)
+     * @param end The end of the ID range (e.g., "+" for maximum ID)
+     * @param count Maximum number of messages to return
+     * @param consumer Optional consumer name to filter messages
+     * @return qb::json object with detailed pending message information
+     * @see https://redis.io/commands/xpending
+     */
+    qb::json
+    xpending(const std::string &key, 
+                      const std::string &group,
+                      const std::string &start = "-", 
+                      const std::string &end = "+",
+                      long long count = 10,
+                      const std::optional<std::string> &consumer = std::nullopt) {
+        std::vector<std::string> args;
+        args.push_back(key);
+        args.push_back(group);
+        args.push_back(start);
+        args.push_back(end);
+        args.push_back(std::to_string(count));
+        if (consumer) {
+            args.push_back(*consumer);
+        }
+        return derived().template command<qb::json>("XPENDING", args).result();
+    }
+
+    /**
+     * @brief Asynchronous version of xpending
+     *
+     * @param func Callback function to handle the result
+     * @param key The key of the stream
+     * @param group The name of the consumer group
+     * @param start The start of the ID range
+     * @param end The end of the ID range
+     * @param count Maximum number of messages to return
+     * @param consumer Optional consumer name to filter messages
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xpending
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    xpending(Func &&func,
+                      const std::string &key, 
+                      const std::string &group,
+                      const std::string &start = "-", 
+                      const std::string &end = "+",
+                      long long count = 10,
+                      const std::optional<std::string> &consumer = std::nullopt) {
+        std::vector<std::string> args;
+        args.push_back(key);
+        args.push_back(group);
+        args.push_back(start);
+        args.push_back(end);
+        args.push_back(std::to_string(count));
+        if (consumer) {
+            args.push_back(*consumer);
+        }
+        return derived().template command<qb::json>(std::forward<Func>(func), "XPENDING", args);
     }
 };
 

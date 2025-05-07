@@ -212,58 +212,6 @@ public:
     }
 
     /**
-     * @brief Lists client connections
-     *
-     * @return Vector of client connection strings
-     * @see https://redis.io/commands/client-list
-     */
-    std::vector<std::string>
-    client_list() {
-        auto result = derived().template command<std::string>("CLIENT", "LIST").result();
-        std::vector<std::string> clients;
-        size_t                   pos = 0;
-        while ((pos = result.find('\n')) != std::string::npos) {
-            clients.push_back(result.substr(0, pos));
-            result.erase(0, pos + 1);
-        }
-        if (!result.empty()) {
-            clients.push_back(result);
-        }
-        return clients;
-    }
-
-    /**
-     * @brief Asynchronous version of client_list
-     *
-     * @param func Callback function to handle the result
-     * @return Reference to the derived class
-     * @see https://redis.io/commands/client-list
-     */
-    template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
-    client_list(Func &&func) {
-        return derived().template command<std::string>(
-            [f = std::forward<Func>(func)](auto &&reply) mutable {
-                Reply<std::vector<std::string>> r;
-                r.ok() = reply.ok();
-                if (reply.ok()) {
-                    std::string result = reply.result();
-                    size_t      pos    = 0;
-                    while ((pos = result.find('\n')) != std::string::npos) {
-                        r.result().push_back(result.substr(0, pos));
-                        result.erase(0, pos + 1);
-                    }
-                    if (!result.empty()) {
-                        r.result().push_back(result);
-                    }
-                }
-                f(std::move(r));
-            },
-            "CLIENT", "LIST");
-    }
-
-    /**
      * @brief Gets the current client name
      *
      * @return Optional client name
@@ -633,6 +581,94 @@ public:
             std::forward<Func>(func), "COMMAND", "GETKEYS", command, args);
     }
 
+    /**
+     * @brief Gets information about Redis commands as JSON
+     *
+     * This command returns detailed information about all Redis commands
+     * as a structured JSON object.
+     *
+     * @return Structured qb::json with command information
+     * @see https://redis.io/commands/command
+     */
+    qb::json
+    command() {
+        return derived().template command<qb::json>("COMMAND").result();
+    }
+
+    /**
+     * @brief Gets information about Redis commands as JSON
+     *
+     * This command returns detailed information about specific Redis commands
+     * as a structured JSON object.
+     *
+     * @param command_names List of command names to get info about
+     * @return Structured qb::json with command information
+     * @see https://redis.io/commands/command
+     */
+    qb::json
+    command(const std::vector<std::string> &command_names) {
+        if (command_names.empty()) { // Should ideally not happen if called with this overload
+            return command();
+        }
+        return derived().template command<qb::json>("COMMAND", "INFO", command_names).result();
+    }
+
+    /**
+     * @brief Asynchronous version of command (all commands)
+     *
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/command
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    command(Func &&func) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "COMMAND");
+    }
+
+    /**
+     * @brief Asynchronous version of command (specific commands)
+     *
+     * @param func Callback function to handle the result
+     * @param command_names List of command names to get info about
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/command
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    command(Func &&func, const std::vector<std::string> &command_names) {
+        if (command_names.empty()) { // Should ideally not happen
+            return command(std::forward<Func>(func));
+        }
+        return derived().template command<qb::json>(std::forward<Func>(func), "COMMAND", "INFO", command_names);
+    }
+
+    /**
+     * @brief Gets statistics about command usage as JSON
+     *
+     * This command returns statistics about command usage as a structured JSON object.
+     *
+     * @return Structured qb::json with command statistics
+     * @see https://redis.io/commands/command-stats
+     */
+    qb::json
+    command_stats() {
+        return derived().template command<qb::json>("COMMAND", "STATS").result();
+    }
+
+    /**
+     * @brief Asynchronous version of command_stats
+     *
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/command-stats
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    command_stats(Func &&func) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "COMMAND", "STATS");
+    }
+
     // =============== Debug Commands ===============
 
     /**
@@ -796,38 +832,6 @@ public:
     }
 
     /**
-     * @brief Gets memory statistics
-     *
-     * This command returns memory usage statistics about the server.
-     * It includes information about peak memory usage, allocator statistics,
-     * and other memory-related metrics that are useful for diagnostics.
-     *
-     * @return Memory statistics as a map of statistics name to value
-     * @see https://redis.io/commands/memory-stats
-     */
-    std::map<std::string, long long>
-    memory_stats() {
-        return derived()
-            .template command<std::map<std::string, long long>>("MEMORY", "STATS")
-            .result();
-    }
-
-    /**
-     * @brief Asynchronous version of memory_stats
-     *
-     * @param func Callback function to handle the result
-     * @return Reference to the derived class
-     * @see https://redis.io/commands/memory-stats
-     */
-    template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::map<std::string, long long>> &&>, Derived &>
-    memory_stats(Func &&func) {
-        return derived().template command<std::map<std::string, long long>>(
-            std::forward<Func>(func), "MEMORY", "STATS");
-    }
-
-    /**
      * @brief Gets memory usage of a key
      *
      * @param key Key to check
@@ -975,66 +979,6 @@ public:
     }
 
     // =============== Slowlog Commands ===============
-
-    /**
-     * @brief Gets slowlog entries
-     *
-     * @param count Number of entries to get
-     * @return Vector of slowlog entries
-     * @see https://redis.io/commands/slowlog-get
-     */
-    std::vector<std::map<std::string, std::string>>
-    slowlog_get(long long count = 10) {
-        auto result = derived()
-                          .template command<std::vector<std::vector<std::string>>>(
-                              "SLOWLOG", "GET", count)
-                          .result();
-        std::vector<std::map<std::string, std::string>> entries;
-        for (const auto &entry : result) {
-            std::map<std::string, std::string> entry_map;
-            for (size_t i = 0; i < entry.size(); i += 2) {
-                if (i + 1 < entry.size()) {
-                    entry_map[entry[i]] = entry[i + 1];
-                }
-            }
-            entries.push_back(std::move(entry_map));
-        }
-        return entries;
-    }
-
-    /**
-     * @brief Asynchronous version of slowlog_get
-     *
-     * @param func Callback function to handle the result
-     * @param count Number of entries to get
-     * @return Reference to the derived class
-     * @see https://redis.io/commands/slowlog-get
-     */
-    template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func,
-                            Reply<std::vector<std::map<std::string, std::string>>> &&>,
-        Derived &>
-    slowlog_get(Func &&func, long long count = 10) {
-        return derived().template command<std::vector<std::vector<std::string>>>(
-            [f = std::forward<Func>(func)](auto &&reply) mutable {
-                Reply<std::vector<std::map<std::string, std::string>>> r;
-                r.ok() = reply.ok();
-                if (reply.ok()) {
-                    for (const auto &entry : reply.result()) {
-                        std::map<std::string, std::string> entry_map;
-                        for (size_t i = 0; i < entry.size(); i += 2) {
-                            if (i + 1 < entry.size()) {
-                                entry_map[entry[i]] = entry[i + 1];
-                            }
-                        }
-                        r.result().push_back(std::move(entry_map));
-                    }
-                }
-                f(std::move(r));
-            },
-            "SLOWLOG", "GET", count);
-    }
 
     /**
      * @brief Gets the length of the slowlog
@@ -1343,27 +1287,26 @@ public:
     // =============== Server Information Commands ===============
 
     /**
-     * @brief Gets information and statistics about the server
+     * @brief Gets information and statistics about the server as JSON
      *
-     * This command returns information and statistics about the Redis server in a format
-     * that is simple to parse by computers and easily readable by humans.
+     * This command returns information and statistics about the Redis server as a qb::json object,
+     * preserving the full hierarchical structure of the information.
      *
      * @param section Optional section name to get specific information
-     * @return Server information as a memory_info structure
+     * @return Server information as a qb::json object
      * @see https://redis.io/commands/info
      */
-    qb::redis::memory_info
+    qb::json
     info(const std::string &section = "") {
         std::optional<std::string> param;
         if (!section.empty())
             param = section;
 
-        auto info_str = derived().template command<std::string>("INFO", param).result();
-        return parse_info_to_memory_info(info_str);
+        return derived().template command<qb::json>("INFO", param).result();
     }
 
     /**
-     * @brief Asynchronous version of info
+     * @brief Asynchronous version of info_json
      *
      * @param func Callback function to handle the result
      * @param section Optional section name to get specific information
@@ -1371,23 +1314,13 @@ public:
      * @see https://redis.io/commands/info
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::memory_info> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     info(Func &&func, const std::string &section = "") {
         std::optional<std::string> param;
         if (!section.empty())
             param = section;
 
-        return derived().template command<std::string>(
-            [f = std::forward<Func>(func)](auto &&reply) mutable {
-                Reply<qb::redis::memory_info> r;
-                r.ok() = reply.ok();
-                if (reply.ok()) {
-                    r.result() = parse_info_to_memory_info(reply.result());
-                }
-                f(std::move(r));
-            },
-            "INFO", param);
+        return derived().template command<qb::json>(std::forward<Func>(func), "INFO", param);
     }
 
     /**
@@ -1430,6 +1363,208 @@ public:
                 f(std::move(r));
             },
             "TIME");
+    }
+
+    /**
+     * @brief Lists client connections as structured JSON
+     *
+     * This command returns information about client connections as a JSON array,
+     * with each client connection represented as a JSON object with proper types.
+     *
+     * @return qb::json array of client information
+     * @see https://redis.io/commands/client-list
+     */
+    qb::json
+    client_list() {
+        return derived().template command<qb::json>("CLIENT", "LIST").result();
+    }
+
+    /**
+     * @brief Asynchronous version of client_list
+     *
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/client-list
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    client_list(Func &&func) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "CLIENT", "LIST");
+    }
+
+    // =============== Latency Commands ===============
+
+    /**
+     * @brief Gets information about the latest latency events
+     *
+     * This command returns information about the latest latency spikes
+     * experienced by Redis as a JSON array of events.
+     *
+     * @return qb::json array of latency events
+     * @see https://redis.io/commands/latency-latest
+     */
+    qb::json
+    latency_latest() {
+        return derived().template command<qb::json>("LATENCY", "LATEST").result();
+    }
+
+    /**
+     * @brief Asynchronous version of latency_latest
+     *
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/latency-latest
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    latency_latest(Func &&func) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "LATENCY", "LATEST");
+    }
+
+    /**
+     * @brief Gets latency history for an event
+     *
+     * Returns the latency history for a specific event as a JSON array.
+     * Each entry represents a latency spike with its timestamp and duration.
+     *
+     * @param event The event name to get history for
+     * @return qb::json array of latency history entries
+     * @see https://redis.io/commands/latency-history
+     */
+    qb::json
+    latency_history(const std::string &event) {
+        return derived().template command<qb::json>("LATENCY", "HISTORY", event).result();
+    }
+
+    /**
+     * @brief Asynchronous version of latency_history
+     *
+     * @param func Callback function to handle the result
+     * @param event The event name to get history for
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/latency-history
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    latency_history(Func &&func, const std::string &event) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "LATENCY", "HISTORY", event);
+    }
+    
+    /**
+     * @brief Resets latency statistics
+     *
+     * @param event_name Optional specific event to reset (or all if empty)
+     * @return status object with the result
+     * @see https://redis.io/commands/latency-reset
+     */
+    status
+    latency_reset(const std::string &event_name = "") {
+        if (event_name.empty()) {
+            return derived().template command<status>("LATENCY", "RESET").result();
+        } else {
+            return derived().template command<status>("LATENCY", "RESET", event_name).result();
+        }
+    }
+
+    /**
+     * @brief Asynchronous version of latency_reset
+     *
+     * @param func Callback function to handle the result
+     * @param event_name Optional specific event to reset (or all if empty)
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/latency-reset
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    latency_reset(Func &&func, const std::string &event_name = "") {
+        if (event_name.empty()) {
+            return derived().template command<status>(std::forward<Func>(func), "LATENCY", "RESET");
+        } else {
+            return derived().template command<status>(std::forward<Func>(func), "LATENCY", "RESET", event_name);
+        }
+    }
+
+    /**
+     * @brief Gets memory statistics as structured JSON
+     *
+     * This command returns detailed statistics about memory usage in Redis
+     * as a structured JSON object.
+     *
+     * @return qb::json object with memory stats
+     * @see https://redis.io/commands/memory-stats
+     */
+    qb::json
+    memory_stats() {
+        return derived().template command<qb::json>("MEMORY", "STATS").result();
+    }
+
+    /**
+     * @brief Asynchronous version of memory_stats
+     *
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/memory-stats
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    memory_stats(Func &&func) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "MEMORY", "STATS");
+    }
+
+    /**
+     * @brief Gets slowlog entries as structured JSON
+     *
+     * This command returns the slow log entries with proper typing
+     * and structure as a JSON array.
+     *
+     * @param count Number of entries to retrieve
+     * @return qb::json array of slowlog entries
+     * @see https://redis.io/commands/slowlog-get
+     */
+    qb::json
+    slowlog_get(long long count = 10) {
+        return derived().template command<qb::json>("SLOWLOG", "GET", count).result();
+    }
+
+    /**
+     * @brief Asynchronous version of slowlog_get
+     *
+     * @param func Callback function to handle the result
+     * @param count Number of entries to retrieve
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/slowlog-get
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    slowlog_get(Func &&func, long long count = 10) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "SLOWLOG", "GET", count);
+    }
+
+    /**
+     * @brief Gets information about client tracking as JSON
+     *
+     * This command returns detailed information about the client tracking system
+     * as a structured JSON object.
+     *
+     * @return qb::json object with client tracking information
+     * @see https://redis.io/commands/client-tracking-info
+     */
+    qb::json
+    client_tracking_info() {
+        return derived().template command<qb::json>("CLIENT", "TRACKING", "INFO").result();
+    }
+
+    /**
+     * @brief Asynchronous version of client_tracking_info
+     *
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/client-tracking-info
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    client_tracking_info(Func &&func) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "CLIENT", "TRACKING", "INFO");
     }
 };
 

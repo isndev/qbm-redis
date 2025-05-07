@@ -53,7 +53,7 @@ protected:
     SetUp() override {
         async::init();
         if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Impossible de se connecter à Redis");
+            throw std::runtime_error("Unable to connect to Redis");
 
         // Wait for connection to be established
         redis.await();

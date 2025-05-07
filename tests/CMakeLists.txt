@@ -33,6 +33,11 @@ set(REDIS_TESTS
         subscription-commands
         publish-commands
         stream-commands
+        acl-commands
+        function-commands
+        module-commands
+        cluster-commands
+        json-parse
 )
 
 # Register each test

@@ -800,139 +800,156 @@ parse(ParseTag<qb::redis::pipeline_result>, redisReply &reply) {
 }
 
 /**
- * @brief Parses a Redis reply into a json_value
+ * @brief Parses a Redis reply into a qb::json object
  * @param tag Parse tag type (unused, for template specialization)
  * @param reply The Redis reply to parse
- * @return JsonValue value of the reply
+ * @return A qb::json object representing the Redis reply
  */
-qb::redis::json_value
-parse(ParseTag<qb::redis::json_value>, redisReply &reply) {
-    qb::redis::json_value value;
-
+qb::json
+parse(ParseTag<qb::json>, redisReply &reply) {
+    // Handle different Redis reply types
     if (qb::redis::is_nil(reply)) {
-        value.type = qb::redis::json_value::Type::Null;
-        value.data = nullptr;
-    } else if (qb::redis::is_integer(reply)
+        return qb::json(nullptr);
+    } 
+    else if (qb::redis::is_integer(reply)) {
+        return qb::json(reply.integer);
+    } 
 #ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-               || qb::redis::is_double(reply)
+    else if (qb::redis::is_double(reply)) {
+        return qb::json(reply.dval);
+    }
+    else if (qb::redis::is_bool(reply)) {
+        return qb::json(reply.integer != 0);
+    }
 #endif
-    ) {
-        value.type = qb::redis::json_value::Type::Number;
-        value.data = parse<double>(reply);
-    } else if (qb::redis::is_string(reply) || qb::redis::is_status(reply)) {
-        std::string str = parse<std::string>(reply);
-
-        // Check if the string is a boolean
+    else if (qb::redis::is_string(reply) || qb::redis::is_status(reply)) {
+        if (reply.str == nullptr) {
+            throw ProtoError("Null string reply");
+        }
+        
+        std::string str(reply.str, reply.len);
+        
+        // Try to parse strings that might be JSON objects or arrays
+        if (str.size() > 1 && ((str[0] == '{' && str[str.size() - 1] == '}') || 
+            (str[0] == '[' && str[str.size() - 1] == ']'))) {
+            try {
+                return qb::json::parse(str);
+            } catch (...) {
+                // If parsing fails, fall through to other conversion attempts
+            }
+        }
+        
+        // Try to convert string values to appropriate types
+        // Handle boolean values
         if (str == "true") {
-            value.type = qb::redis::json_value::Type::Boolean;
-            value.data = true;
+            return qb::json(true);
         } else if (str == "false") {
-            value.type = qb::redis::json_value::Type::Boolean;
-            value.data = false;
+            return qb::json(false);
         }
-        // Check if the string is null
-        else if (str == "null") {
-            value.type = qb::redis::json_value::Type::Null;
-            value.data = nullptr;
-        } else {
-            value.type = qb::redis::json_value::Type::String;
-            value.data = std::move(str);
+        
+        // Try numeric conversion for strings that look like numbers
+        if (str.find_first_not_of("-0123456789.") == std::string::npos) {
+            try {
+                if (str.find('.') != std::string::npos) {
+                    // Try as double
+                    return qb::json(std::stod(str));
+                } else {
+                    // Try as integer
+                    return qb::json(std::stoll(str));
+                }
+            } catch (...) {
+                // Silent catch, will return as string
+            }
         }
-    } else if (qb::redis::is_array(reply)) {
-        // If array has 0 or odd number of elements, treat as array
-        // If array has even number of elements and each odd index is a string, treat as
-        // object
-        bool is_object = reply.elements > 0 && (reply.elements % 2 == 0);
-
+        
+        // Default to returning as string
+        return qb::json(str);
+    } 
+    else if (qb::redis::is_array(reply)) {
+        // If array has 0 elements or null elements
+        if (reply.elements == 0 || reply.element == nullptr) {
+            return qb::json::array();
+        }
+        
+        // For Lua tables coming from Redis (via EVAL), we need special handling.
+        // When Redis returns a Lua table, it converts it to an array with alternating 
+        // keys and values IF the table has string keys.
+        
+        // First check if this could be an object (even number of elements)
+        bool is_object = (reply.elements % 2 == 0) && (reply.elements > 0);
+        
+        // Check if all keys are strings to determine if this is a Lua table object
         if (is_object) {
-            // Check if all odd indices are strings
+            bool all_keys_are_strings = true;
+            
             for (size_t i = 0; i < reply.elements; i += 2) {
                 auto *key_reply = reply.element[i];
-                if (key_reply == nullptr || !qb::redis::is_string(*key_reply)) {
-                    is_object = false;
+                if (!key_reply || !qb::redis::is_string(*key_reply)) {
+                    all_keys_are_strings = false;
                     break;
                 }
             }
-        }
-
-        if (is_object) {
-            value.type = qb::redis::json_value::Type::Object;
-            qb::unordered_map<std::string, qb::redis::json_value> object;
-
-            for (size_t i = 0; i < reply.elements; i += 2) {
-                auto *key_reply = reply.element[i];
-                auto *val_reply = reply.element[i + 1];
-
-                if (key_reply == nullptr || val_reply == nullptr) {
-                    continue;
+            
+            // If all keys are strings, treat as object
+            if (all_keys_are_strings) {
+                qb::json obj = qb::json::object();
+                
+                for (size_t i = 0; i < reply.elements; i += 2) {
+                    auto *key_reply = reply.element[i];
+                    auto *val_reply = reply.element[i + 1];
+                    
+                    if (key_reply == nullptr || val_reply == nullptr) {
+                        throw ProtoError("Null reply in object");
+                    }
+                    
+                    std::string key = parse<std::string>(*key_reply);
+                    qb::json value = parse<qb::json>(*val_reply);
+                    
+                    obj[key] = value;
                 }
-
-                std::string           key = parse<std::string>(*key_reply);
-                qb::redis::json_value val = parse<qb::redis::json_value>(*val_reply);
-
-                object[key] = std::move(val);
+                
+                return obj;
             }
-
-            value.data = std::move(object);
-        } else {
-            value.type = qb::redis::json_value::Type::Array;
-            std::vector<qb::redis::json_value> array;
-            array.reserve(reply.elements);
-
-            for (size_t i = 0; i < reply.elements; ++i) {
-                auto *element_reply = reply.element[i];
-                if (element_reply == nullptr) {
-                    array.push_back(qb::redis::json_value{}); // null
-                } else {
-                    array.push_back(parse<qb::redis::json_value>(*element_reply));
-                }
-            }
-
-            value.data = std::move(array);
         }
-    }
-#ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
-    else if (qb::redis::is_bool(reply)) {
-        value.type = qb::redis::json_value::Type::Boolean;
-        value.data = reply.integer != 0;
-    } else if (qb::redis::is_map(reply)) {
-        value.type = qb::redis::json_value::Type::Object;
-        qb::unordered_map<std::string, qb::redis::json_value> object;
-
-        for (size_t i = 0; i < reply.elements; i += 2) {
-            auto *key_reply = reply.element[i];
-            auto *val_reply = reply.element[i + 1];
-
-            if (key_reply == nullptr || val_reply == nullptr) {
-                continue;
-            }
-
-            std::string           key = parse<std::string>(*key_reply);
-            qb::redis::json_value val = parse<qb::redis::json_value>(*val_reply);
-
-            object[key] = std::move(val);
-        }
-
-        value.data = std::move(object);
-    } else if (qb::redis::is_set(reply)) {
-        value.type = qb::redis::json_value::Type::Array;
-        std::vector<qb::redis::json_value> array;
-        array.reserve(reply.elements);
-
+        
+        // Otherwise, treat as regular array
+        qb::json arr = qb::json::array();
+        
         for (size_t i = 0; i < reply.elements; ++i) {
             auto *element_reply = reply.element[i];
             if (element_reply == nullptr) {
-                array.push_back(qb::redis::json_value{}); // null
+                arr.push_back(nullptr);
             } else {
-                array.push_back(parse<qb::redis::json_value>(*element_reply));
+                arr.push_back(parse<qb::json>(*element_reply));
             }
         }
-
-        value.data = std::move(array);
+        
+        return arr;
+    }
+#ifdef REDIS_PLUS_PLUS_RESP_VERSION_3
+    else if (qb::redis::is_map(reply)) {
+        qb::json obj = qb::json::object();
+        
+        for (size_t i = 0; i < reply.elements; ++i) {
+            auto *key_reply = reply.element[i]->element[0];
+            auto *val_reply = reply.element[i]->element[1];
+            
+            if (key_reply == nullptr || val_reply == nullptr) {
+                throw ProtoError("Null reply in map");
+            }
+            
+            std::string key = parse<std::string>(*key_reply);
+            qb::json value = parse<qb::json>(*val_reply);
+            
+            obj[key] = value;
+        }
+        
+        return obj;
     }
 #endif
-
-    return value;
+    
+    // Default case for unsupported types
+    throw ProtoError("Unsupported Redis reply type for JSON conversion");
 }
 
 /**

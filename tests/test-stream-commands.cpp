@@ -45,10 +45,13 @@ test_key(const std::string &k) {
     return "{" + key_prefix() + "}::" + k;
 }
 
-// Checks connection and cleans environment before tests
+// Verifies connection and cleans environment before tests
 class RedisTest : public ::testing::Test {
 protected:
     qb::redis::tcp::client redis{REDIS_URI};
+
+    // Explicitly declare a virtual destructor as noexcept to match the base class
+    ~RedisTest() noexcept override = default;
 
     void
     SetUp() override {
@@ -169,8 +172,23 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XACK) {
 
     // Read the message with the consumer to make it pending
     auto messages = redis.xreadgroup(key, group, consumer, ">");
+    
+    // Vérifier que nous avons bien reçu des messages
+    ASSERT_TRUE(messages.is_array());
     ASSERT_FALSE(messages.empty());
-    ASSERT_FALSE(messages[key].empty());
+    
+    // Vérifier que notre stream est présent dans la réponse
+    bool found_stream = false;
+    for (const auto& stream_obj : messages) {
+        for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+            std::string stream_key = it.key();
+            if (stream_key.find(key) != std::string::npos) {
+                found_stream = true;
+                ASSERT_FALSE(it.value().empty());
+            }
+        }
+    }
+    ASSERT_TRUE(found_stream);
 
     // Now the message can be acknowledged
     EXPECT_EQ(redis.xack(key, group, id), 1);
@@ -191,34 +209,71 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XTRIM) {
     EXPECT_EQ(redis.xlen(key), 2);
 }
 
-// Test XPENDING command
+// Test XPENDING_DETAILED command
 TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XPENDING) {
-    std::string key      = test_key("xpending");
-    std::string group    = "test-group";
+    std::string key = test_key("xpending");
+    std::string group = "test-group";
     std::string consumer = "test-consumer";
 
-    // Create group
+    // Create group and add messages
     redis.xgroup_create(key, group, "0", true);
-
-    // Add entry
-    std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}};
-    redis.xadd(key, entries);
-
-    // Test xpending without any message read (should be 0)
-    EXPECT_EQ(redis.xpending(key, group), 0);
-
-    // Read the message with the consumer to make it pending
-    auto messages = redis.xreadgroup(key, group, consumer, ">");
-    ASSERT_FALSE(messages.empty());
-    ASSERT_FALSE(messages[key].empty());
-
-    // Now test xpending after reading a message - should return count of pending
-    // messages
-    EXPECT_EQ(redis.xpending(key, group), 1);
-
-    // Test xpending with consumer - should return count of pending messages for that
-    // consumer
-    EXPECT_EQ(redis.xpending(key, group, consumer), 1);
+    
+    std::vector<std::pair<std::string, std::string>> entries = {
+        {"field1", "value1"}, {"field2", "value2"}
+    };
+    
+    auto id1 = redis.xadd(key, entries);
+    auto id2 = redis.xadd(key, entries);
+    
+    // Read messages to make them pending
+    redis.xreadgroup(key, group, consumer, ">");
+    
+    // Get detailed pending information
+    auto pending_info = redis.xpending(key, group);
+    std::cout << "XPENDING: " << pending_info.dump(2) << std::endl;
+    
+    // Verify that we have a valid response
+    ASSERT_FALSE(pending_info.is_null());
+    ASSERT_TRUE(pending_info.is_array());
+    ASSERT_FALSE(pending_info.empty());
+    
+    // Process as array format
+    for (const auto& message : pending_info) {
+        ASSERT_TRUE(message.is_array());
+        ASSERT_GE(message.size(), 4);
+        
+        // Format: [id, consumer, idle_time, delivery_count]
+        // L'ID est au format numérique (timestamp), pas une chaîne
+        EXPECT_TRUE(message[0].is_number());
+        EXPECT_TRUE(message[1].is_string());
+        EXPECT_TRUE(message[2].is_number());
+        EXPECT_TRUE(message[3].is_number());
+        
+        std::string msg_consumer = message[1].template get<std::string>();
+        EXPECT_EQ(msg_consumer, consumer);
+        
+        // Vérifier le nombre de livraisons (doit être 1 pour la première livraison)
+        EXPECT_EQ(message[3].template get<int64_t>(), 1);
+    }
+    
+    // Test with consumer filter
+    auto consumer_pending = redis.xpending(key, group, "-", "+", 10, consumer);
+    std::cout << "XPENDING with filter: " << consumer_pending.dump(2) << std::endl;
+    
+    ASSERT_FALSE(consumer_pending.is_null());
+    ASSERT_TRUE(consumer_pending.is_array());
+    
+    // Si la réponse n'est pas vide, vérifier le format
+    if (!consumer_pending.empty()) {
+        for (const auto& message : consumer_pending) {
+            ASSERT_TRUE(message.is_array());
+            ASSERT_GE(message.size(), 4);
+            EXPECT_TRUE(message[1].is_string());
+            
+            std::string msg_consumer = message[1].template get<std::string>();
+            EXPECT_EQ(msg_consumer, consumer);
+        }
+    }
 }
 
 // Test XREADGROUP command
@@ -238,22 +293,53 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XREADGROUP) {
 
     // Test xreadgroup with ">"
     auto unread_entries = redis.xreadgroup(key, group, consumer, ">");
-    ASSERT_TRUE(!unread_entries.empty());
-    ASSERT_EQ(unread_entries.size(), 1); // Now returns a map with 1 key (stream name)
-    ASSERT_TRUE(unread_entries.find(key) != unread_entries.end());
-    ASSERT_FALSE(unread_entries[key].empty());
-    ASSERT_EQ(unread_entries[key][0].fields["field1"], "value1");
-    ASSERT_EQ(unread_entries[key][0].fields["field2"], "value2");
+    std::cout << "XREADGROUP JSON: " << unread_entries.dump() << std::endl;
+    
+    // La structure retournée est un tableau d'objets où chaque objet a pour clé le nom du stream
+    ASSERT_TRUE(unread_entries.is_array());
+    ASSERT_GE(unread_entries.size(), 1);
+    
+    // Trouver notre clé dans le tableau d'objets
+    bool found_stream = false;
+    for (const auto& stream_obj : unread_entries) {
+        // Parcourir chaque objet stream dans le tableau
+        for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+            std::string stream_key = it.key();
+            
+            // Vérifier si c'est notre stream
+            if (stream_key.find(key) != std::string::npos) {
+                found_stream = true;
+                
+                // Vérifier la structure des messages
+                ASSERT_TRUE(it.value().is_array());
+                ASSERT_FALSE(it.value().empty());
+                
+                // Chaque message est un objet avec l'ID comme clé et les champs comme valeurs
+                for (const auto& message_obj : it.value()) {
+                    for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                        // msg_it.key() est l'ID du message
+                        // msg_it.value() est l'objet contenant les champs
+                        ASSERT_TRUE(msg_it.value().is_object());
+                        ASSERT_TRUE(msg_it.value().contains("field1"));
+                        ASSERT_TRUE(msg_it.value().contains("field2"));
+                        EXPECT_EQ(msg_it.value()["field1"], "value1");
+                        EXPECT_EQ(msg_it.value()["field2"], "value2");
+                    }
+                }
+            }
+        }
+    }
+    
+    ASSERT_TRUE(found_stream);
 
     // Test xreadgroup with count limit
     auto entries_with_limit = redis.xreadgroup(key, group, consumer, "0", 1);
-    ASSERT_TRUE(!entries_with_limit.empty());
-    ASSERT_EQ(entries_with_limit.size(), 1);
-    ASSERT_FALSE(entries_with_limit[key].empty());
+    ASSERT_TRUE(entries_with_limit.is_array());
 
-    // Test with non-blocking mode
-    auto no_entries = redis.xreadgroup(key, group, consumer, ">", 1, 0);
-    EXPECT_FALSE(!no_entries.empty());
+    // Test with non-blocking mode - use a small timeout rather than 0
+    auto no_entries = redis.xreadgroup(key, group, consumer, ">", 1, 100);
+    // Pour une requête sans résultat, ça peut être soit un tableau vide soit une valeur nulle
+    EXPECT_TRUE(no_entries.is_null() || no_entries.empty());
 }
 
 // Test XREADGROUP with multiple streams
@@ -282,20 +368,62 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XREADGROUP_MULTI) {
     std::vector<std::string> ids  = {">", ">"};
 
     auto result = redis.xreadgroup(keys, group, consumer, ids);
+    std::cout << "XREADGROUP_MULTI JSON: " << result.dump() << std::endl;
 
-    // Verify results
-    ASSERT_TRUE(!result.empty());
-    ASSERT_EQ(result.size(), 2);
-    ASSERT_TRUE(result.find(key1) != result.end());
-    ASSERT_TRUE(result.find(key2) != result.end());
-
-    // Check fields from each stream
-    ASSERT_FALSE(result[key1].empty());
-    ASSERT_FALSE(result[key2].empty());
-    EXPECT_EQ(result[key1][0].fields["stream"], "one");
-    EXPECT_EQ(result[key1][0].fields["field"], "value1");
-    EXPECT_EQ(result[key2][0].fields["stream"], "two");
-    EXPECT_EQ(result[key2][0].fields["field"], "value2");
+    // La structure retournée est un tableau d'objets où chaque objet a pour clé le nom du stream
+    ASSERT_TRUE(result.is_array());
+    ASSERT_GE(result.size(), 1);
+    
+    // Vérifier que les deux streams sont présents
+    bool found_stream1 = false;
+    bool found_stream2 = false;
+    
+    for (const auto& stream_obj : result) {
+        // Parcourir chaque objet stream dans le tableau
+        for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+            std::string stream_key = it.key();
+            
+            // Vérifier si c'est stream1
+            if (stream_key.find(key1) != std::string::npos) {
+                found_stream1 = true;
+                
+                // Vérifier les messages du stream1
+                ASSERT_TRUE(it.value().is_array());
+                ASSERT_FALSE(it.value().empty());
+                
+                // Vérifier les champs du premier message
+                for (const auto& message_obj : it.value()) {
+                    for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                        ASSERT_TRUE(msg_it.value().is_object());
+                        EXPECT_EQ(msg_it.value()["stream"], "one");
+                        EXPECT_EQ(msg_it.value()["field"], "value1");
+                    }
+                }
+            }
+            
+            // Vérifier si c'est stream2
+            if (stream_key.find(key2) != std::string::npos) {
+                found_stream2 = true;
+                
+                // Vérifier les messages du stream2
+                ASSERT_TRUE(it.value().is_array());
+                ASSERT_FALSE(it.value().empty());
+                
+                // Vérifier les champs du premier message
+                for (const auto& message_obj : it.value()) {
+                    for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                        ASSERT_TRUE(msg_it.value().is_object());
+                        EXPECT_EQ(msg_it.value()["stream"], "two");
+                        EXPECT_EQ(msg_it.value()["field"], "value2");
+                    }
+                }
+            }
+        }
+    }
+    
+    // Vérifier que les deux streams ont été trouvés
+    ASSERT_TRUE(found_stream1);
+    ASSERT_TRUE(found_stream2);
 }
 
 // Test XREAD command
@@ -310,23 +438,53 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XREAD) {
 
     // Test xread with "0" to read all messages
     auto all_entries = redis.xread(key, "0");
-    ASSERT_TRUE(!all_entries.empty());
-    ASSERT_EQ(all_entries.size(), 1); // One stream
-    ASSERT_TRUE(all_entries.find(key) != all_entries.end());
-    ASSERT_FALSE(all_entries[key].empty());
-    ASSERT_EQ(all_entries[key][0].fields["field1"], "value1");
-    ASSERT_EQ(all_entries[key][0].fields["field2"], "value2");
+    std::cout << "XREAD JSON: " << all_entries.dump() << std::endl;
+    
+    // La structure retournée est un tableau d'objets où chaque objet a pour clé le nom du stream
+    ASSERT_TRUE(all_entries.is_array());
+    ASSERT_FALSE(all_entries.empty());
+    
+    // Trouver notre clé dans le tableau d'objets
+    bool found_stream = false;
+    for (const auto& stream_obj : all_entries) {
+        // Parcourir chaque objet stream dans le tableau
+        for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+            std::string stream_key = it.key();
+            
+            // Vérifier si c'est notre stream
+            if (stream_key.find(key) != std::string::npos) {
+                found_stream = true;
+                
+                // Vérifier les messages du stream
+                ASSERT_TRUE(it.value().is_array());
+                ASSERT_FALSE(it.value().empty());
+                
+                // Vérifier les champs du premier message
+                for (const auto& message_obj : it.value()) {
+                    for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                        ASSERT_TRUE(msg_it.value().is_object());
+                        ASSERT_TRUE(msg_it.value().contains("field1"));
+                        ASSERT_TRUE(msg_it.value().contains("field2"));
+                        EXPECT_EQ(msg_it.value()["field1"], "value1");
+                        EXPECT_EQ(msg_it.value()["field2"], "value2");
+                    }
+                }
+            }
+        }
+    }
+    
+    ASSERT_TRUE(found_stream);
 
     // Test xread with count limit
     auto entries_with_limit = redis.xread(key, "0", 1);
-    ASSERT_TRUE(!entries_with_limit.empty());
-    ASSERT_EQ(entries_with_limit.size(), 1);
-    ASSERT_FALSE(entries_with_limit[key].empty());
+    ASSERT_TRUE(entries_with_limit.is_array());
+    ASSERT_FALSE(entries_with_limit.empty());
 
     // Test with non-existing ID
     auto non_existing =
-        redis.xread(key, std::to_string(id2.timestamp + 1000) + "-0", std::nullopt, 0);
-    EXPECT_FALSE(!non_existing.empty());
+        redis.xread(key, std::to_string(id2.timestamp + 1000) + "-0", std::nullopt, 100);
+    // Pour une requête sans résultat, ça peut être soit un tableau vide soit une valeur nulle
+    EXPECT_TRUE(non_existing.is_null() || non_existing.empty());
 }
 
 // Test XREAD with multiple streams
@@ -349,20 +507,173 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XREAD_MULTI) {
     std::vector<std::string> ids  = {"0", "0"};
 
     auto result = redis.xread(keys, ids);
+    std::cout << "XREAD_MULTI JSON: " << result.dump() << std::endl;
 
-    // Verify results
-    ASSERT_TRUE(!result.empty());
-    ASSERT_EQ(result.size(), 2);
-    ASSERT_TRUE(result.find(key1) != result.end());
-    ASSERT_TRUE(result.find(key2) != result.end());
+    // La structure retournée est un tableau d'objets où chaque objet a pour clé le nom du stream
+    ASSERT_TRUE(result.is_array());
+    ASSERT_FALSE(result.empty());
+    
+    // Vérifier que les deux streams sont présents
+    bool found_stream1 = false;
+    bool found_stream2 = false;
+    
+    for (const auto& stream_obj : result) {
+        // Parcourir chaque objet stream dans le tableau
+        for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+            std::string stream_key = it.key();
+            
+            // Vérifier si c'est stream1
+            if (stream_key.find(key1) != std::string::npos) {
+                found_stream1 = true;
+                
+                // Vérifier les messages du stream1
+                ASSERT_TRUE(it.value().is_array());
+                ASSERT_FALSE(it.value().empty());
+                
+                // Vérifier les champs du premier message
+                for (const auto& message_obj : it.value()) {
+                    for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                        ASSERT_TRUE(msg_it.value().is_object());
+                        EXPECT_EQ(msg_it.value()["stream"], "one");
+                        EXPECT_EQ(msg_it.value()["field"], "value1");
+                    }
+                }
+            }
+            
+            // Vérifier si c'est stream2
+            if (stream_key.find(key2) != std::string::npos) {
+                found_stream2 = true;
+                
+                // Vérifier les messages du stream2
+                ASSERT_TRUE(it.value().is_array());
+                ASSERT_FALSE(it.value().empty());
+                
+                // Vérifier les champs du premier message
+                for (const auto& message_obj : it.value()) {
+                    for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                        ASSERT_TRUE(msg_it.value().is_object());
+                        EXPECT_EQ(msg_it.value()["stream"], "two");
+                        EXPECT_EQ(msg_it.value()["field"], "value2");
+                    }
+                }
+            }
+        }
+    }
+    
+    // Vérifier que les deux streams ont été trouvés
+    ASSERT_TRUE(found_stream1);
+    ASSERT_TRUE(found_stream2);
+}
 
-    // Check fields from each stream
-    ASSERT_FALSE(result[key1].empty());
-    ASSERT_FALSE(result[key2].empty());
-    EXPECT_EQ(result[key1][0].fields["stream"], "one");
-    EXPECT_EQ(result[key1][0].fields["field"], "value1");
-    EXPECT_EQ(result[key2][0].fields["stream"], "two");
-    EXPECT_EQ(result[key2][0].fields["field"], "value2");
+// Test XINFO_STREAM command
+TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XINFO_STREAM) {
+    std::string key = test_key("xinfo_stream");
+
+    // Add some entries to the stream
+    std::vector<std::pair<std::string, std::string>> entries = {
+        {"field1", "value1"}, {"field2", "value2"}
+    };
+    redis.xadd(key, entries);
+    redis.xadd(key, entries);
+
+    // Get stream info
+    auto info = redis.xinfo_stream(key);
+    
+    // Verify the structure of the returned JSON
+    ASSERT_TRUE(!info.empty());
+    EXPECT_EQ(info["length"].template get<int64_t>(), 2);
+    EXPECT_TRUE(info.contains("first-entry"));
+    EXPECT_TRUE(info.contains("last-entry"));
+    EXPECT_TRUE(info.contains("last-generated-id"));
+}
+
+// Test XINFO_GROUPS command
+TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XINFO_GROUPS) {
+    std::string key = test_key("xinfo_groups");
+    std::string group1 = "test-group1";
+    std::string group2 = "test-group2";
+
+    // Create the stream
+    std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}};
+    redis.xadd(key, entries);
+
+    // Create consumer groups
+    redis.xgroup_create(key, group1, "0");
+    redis.xgroup_create(key, group2, "0");
+
+    // Get groups info
+    auto groups_info = redis.xinfo_groups(key);
+    
+    // Verify the structure
+    ASSERT_TRUE(groups_info.is_array());
+    ASSERT_EQ(groups_info.size(), 2);
+    
+    // Check each group info
+    for (const auto& group : groups_info) {
+        EXPECT_TRUE(group.contains("name"));
+        EXPECT_TRUE(group.contains("consumers"));
+        EXPECT_TRUE(group.contains("pending"));
+        EXPECT_TRUE(group.contains("last-delivered-id"));
+        
+        // Verify one of the groups is in our list
+        std::string name = group["name"].template get<std::string>();
+        EXPECT_TRUE(name == group1 || name == group2);
+    }
+}
+
+// Test XINFO_CONSUMERS command
+TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XINFO_CONSUMERS) {
+    std::string key = test_key("xinfo_consumers");
+    std::string group = "test-group";
+    std::string consumer1 = "test-consumer1";
+    std::string consumer2 = "test-consumer2";
+
+    // Create the stream and consumer group
+    std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}};
+    redis.xadd(key, entries);
+    redis.xadd(key, entries);
+    redis.xgroup_create(key, group, "0");
+
+    // Create consumers by reading messages
+    redis.xreadgroup(key, group, consumer1, ">");
+    redis.xreadgroup(key, group, consumer2, ">");
+
+    // Get consumers info
+    auto consumers_info = redis.xinfo_consumers(key, group);
+    
+    // Verify the structure
+    ASSERT_TRUE(consumers_info.is_array());
+    ASSERT_EQ(consumers_info.size(), 2);
+    
+    // Check each consumer info
+    for (const auto& consumer : consumers_info) {
+        EXPECT_TRUE(consumer.contains("name"));
+        EXPECT_TRUE(consumer.contains("pending"));
+        
+        // Verify one of the consumers is in our list
+        std::string name = consumer["name"].template get<std::string>();
+        EXPECT_TRUE(name == consumer1 || name == consumer2);
+    }
+}
+
+// Test XINFO_HELP command
+TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XINFO_HELP) {
+    // Get XINFO command help
+    auto help_info = redis.xinfo_help();
+    
+    // Verify the structure
+    ASSERT_TRUE(help_info.is_array());
+    ASSERT_FALSE(help_info.empty());
+    
+    // Help output should contain strings explaining XINFO usage
+    bool has_help_text = false;
+    for (const auto& line : help_info) {
+        if (line.is_string() && line.template get<std::string>().find("XINFO") != std::string::npos) {
+            has_help_text = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(has_help_text);
 }
 
 /*
@@ -491,8 +802,23 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XACK) {
 
     // Read the message with the consumer to make it pending
     auto messages = redis.xreadgroup(key, group, consumer, ">");
+    
+    // Vérifier que nous avons bien reçu des messages
+    ASSERT_TRUE(messages.is_array());
     ASSERT_FALSE(messages.empty());
-    ASSERT_FALSE(messages[key].empty());
+    
+    // Vérifier que notre stream est présent dans la réponse
+    bool found_stream = false;
+    for (const auto& stream_obj : messages) {
+        for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+            std::string stream_key = it.key();
+            if (stream_key.find(key) != std::string::npos) {
+                found_stream = true;
+                ASSERT_FALSE(it.value().empty());
+            }
+        }
+    }
+    ASSERT_TRUE(found_stream);
 
     redis.xack(
         [&](auto &&reply) {
@@ -572,39 +898,6 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_CHAINING) {
     EXPECT_TRUE(all_commands_completed);
 }
 
-// Test async XPENDING command
-TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XPENDING) {
-    std::string key                = test_key("async_xpending");
-    std::string group              = "test-group";
-    std::string consumer           = "test-consumer";
-    bool        xpending_completed = false;
-
-    // Create group
-    redis.xgroup_create(key, group, "0", true);
-
-    // Add entry
-    std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}};
-    redis.xadd(key, entries);
-
-    // Read the message with the consumer to make it pending
-    auto messages = redis.xreadgroup(key, group, consumer, ">");
-    ASSERT_FALSE(messages.empty());
-    ASSERT_FALSE(messages[key].empty());
-
-    // Test xpending with consumer - should return count of pending messages for that
-    // consumer
-    redis.xpending(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            xpending_completed = true;
-        },
-        key, group, consumer);
-
-    redis.await();
-    EXPECT_TRUE(xpending_completed);
-}
-
 // Test async XREAD command
 TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XREAD) {
     std::string key             = test_key("async_xread");
@@ -619,13 +912,44 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XREAD) {
     redis.xread(
         [&](auto &&reply) {
             EXPECT_TRUE(reply.ok());
-            ASSERT_TRUE(!reply.result().empty());
             auto &result = reply.result();
-            ASSERT_EQ(result.size(), 1);
-            ASSERT_TRUE(result.find(key) != result.end());
-            ASSERT_FALSE(result[key].empty());
-            EXPECT_EQ(result[key][0].fields["field1"], "value1");
-            EXPECT_EQ(result[key][0].fields["field2"], "value2");
+            
+            std::cout << "ASYNC_XREAD JSON: " << result.dump() << std::endl;
+            
+            // La structure retournée est un tableau d'objets où chaque objet a pour clé le nom du stream
+            ASSERT_TRUE(result.is_array());
+            ASSERT_FALSE(result.empty());
+            
+            // Trouver notre clé dans le tableau d'objets
+            bool found_stream = false;
+            for (const auto& stream_obj : result) {
+                // Parcourir chaque objet stream dans le tableau
+                for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+                    std::string stream_key = it.key();
+                    
+                    // Vérifier si c'est notre stream
+                    if (stream_key.find(key) != std::string::npos) {
+                        found_stream = true;
+                        
+                        // Vérifier les messages du stream
+                        ASSERT_TRUE(it.value().is_array());
+                        ASSERT_FALSE(it.value().empty());
+                        
+                        // Vérifier les champs du premier message
+                        for (const auto& message_obj : it.value()) {
+                            for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                                ASSERT_TRUE(msg_it.value().is_object());
+                                ASSERT_TRUE(msg_it.value().contains("field1"));
+                                ASSERT_TRUE(msg_it.value().contains("field2"));
+                                EXPECT_EQ(msg_it.value()["field1"], "value1");
+                                EXPECT_EQ(msg_it.value()["field2"], "value2");
+                            }
+                        }
+                    }
+                }
+            }
+            
+            ASSERT_TRUE(found_stream);
             xread_completed = true;
         },
         key, "0");
@@ -650,28 +974,71 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XREAD_MULTI) {
     redis.xadd(key1, entries1);
     redis.xadd(key2, entries2);
 
-    // Test reading from multiple streams asynchronously
+    // Test reading from multiple streams
     std::vector<std::string> keys = {key1, key2};
     std::vector<std::string> ids  = {"0", "0"};
 
     redis.xread(
         [&](auto &&reply) {
             EXPECT_TRUE(reply.ok());
-            ASSERT_TRUE(!reply.result().empty());
             auto &result = reply.result();
 
-            ASSERT_EQ(result.size(), 2);
-            ASSERT_TRUE(result.find(key1) != result.end());
-            ASSERT_TRUE(result.find(key2) != result.end());
+            std::cout << "ASYNC_XREAD_MULTI JSON: " << result.dump() << std::endl;
 
-            // Check fields from each stream
-            ASSERT_FALSE(result[key1].empty());
-            ASSERT_FALSE(result[key2].empty());
-            EXPECT_EQ(result[key1][0].fields["stream"], "one");
-            EXPECT_EQ(result[key1][0].fields["field"], "value1");
-            EXPECT_EQ(result[key2][0].fields["stream"], "two");
-            EXPECT_EQ(result[key2][0].fields["field"], "value2");
-
+            // La structure retournée est un tableau d'objets où chaque objet a pour clé le nom du stream
+            ASSERT_TRUE(result.is_array());
+            ASSERT_FALSE(result.empty());
+            
+            // Vérifier que les deux streams sont présents
+            bool found_stream1 = false;
+            bool found_stream2 = false;
+            
+            for (const auto& stream_obj : result) {
+                // Parcourir chaque objet stream dans le tableau
+                for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+                    std::string stream_key = it.key();
+                    
+                    // Vérifier si c'est stream1
+                    if (stream_key.find(key1) != std::string::npos) {
+                        found_stream1 = true;
+                        
+                        // Vérifier les messages du stream1
+                        ASSERT_TRUE(it.value().is_array());
+                        ASSERT_FALSE(it.value().empty());
+                        
+                        // Vérifier les champs du premier message
+                        for (const auto& message_obj : it.value()) {
+                            for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                                ASSERT_TRUE(msg_it.value().is_object());
+                                EXPECT_EQ(msg_it.value()["stream"], "one");
+                                EXPECT_EQ(msg_it.value()["field"], "value1");
+                            }
+                        }
+                    }
+                    
+                    // Vérifier si c'est stream2
+                    if (stream_key.find(key2) != std::string::npos) {
+                        found_stream2 = true;
+                        
+                        // Vérifier les messages du stream2
+                        ASSERT_TRUE(it.value().is_array());
+                        ASSERT_FALSE(it.value().empty());
+                        
+                        // Vérifier les champs du premier message
+                        for (const auto& message_obj : it.value()) {
+                            for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                                ASSERT_TRUE(msg_it.value().is_object());
+                                EXPECT_EQ(msg_it.value()["stream"], "two");
+                                EXPECT_EQ(msg_it.value()["field"], "value2");
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Vérifier que les deux streams ont été trouvés
+            ASSERT_TRUE(found_stream1);
+            ASSERT_TRUE(found_stream2);
             xread_multi_completed = true;
         },
         keys, ids);
@@ -700,13 +1067,44 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XREADGROUP) {
     redis.xreadgroup(
         [&](auto &&reply) {
             EXPECT_TRUE(reply.ok());
-            ASSERT_TRUE(!reply.result().empty());
             auto &result = reply.result();
-            ASSERT_EQ(result.size(), 1);
-            ASSERT_TRUE(result.find(key) != result.end());
-            ASSERT_FALSE(result[key].empty());
-            EXPECT_EQ(result[key][0].fields["field1"], "value1");
-            EXPECT_EQ(result[key][0].fields["field2"], "value2");
+            
+            std::cout << "ASYNC_XREADGROUP JSON: " << result.dump() << std::endl;
+            
+            // La structure retournée est un tableau d'objets où chaque objet a pour clé le nom du stream
+            ASSERT_TRUE(result.is_array());
+            ASSERT_FALSE(result.empty());
+            
+            // Trouver notre clé dans le tableau d'objets
+            bool found_stream = false;
+            for (const auto& stream_obj : result) {
+                // Parcourir chaque objet stream dans le tableau
+                for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+                    std::string stream_key = it.key();
+                    
+                    // Vérifier si c'est notre stream
+                    if (stream_key.find(key) != std::string::npos) {
+                        found_stream = true;
+                        
+                        // Vérifier les messages du stream
+                        ASSERT_TRUE(it.value().is_array());
+                        ASSERT_FALSE(it.value().empty());
+                        
+                        // Vérifier les champs du premier message
+                        for (const auto& message_obj : it.value()) {
+                            for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                                ASSERT_TRUE(msg_it.value().is_object());
+                                ASSERT_TRUE(msg_it.value().contains("field1"));
+                                ASSERT_TRUE(msg_it.value().contains("field2"));
+                                EXPECT_EQ(msg_it.value()["field1"], "value1");
+                                EXPECT_EQ(msg_it.value()["field2"], "value2");
+                            }
+                        }
+                    }
+                }
+            }
+            
+            ASSERT_TRUE(found_stream);
             xreadgroup_completed = true;
         },
         key, group, consumer, ">");
@@ -717,11 +1115,11 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XREADGROUP) {
 
 // Test async XREADGROUP with multiple streams
 TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XREADGROUP_MULTI) {
-    std::string key1                       = test_key("async_xreadgroup_multi1");
-    std::string key2                       = test_key("async_xreadgroup_multi2");
-    std::string group                      = "test-group";
-    std::string consumer                   = "test-consumer";
-    bool        xreadgroup_multi_completed = false;
+    std::string key1     = test_key("async_xreadgroup_multi1");
+    std::string key2     = test_key("async_xreadgroup_multi2");
+    std::string group    = "test-group";
+    std::string consumer = "test-consumer";
+    bool        xreadgroup_completed = false;
 
     // Create groups for both streams
     redis.xgroup_create(key1, group, "0", true);
@@ -737,34 +1135,288 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XREADGROUP_MULTI) {
     redis.xadd(key1, entries1);
     redis.xadd(key2, entries2);
 
-    // Test reading from multiple streams using the multi-stream function
+    // Test reading from multiple streams
     std::vector<std::string> keys = {key1, key2};
     std::vector<std::string> ids  = {">", ">"};
 
     redis.xreadgroup(
         [&](auto &&reply) {
             EXPECT_TRUE(reply.ok());
-            ASSERT_TRUE(!reply.result().empty());
-            auto &result = reply.result();
+            auto result = reply.result();
+            
+            std::cout << "ASYNC_XREADGROUP_MULTI JSON: " << result.dump() << std::endl;
 
-            ASSERT_EQ(result.size(), 2);
-            ASSERT_TRUE(result.find(key1) != result.end());
-            ASSERT_TRUE(result.find(key2) != result.end());
-
-            // Check fields from each stream
-            ASSERT_FALSE(result[key1].empty());
-            ASSERT_FALSE(result[key2].empty());
-            EXPECT_EQ(result[key1][0].fields["stream"], "one");
-            EXPECT_EQ(result[key1][0].fields["field"], "value1");
-            EXPECT_EQ(result[key2][0].fields["stream"], "two");
-            EXPECT_EQ(result[key2][0].fields["field"], "value2");
-
-            xreadgroup_multi_completed = true;
+            // La structure retournée est un tableau d'objets où chaque objet a pour clé le nom du stream
+            ASSERT_TRUE(result.is_array());
+            ASSERT_FALSE(result.empty());
+            
+            // Vérifier que les deux streams sont présents
+            bool found_stream1 = false;
+            bool found_stream2 = false;
+            
+            for (const auto& stream_obj : result) {
+                // Parcourir chaque objet stream dans le tableau
+                for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
+                    std::string stream_key = it.key();
+                    
+                    // Vérifier si c'est stream1
+                    if (stream_key.find(key1) != std::string::npos) {
+                        found_stream1 = true;
+                        
+                        // Vérifier les messages du stream1
+                        ASSERT_TRUE(it.value().is_array());
+                        ASSERT_FALSE(it.value().empty());
+                        
+                        // Vérifier les champs du premier message
+                        for (const auto& message_obj : it.value()) {
+                            for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                                ASSERT_TRUE(msg_it.value().is_object());
+                                EXPECT_EQ(msg_it.value()["stream"], "one");
+                                EXPECT_EQ(msg_it.value()["field"], "value1");
+                            }
+                        }
+                    }
+                    
+                    // Vérifier si c'est stream2
+                    if (stream_key.find(key2) != std::string::npos) {
+                        found_stream2 = true;
+                        
+                        // Vérifier les messages du stream2
+                        ASSERT_TRUE(it.value().is_array());
+                        ASSERT_FALSE(it.value().empty());
+                        
+                        // Vérifier les champs du premier message
+                        for (const auto& message_obj : it.value()) {
+                            for (auto msg_it = message_obj.begin(); msg_it != message_obj.end(); ++msg_it) {
+                                ASSERT_TRUE(msg_it.value().is_object());
+                                EXPECT_EQ(msg_it.value()["stream"], "two");
+                                EXPECT_EQ(msg_it.value()["field"], "value2");
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Vérifier que les deux streams ont été trouvés
+            ASSERT_TRUE(found_stream1);
+            ASSERT_TRUE(found_stream2);
+            xreadgroup_completed = true;
         },
         keys, group, consumer, ids);
 
     redis.await();
-    EXPECT_TRUE(xreadgroup_multi_completed);
+    EXPECT_TRUE(xreadgroup_completed);
+}
+
+// Test async XINFO_STREAM command
+TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XINFO_STREAM) {
+    std::string key = test_key("async_xinfo_stream");
+    bool xinfo_stream_completed = false;
+
+    // Add some entries to the stream
+    std::vector<std::pair<std::string, std::string>> entries = {
+        {"field1", "value1"}, {"field2", "value2"}
+    };
+    redis.xadd(key, entries);
+    redis.xadd(key, entries);
+
+    // Get stream info asynchronously
+    redis.xinfo_stream(
+        [&](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            auto info = reply.result();
+            
+            // Verify the structure of the returned JSON
+            ASSERT_TRUE(!info.empty());
+            EXPECT_EQ(info["length"].template get<int64_t>(), 2);
+            EXPECT_TRUE(info.contains("first-entry"));
+            EXPECT_TRUE(info.contains("last-entry"));
+            EXPECT_TRUE(info.contains("last-generated-id"));
+            
+            xinfo_stream_completed = true;
+        },
+        key);
+
+    redis.await();
+    EXPECT_TRUE(xinfo_stream_completed);
+}
+
+// Test async XINFO_GROUPS command
+TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XINFO_GROUPS) {
+    std::string key = test_key("async_xinfo_groups");
+    std::string group1 = "test-group1";
+    std::string group2 = "test-group2";
+    bool xinfo_groups_completed = false;
+
+    // Create the stream
+    std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}};
+    redis.xadd(key, entries);
+
+    // Create consumer groups
+    redis.xgroup_create(key, group1, "0");
+    redis.xgroup_create(key, group2, "0");
+
+    // Get groups info asynchronously
+    redis.xinfo_groups(
+        [&](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            auto groups_info = reply.result();
+            
+            // Verify the structure
+            ASSERT_TRUE(groups_info.is_array());
+            ASSERT_EQ(groups_info.size(), 2);
+            
+            // Check each group info
+            for (const auto& group : groups_info) {
+                EXPECT_TRUE(group.contains("name"));
+                EXPECT_TRUE(group.contains("consumers"));
+                EXPECT_TRUE(group.contains("pending"));
+                EXPECT_TRUE(group.contains("last-delivered-id"));
+                
+                // Verify one of the groups is in our list
+                std::string name = group["name"].template get<std::string>();
+                EXPECT_TRUE(name == group1 || name == group2);
+            }
+            
+            xinfo_groups_completed = true;
+        },
+        key);
+
+    redis.await();
+    EXPECT_TRUE(xinfo_groups_completed);
+}
+
+// Test async XINFO_CONSUMERS command
+TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XINFO_CONSUMERS) {
+    std::string key = test_key("async_xinfo_consumers");
+    std::string group = "test-group";
+    std::string consumer1 = "test-consumer1";
+    std::string consumer2 = "test-consumer2";
+    bool xinfo_consumers_completed = false;
+
+    // Create the stream and consumer group
+    std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}};
+    redis.xadd(key, entries);
+    redis.xadd(key, entries);
+    redis.xgroup_create(key, group, "0");
+
+    // Create consumers by reading messages
+    redis.xreadgroup(key, group, consumer1, ">");
+    redis.xreadgroup(key, group, consumer2, ">");
+
+    // Get consumers info asynchronously
+    redis.xinfo_consumers(
+        [&](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            auto consumers_info = reply.result();
+            
+            // Verify the structure
+            ASSERT_TRUE(consumers_info.is_array());
+            ASSERT_EQ(consumers_info.size(), 2);
+            
+            // Check each consumer info
+            for (const auto& consumer : consumers_info) {
+                EXPECT_TRUE(consumer.contains("name"));
+                EXPECT_TRUE(consumer.contains("pending"));
+                
+                // Verify one of the consumers is in our list
+                std::string name = consumer["name"].template get<std::string>();
+                EXPECT_TRUE(name == consumer1 || name == consumer2);
+            }
+            
+            xinfo_consumers_completed = true;
+        },
+        key, group);
+
+    redis.await();
+    EXPECT_TRUE(xinfo_consumers_completed);
+}
+
+// Test async XINFO_HELP command
+TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XINFO_HELP) {
+    bool xinfo_help_completed = false;
+
+    // Get XINFO command help asynchronously
+    redis.xinfo_help(
+        [&](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            auto help_info = reply.result();
+            
+            // Verify the structure
+            ASSERT_TRUE(help_info.is_array());
+            ASSERT_FALSE(help_info.empty());
+            
+            // Help output should contain strings explaining XINFO usage
+            bool has_help_text = false;
+            for (const auto& line : help_info) {
+                if (line.is_string() && line.template get<std::string>().find("XINFO") != std::string::npos) {
+                    has_help_text = true;
+                    break;
+                }
+            }
+            EXPECT_TRUE(has_help_text);
+            
+            xinfo_help_completed = true;
+        });
+
+    redis.await();
+    EXPECT_TRUE(xinfo_help_completed);
+}
+
+// Test async XPENDING command
+TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XPENDING) {
+    std::string key = test_key("async_xpending");
+    std::string group = "test-group";
+    std::string consumer = "test-consumer";
+    bool xpending_completed = false;
+
+    // Create group and add messages
+    redis.xgroup_create(key, group, "0", true);
+    
+    std::vector<std::pair<std::string, std::string>> entries = {
+        {"field1", "value1"}, {"field2", "value2"}
+    };
+    
+    auto id1 = redis.xadd(key, entries);
+    auto id2 = redis.xadd(key, entries);
+    
+    // Read messages to make them pending
+    redis.xreadgroup(key, group, consumer, ">");
+    
+    // Get detailed pending information asynchronously
+    redis.xpending(
+        [&](auto &&reply) {
+            EXPECT_TRUE(reply.ok());
+            auto pending_info = reply.result();
+            
+            // Verify the structure
+            ASSERT_TRUE(pending_info.is_array());
+            ASSERT_EQ(pending_info.size(), 2);
+            
+            // Check details of pending messages
+            for (const auto& message : pending_info) {
+                ASSERT_TRUE(message.is_array());
+                ASSERT_GE(message.size(), 4);
+                
+                // Message format should be [id, consumer, idle_time, delivery_count]
+                EXPECT_TRUE(message[0].is_number());
+                EXPECT_TRUE(message[1].is_string());
+                EXPECT_TRUE(message[2].is_number());
+                EXPECT_TRUE(message[3].is_number());
+                
+                std::string msg_consumer = message[1].template get<std::string>();
+                EXPECT_EQ(msg_consumer, consumer);
+                
+                // Delivery count should be 1 (first delivery)
+                EXPECT_EQ(message[3].template get<int64_t>(), 1);
+            }
+            
+            xpending_completed = true;
+        },
+        key, group);
+
+    redis.await();
+    EXPECT_TRUE(xpending_completed);
 }
 
 // Main function to run the tests

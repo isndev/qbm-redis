@@ -29,6 +29,7 @@
 #include <qb/utility/type_traits.h>
 #include <qb/system/allocator/pipe.h>
 #include <qb/system/container/unordered_map.h>
+#include <qb/json.h>
 #include <hiredis/hiredis.h>
 #include "types.h"
 
@@ -213,6 +214,9 @@ template <typename Output>
 void to_array(redisReply &reply, Output output);
 // Parse set reply to bool type
 bool parse_set_reply(redisReply &reply);
+
+// Add declaration for qb::json parser
+qb::json parse(ParseTag<qb::json>, redisReply &reply);
 
 } // namespace reply
 
@@ -525,6 +529,27 @@ parse(redisReply &reply) {
 }
 
 /**
+ * @brief Counts the number of elements in a string literal for Redis protocol
+ * @param str The string literal to count
+ * @return Always returns 1, as a string literal is a single element
+ */
+template <size_t N>
+inline std::size_t
+redis_count(const char (&str)[N]) {
+    return 1;
+}
+
+/**
+ * @brief Counts the number of elements in a C-string for Redis protocol
+ * @param str The C-string to count
+ * @return Always returns 1, as a C-string is a single element
+ */
+inline std::size_t
+redis_count(const char* str) {
+    return 1;
+}
+
+/**
  * @brief Counts the number of elements in a string for Redis protocol
  * @param Unused string parameter
  * @return Always returns 1, as a string is a single element
@@ -591,6 +616,63 @@ redis_count(T const &cnt, std::enable_if_t<qb::is_container<T>::value> * = 0) {
 }
 
 /**
+ * @brief Counts the number of elements in a qb::json value for Redis protocol
+ * @param json The JSON value to count
+ * @return Number of elements in the JSON value
+ */
+inline std::size_t
+redis_count(qb::json const &json) {
+    if (json.is_null()) return 1;
+    if (json.is_boolean() || json.is_number() || json.is_string()) return 1;
+    
+    if (json.is_array()) {
+        std::size_t count = 0;
+        for (const auto &item : json) {
+            count += redis_count(item);
+        }
+        return count;
+    }
+    
+    if (json.is_object()) {
+        std::size_t count = 0;
+        for (auto it = json.begin(); it != json.end(); ++it) {
+            count += 1; // Key
+            count += redis_count(it.value());
+        }
+        return count;
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief Converts a string literal to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param str String literal to convert
+ * @return Always returns true
+ */
+template <size_t N>
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
+    pipe << '$' << (N-1) << "\r\n" << str << "\r\n";
+    return true;
+}
+
+/**
+ * @brief Converts a C-string to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param str C-string to convert
+ * @return Always returns true
+ */
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, const char* str) {
+    if (!str) str = "";
+    size_t len = strlen(str);
+    pipe << '$' << len << "\r\n" << str << "\r\n";
+    return true;
+}
+
+/**
  * @brief Converts a string to Redis protocol format and writes it to a pipe
  * @param pipe Output pipe to write to
  * @param val String value to convert
@@ -608,10 +690,9 @@ to_redis_string(qb::allocator::pipe<char> &pipe, std::string const &val) {
  * @param val Arithmetic value to convert
  * @return Result of the string conversion
  */
-template <typename T>
-bool
-to_redis_string(qb::allocator::pipe<char> &pipe, T const &val,
-                std::enable_if_t<std::is_arithmetic_v<T>> * = 0) {
+template <typename T, typename = typename std::enable_if<std::is_arithmetic<T>::value>::type>
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, T const &val) {
     return to_redis_string(pipe, std::to_string(val));
 }
 
@@ -841,6 +922,39 @@ to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::json_value const &js
                 to_redis_string(pipe, val);
             }
             break;
+    }
+    return true;
+}
+
+/**
+ * @brief Converts a qb::json value to Redis protocol format and writes it to a pipe
+ * @param pipe Output pipe to write to
+ * @param json The JSON value to convert
+ * @return Always returns true
+ */
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::json const &json) {
+    if (json.is_null()) {
+        to_redis_string(pipe, std::string("null"));
+    } else if (json.is_boolean()) {
+        to_redis_string(pipe, std::string(json.get<bool>() ? "true" : "false"));
+    } else if (json.is_number()) {
+        if (json.is_number_integer()) {
+            to_redis_string(pipe, std::to_string(json.get<int64_t>()));
+        } else {
+            to_redis_string(pipe, std::to_string(json.get<double>()));
+        }
+    } else if (json.is_string()) {
+        to_redis_string(pipe, json.get<std::string>());
+    } else if (json.is_array()) {
+        for (const auto &val : json) {
+            to_redis_string(pipe, val);
+        }
+    } else if (json.is_object()) {
+        for (auto it = json.begin(); it != json.end(); ++it) {
+            to_redis_string(pipe, std::string(it.key()));
+            to_redis_string(pipe, it.value());
+        }
     }
     return true;
 }
