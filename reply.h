@@ -535,7 +535,7 @@ parse(redisReply &reply) {
  */
 template <size_t N>
 inline std::size_t
-redis_count(const char (&str)[N]) {
+redis_count(const char (&)[N]) {
     return 1;
 }
 
@@ -545,7 +545,7 @@ redis_count(const char (&str)[N]) {
  * @return Always returns 1, as a C-string is a single element
  */
 inline std::size_t
-redis_count(const char* str) {
+redis_count(const char* ) {
     return 1;
 }
 
