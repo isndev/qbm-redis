@@ -122,6 +122,7 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XDEL) {
 
     // Add entries
     auto id1 = redis.xadd(key, entries);
+    (void)id1;
     redis.xadd(key, entries);
 
     // Test xdel
@@ -169,6 +170,7 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XACK) {
     // Add entry
     std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}};
     auto                                             id      = redis.xadd(key, entries);
+    (void)id;
 
     // Read the message with the consumer to make it pending
     auto messages = redis.xreadgroup(key, group, consumer, ">");
@@ -223,7 +225,9 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XPENDING) {
     };
     
     auto id1 = redis.xadd(key, entries);
+    (void)id1;
     auto id2 = redis.xadd(key, entries);
+    (void)id2;
     
     // Read messages to make them pending
     redis.xreadgroup(key, group, consumer, ">");
@@ -435,6 +439,7 @@ TEST_F(RedisTest, SYNC_STREAM_COMMANDS_XREAD) {
                                                                 {"field2", "value2"}};
     redis.xadd(key, entries);
     auto id2 = redis.xadd(key, entries);
+    (void)id2;
 
     // Test xread with "0" to read all messages
     auto all_entries = redis.xread(key, "0");
@@ -729,6 +734,7 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XDEL) {
 
     // Add entry
     auto id = redis.xadd(key, entries);
+    (void)id;
 
     redis.xdel(
         [&](auto &&reply) {
@@ -799,6 +805,7 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XACK) {
     // Add entry
     std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}};
     auto                                             id      = redis.xadd(key, entries);
+    (void)id;
 
     // Read the message with the consumer to make it pending
     auto messages = redis.xreadgroup(key, group, consumer, ">");
@@ -1378,7 +1385,9 @@ TEST_F(RedisTest, ASYNC_STREAM_COMMANDS_XPENDING) {
     };
     
     auto id1 = redis.xadd(key, entries);
+    (void)id1;
     auto id2 = redis.xadd(key, entries);
+    (void)id2;
     
     // Read messages to make them pending
     redis.xreadgroup(key, group, consumer, ">");
