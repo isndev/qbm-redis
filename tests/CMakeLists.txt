@@ -15,6 +15,8 @@
 #         limitations under the License.
 #
 
+include(CTest)
+
 # Define test files and their corresponding test names
 set(REDIS_TESTS
         connection-commands
@@ -42,9 +44,9 @@ set(REDIS_TESTS
 
 # Register each test
 foreach (TEST ${REDIS_TESTS})
-    qb_register_module_gtest(
-            NAME redis
-            TESTNAME ${TEST}
-            SOURCES test-${TEST}.cpp
+    qb_register_module_test(
+        MODULE_NAME redis
+        TEST_NAME ${TEST}
+        SOURCES test-${TEST}.cpp
     )
 endforeach ()
