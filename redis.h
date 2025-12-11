@@ -824,7 +824,7 @@ struct tcp {
      * @brief TCP-based Redis callback consumer
      */
     using cb_consumer = detail::RedisCallbackConsumer<qb::io::transport::tcp>;
-#ifdef QB_IO_WITH_SSL
+#ifdef QB_HAS_SSL
     /**
      * @struct ssl
      * @brief Namespace providing SSL/TLS-secured Redis client and consumer types

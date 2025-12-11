@@ -17,31 +17,39 @@
 
 project(qbm-redis)
 
-if (NOT QB_FOUND)
-    message(STATUS "qb project not found, skipping Redis module")
+# Check if qb framework is available
+if(NOT QB_FOUND)
+    qb_status_message("qb framework not found, skipping Redis module")
     return()
-endif ()
+endif()
 
-if (NOT OPENSSL_FOUND OR NOT QB_IO_WITH_SSL)
-    message(INFO: qbm-redis will not be loaded, missing openssl)
+# Check if SSL support is available
+if(NOT QB_HAS_SSL)
+    qb_status_message("Redis module requires SSL support - skipping")
     return()
-endif ()
+endif()
 
+# Add the internal hiredis dependency
 set(DISABLE_TESTS ON)
 add_subdirectory(not-qb/hiredis)
 
+# Register the Redis module using the new framework functions
 qb_register_module(
-        NAME redis
-        VERSION 1.0.0
-        DEPENDENCIES hiredis
-        SOURCES
+    NAME redis
+    VERSION 1.0.0
+    DEPENDS qb-core hiredis
+    SOURCES
         redis.cpp
         reply.cpp
+    INCLUDES
+        not-qb
+    DEFINES
+        QBM_REDIS_VERSION=1.0.0
 )
 
-target_include_directories(qbm-redis PUBLIC not-qb)
+target_include_directories(qbm-redis PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/not-qb)
 
-if (QB_BUILD_TEST)
-    enable_testing()
+# Add tests if enabled
+if(QB_BUILD_TESTS)
     add_subdirectory(tests)
-endif ()
+endif()
