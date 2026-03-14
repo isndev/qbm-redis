@@ -2,6 +2,8 @@
 
 This document covers Redis commands operating on Sorted Set values (also known as ZSETs). Sorted Sets are collections of unique strings (members) where each member is associated with a floating-point score. Members are ordered by their score.
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Sorted Set Commands](https://redis.io/commands/?group=sorted-set)
 
 ## Common Types & Reply Types

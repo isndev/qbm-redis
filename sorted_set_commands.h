@@ -28,8 +28,7 @@ namespace qb::redis {
  * @brief Provides Redis sorted set command implementations.
  *
  * This class implements Redis sorted set operations, which provide an ordered collection
- * of unique strings, sorted by associated scores. Each command has both synchronous
- * and asynchronous versions.
+ * of unique strings, sorted by associated scores. Commands return awaiters for coroutine-first async I/O.
  *
  * Redis sorted sets are particularly useful for ranking data, implementing leaderboards,
  * and efficiently retrieving ranges of elements based on their ordering.
@@ -48,16 +47,18 @@ private:
      * @class scanner
      * @brief Helper class for implementing incremental scanning of sorted sets
      *
+     * Uses shared_ptr for automatic memory management. Safe even if exceptions occur.
+     *
      * @tparam Func Callback function type
      */
     template <typename Func>
-    class scanner {
+    class scanner : public std::enable_shared_from_this<scanner<Func>> {
         Derived    &_handler;
         std::string _key;
         std::string _pattern;
         Func        _func;
-        size_t      _cursor{0};
         qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> _reply;
+        bool        _started{false};
 
     public:
         /**
@@ -72,8 +73,20 @@ private:
             : _handler(handler)
             , _key(std::move(key))
             , _pattern(std::move(pattern))
-            , _func(std::forward<Func>(func)) {
-            _handler.zscan(std::ref(*this), _key, 0, _pattern, 100);
+            , _func(std::forward<Func>(func)) {}
+
+        /**
+         * @brief Start the scanning process
+         */
+        void
+        start() {
+            if (!_started) {
+                _started = true;
+                auto self = this->shared_from_this();
+                _handler.zscan(
+                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
+                    _key, 0, _pattern, 100);
+            }
         }
 
         /**
@@ -88,13 +101,28 @@ private:
             _reply.ok() = reply.ok();
             std::move(reply.result().items.begin(), reply.result().items.end(),
                       std::inserter(_reply.result().items, _reply.result().items.end()));
-            if (reply.ok() && reply.result().cursor)
-                _handler.zscan(std::ref(*this), _key, reply.result().cursor, _pattern,
-                               100);
-            else {
-                _func(std::move(_reply));
-                delete this;
+            if (reply.ok() && reply.result().cursor) {
+                auto self = this->shared_from_this();
+                _handler.zscan(
+                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
+                    _key, reply.result().cursor, _pattern, 100);
+            } else {
+                try {
+                    _func(std::move(_reply));
+                } catch (std::exception const &e) {
+                    LOG_WARN("[qbm][redis] sorted_set scanner callback failed: " << e.what());
+                }
             }
+        }
+
+        /**
+         * @brief Factory method to create and start a scanner safely
+         */
+        static void
+        create_and_start(Derived &handler, std::string key, std::string pattern, Func &&func) {
+            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern),
+                                                 std::forward<Func>(func));
+            ptr->start();
         }
     };
 
@@ -107,13 +135,12 @@ public:
      * @param timeout Timeout in seconds, 0 means block forever
      * @return Optional tuple containing key name, member name, and score
      */
-    std::optional<std::tuple<std::string, std::string, double>>
-    bzpopmax(const std::vector<std::string> &keys, long long timeout) {
-        return derived()
-            .template command<
-                std::optional<std::tuple<std::string, std::string, double>>>(
-                "BZPOPMAX", keys, timeout)
-            .result();
+    auto bzpopmax(const std::vector<std::string> &keys, long long timeout) {
+        return derived().template make_coro_command<std::optional<std::tuple<std::string, std::string, double>>>(
+            [this, keys, timeout](auto&& callback) {
+                this->bzpopmax(std::move(callback), keys, timeout);
+            }
+        );
     }
 
     /**
@@ -137,16 +164,8 @@ public:
                 std::forward<Func>(func), "BZPOPMAX", keys, timeout);
     }
 
-    /**
-     * @brief Overload of bzpopmax accepting std::chrono::seconds for timeout
-     *
-     * @param keys Keys where sorted sets are stored
-     * @param timeout Timeout as std::chrono::seconds, 0 means block forever
-     * @return Optional tuple containing key name, member name, and score
-     */
-    std::optional<std::tuple<std::string, std::string, double>>
-    bzpopmax(const std::vector<std::string> &keys,
-             const std::chrono::seconds     &timeout = std::chrono::seconds{0}) {
+    auto bzpopmax(const std::vector<std::string> &keys,
+                  const std::chrono::seconds     &timeout = std::chrono::seconds{0}) {
         return bzpopmax(keys, timeout.count());
     }
 
@@ -177,13 +196,12 @@ public:
      * @param timeout Timeout in seconds, 0 means block forever
      * @return Optional tuple containing key name, member name, and score
      */
-    std::optional<std::tuple<std::string, std::string, double>>
-    bzpopmin(const std::vector<std::string> &keys, long long timeout) {
-        return derived()
-            .template command<
-                std::optional<std::tuple<std::string, std::string, double>>>(
-                "BZPOPMIN", keys, timeout)
-            .result();
+    auto bzpopmin(const std::vector<std::string> &keys, long long timeout) {
+        return derived().template make_coro_command<std::optional<std::tuple<std::string, std::string, double>>>(
+            [this, keys, timeout](auto&& callback) {
+                this->bzpopmin(std::move(callback), keys, timeout);
+            }
+        );
     }
 
     /**
@@ -207,16 +225,8 @@ public:
                 std::forward<Func>(func), "BZPOPMIN", keys, timeout);
     }
 
-    /**
-     * @brief Overload of bzpopmin accepting std::chrono::seconds for timeout
-     *
-     * @param keys Keys where sorted sets are stored
-     * @param timeout Timeout as std::chrono::seconds, 0 means block forever
-     * @return Optional tuple containing key name, member name, and score
-     */
-    std::optional<std::tuple<std::string, std::string, double>>
-    bzpopmin(const std::vector<std::string> &keys,
-             const std::chrono::seconds     &timeout = std::chrono::seconds{0}) {
+    auto bzpopmin(const std::vector<std::string> &keys,
+                  const std::chrono::seconds     &timeout = std::chrono::seconds{0}) {
         return bzpopmin(keys, timeout.count());
     }
 
@@ -239,30 +249,13 @@ public:
         return bzpopmin(std::forward<Func>(func), keys, timeout.count());
     }
 
-    /**
-     * @brief Adds one or more members to a sorted set, or updates the score if member
-     * already exists
-     *
-     * @param key Key where the sorted set is stored
-     * @param members Vector of score_member objects to add
-     * @param type Update type (ALWAYS, EXIST, or NOT_EXIST)
-     * @param changed If true, return number of changed elements, not just new elements
-     * @return Number of elements added to the sorted set
-     */
-    long long
-    zadd(const std::string &key, const std::vector<score_member> &members,
-         UpdateType type = UpdateType::ALWAYS, bool changed = false) {
-        std::optional<std::string> opt_up, opt_ch;
-
-        if (type != UpdateType::ALWAYS)
-            opt_up = std::to_string(type);
-
-        if (changed)
-            opt_ch = "CH";
-
-        return derived()
-            .template command<long long>("ZADD", key, opt_up, opt_ch, members)
-            .result();
+    auto zadd(const std::string &key, const std::vector<score_member> &members,
+              UpdateType type = UpdateType::ALWAYS, bool changed = false) {
+        return derived().template make_coro_command<long long>(
+            [this, key, members, type, changed](auto&& callback) {
+                this->zadd(std::move(callback), key, members, type, changed);
+            }
+        );
     }
 
     /**
@@ -283,7 +276,7 @@ public:
         std::optional<std::string> opt_up, opt_ch;
 
         if (type != UpdateType::ALWAYS)
-            opt_up = std::to_string(type);
+            opt_up = to_string(type);
 
         if (changed)
             opt_ch = "CH";
@@ -297,9 +290,12 @@ public:
      * @param key Key where the sorted set is stored
      * @return Number of members in the sorted set
      */
-    long long
-    zcard(const std::string &key) {
-        return derived().template command<long long>("ZCARD", key).result();
+    auto zcard(const std::string &key) {
+        return derived().template make_coro_command<long long>(
+            [this, key](auto&& callback) {
+                this->zcard(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -327,12 +323,12 @@ public:
      * @return Number of members in the sorted set with scores in the interval
      */
     template <typename Interval>
-    long long
-    zcount(const std::string &key, const Interval &interval) {
-        return derived()
-            .template command<long long>("ZCOUNT", key, interval.lower(),
-                                         interval.upper())
-            .result();
+    auto zcount(const std::string &key, const Interval &interval) {
+        return derived().template make_coro_command<long long>(
+            [this, key, interval](auto&& callback) {
+                this->zcount(std::move(callback), key, interval);
+            }
+        );
     }
 
     /**
@@ -352,19 +348,12 @@ public:
             std::forward<Func>(func), "ZCOUNT", key, interval.lower(), interval.upper());
     }
 
-    /**
-     * @brief Increments the score of a member in a sorted set
-     *
-     * @param key Key where the sorted set is stored
-     * @param increment Amount to increment the score by
-     * @param member Member whose score should be incremented
-     * @return New score of the member after increment
-     */
-    double
-    zincrby(const std::string &key, double increment, const std::string &member) {
-        return derived()
-            .template command<double>("ZINCRBY", key, increment, member)
-            .result();
+    auto zincrby(const std::string &key, double increment, const std::string &member) {
+        return derived().template make_coro_command<double>(
+            [this, key, increment, member](auto&& callback) {
+                this->zincrby(std::move(callback), key, increment, member);
+            }
+        );
     }
 
     /**
@@ -385,27 +374,14 @@ public:
                                                   key, increment, member);
     }
 
-    /**
-     * @brief Computes the union of multiple sorted sets and stores the result in a new
-     * key
-     *
-     * @param destination Key where the resulting sorted set will be stored
-     * @param keys Keys where the source sorted sets are stored
-     * @param weights Vector of weights to apply to each sorted set
-     * @param type Aggregation type (SUM, MIN, or MAX)
-     * @return Number of members in the resulting sorted set
-     */
-    long long
-    zunionstore(const std::string &destination, const std::vector<std::string> &keys,
-                const std::vector<double> &weights = {},
-                Aggregation                type    = Aggregation::SUM) {
-        std::optional<std::string> opt;
-        if (!weights.empty())
-            opt = "WEIGHTS";
-        return derived()
-            .template command<long long>("ZUNIONSTORE", destination, keys.size(), keys,
-                                         opt, weights, "AGGREGATE", std::to_string(type))
-            .result();
+    auto zunionstore(const std::string &destination, const std::vector<std::string> &keys,
+                     const std::vector<double> &weights = {},
+                     Aggregation                type    = Aggregation::SUM) {
+        return derived().template make_coro_command<long long>(
+            [this, destination, keys, weights, type](auto&& callback) {
+                this->zunionstore(std::move(callback), destination, keys, weights, type);
+            }
+        );
     }
 
     /**
@@ -430,7 +406,7 @@ public:
             opt = "WEIGHTS";
         return derived().template command<long long>(
             std::forward<Func>(func), "ZUNIONSTORE", destination, keys.size(), keys, opt,
-            weights, "AGGREGATE", std::to_string(type));
+            weights, "AGGREGATE", to_string(type));
     }
 
     /**
@@ -442,17 +418,14 @@ public:
      * @param type Aggregation type (SUM, MIN, or MAX)
      * @return Number of members in the resulting sorted set
      */
-    long long
-    zinterstore(const std::string &destination, const std::vector<std::string> &keys,
-                const std::vector<double> &weights = {},
-                Aggregation                type    = Aggregation::SUM) {
-        std::optional<std::string> opt;
-        if (!weights.empty())
-            opt = "WEIGHTS";
-        return derived()
-            .template command<long long>("ZINTERSTORE", destination, keys.size(), keys,
-                                         opt, weights, "AGGREGATE", std::to_string(type))
-            .result();
+    auto zinterstore(const std::string &destination, const std::vector<std::string> &keys,
+                     const std::vector<double> &weights = {},
+                     Aggregation                type    = Aggregation::SUM) {
+        return derived().template make_coro_command<long long>(
+            [this, destination, keys, weights, type](auto&& callback) {
+                this->zinterstore(std::move(callback), destination, keys, weights, type);
+            }
+        );
     }
 
     /**
@@ -477,25 +450,16 @@ public:
             opt = "WEIGHTS";
         return derived().template command<long long>(
             std::forward<Func>(func), "ZINTERSTORE", destination, keys.size(), keys, opt,
-            weights, "AGGREGATE", std::to_string(type));
+            weights, "AGGREGATE", to_string(type));
     }
 
-    /**
-     * @brief Counts the number of members in a sorted set between a lexicographical
-     * range
-     *
-     * @tparam Interval Type of the lexicographical interval
-     * @param key Key where the sorted set is stored
-     * @param interval Interval object with lower() and upper() methods
-     * @return Number of members in the sorted set within the lexicographical range
-     */
     template <typename Interval>
-    long long
-    zlexcount(const std::string &key, const Interval &interval) {
-        return derived()
-            .template command<long long>("ZLEXCOUNT", key, interval.lower(),
-                                         interval.upper())
-            .result();
+    auto zlexcount(const std::string &key, const Interval &interval) {
+        return derived().template make_coro_command<long long>(
+            [this, key, interval](auto&& callback) {
+                this->zlexcount(std::move(callback), key, interval);
+            }
+        );
     }
 
     /**
@@ -516,18 +480,12 @@ public:
                                                      interval.upper());
     }
 
-    /**
-     * @brief Removes and returns members with the highest scores from a sorted set
-     *
-     * @param key Key where the sorted set is stored
-     * @param count Number of members to pop (default is 1)
-     * @return Vector of score_member objects that were removed
-     */
-    std::vector<score_member>
-    zpopmax(const std::string &key, long long count = 1) {
-        return derived()
-            .template command<std::vector<score_member>>("ZPOPMAX", key, count)
-            .result();
+    auto zpopmax(const std::string &key, long long count = 1) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, key, count](auto&& callback) {
+                this->zpopmax(std::move(callback), key, count);
+            }
+        );
     }
 
     /**
@@ -554,11 +512,12 @@ public:
      * @param count Number of members to pop (default is 1)
      * @return Vector of score_member objects that were removed
      */
-    std::vector<score_member>
-    zpopmin(const std::string &key, long long count = 1) {
-        return derived()
-            .template command<std::vector<score_member>>("ZPOPMIN", key, count)
-            .result();
+    auto zpopmin(const std::string &key, long long count = 1) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, key, count](auto&& callback) {
+                this->zpopmin(std::move(callback), key, count);
+            }
+        );
     }
 
     /**
@@ -578,21 +537,12 @@ public:
             std::forward<Func>(func), "ZPOPMIN", key, count);
     }
 
-    /**
-     * @brief Gets members in a sorted set with their scores within a specified range of
-     * indices
-     *
-     * @param key Key where the sorted set is stored
-     * @param start Start index (0-based, can be negative to count from the end)
-     * @param stop Stop index (inclusive, can be negative to count from the end)
-     * @return Vector of member-score pairs within the range
-     */
-    std::vector<score_member>
-    zrange(const std::string &key, long long start, long long stop) {
-        return derived()
-            .template command<std::vector<score_member>>("ZRANGE", key, start, stop,
-                                                         "WITHSCORES")
-            .result();
+    auto zrange(const std::string &key, long long start, long long stop) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, key, start, stop](auto&& callback) {
+                this->zrange(std::move(callback), key, start, stop);
+            }
+        );
     }
 
     /**
@@ -613,25 +563,14 @@ public:
             std::forward<Func>(func), "ZRANGE", key, start, stop, "WITHSCORES");
     }
 
-    /**
-     * @brief Gets members in a sorted set that have scores within a lexicographical
-     * range
-     *
-     * @tparam Interval Type of the lexicographical interval
-     * @param key Key where the sorted set is stored
-     * @param interval Interval object with lower() and upper() methods
-     * @param opts Limit options for pagination
-     * @return Vector of members within the lexicographical range
-     */
     template <typename Interval>
-    std::vector<std::string>
-    zrangebylex(const std::string &key, Interval const &interval,
-                const LimitOptions &opts = {}) {
-        return derived()
-            .template command<std::vector<std::string>>(
-                "ZRANGEBYLEX", key, interval.lower(), interval.upper(), "LIMIT",
-                opts.offset, opts.count)
-            .result();
+    auto zrangebylex(const std::string &key, Interval const &interval,
+                     const LimitOptions &opts = {}) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key, interval, opts](auto&& callback) {
+                this->zrangebylex(std::move(callback), key, interval, opts);
+            }
+        );
     }
 
     /**
@@ -668,14 +607,13 @@ public:
      * @return Vector of member-score pairs within the score range
      */
     template <typename Interval>
-    std::vector<score_member>
-    zrangebyscore(const std::string &key, Interval const &interval,
-                  const LimitOptions &opts = {}) {
-        return derived()
-            .template command<std::vector<score_member>>(
-                "ZRANGEBYSCORE", key, interval.lower(), interval.upper(), "WITHSCORES",
-                "LIMIT", opts.offset, opts.count)
-            .result();
+    auto zrangebyscore(const std::string &key, Interval const &interval,
+                         const LimitOptions &opts = {}) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, key, &interval, &opts](auto&& callback) {
+                this->zrangebyscore(std::move(callback), key, interval, opts);
+            }
+        );
     }
 
     /**
@@ -701,19 +639,12 @@ public:
             opts.offset >= 0 ? std::to_string(opts.count) : "", "WITHSCORES");
     }
 
-    /**
-     * @brief Gets the rank of a member in a sorted set, with scores ordered from low to
-     * high
-     *
-     * @param key Key where the sorted set is stored
-     * @param member Member whose rank is requested
-     * @return Optional rank of the member (0-based), or nullopt if member doesn't exist
-     */
-    std::optional<long long>
-    zrank(const std::string &key, const std::string &member) {
-        return derived()
-            .template command<std::optional<long long>>("ZRANK", key, member)
-            .result();
+    auto zrank(const std::string &key, const std::string &member) {
+        return derived().template make_coro_command<std::optional<long long>>(
+            [this, key, member](auto&& callback) {
+                this->zrank(std::move(callback), key, member);
+            }
+        );
     }
 
     /**
@@ -733,16 +664,12 @@ public:
             std::forward<Func>(func), "ZRANK", key, member);
     }
 
-    /**
-     * @brief Removes one or more members from a sorted set
-     *
-     * @param key Key where the sorted set is stored
-     * @param members Initializer list of members to remove
-     * @return Number of members removed from the sorted set
-     */
-    long long
-    zrem(const std::string &key, const std::vector<std::string> &members) {
-        return derived().template command<long long>("ZREM", key, members).result();
+    auto zrem(const std::string &key, const std::vector<std::string> &members) {
+        return derived().template make_coro_command<long long>(
+            [this, key, members](auto&& callback) {
+                this->zrem(std::move(callback), key, members);
+            }
+        );
     }
 
     /**
@@ -761,21 +688,13 @@ public:
                                                      key, members);
     }
 
-    /**
-     * @brief Removes members from a sorted set that are within a lexicographical range
-     *
-     * @tparam Interval Type of the lexicographical interval
-     * @param key Key where the sorted set is stored
-     * @param interval Interval object with lower() and upper() methods
-     * @return Number of members removed
-     */
     template <typename Interval>
-    long long
-    zremrangebylex(const std::string &key, Interval const &interval) {
-        return derived()
-            .template command<long long>("ZREMRANGEBYLEX", key, interval.lower(),
-                                         interval.upper())
-            .result();
+    auto zremrangebylex(const std::string &key, Interval const &interval) {
+        return derived().template make_coro_command<long long>(
+            [this, key, interval](auto&& callback) {
+                this->zremrangebylex(std::move(callback), key, interval);
+            }
+        );
     }
 
     /**
@@ -804,11 +723,12 @@ public:
      * @param stop Stop index (inclusive, can be negative to count from the end)
      * @return Number of members removed
      */
-    long long
-    zremrangebyrank(const std::string &key, long long start, long long stop) {
-        return derived()
-            .template command<long long>("ZREMRANGEBYRANK", key, start, stop)
-            .result();
+    auto zremrangebyrank(const std::string &key, long long start, long long stop) {
+        return derived().template make_coro_command<long long>(
+            [this, key, start, stop](auto&& callback) {
+                this->zremrangebyrank(std::move(callback), key, start, stop);
+            }
+        );
     }
 
     /**
@@ -829,21 +749,13 @@ public:
             std::forward<Func>(func), "ZREMRANGEBYRANK", key, start, stop);
     }
 
-    /**
-     * @brief Removes members from a sorted set that have scores within a specified range
-     *
-     * @tparam Interval Type of the score interval
-     * @param key Key where the sorted set is stored
-     * @param interval Interval object with lower() and upper() methods
-     * @return Number of members removed
-     */
     template <typename Interval>
-    long long
-    zremrangebyscore(const std::string &key, Interval const &interval) {
-        return derived()
-            .template command<long long>("ZREMRANGEBYSCORE", key, interval.lower(),
-                                         interval.upper())
-            .result();
+    auto zremrangebyscore(const std::string &key, Interval const &interval) {
+        return derived().template make_coro_command<long long>(
+            [this, key, interval](auto&& callback) {
+                this->zremrangebyscore(std::move(callback), key, interval);
+            }
+        );
     }
 
     /**
@@ -864,21 +776,12 @@ public:
                                                      interval.lower(), interval.upper());
     }
 
-    /**
-     * @brief Gets members in a sorted set with their scores within a specified range of
-     * indices, ordered from high to low
-     *
-     * @param key Key where the sorted set is stored
-     * @param start Start index (0-based, can be negative to count from the end)
-     * @param stop Stop index (inclusive, can be negative to count from the end)
-     * @return Vector of member-score pairs within the range
-     */
-    std::vector<score_member>
-    zrevrange(const std::string &key, long long start, long long stop) {
-        return derived()
-            .template command<std::vector<score_member>>("ZREVRANGE", key, start, stop,
-                                                         "WITHSCORES")
-            .result();
+    auto zrevrange(const std::string &key, long long start, long long stop) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, key, start, stop](auto&& callback) {
+                this->zrevrange(std::move(callback), key, start, stop);
+            }
+        );
     }
 
     /**
@@ -910,14 +813,13 @@ public:
      * @return Vector of members within the lexicographical range
      */
     template <typename Interval>
-    std::vector<std::string>
-    zrevrangebylex(const std::string &key, Interval const &interval,
-                   const LimitOptions &opt = {}) {
-        return derived()
-            .template command<std::vector<std::string>>(
-                "ZREVRANGEBYLEX", key, interval.upper(), interval.lower(), "LIMIT",
-                opt.offset, opt.count)
-            .result();
+    auto zrevrangebylex(const std::string &key, Interval const &interval,
+                        const LimitOptions &opt = {}) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key, interval, opt](auto&& callback) {
+                this->zrevrangebylex(std::move(callback), key, interval, opt);
+            }
+        );
     }
 
     /**
@@ -941,25 +843,14 @@ public:
             interval.lower(), "LIMIT", opt.offset, opt.count);
     }
 
-    /**
-     * @brief Gets members in a sorted set that have scores within a specified score
-     * range, ordered from high to low
-     *
-     * @tparam Interval Type of the score interval
-     * @param key Key where the sorted set is stored
-     * @param interval Interval object with lower() and upper() methods
-     * @param opt Limit options for pagination
-     * @return Vector of member-score pairs within the score range
-     */
     template <typename Interval>
-    std::vector<score_member>
-    zrevrangebyscore(const std::string &key, Interval const &interval,
-                     const LimitOptions &opt = {}) {
-        return derived()
-            .template command<std::vector<score_member>>(
-                "ZREVRANGEBYSCORE", key, interval.upper(), interval.lower(),
-                "WITHSCORES", "LIMIT", opt.offset, opt.count)
-            .result();
+    auto zrevrangebyscore(const std::string &key, Interval const &interval,
+                          const LimitOptions &opt = {}) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, key, &interval, &opt](auto&& callback) {
+                this->zrevrangebyscore(std::move(callback), key, interval, opt);
+            }
+        );
     }
 
     /**
@@ -983,19 +874,12 @@ public:
             interval.lower(), "WITHSCORES", "LIMIT", opt.offset, opt.count);
     }
 
-    /**
-     * @brief Gets the rank of a member in a sorted set, with scores ordered from high to
-     * low
-     *
-     * @param key Key where the sorted set is stored
-     * @param member Member whose rank is requested
-     * @return Optional rank of the member (0-based), or nullopt if member doesn't exist
-     */
-    std::optional<long long>
-    zrevrank(const std::string &key, const std::string &member) {
-        return derived()
-            .template command<std::optional<long long>>("ZREVRANK", key, member)
-            .result();
+    auto zrevrank(const std::string &key, const std::string &member) {
+        return derived().template make_coro_command<std::optional<long long>>(
+            [this, key, member](auto&& callback) {
+                this->zrevrank(std::move(callback), key, member);
+            }
+        );
     }
 
     /**
@@ -1015,25 +899,13 @@ public:
             std::forward<Func>(func), "ZREVRANK", key, member);
     }
 
-    /**
-     * @brief Incrementally iterate sorted set elements and their scores
-     *
-     * @param key Key where the sorted set is stored
-     * @param cursor Cursor position to start iteration from
-     * @param pattern Pattern to filter members
-     * @param count Hint for how many elements to return per call
-     * @return Scan result containing next cursor and member-score pairs
-     */
-    qb::redis::scan<qb::unordered_map<std::string, double>>
-    zscan(const std::string &key, long long cursor, const std::string &pattern = "*",
-          long long count = 10) {
-        if (key.empty()) {
-            return {};
-        }
-        return derived()
-            .template command<qb::redis::scan<qb::unordered_map<std::string, double>>>(
-                "ZSCAN", key, cursor, "MATCH", pattern, "COUNT", count)
-            .result();
+    auto zscan(const std::string &key, long long cursor, const std::string &pattern = "*",
+               long long count = 10) {
+        return derived().template make_coro_command<qb::redis::scan<qb::unordered_map<std::string, double>>>(
+            [this, key, cursor, pattern, count](auto&& callback) {
+                this->zscan(std::move(callback), key, cursor, pattern, count);
+            }
+        );
     }
 
     /**
@@ -1081,22 +953,16 @@ public:
             Func, Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>,
         Derived &>
     zscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
-        new scanner<Func>(derived(), key, pattern, std::forward<Func>(func));
+        scanner<Func>::create_and_start(derived(), key, pattern, std::forward<Func>(func));
         return derived();
     }
 
-    /**
-     * @brief Gets the score of a member in a sorted set
-     *
-     * @param key Key where the sorted set is stored
-     * @param member Member whose score is requested
-     * @return Optional score of the member, or nullopt if member doesn't exist
-     */
-    std::optional<double>
-    zscore(const std::string &key, const std::string &member) {
-        return derived()
-            .template command<std::optional<double>>("ZSCORE", key, member)
-            .result();
+    auto zscore(const std::string &key, const std::string &member) {
+        return derived().template make_coro_command<std::optional<double>>(
+            [this, key, member](auto&& callback) {
+                this->zscore(std::move(callback), key, member);
+            }
+        );
     }
 
     /**
@@ -1114,6 +980,319 @@ public:
     zscore(Func &&func, const std::string &key, const std::string &member) {
         return derived().template command<std::optional<double>>(
             std::forward<Func>(func), "ZSCORE", key, member);
+    }
+
+    // =============== New Sorted Set Commands (TODO_COMMANDS.md) ===============
+
+    /**
+     * @brief Return the difference between the first and successive sorted sets.
+     * @param keys Keys of sorted sets (first is subtracted from others).
+     * @see https://redis.io/commands/zdiff
+     */
+    auto zdiff(const std::vector<std::string> &keys) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, keys](auto&& callback) {
+                this->zdiff(std::move(callback), keys);
+            }
+        );
+    }
+    /**
+     * @brief Return the difference between sorted sets with scores.
+     * @see https://redis.io/commands/zdiff
+     */
+    auto zdiffWithScores(const std::vector<std::string> &keys) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, keys](auto&& callback) {
+                this->zdiffWithScores(std::move(callback), keys);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
+    zdiff(Func &&func, const std::vector<std::string> &keys) {
+        return derived().template command<std::vector<std::string>>(
+            std::forward<Func>(func), "ZDIFF", keys.size(), keys);
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
+                     Derived &>
+    zdiffWithScores(Func &&func, const std::vector<std::string> &keys) {
+        return derived().template command<std::vector<score_member>>(
+            std::forward<Func>(func), "ZDIFF", keys.size(), keys, "WITHSCORES");
+    }
+
+    /**
+     * @brief Store the difference of sorted sets in destination.
+     * @see https://redis.io/commands/zdiffstore
+     */
+    auto zdiffstore(const std::string &destination,
+                    const std::vector<std::string> &keys) {
+        return derived().template make_coro_command<long long>(
+            [this, destination, keys](auto&& callback) {
+                this->zdiffstore(std::move(callback), destination, keys);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
+    zdiffstore(Func &&func, const std::string &destination,
+               const std::vector<std::string> &keys) {
+        return derived().template command<long long>(
+            std::forward<Func>(func), "ZDIFFSTORE", destination, keys.size(), keys);
+    }
+
+    /**
+     * @brief Intersect multiple sorted sets.
+     * @see https://redis.io/commands/zinter
+     */
+    auto zinter(const std::vector<std::string> &keys,
+                const std::vector<double> &weights = {},
+                Aggregation type = Aggregation::SUM) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, keys, weights, type](auto&& callback) {
+                this->zinter(std::move(callback), keys, weights, type);
+            }
+        );
+    }
+    /**
+     * @brief Intersect multiple sorted sets with scores.
+     * @see https://redis.io/commands/zinter
+     */
+    auto zinterWithScores(const std::vector<std::string> &keys,
+                          const std::vector<double> &weights = {},
+                          Aggregation type = Aggregation::SUM) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, keys, weights, type](auto&& callback) {
+                this->zinterWithScores(std::move(callback), keys, weights, type);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
+    zinter(Func &&func, const std::vector<std::string> &keys,
+           const std::vector<double> &weights = {},
+           Aggregation type = Aggregation::SUM) {
+        std::vector<std::string> opt;
+        if (!weights.empty()) {
+            opt.push_back("WEIGHTS");
+            for (double w : weights) opt.push_back(std::to_string(w));
+        }
+        opt.push_back("AGGREGATE");
+        opt.push_back(to_string(type));
+        return derived().template command<std::vector<std::string>>(
+            std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
+                     Derived &>
+    zinterWithScores(Func &&func, const std::vector<std::string> &keys,
+                    const std::vector<double> &weights = {},
+                    Aggregation type = Aggregation::SUM) {
+        std::vector<std::string> opt;
+        if (!weights.empty()) {
+            opt.push_back("WEIGHTS");
+            for (double w : weights) opt.push_back(std::to_string(w));
+        }
+        opt.push_back("AGGREGATE");
+        opt.push_back(to_string(type));
+        opt.push_back("WITHSCORES");
+        return derived().template command<std::vector<score_member>>(
+            std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
+    }
+
+    /**
+     * @brief Return the cardinality of the intersection of sorted sets.
+     * @see https://redis.io/commands/zintercard
+     */
+    auto zintercard(const std::vector<std::string> &keys,
+                    std::optional<long long> limit = std::nullopt) {
+        return derived().template make_coro_command<long long>(
+            [this, keys, limit](auto&& callback) {
+                this->zintercard(std::move(callback), keys, limit);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
+    zintercard(Func &&func, const std::vector<std::string> &keys,
+               std::optional<long long> limit = std::nullopt) {
+        std::vector<std::string> opt;
+        if (limit) {
+            opt.push_back("LIMIT");
+            opt.push_back(std::to_string(*limit));
+        }
+        return derived().template command<long long>(
+            std::forward<Func>(func), "ZINTERCARD", keys.size(), keys, opt);
+    }
+
+    /**
+     * @brief Pop members with lowest/highest scores from the first non-empty sorted set.
+     * @param keys Keys to check.
+     * @param min_or_max "MIN" or "MAX".
+     * @param count Number of members to pop.
+     * @see https://redis.io/commands/zmpop
+     */
+    auto zmpop(const std::vector<std::string> &keys, const std::string &min_or_max,
+               long long count = 1) {
+        return derived().template make_coro_command<
+            std::optional<std::pair<std::string, std::vector<score_member>>>>(
+            [this, keys, min_or_max, count](auto&& callback) {
+                this->zmpop(std::move(callback), keys, min_or_max, count);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<
+        std::is_invocable_v<Func,
+                           Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>,
+        Derived &>
+    zmpop(Func &&func, const std::vector<std::string> &keys,
+          const std::string &min_or_max, long long count = 1) {
+        if (keys.empty()) return derived();
+        std::vector<std::string> opt;
+        if (count > 1) {
+            opt.push_back("COUNT");
+            opt.push_back(std::to_string(count));
+        }
+        return derived()
+            .template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
+                std::forward<Func>(func), "ZMPOP", keys.size(), keys, min_or_max, opt);
+    }
+
+    /**
+     * @brief Get scores of multiple members.
+     * @see https://redis.io/commands/zmscore
+     */
+    auto zmscore(const std::string &key, const std::vector<std::string> &members) {
+        return derived().template make_coro_command<std::vector<std::optional<double>>>(
+            [this, key, members](auto&& callback) {
+                this->zmscore(std::move(callback), key, members);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<
+        std::is_invocable_v<Func, Reply<std::vector<std::optional<double>>> &&>,
+        Derived &>
+    zmscore(Func &&func, const std::string &key,
+            const std::vector<std::string> &members) {
+        return derived().template command<std::vector<std::optional<double>>>(
+            std::forward<Func>(func), "ZMSCORE", key, members);
+    }
+
+    /**
+     * @brief Get a random member from a sorted set (coroutine awaitable).
+     * @see https://redis.io/commands/zrandmember
+     */
+    auto zrandmember(const std::string &key) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key](auto&& callback) {
+                this->zrandmember(std::move(callback), key);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
+    zrandmember(Func &&func, const std::string &key) {
+        return derived().template command<std::optional<std::string>>(
+            std::forward<Func>(func), "ZRANDMEMBER", key);
+    }
+
+    /**
+     * @brief Get random members from a sorted set (coroutine awaitable).
+     * @param count Number of members to return.
+     * @see https://redis.io/commands/zrandmember
+     */
+    auto zrandmemberCount(const std::string &key, long long count) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key, count](auto&& callback) {
+                this->zrandmemberCount(std::move(callback), key, count);
+            }
+        );
+    }
+    /**
+     * @brief Get random members with scores from a sorted set (coroutine awaitable).
+     * @see https://redis.io/commands/zrandmember
+     */
+    auto zrandmemberWithScores(const std::string &key, long long count) {
+        return derived().template make_coro_command<std::vector<score_member>>(
+            [this, key, count](auto&& callback) {
+                this->zrandmemberWithScores(std::move(callback), key, count);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
+                     Derived &>
+    zrandmemberCount(Func &&func, const std::string &key, long long count) {
+        return derived().template command<std::vector<std::string>>(
+            std::forward<Func>(func), "ZRANDMEMBER", key, count);
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
+                     Derived &>
+    zrandmemberWithScores(Func &&func, const std::string &key, long long count) {
+        return derived().template command<std::vector<score_member>>(
+            std::forward<Func>(func), "ZRANDMEMBER", key, count, "WITHSCORES");
+    }
+
+    /**
+     * @brief Store a range of members from a sorted set into another key.
+     * @see https://redis.io/commands/zrangestore
+     */
+    auto zrangestore(const std::string &dst, const std::string &src,
+                    const std::string &min, const std::string &max,
+                    const std::vector<std::string> &options = {}) {
+        return derived().template make_coro_command<long long>(
+            [this, dst, src, min, max, options](auto&& callback) {
+                this->zrangestore(std::move(callback), dst, src, min, max, options);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
+    zrangestore(Func &&func, const std::string &dst, const std::string &src,
+                const std::string &min, const std::string &max,
+                const std::vector<std::string> &options = {}) {
+        std::vector<std::string> args = {dst, src, min, max};
+        args.insert(args.end(), options.begin(), options.end());
+        return derived().template command<long long>(
+            std::forward<Func>(func), "ZRANGESTORE", args);
+    }
+
+    /**
+     * @brief Blocking variant of ZMPOP.
+     * @see https://redis.io/commands/bzmpop
+     */
+    auto bzmpop(const std::vector<std::string> &keys, long long timeout,
+                const std::string &min_or_max, long long count = 1) {
+        return derived().template make_coro_command<
+            std::optional<std::pair<std::string, std::vector<score_member>>>>(
+            [this, keys, timeout, min_or_max, count](auto&& callback) {
+                this->bzmpop(std::move(callback), keys, timeout, min_or_max, count);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<
+        std::is_invocable_v<Func,
+                           Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>,
+        Derived &>
+    bzmpop(Func &&func, const std::vector<std::string> &keys, long long timeout,
+           const std::string &min_or_max, long long count = 1) {
+        if (keys.empty()) return derived();
+        std::vector<std::string> opt;
+        if (count > 1) {
+            opt.push_back("COUNT");
+            opt.push_back(std::to_string(count));
+        }
+        return derived()
+            .template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
+                std::forward<Func>(func), "BZMPOP", timeout, keys.size(), keys,
+                min_or_max, opt);
     }
 };
 

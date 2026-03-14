@@ -53,9 +53,11 @@ public:
     auto
     eval(const std::string &script, const std::vector<std::string> &keys = {},
          const std::vector<std::string> &args = {}) {
-        return derived()
-            .template command<Ret>("EVAL", script, keys.size(), keys, args)
-            .result();
+        return derived().template make_coro_command<Ret>(
+            [this, script, keys, args](auto&& callback) mutable {
+                this->template eval<Ret>(std::move(callback), script, keys, args);
+            }
+        );
     }
 
     /**
@@ -88,12 +90,14 @@ public:
      * @return Result of the script execution, typed as Ret
      */
     template <typename Ret>
-    Ret
+    auto
     evalsha(const std::string &script, const std::vector<std::string> &keys = {},
             const std::vector<std::string> &args = {}) {
-        return derived()
-            .template command<Ret>("EVALSHA", script, keys.size(), keys, args)
-            .result();
+        return derived().template make_coro_command<Ret>(
+            [this, script, keys, args](auto&& callback) mutable {
+                this->template evalsha<Ret>(std::move(callback), script, keys, args);
+            }
+        );
     }
 
     /**
@@ -124,12 +128,13 @@ public:
      * @return Vector of booleans indicating whether each script exists in the cache
      */
     template <typename... Keys>
-    std::vector<bool>
+    auto
     script_exists(Keys &&...keys) {
-        return derived()
-            .template command<std::vector<bool>>("SCRIPT", "EXISTS",
-                                                 std::forward<Keys>(keys)...)
-            .result();
+        return derived().template make_coro_command<std::vector<bool>>(
+            [this, ...keys = std::forward<Keys>(keys)](auto&& callback) mutable {
+                this->script_exists(std::move(callback), std::forward<decltype(keys)>(keys)...);
+            }
+        );
     }
 
     /**
@@ -153,9 +158,13 @@ public:
      *
      * @return status object with the result
      */
-    status
+    auto
     script_flush() {
-        return derived().template command<status>("SCRIPT", "FLUSH").result();
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) mutable {
+                this->script_flush(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -177,9 +186,13 @@ public:
      *
      * @return status object with the result
      */
-    status
+    auto
     script_kill() {
-        return derived().template command<status>("SCRIPT", "KILL").result();
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) mutable {
+                this->script_kill(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -202,11 +215,13 @@ public:
      * @param script Lua script to load
      * @return SHA1 hash of the loaded script
      */
-    inline std::string
+    auto
     script_load(std::string const &script) {
-        return derived()
-            .template command<std::string>("SCRIPT", "LOAD", script)
-            .result();
+        return derived().template make_coro_command<std::string>(
+            [this, script](auto&& callback) mutable {
+                this->script_load(std::move(callback), script);
+            }
+        );
     }
 
     /**
@@ -222,6 +237,68 @@ public:
     script_load(Func &&func, std::string const &script) {
         return derived().template command<std::string>(std::forward<Func>(func),
                                                        "SCRIPT", "LOAD", script);
+    }
+
+    /**
+     * @brief Read-only variant of EVAL - script cannot perform writes.
+     * @see https://redis.io/commands/eval_ro
+     */
+    template <typename Ret>
+    auto evalRo(const std::string &script, const std::vector<std::string> &keys = {},
+               const std::vector<std::string> &args = {}) {
+        return derived().template make_coro_command<Ret>(
+            [this, script, keys, args](auto&& callback) mutable {
+                this->template evalRo<Ret>(std::move(callback), script, keys, args);
+            }
+        );
+    }
+    template <typename Ret, typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
+    evalRo(Func &&func, const std::string &script,
+           const std::vector<std::string> &keys = {},
+           const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "EVAL_RO",
+                                             script, keys.size(), keys, args);
+    }
+
+    /**
+     * @brief Read-only variant of EVALSHA - script cannot perform writes.
+     * @see https://redis.io/commands/evalsha_ro
+     */
+    template <typename Ret>
+    auto evalshaRo(const std::string &sha1, const std::vector<std::string> &keys = {},
+                  const std::vector<std::string> &args = {}) {
+        return derived().template make_coro_command<Ret>(
+            [this, sha1, keys, args](auto&& callback) mutable {
+                this->template evalshaRo<Ret>(std::move(callback), sha1, keys, args);
+            }
+        );
+    }
+    template <typename Ret, typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
+    evalshaRo(Func &&func, const std::string &sha1,
+              const std::vector<std::string> &keys = {},
+              const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "EVALSHA_RO",
+                                              sha1, keys.size(), keys, args);
+    }
+
+    /**
+     * @brief Set the debug mode for Lua scripts (YES, SYNC, NO).
+     * @see https://redis.io/commands/script-debug
+     */
+    auto scriptDebug(const std::string &mode) {
+        return derived().template make_coro_command<status>(
+            [this, mode](auto&& callback) {
+                this->scriptDebug(std::move(callback), mode);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    scriptDebug(Func &&func, const std::string &mode) {
+        return derived().template command<status>(std::forward<Func>(func), "SCRIPT",
+                                                 "DEBUG", mode);
     }
 };
 

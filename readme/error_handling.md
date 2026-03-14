@@ -14,61 +14,56 @@ Errors can originate from several places:
 
 ## Handling Mechanisms
 
-`qbm-redis` uses different mechanisms depending on whether you use the synchronous or asynchronous API.
+`qbm-redis` reports errors via `qb::redis::Reply<T>`. Commands **do not throw** for Redis command errors; they return a `Reply` with `ok() == false`.
 
-**1. Synchronous Commands:**
+**1. Coroutine (co_await):**
 
-*   **Mechanism:** If a Redis command error occurs (`REDIS_REPLY_ERROR`) or if a protocol/parsing error happens during reply processing, the synchronous command method throws a `std::runtime_error`. The `what()` message of this exception contains the error description from Redis or the parsing error details.
+*   **Mechanism:** The command returns `Reply<T>`. Check `reply.ok()` before using `reply.result()`.
 *   **Example:**
     ```cpp
-    try {
-        // Attempting to increment a non-numeric string
-        redis.set("mykey", "not a number");
-        redis.incr("mykey"); // This will throw
-    } catch (const std::runtime_error& e) {
-        std::cerr << "Synchronous command failed: " << e.what() << std::endl;
-        // e.what() will likely contain something like:
-        // "ERR value is not an integer or out of range"
+    auto reply = co_await redis.incr("mykey");
+    if (!reply.ok()) {
+        std::cerr << "INCR failed: " << reply.error().what() << std::endl;
+    } else {
+        long long val = reply.result();
     }
     ```
-*   **Connection Errors:** Connection failures during the initial synchronous `connect()` call might also throw or return `false` depending on the exact point of failure (DNS vs. TCP connect vs. auth).
 
-**2. Asynchronous Commands:**
+**2. Callback:**
 
-*   **Mechanism:** Errors are reported via the `qb::redis::Reply<T>` object passed to the callback function.
-    *   **`reply.ok()`:** Returns `false` if a Redis command error (`REDIS_REPLY_ERROR`) occurred or if there was a protocol/parsing error during reply processing.
-    *   **`reply.error()`:** If `!reply.ok()`, this `std::string_view` contains the error message from Redis or the description of the parsing error.
+*   **Mechanism:** Errors are reported via the `Reply<T>` passed to the callback.
+    *   **`reply.ok()`:** Returns `false` if a Redis command error or protocol/parsing error occurred.
+    *   **`reply.error()`:** If `!reply.ok()`, returns `const qb::redis::error&` with `what()` for the message.
 *   **Example:**
     ```cpp
-    redis.incr([&](qb::redis::Reply<long long>&& reply) {
+    redis.incr([](qb::redis::Reply<long long>&& reply) {
         if (!reply.ok()) {
-            std::cerr << "Async INCR failed: " << reply.error() << std::endl;
-            // Handle the error - e.g., log it, notify another actor
+            std::cerr << "INCR failed: " << reply.error().what() << std::endl;
         } else {
-            std::cout << "Async INCR succeeded: " << reply.result() << std::endl;
+            std::cout << "INCR succeeded: " << reply.result() << std::endl;
         }
-    }, "mykey_that_holds_a_string");
+    }, "mykey");
     ```
-*   **Connection Errors:** If the underlying connection drops, the `on(qb::io::async::event::disconnected &&)` handler in the `connector` base class is triggered. It attempts to complete any pending callbacks with an error state (`ok = false`, `error = "Connection lost"` or similar).
-*   **Callback Exceptions:** Exceptions thrown *inside* your callback function are **not** caught by the `qbm-redis` library itself. They will propagate according to standard C++ exception handling rules. In a QB actor context, an uncaught exception in a callback might terminate the actor or its `VirtualCore`.
+*   **Connection Errors:** If the connection drops, pending callbacks may be invoked with `ok() == false`.
+*   **Callback Exceptions:** Exceptions thrown inside your callback are not caught by the library.
 
 ## Error Types (`qb::redis::Error`)
 
 *(Defined in `qbm/redis/reply.h`)*
 
-The module defines a hierarchy, although primarily `std::runtime_error` is used for synchronous calls, and `reply.error()` provides the message for async calls.
-
 *   **`qb::redis::Error`:** Base class (inherits `std::exception`).
-*   **`qb::redis::ProtoError`:** Indicates an issue with the Redis protocol itself (e.g., unexpected reply format).
-*   **`qb::redis::ParseError`:** Indicates a failure to parse a valid Redis reply into the expected C++ type.
+*   **`qb::redis::ProtoError`:** Indicates an issue with the Redis protocol itself.
+*   **`qb::redis::ConnectionError`:** Thrown when establishing a connection fails.
+*   **`qb::redis::AuthError`:** Thrown when Redis rejects authentication.
+*   **`qb::redis::CommandError`:** Represents Redis server errors (e.g., WRONGTYPE).
+*   **`qb::redis::ReplyParseError`:** Failure to parse a reply into the expected C++ type.
 
 ## Best Practices
 
-*   **Prefer Asynchronous API:** Especially within QB actors, use the asynchronous command variants with callbacks to avoid blocking.
-*   **Check `reply.ok()`:** Always check `reply.ok()` within asynchronous callbacks before attempting to use `reply.result()`.
-*   **Handle Errors Gracefully:** Implement logic in error callbacks or `catch` blocks to handle expected Redis errors (e.g., `WRONGTYPE`, `NOAUTH`, connection issues) appropriately for your application.
-*   **Check `connect()` Return:** For synchronous `connect()`, check the boolean return value for immediate failures.
-*   **Use `.await()` Judiciously:** Only use `.await()` in contexts where blocking is acceptable (tests, simple scripts).
+*   **Prefer Coroutines:** Use `co_await redis.cmd(...)` for non-blocking async code; it suspends without blocking the event loop.
+*   **Check `reply.ok()`:** Always check `reply.ok()` before using `reply.result()`.
+*   **Handle Errors Gracefully:** Handle expected Redis errors (e.g., `WRONGTYPE`, `NOAUTH`) in your logic.
+*   **Check `connect()` Return:** `co_await redis.connect()` returns `bool`; check it for success.
 
 ## Error Types
 
@@ -93,56 +88,43 @@ The `Reply<T>` object is the primary way to check for command errors.
     *   `reply.error().type()`: Gets the `qb::redis::ReplyErrorType` enum (`ERR`, `MOVED`, `ASK`) indicating the category of Redis error (if it was a server error). `MOVED` and `ASK` are relevant for Redis Cluster, which `qbm-redis` doesn't explicitly handle automatically – the application would need to parse the error message for redirection info.
 
 ```cpp
-// --- Synchronous Error Handling Example ---
-try {
-    qb::redis::tcp::client redis("tcp://127.0.0.1:6379");
-
-    // Example: Trying to increment a non-integer key
-    redis.set("mykey", "not_a_number");
-    qb::redis::Reply<long long> incr_reply = redis.incr("mykey");
-
-    if (incr_reply) {
-        // This branch won't be taken if 'mykey' is not an integer
-        qb::io::cout() << "INCR succeeded (unexpectedly): " << incr_reply.value() << std::endl;
-    } else {
-        // Handle the error
-        const qb::redis::error& err = incr_reply.error();
-        qb::io::cout() << "INCR failed: " << err.what() << std::endl;
-        // Example: Check specific Redis error type
-        if (err.type() == qb::redis::ReplyErrorType::ERR && std::string(err.what()).find("value is not an integer") != std::string::npos) {
-            qb::io::cout() << "(Detected WRONGTYPE error as expected)" << std::endl;
-        }
-    }
-
-} catch (const qb::redis::connection_error& e) {
-    // Catch errors during initial connection
-    qb::io::cout() << "Connection Error: " << e.what() << std::endl;
-} catch (const qb::redis::error& e) {
-    // Catch other potential errors during command execution (less common for sync)
-    qb::io::cout() << "Redis Error: " << e.what() << std::endl;
+// --- Coroutine Error Handling ---
+qb::redis::tcp::client redis{qb::io::uri{"tcp://127.0.0.1:6379"}};
+bool connected = co_await redis.connect();
+if (!connected) {
+    // Connection failed
+    return;
 }
 
+co_await redis.set("mykey", "not_a_number");
+auto incr_reply = co_await redis.incr("mykey");
 
-// --- Asynchronous Error Handling Example (inside callback) ---
-redis.get_async("non_existent_key", [](qb::redis::Reply<std::optional<std::string>>&& reply) {
-    if (reply) {
-        if (reply.value().has_value()) {
-            // Key existed - unexpected in this specific case
+if (incr_reply.ok()) {
+    qb::io::cout() << "INCR succeeded: " << incr_reply.result() << std::endl;
+} else {
+    const qb::redis::error& err = incr_reply.error();
+    qb::io::cout() << "INCR failed: " << err.what() << std::endl;
+}
+
+// --- Callback Error Handling ---
+redis.get([](qb::redis::Reply<std::optional<std::string>>&& reply) {
+    if (reply.ok()) {
+        if (reply.result().has_value()) {
+            // Key existed
         } else {
-            // Key didn't exist (nil reply) - this is considered success by ok()
-            qb::io::cout() << "Async GET: Key does not exist (nil reply)." << std::endl;
+            // Key didn't exist (nil reply)
+            qb::io::cout() << "GET: Key does not exist (nil)." << std::endl;
         }
     } else {
-        // An actual error occurred (e.g., connection dropped before reply, protocol error)
-        qb::io::cout() << "Async GET failed: " << reply.error().what() << std::endl;
+        qb::io::cout() << "GET failed: " << reply.error().what() << std::endl;
     }
-});
+}, "non_existent_key");
 
-redis.incr_async("string_key", [](qb::redis::Reply<long long>&& reply){
-    if (!reply) {
-         qb::io::cout() << "Async INCR failed as expected: " << reply.error().what() << std::endl;
+redis.incr([](qb::redis::Reply<long long>&& reply) {
+    if (!reply.ok()) {
+        qb::io::cout() << "INCR failed: " << reply.error().what() << std::endl;
     }
-});
+}, "string_key");
 ```
 
 ## Connection Errors

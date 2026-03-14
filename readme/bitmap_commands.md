@@ -2,6 +2,8 @@
 
 This document covers Redis commands operating on Bitmaps, which are essentially manipulations of String values at the bit level.
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Bitmap Commands](https://redis.io/commands/?group=bitmap)
 
 ## Common Reply Types

@@ -2,6 +2,8 @@
 
 This document covers Redis commands for managing and executing server-side Lua scripts, known as Functions (introduced in Redis 7.0).
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Function Commands](https://redis.io/commands/?group=scripting) (Note: Function commands are a newer alternative to some older script commands, but both exist).
 
 ## Common Reply Types

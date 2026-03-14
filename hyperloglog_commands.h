@@ -42,19 +42,20 @@ private:
 
 public:
     /**
-     * @brief Adds elements to a HyperLogLog data structure
+     * @brief Adds elements to a HyperLogLog data structure (coroutine awaitable)
      *
      * @tparam Elements Variadic types for elements to add
      * @param key Key under which the HyperLogLog is stored
      * @param elements Elements to add to the HyperLogLog
-     * @return true if at least one internal register was altered, false otherwise
+     * @return Awaitable that yields Reply<bool>
      */
     template <typename... Elements>
-    bool
-    pfadd(const std::string &key, Elements &&...elements) {
-        return derived()
-            .template command<bool>("PFADD", key, std::forward<Elements>(elements)...)
-            .result();
+    auto pfadd(const std::string &key, Elements &&...elements) {
+        return derived().template make_coro_command<bool>(
+            [this, key, ...elements = std::forward<Elements>(elements)](auto&& callback) mutable {
+                this->pfadd(std::move(callback), key, std::forward<decltype(elements)>(elements)...);
+            }
+        );
     }
 
     /**
@@ -75,18 +76,19 @@ public:
     }
 
     /**
-     * @brief Returns the estimated cardinality of one or more HyperLogLog structures
+     * @brief Returns the estimated cardinality of one or more HyperLogLog structures (coroutine awaitable)
      *
      * @tparam Keys Variadic types for key names
      * @param keys Keys containing HyperLogLog structures
-     * @return Approximated cardinality of the union of the HyperLogLogs
+     * @return Awaitable that yields Reply<long long>
      */
     template <typename... Keys>
-    long long
-    pfcount(Keys &&...keys) {
-        return derived()
-            .template command<long long>("PFCOUNT", std::forward<Keys>(keys)...)
-            .result();
+    auto pfcount(Keys &&...keys) {
+        return derived().template make_coro_command<long long>(
+            [this, ...keys = std::forward<Keys>(keys)](auto&& callback) mutable {
+                this->pfcount(std::move(callback), std::forward<decltype(keys)>(keys)...);
+            }
+        );
     }
 
     /**
@@ -106,20 +108,20 @@ public:
     }
 
     /**
-     * @brief Merges multiple HyperLogLog structures into a destination key
+     * @brief Merges multiple HyperLogLog structures into a destination key (coroutine awaitable)
      *
      * @tparam Keys Variadic types for source key names
      * @param destination Destination key where the merged HyperLogLog will be stored
      * @param keys Source keys containing HyperLogLog structures to merge
-     * @return status object indicating success or failure
+     * @return Awaitable that yields Reply<status>
      */
     template <typename... Keys>
-    status
-    pfmerge(const std::string &destination, Keys &&...keys) {
-        return derived()
-            .template command<status>("PFMERGE", destination,
-                                      std::forward<Keys>(keys)...)
-            .result();
+    auto pfmerge(const std::string &destination, Keys &&...keys) {
+        return derived().template make_coro_command<status>(
+            [this, destination, ...keys = std::forward<Keys>(keys)](auto&& callback) mutable {
+                this->pfmerge(std::move(callback), destination, std::forward<decltype(keys)>(keys)...);
+            }
+        );
     }
 
     /**

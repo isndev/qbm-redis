@@ -16,12 +16,30 @@
  */
 
 #include "redis.h"
+#include <charconv>
+#include <cmath>
 
 namespace {
 
 // Constants for infinity representations in Redis range queries
 const std::string NEGATIVE_INFINITY_NUMERIC = "-inf";
 const std::string POSITIVE_INFINITY_NUMERIC = "+inf";
+
+/**
+ * @brief Converts a double to the Redis score string representation.
+ *
+ * Uses std::to_chars with 17 significant digits (round-trip exact for IEEE 754)
+ * and handles ±infinity correctly. Locale-independent.
+ */
+std::string
+double_to_redis(double v) {
+    if (std::isinf(v)) return v > 0 ? "+inf" : "-inf";
+    char buf[64];
+    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), v,
+                                   std::chars_format::general, 17);
+    if (ec == std::errc{}) return std::string(buf, ptr - buf);
+    return "0";  // unreachable in practice
+}
 const std::string NEGATIVE_INFINITY_STRING  = "-";
 const std::string POSITIVE_INFINITY_STRING  = "+";
 
@@ -75,8 +93,8 @@ UnboundedInterval<double>::upper() const {
  * @param type Type of bounds (open, closed, etc.)
  */
 BoundedInterval<double>::BoundedInterval(double min, double max, BoundType type)
-    : _min(std::to_string(min))
-    , _max(std::to_string(max)) {
+    : _min(double_to_redis(min))
+    , _max(double_to_redis(max)) {
     switch (type) {
         case BoundType::CLOSED:
             // Do nothing
@@ -107,7 +125,7 @@ BoundedInterval<double>::BoundedInterval(double min, double max, BoundType type)
  * @param type Type of bounds (open or right-open)
  */
 LeftBoundedInterval<double>::LeftBoundedInterval(double min, BoundType type)
-    : _min(std::to_string(min)) {
+    : _min(double_to_redis(min)) {
     switch (type) {
         case BoundType::OPEN:
             _min = unbound(_min);
@@ -138,7 +156,7 @@ LeftBoundedInterval<double>::upper() const {
  * @param type Type of bounds (open or left-open)
  */
 RightBoundedInterval<double>::RightBoundedInterval(double max, BoundType type)
-    : _max(std::to_string(max)) {
+    : _max(double_to_redis(max)) {
     switch (type) {
         case BoundType::OPEN:
             _max = unbound(_max);
@@ -293,82 +311,65 @@ bound(const std::string &bnd) {
 
 } // namespace
 
-namespace std {
+namespace qb::redis {
+
 std::string
-to_string(qb::redis::BitOp op) {
+to_string(BitOp op) {
     switch (op) {
-        case qb::redis::BitOp::AND:
-            return "AND";
-        case qb::redis::BitOp::OR:
-            return "OR";
-        case qb::redis::BitOp::XOR:
-            return "XOR";
-        case qb::redis::BitOp::NOT:
-            return "NOT";
+        case BitOp::AND: return "AND";
+        case BitOp::OR:  return "OR";
+        case BitOp::XOR: return "XOR";
+        case BitOp::NOT: return "NOT";
     }
     return {};
 }
 
 std::string
-to_string(qb::redis::UpdateType op) {
+to_string(UpdateType op) {
     switch (op) {
-        case qb::redis::UpdateType::EXIST:
-            return "XX";
-        case qb::redis::UpdateType::NOT_EXIST:
-            return "NX";
-        default:
-            return {};
+        case UpdateType::EXIST:     return "XX";
+        case UpdateType::NOT_EXIST: return "NX";
+        default:                    return {};
     }
 }
 
 std::string
-to_string(qb::redis::Aggregation op) {
+to_string(Aggregation op) {
     switch (op) {
-        case qb::redis::Aggregation::SUM:
-            return "SUM";
-        case qb::redis::Aggregation::MIN:
-            return "MIN";
-        case qb::redis::Aggregation::MAX:
-            return "MAX";
+        case Aggregation::SUM: return "SUM";
+        case Aggregation::MIN: return "MIN";
+        case Aggregation::MAX: return "MAX";
     }
     return {};
 }
 
 std::string
-to_string(qb::redis::GeoUnit op) {
+to_string(GeoUnit op) {
     switch (op) {
-        case qb::redis::GeoUnit::M:
-            return "m";
-        case qb::redis::GeoUnit::KM:
-            return "km";
-        case qb::redis::GeoUnit::MI:
-            return "mi";
-        case qb::redis::GeoUnit::FT:
-            return "ft";
+        case GeoUnit::M:  return "m";
+        case GeoUnit::KM: return "km";
+        case GeoUnit::MI: return "mi";
+        case GeoUnit::FT: return "ft";
     }
     return {};
 }
 
 std::string
-to_string(qb::redis::InsertPosition pos) {
+to_string(InsertPosition pos) {
     switch (pos) {
-        case qb::redis::InsertPosition::BEFORE:
-            return "BEFORE";
-        case qb::redis::InsertPosition::AFTER:
-            return "AFTER";
+        case InsertPosition::BEFORE: return "BEFORE";
+        case InsertPosition::AFTER:  return "AFTER";
     }
     return {};
 }
 
 std::string
-to_string(qb::redis::ListPosition pos) {
+to_string(ListPosition pos) {
     switch (pos) {
-        case qb::redis::ListPosition::LEFT:
-            return "LEFT";
-        case qb::redis::ListPosition::RIGHT:
-            return "RIGHT";
+        case ListPosition::LEFT:  return "LEFT";
+        case ListPosition::RIGHT: return "RIGHT";
     }
     return {};
 }
 
-} // namespace std
+} // namespace qb::redis

@@ -40,22 +40,21 @@ private:
 
 public:
     /**
-     * @brief List all functions
+     * @brief List all functions (coroutine awaitable)
      *
      * Returns a list of all functions stored in the function library as a structured JSON object.
      * Each entry contains information about a function, including name, code, and other details.
      *
      * @param library Optional library name to filter the results
-     * @return qb::json object with function information
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/function-list
      */
-    qb::json
-    function_list(const std::optional<std::string> &library = std::nullopt) {
-        if (library) {
-            return derived().template command<qb::json>("FUNCTION", "LIST", "LIBRARYNAME", *library).result();
-        } else {
-            return derived().template command<qb::json>("FUNCTION", "LIST").result();
-        }
+    auto function_list(const std::optional<std::string> &library = std::nullopt) {
+        return derived().template make_coro_command<qb::json>(
+            [this, library](auto&& callback) mutable {
+                this->function_list(std::move(callback), library);
+            }
+        );
     }
 
     /**
@@ -79,20 +78,23 @@ public:
     }
 
     /**
-     * @brief Load a library into the function library
+     * @brief Load a library into the function library (coroutine awaitable)
      *
      * Loads a library into the functions library. The code must contain a Lua script 
      * that defines a table containing at least one function.
      *
      * @param code Lua code for the library
      * @param options Optional parameters (REPLACE, CONFIG)
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-load
      */
     template <typename... Args>
-    status
-    function_load(const std::string &code, Args&&... options) {
-        return derived().template command<status>("FUNCTION", "LOAD", std::forward<Args>(options)..., code).result();
+    auto function_load(const std::string &code, Args&&... options) {
+        return derived().template make_coro_command<status>(
+            [this, code, ...options = std::forward<Args>(options)](auto&& callback) mutable {
+                this->function_load(std::move(callback), code, std::forward<Args>(options)...);
+            }
+        );
     }
 
     /**
@@ -112,17 +114,20 @@ public:
     }
 
     /**
-     * @brief Delete a function from the library
+     * @brief Delete a function from the library (coroutine awaitable)
      *
      * Deletes a library and all its functions from the function library.
      *
      * @param library Name of the library to delete
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-delete
      */
-    status
-    function_delete(const std::string &library) {
-        return derived().template command<status>("FUNCTION", "DELETE", library).result();
+    auto function_delete(const std::string &library) {
+        return derived().template make_coro_command<status>(
+            [this, library](auto&& callback) {
+                this->function_delete(std::move(callback), library);
+            }
+        );
     }
 
     /**
@@ -140,17 +145,20 @@ public:
     }
 
     /**
-     * @brief Remove all libraries from the function library
+     * @brief Remove all libraries from the function library (coroutine awaitable)
      *
      * Deletes all libraries and functions from the function library.
      *
      * @param mode Optional flush mode: ASYNC or SYNC (default SYNC)
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-flush
      */
-    status
-    function_flush(const std::string &mode = "SYNC") {
-        return derived().template command<status>("FUNCTION", "FLUSH", mode).result();
+    auto function_flush(const std::string &mode = "SYNC") {
+        return derived().template make_coro_command<status>(
+            [this, mode](auto&& callback) {
+                this->function_flush(std::move(callback), mode);
+            }
+        );
     }
 
     /**
@@ -168,17 +176,20 @@ public:
     }
 
     /**
-     * @brief Kill a function that is currently executing
+     * @brief Kill a function that is currently executing (coroutine awaitable)
      *
      * Kills a function that is currently executing. Works only on scripts that 
      * are currently running.
      *
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-kill
      */
-    status
-    function_kill() {
-        return derived().template command<status>("FUNCTION", "KILL").result();
+    auto function_kill() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->function_kill(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -195,16 +206,19 @@ public:
     }
 
     /**
-     * @brief Get statistics about the function runtime
+     * @brief Get statistics about the function runtime (coroutine awaitable)
      *
      * Returns information about the function runtime environment.
      *
-     * @return qb::json Statistics about the function runtime
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/function-stats
      */
-    qb::json
-    function_stats() {
-        return derived().template command<qb::json>("FUNCTION", "STATS").result();
+    auto function_stats() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) {
+                this->function_stats(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -221,17 +235,20 @@ public:
     }
 
     /**
-     * @brief Dump all functions
+     * @brief Dump all functions (coroutine awaitable)
      *
      * Returns a serialized payload representing all the functions stored in the function library.
      * This payload can be used with the FUNCTION RESTORE command to restore the libraries.
      *
-     * @return qb::json with the serialized functions payload
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/function-dump
      */
-    qb::json
-    function_dump() {
-        return derived().template command<qb::json>("FUNCTION", "DUMP").result();
+    auto function_dump() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) {
+                this->function_dump(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -248,19 +265,22 @@ public:
     }
 
     /**
-     * @brief Restore functions from the serialized payload
+     * @brief Restore functions from the serialized payload (coroutine awaitable)
      *
      * Restores the libraries represented by the given serialized payload.
      * The payload should have been created using the FUNCTION DUMP command.
      *
      * @param payload Serialized payload from function_dump
      * @param policy Optional restore policy: APPEND, REPLACE or FLUSH (default APPEND)
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-restore
      */
-    status
-    function_restore(const std::string &payload, const std::string &policy = "APPEND") {
-        return derived().template command<status>("FUNCTION", "RESTORE", policy, payload).result();
+    auto function_restore(const std::string &payload, const std::string &policy = "APPEND") {
+        return derived().template make_coro_command<status>(
+            [this, payload, policy](auto&& callback) {
+                this->function_restore(std::move(callback), payload, policy);
+            }
+        );
     }
 
     /**
@@ -275,20 +295,23 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     function_restore(Func &&func, const std::string &payload, const std::string &policy = "APPEND") {
-        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "RESTORE", policy, payload);
+        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "RESTORE", payload, policy);
     }
 
     /**
-     * @brief Get help information about function commands
+     * @brief Get help information about function commands (coroutine awaitable)
      *
      * Returns an array of strings with help information about Redis FUNCTION commands.
      *
-     * @return std::vector<std::string> of help strings
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/function-help
      */
-    std::vector<std::string>
-    function_help() {
-        return derived().template command<std::vector<std::string>>("FUNCTION", "HELP").result();
+    auto function_help() {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this](auto&& callback) {
+                this->function_help(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -303,8 +326,55 @@ public:
     function_help(Func &&func) {
         return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "FUNCTION", "HELP");
     }
+
+    /**
+     * @brief Invoke a function (coroutine awaitable).
+     * @param name Function name (e.g. "mylib::myfunc").
+     * @param keys Key arguments.
+     * @param args Additional arguments.
+     * @see https://redis.io/commands/fcall
+     */
+    template <typename Ret>
+    auto fcall(const std::string &name, const std::vector<std::string> &keys = {},
+               const std::vector<std::string> &args = {}) {
+        return derived().template make_coro_command<Ret>(
+            [this, name, keys, args](auto&& callback) mutable {
+                this->template fcall<Ret>(std::move(callback), name, keys, args);
+            }
+        );
+    }
+    template <typename Ret, typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
+    fcall(Func &&func, const std::string &name,
+          const std::vector<std::string> &keys = {},
+          const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "FCALL",
+                                              name, keys.size(), keys, args);
+    }
+
+    /**
+     * @brief Read-only variant of FCALL - function cannot perform writes.
+     * @see https://redis.io/commands/fcall_ro
+     */
+    template <typename Ret>
+    auto fcallRo(const std::string &name, const std::vector<std::string> &keys = {},
+                 const std::vector<std::string> &args = {}) {
+        return derived().template make_coro_command<Ret>(
+            [this, name, keys, args](auto&& callback) mutable {
+                this->template fcallRo<Ret>(std::move(callback), name, keys, args);
+            }
+        );
+    }
+    template <typename Ret, typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
+    fcallRo(Func &&func, const std::string &name,
+            const std::vector<std::string> &keys = {},
+            const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "FCALL_RO",
+                                              name, keys.size(), keys, args);
+    }
 };
 
 } // namespace qb::redis
 
-#endif // QBM_REDIS_FUNCTION_COMMANDS_H 
+#endif // QBM_REDIS_FUNCTION_COMMANDS_H

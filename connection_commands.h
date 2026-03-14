@@ -40,19 +40,48 @@ private:
 
 public:
     /**
-     * @brief Authenticates the client to the Redis server
+     * @brief Sends HELLO to switch protocol version (RESP2/RESP3).
      *
-     * @param password Authentication password
-     * @return status object with the authentication result
+     * In RESP3 mode Redis returns a map with server info (version, capabilities, etc.).
+     * Use this as the first command after connect to enable RESP3.
+     *
+     * @param version Protocol version: 2 for RESP2, 3 for RESP3
+     * @return redis_awaiter yielding Reply<qb::json> (server info map in RESP3)
+     * @see https://redis.io/commands/hello
      */
-    status
-    auth(const std::string &password) {
-        return derived().template command<status>("AUTH", password).result();
+    auto hello(int version = 3) {
+        return derived().template make_coro_command<qb::json>(
+            [this, version](auto&& callback) {
+                this->hello(std::move(callback), version);
+            }
+        );
+    }
+
+    /**
+     * @brief Asynchronous version of hello
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    hello(Func &&func, int version = 3) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "HELLO",
+                                                    std::to_string(version));
+    }
+
+    /**
+     * @brief Authenticates the client to the Redis server (coroutine awaitable)
+     * @param password Authentication password
+     * @return redis_awaiter yielding Reply<status>
+     */
+    auto auth(const std::string &password) {
+        return derived().template make_coro_command<status>(
+            [this, password](auto&& callback) {
+                this->auth(std::move(callback), password);
+            }
+        );
     }
 
     /**
      * @brief Asynchronous version of auth
-     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param password Authentication password
@@ -66,20 +95,21 @@ public:
     }
 
     /**
-     * @brief Authenticates the client to the Redis server with username and password
-     *
+     * @brief Authenticates the client with username and password (coroutine awaitable)
      * @param user Username for authentication
      * @param password Password for authentication
-     * @return status object with the authentication result
+     * @return redis_awaiter yielding Reply<status>
      */
-    status
-    auth(const std::string &user, const std::string &password) {
-        return derived().template command<status>("AUTH", user, password).result();
+    auto auth(const std::string &user, const std::string &password) {
+        return derived().template make_coro_command<status>(
+            [this, user, password](auto&& callback) {
+                this->auth(std::move(callback), user, password);
+            }
+        );
     }
 
     /**
      * @brief Asynchronous version of auth with username and password
-     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param user Username for authentication
@@ -94,19 +124,20 @@ public:
     }
 
     /**
-     * @brief Echoes the given message back
-     *
+     * @brief Echoes the given message back (coroutine awaitable)
      * @param message Message to echo
-     * @return The same message
+     * @return redis_awaiter yielding Reply<std::string>
      */
-    std::string
-    echo(const std::string &message) {
-        return derived().template command<std::string>("ECHO", message).result();
+    auto echo(const std::string &message) {
+        return derived().template make_coro_command<std::string>(
+            [this, message](auto&& callback) {
+                this->echo(std::move(callback), message);
+            }
+        );
     }
 
     /**
      * @brief Asynchronous version of echo
-     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param message Message to echo
@@ -120,18 +151,19 @@ public:
     }
 
     /**
-     * @brief Tests if the connection is still alive
-     *
-     * @return "PONG" if the connection is alive
+     * @brief Tests if the connection is still alive (coroutine awaitable)
+     * @return redis_awaiter yielding Reply<std::string>
      */
-    std::string
-    ping() {
-        return derived().template command<std::string>("PING").result();
+    auto ping() {
+        return derived().template make_coro_command<std::string>(
+            [this](auto&& callback) {
+                this->ping(std::move(callback));
+            }
+        );
     }
 
     /**
      * @brief Asynchronous version of ping
-     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @return Reference to the Redis handler for chaining
@@ -143,19 +175,20 @@ public:
     }
 
     /**
-     * @brief Sends a custom message with PING
-     *
+     * @brief Sends a custom message with PING (coroutine awaitable)
      * @param message Custom message to send
-     * @return The message that was sent
+     * @return redis_awaiter yielding Reply<std::string>
      */
-    std::string
-    ping(const std::string &message) {
-        return derived().template command<std::string>("PING", message).result();
+    auto ping(const std::string &message) {
+        return derived().template make_coro_command<std::string>(
+            [this, message](auto&& callback) {
+                this->ping(std::move(callback), message);
+            }
+        );
     }
 
     /**
      * @brief Asynchronous version of ping with custom message
-     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param message Custom message to send
@@ -169,18 +202,19 @@ public:
     }
 
     /**
-     * @brief Closes the connection
-     *
-     * @return status object with the result
+     * @brief Closes the connection (coroutine awaitable)
+     * @return redis_awaiter yielding Reply<status>
      */
-    status
-    quit() {
-        return derived().template command<status>("QUIT").result();
+    auto quit() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->quit(std::move(callback));
+            }
+        );
     }
 
     /**
      * @brief Asynchronous version of quit
-     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @return Reference to the Redis handler for chaining
@@ -192,19 +226,20 @@ public:
     }
 
     /**
-     * @brief Selects the Redis logical database
-     *
+     * @brief Selects the Redis logical database (coroutine awaitable)
      * @param index Database index
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
      */
-    status
-    select(long long index) {
-        return derived().template command<status>("SELECT", index).result();
+    auto select(long long index) {
+        return derived().template make_coro_command<status>(
+            [this, index](auto&& callback) {
+                this->select(std::move(callback), index);
+            }
+        );
     }
 
     /**
      * @brief Asynchronous version of select
-     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param index Database index
@@ -218,20 +253,21 @@ public:
     }
 
     /**
-     * @brief Swaps two Redis databases
-     *
+     * @brief Swaps two Redis databases (coroutine awaitable)
      * @param index1 Index of the first database
      * @param index2 Index of the second database
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
      */
-    status
-    swapdb(long long index1, long long index2) {
-        return derived().template command<status>("SWAPDB", index1, index2).result();
+    auto swapdb(long long index1, long long index2) {
+        return derived().template make_coro_command<status>(
+            [this, index1, index2](auto&& callback) {
+                this->swapdb(std::move(callback), index1, index2);
+            }
+        );
     }
 
     /**
      * @brief Asynchronous version of swapdb
-     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param index1 Index of the first database
@@ -243,6 +279,24 @@ public:
     swapdb(Func &&func, long long index1, long long index2) {
         return derived().template command<status>(std::forward<Func>(func), "SWAPDB",
                                                   index1, index2);
+    }
+
+    /**
+     * @brief Reset the connection (coroutine awaitable).
+     * Resets the connection to a clean state, discarding any pending data.
+     * @see https://redis.io/commands/reset
+     */
+    auto reset() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->reset(std::move(callback));
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    reset(Func &&func) {
+        return derived().template command<status>(std::forward<Func>(func), "RESET");
     }
 };
 

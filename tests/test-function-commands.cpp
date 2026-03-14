@@ -17,241 +17,38 @@
 
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include "../redis.h"
-
-// Redis Configuration
-#define REDIS_URI {"tcp://localhost:6379"}
+#include "protocol_test_common.h"
 
 using namespace qb::io;
 using namespace std::chrono;
 using namespace qb::redis;
 
-// Generates unique key prefixes to avoid collisions between tests
-inline std::string
-key_prefix(const std::string &key = "") {
-    static int  counter = 0;
-    std::string prefix  = "qb::redis::function-test:" + std::to_string(++counter);
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
 
-    if (key.empty()) {
-        return prefix;
-    }
+class FunctionProtocolModesTest : public ProtocolModesTestBase {};
 
-    return prefix + ":" + key;
-}
-
-// Generates a test key
-inline std::string
-test_key(const std::string &k) {
-    return "{" + key_prefix() + "}::" + k;
-}
-
-// Verifies connection and cleans environment before tests
-class RedisTest : public ::testing::Test {
-protected:
-    qb::redis::tcp::client redis{REDIS_URI};
-
-    // Explicitly declare a virtual destructor as noexcept to match the base class
-    ~RedisTest() noexcept override = default;
-
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Unable to connect to Redis");
-
-        // Wait for connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
-    }
-};
+INSTANTIATE_PROTOCOL_MODES(FunctionProtocolModesTest);
 
 /*
- * SYNCHRONOUS TESTS
+ * COROUTINE TESTS
  */
 
-// Test FUNCTION LIST command
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_LIST) {
-    try {
-        auto functions = redis.function_list();
-        
-        // Check that the result is an array (even if empty)
-        EXPECT_TRUE(functions.is_array());
-        
-        // If functions are loaded, each entry should have a "name" field
-        if (!functions.empty()) {
-            for (const auto& function : functions) {
-                EXPECT_TRUE(function.contains("name"));
-                EXPECT_TRUE(function["name"].is_string());
-            }
-        }
-    } catch (const std::exception& e) {
-        // This might happen if the Redis server doesn't support function commands
-        // (introduced in Redis 7.0)
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                   error.find("function") != std::string::npos);
-    }
-}
+// Test FUNCTION LIST command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_LIST) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        try {
+            auto reply = co_await redis.function_list();
 
-// Test FUNCTION LOAD command (we can't actually load a function in tests,
-// but we can check the command structure)
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_LOAD) {
-    try {
-        // This should fail because we're not providing a valid Lua function
-        redis.function_load("invalid function code");
-        FAIL() << "Expected an exception for invalid function code";
-    } catch (const std::exception& e) {
-        // This is expected - we're providing invalid Lua code
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("syntax error") != std::string::npos || 
-                   error.find("unknown command") != std::string::npos ||
-                   error.find("ERR") != std::string::npos);
-    }
-}
-
-// Test FUNCTION DELETE command
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_DELETE) {
-    try {
-        // This should fail with "ERR function not found" or similar
-        redis.function_delete("nonexistent_function");
-        FAIL() << "Expected an exception for nonexistent function";
-    } catch (const std::exception& e) {
-        // This is expected - either "function not found" or "unknown command"
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("function not found") != std::string::npos || 
-                   error.find("unknown command") != std::string::npos ||
-                   error.find("ERR") != std::string::npos);
-    }
-}
-
-// Test FUNCTION FLUSH command
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_FLUSH) {
-    try {
-        // Flush all functions
-        auto result = redis.function_flush();
-        
-        // Check that the result is OK
-        EXPECT_EQ(result, "OK");
-    } catch (const std::exception& e) {
-        // This might happen if the Redis server doesn't support function commands
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                   error.find("function") != std::string::npos);
-    }
-}
-
-// Test FUNCTION KILL command
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_KILL) {
-    try {
-        // This should fail with "ERR No scripts in execution" or similar
-        // since we're not running any functions
-        redis.function_kill();
-        FAIL() << "Expected an exception as no functions are running";
-    } catch (const std::exception& e) {
-        // This is expected - either "no scripts" or "unknown command"
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("No scripts") != std::string::npos || 
-                   error.find("unknown command") != std::string::npos ||
-                   error.find("ERR") != std::string::npos);
-    }
-}
-
-// Test FUNCTION STATS command
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_STATS) {
-    try {
-        auto stats = redis.function_stats();
-        
-        // Check that the result is an object with expected fields
-        EXPECT_TRUE(stats.is_object());
-        
-        // Stats should typically have running_scripts field (even if empty)
-        EXPECT_TRUE(stats.contains("running_scripts") || stats.contains("engines"));
-    } catch (const std::exception& e) {
-        // This might happen if the Redis server doesn't support function commands
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                   error.find("function") != std::string::npos);
-    }
-}
-
-// Test FUNCTION DUMP command
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_DUMP) {
-    try {
-        auto dump = redis.function_dump();
-        
-        // Dump is typically a string with the serialized functions
-        // (which might be empty if no functions are loaded)
-        EXPECT_TRUE(dump.is_string() || dump.is_binary());
-    } catch (const std::exception& e) {
-        // This might happen if the Redis server doesn't support function commands
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                   error.find("function") != std::string::npos);
-    }
-}
-
-// Test FUNCTION RESTORE command
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_RESTORE) {
-    try {
-        // This should fail because we're not providing valid dump data
-        redis.function_restore("invalid_dump_data");
-        FAIL() << "Expected an exception for invalid dump data";
-    } catch (const std::exception& e) {
-        // This is expected - either "invalid payload" or "unknown command"
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("invalid payload") != std::string::npos || 
-                   error.find("unknown command") != std::string::npos ||
-                   error.find("ERR") != std::string::npos);
-    }
-}
-
-// Test FUNCTION HELP command
-TEST_F(RedisTest, SYNC_FUNCTION_COMMANDS_HELP) {
-    try {
-        auto help = redis.function_help();
-        
-        // Check that the result is a vector of strings
-        EXPECT_FALSE(help.empty());
-        
-        // Each line of help should be a non-empty string
-        for (const auto& line : help) {
-            EXPECT_FALSE(line.empty());
-        }
-    } catch (const std::exception& e) {
-        // This might happen if the Redis server doesn't support function commands
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                   error.find("function") != std::string::npos);
-    }
-}
-
-/*
- * ASYNCHRONOUS TESTS
- */
-
-// Test async FUNCTION LIST command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_LIST) {
-    bool list_completed = false;
-    
-    // Use direct command call to test for proper JSON response
-    redis.command<qb::json>(
-        [&](auto &&reply) {
-            list_completed = true;
-            
             if (reply.ok()) {
                 auto functions = reply.result();
-                
-                // Check that the result is an array (even if empty)
                 EXPECT_TRUE(functions.is_array());
-                
-                // If functions are loaded, each entry should have a "name" field
+
                 if (!functions.empty()) {
                     for (const auto& function : functions) {
                         EXPECT_TRUE(function.contains("name"));
@@ -259,220 +56,298 @@ TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_LIST) {
                     }
                 }
             } else {
-                // This might happen if the Redis server doesn't support function commands
                 std::string error = std::string(reply.error());
                 EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
                            error.find("function") != std::string::npos);
             }
-        }, "FUNCTION", "LIST");
-    
-    redis.await();
-    EXPECT_TRUE(list_completed);
+        } catch (const std::exception& e) {
+            std::string error = e.what();
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
+                       error.find("function") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async FUNCTION LOAD command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_LOAD) {
-    bool load_completed = false;
-    
-    // Use direct command call to test for proper status response
-    redis.command<status>(
-        [&](auto &&reply) {
-            load_completed = true;
-            
-            // This should fail because we're not providing a valid Lua function
-            EXPECT_FALSE(reply.ok());
-            
-            std::string error = std::string(reply.error());
-            EXPECT_TRUE(error.find("syntax error") != std::string::npos || 
-                       error.find("unknown command") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
-        }, "FUNCTION", "LOAD", "invalid function code");
-    
-    redis.await();
-    EXPECT_TRUE(load_completed);
+// Test FUNCTION LOAD command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_LOAD) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto reply = co_await redis.function_load("invalid function code");
+        // Invalid code must produce an error reply, never an exception
+        EXPECT_FALSE(reply.ok());
+        if (!reply.ok()) {
+            std::string error{reply.error()};
+            EXPECT_TRUE(error.find("syntax error") != std::string::npos ||
+                        error.find("unknown command") != std::string::npos ||
+                        error.find("ERR") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async FUNCTION DELETE command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_DELETE) {
-    bool delete_completed = false;
-    
-    // Use direct command call to test for proper status response
-    redis.command<status>(
-        [&](auto &&reply) {
-            delete_completed = true;
-            
-            // This should fail with "ERR function not found" or similar
-            EXPECT_FALSE(reply.ok());
-            
-            std::string error = std::string(reply.error());
-            EXPECT_TRUE(error.find("function not found") != std::string::npos || 
-                       error.find("unknown command") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
-        }, "FUNCTION", "DELETE", "nonexistent_function");
-    
-    redis.await();
-    EXPECT_TRUE(delete_completed);
+// Test FUNCTION DELETE command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_DELETE) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto reply = co_await redis.function_delete("nonexistent_function");
+        // Deleting a non-existent function must produce an error reply
+        EXPECT_FALSE(reply.ok());
+        if (!reply.ok()) {
+            std::string error{reply.error()};
+            EXPECT_TRUE(error.find("function not found") != std::string::npos ||
+                        error.find("unknown command") != std::string::npos ||
+                        error.find("ERR") != std::string::npos ||
+                        error.find("Library not found") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async FUNCTION FLUSH command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_FLUSH) {
-    bool flush_completed = false;
-    
-    // Use direct command call to test for proper status response
-    redis.command<status>(
-        [&](auto &&reply) {
-            flush_completed = true;
-            
+// Test FUNCTION FLUSH command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_FLUSH) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        try {
+            auto reply = co_await redis.function_flush();
+
             if (reply.ok()) {
                 auto result = reply.result();
-                
-                // Check that the result is "OK"
                 EXPECT_EQ(result, "OK");
             } else {
-                // This might happen if the Redis server doesn't support function commands
                 std::string error = std::string(reply.error());
                 EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
                            error.find("function") != std::string::npos);
             }
-        }, "FUNCTION", "FLUSH");
-    
-    redis.await();
-    EXPECT_TRUE(flush_completed);
+        } catch (const std::exception& e) {
+            std::string error = e.what();
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
+                       error.find("function") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async FUNCTION KILL command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_KILL) {
-    bool kill_completed = false;
-    
-    // Use direct command call to test for proper status response
-    redis.command<status>(
-        [&](auto &&reply) {
-            kill_completed = true;
-            
-            // This should fail with "ERR No scripts in execution" or similar
-            EXPECT_FALSE(reply.ok());
-            
-            std::string error = std::string(reply.error());
-            EXPECT_TRUE(error.find("No scripts") != std::string::npos || 
-                       error.find("unknown command") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
-        }, "FUNCTION", "KILL");
-    
-    redis.await();
-    EXPECT_TRUE(kill_completed);
+// Test FCALL and FCALL_RO (require Redis with functions loaded)
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_FCALL) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto reply = co_await redis.fcall<qb::json>("nonexistent::func", {}, {});
+        if (reply.ok()) {
+            EXPECT_TRUE(reply.result().is_object() || reply.result().is_array());
+        } else {
+            std::string err{reply.error()};
+            EXPECT_TRUE(err.find("unknown command") != std::string::npos ||
+                       err.find("function") != std::string::npos ||
+                       err.find("not found") != std::string::npos ||
+                       err.find("ERR") != std::string::npos);
+        }
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 }
 
-// Test async FUNCTION STATS command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_STATS) {
-    bool stats_completed = false;
-    
-    // Use direct command call to test for proper JSON response
-    redis.command<qb::json>(
-        [&](auto &&reply) {
-            stats_completed = true;
-            
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_FCALL_RO) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto reply = co_await redis.fcallRo<qb::json>("nonexistent::func", {}, {});
+        if (reply.ok()) {
+            EXPECT_TRUE(reply.result().is_object() || reply.result().is_array());
+        } else {
+            std::string err{reply.error()};
+            EXPECT_TRUE(err.find("unknown command") != std::string::npos ||
+                       err.find("function") != std::string::npos ||
+                       err.find("not found") != std::string::npos ||
+                       err.find("ERR") != std::string::npos);
+        }
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+// Test FUNCTION KILL command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_KILL) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto reply = co_await redis.function_kill();
+        // Killing when no function is running must produce an error reply
+        EXPECT_FALSE(reply.ok());
+        if (!reply.ok()) {
+            std::string error{reply.error()};
+            EXPECT_TRUE(error.find("No scripts") != std::string::npos ||
+                        error.find("unknown command") != std::string::npos ||
+                        error.find("ERR") != std::string::npos ||
+                        error.find("NOTBUSY") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test FUNCTION STATS command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_STATS) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        try {
+            auto reply = co_await redis.function_stats();
+
             if (reply.ok()) {
                 auto stats = reply.result();
-                
-                // Check that the result is an object with expected fields
                 EXPECT_TRUE(stats.is_object());
-                
-                // Stats should typically have running_scripts field (even if empty)
                 EXPECT_TRUE(stats.contains("running_scripts") || stats.contains("engines"));
             } else {
-                // This might happen if the Redis server doesn't support function commands
                 std::string error = std::string(reply.error());
                 EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
                            error.find("function") != std::string::npos);
             }
-        }, "FUNCTION", "STATS");
-    
-    redis.await();
-    EXPECT_TRUE(stats_completed);
+        } catch (const std::exception& e) {
+            std::string error = e.what();
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
+                       error.find("function") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async FUNCTION DUMP command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_DUMP) {
-    bool dump_completed = false;
-    
-    // Use direct command call to test for proper JSON response
-    redis.command<qb::json>(
-        [&](auto &&reply) {
-            dump_completed = true;
-            
+// Test FUNCTION DUMP command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_DUMP) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        try {
+            auto reply = co_await redis.function_dump();
+
             if (reply.ok()) {
                 auto dump = reply.result();
-                
-                // Dump is typically a string with the serialized functions
                 EXPECT_TRUE(dump.is_string() || dump.is_binary());
             } else {
-                // This might happen if the Redis server doesn't support function commands
                 std::string error = std::string(reply.error());
                 EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
                            error.find("function") != std::string::npos);
             }
-        }, "FUNCTION", "DUMP");
-    
-    redis.await();
-    EXPECT_TRUE(dump_completed);
+        } catch (const std::exception& e) {
+            std::string error = e.what();
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
+                       error.find("function") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async FUNCTION RESTORE command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_RESTORE) {
-    bool restore_completed = false;
-    
-    // Use direct command call to test for proper status response
-    redis.command<status>(
-        [&](auto &&reply) {
-            restore_completed = true;
-            
-            // This should fail because we're not providing valid dump data
-            EXPECT_FALSE(reply.ok());
-            
-            std::string error = std::string(reply.error());
-            EXPECT_TRUE(error.find("invalid payload") != std::string::npos || 
-                       error.find("unknown command") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
-        }, "FUNCTION", "RESTORE", "APPEND", "invalid_dump_data");
-    
-    redis.await();
-    EXPECT_TRUE(restore_completed);
+// Test FUNCTION RESTORE command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_RESTORE) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto reply = co_await redis.function_restore("invalid_dump_data");
+        // Invalid dump data must produce an error reply
+        EXPECT_FALSE(reply.ok());
+        if (!reply.ok()) {
+            std::string error{reply.error()};
+            EXPECT_TRUE(error.find("invalid payload") != std::string::npos ||
+                        error.find("unknown command") != std::string::npos ||
+                        error.find("ERR") != std::string::npos ||
+                        error.find("payload version") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async FUNCTION HELP command
-TEST_F(RedisTest, ASYNC_FUNCTION_COMMANDS_HELP) {
-    bool help_completed = false;
-    
-    // Use direct command call to test for proper vector response
-    redis.command<std::vector<std::string>>(
-        [&](auto &&reply) {
-            help_completed = true;
-            
+// Test FUNCTION HELP command using coroutines
+TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_HELP) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        try {
+            auto reply = co_await redis.function_help();
+
             if (reply.ok()) {
                 auto help = reply.result();
-                
-                // Check that the result is a non-empty vector
                 EXPECT_FALSE(help.empty());
-                
-                // Each line of help should be a non-empty string
+
                 for (const auto& line : help) {
                     EXPECT_FALSE(line.empty());
                 }
             } else {
-                // This might happen if the Redis server doesn't support function commands
                 std::string error = std::string(reply.error());
                 EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
                            error.find("function") != std::string::npos);
             }
-        }, "FUNCTION", "HELP");
-    
-    redis.await();
-    EXPECT_TRUE(help_completed);
+        } catch (const std::exception& e) {
+            std::string error = e.what();
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
+                       error.find("function") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Main function to run the tests
-int
-main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+TEST_P(FunctionProtocolModesTest, FUNCTION_LIST_JSON) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        try {
+            auto r = co_await redis.function_list();
+            if (r.ok()) EXPECT_TRUE(r.result().is_array());
+        } catch (const std::exception&) {
+            // FUNCTION not available on older Redis
+        }
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
+
+// Test async FUNCTION LIST command

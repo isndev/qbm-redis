@@ -17,415 +17,271 @@
 
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include "../redis.h"
+#include "protocol_test_common.h"
 
 // Redis Configuration
 #define REDIS_URI {"tcp://localhost:6379"}
 
-#define TEST_CHANNEL "test_channel"
 #define TEST_MESSAGE "Hello World"
 
 using namespace qb::io;
 using namespace std::chrono;
 
-// Verifies connection and cleans the environment before tests
-class RedisPublishTest : public ::testing::Test {
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
+
+class PublishProtocolModesTest : public ProtocolModesTestBase {
 protected:
-    qb::redis::tcp::client      redis{REDIS_URI};
-    qb::redis::tcp::client      publisher{REDIS_URI};
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [](auto &&) {}};
+    qb::redis::tcp::client      publisher{REDIS_URI_PROTOCOL};
+    qb::redis::tcp::cb_consumer consumer{REDIS_URI_PROTOCOL, [](auto&&) {}};
 
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall() || !publisher.connect() ||
-            !consumer.connect())
-            throw std::runtime_error("Unable to connect to Redis");
-
-        // Wait for the connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
+    void SetUp() override {
+        ProtocolModesTestBase::SetUp();
+        if (!qb::io::async::run_sync(publisher.connect()) ||
+            !qb::io::async::run_sync(consumer.connect())) {
+            throw std::runtime_error("Unable to connect publisher/consumer");
+        }
     }
 };
 
-/*
- * SYNCHRONOUS TESTS
- */
+INSTANTIATE_PROTOCOL_MODES(PublishProtocolModesTest);
 
 // =============== BASIC PUBLISH TESTS ===============
 
-TEST(Redis, SYNC_PUBLISH_BASIC) {
-    async::init();
+TEST_P(PublishProtocolModesTest, CORO_PUBLISH_BASIC) {
+    std::atomic<size_t> message_count{0};
+    auto ch = protocol_key("pub");
 
-    qb::redis::tcp::client publisher{REDIS_URI};
-    std::atomic<size_t>    message_count{0};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
+        EXPECT_EQ(msg.payload, TEST_MESSAGE);
+        ++message_count;
+    }};
+    ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
-    // Create consumer with message callback
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [&](auto &&msg) {
-                                             EXPECT_EQ(msg.message, TEST_MESSAGE);
-                                             ++message_count;
-                                         }};
+    bool completed = false;
+    auto sub_task = [this, &completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
+        auto reply = co_await consumer_with_cb.subscribe(ch);
+        if (!reply.ok() || !reply.result().channel.has_value() || *reply.result().channel != ch) {
+            ADD_FAILURE() << "subscribe failed or channel mismatch";
+            completed = true;
+            co_return;
+        }
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(sub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Connect publisher and consumer
-    ASSERT_TRUE(publisher.connect());
-    ASSERT_TRUE(consumer.connect());
+    completed = false;
+    auto pub_task = [this, &completed, ch]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
+        auto reply = co_await publisher.publish(ch, TEST_MESSAGE);
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result(), 1);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(pub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Subscribe to test channel
-    auto subscribe_result = consumer.subscribe(TEST_CHANNEL);
-    ASSERT_TRUE(subscribe_result.channel.has_value());
-    ASSERT_EQ(*subscribe_result.channel, TEST_CHANNEL);
+    completed = false;
+    auto wait_task = [&]() -> qb::io::async::task<void> {
+        co_await qb::io::async::sleep(std::chrono::milliseconds(100));
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(wait_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Test publishing with no subscribers (should return 0)
-    EXPECT_EQ(publisher.publish(TEST_CHANNEL, TEST_MESSAGE), 1);
-
-    // Allow time for message processing
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    qb::io::async::run(EVRUN_NOWAIT);
-
-    // Verify message was received
     EXPECT_EQ(message_count, 1);
 
-    // Clean up
-    consumer.unsubscribe(TEST_CHANNEL);
+    qb::io::async::run_sync(consumer_with_cb.unsubscribe(ch));
 }
 
 // =============== PATTERN PUBLISH TESTS ===============
 
-TEST(Redis, SYNC_PUBLISH_PATTERN) {
-    async::init();
+TEST_P(PublishProtocolModesTest, CORO_PUBLISH_PATTERN) {
+    std::atomic<size_t> message_count{0};
+    auto pat = protocol_key("t") + "_*";
+    auto ch = protocol_key("t") + "_channel";
 
-    qb::redis::tcp::client publisher{REDIS_URI};
-    std::atomic<size_t>    message_count{0};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
+        EXPECT_EQ(msg.payload, TEST_MESSAGE);
+        ++message_count;
+    }};
+    ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
-    // Create consumer with message callback
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [&](auto &&msg) {
-                                             EXPECT_EQ(msg.message, TEST_MESSAGE);
-                                             ++message_count;
-                                         }};
+    bool completed = false;
+    auto sub_task = [this, &completed, &consumer_with_cb, pat]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
+        auto reply = co_await consumer_with_cb.psubscribe(pat);
+        if (!reply.ok() || !reply.result().channel.has_value()) {
+            ADD_FAILURE() << "psubscribe failed";
+            completed = true;
+            co_return;
+        }
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(sub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Connect publisher and consumer
-    ASSERT_TRUE(publisher.connect());
-    ASSERT_TRUE(consumer.connect());
+    completed = false;
+    auto pub_task = [this, &completed, ch]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
+        auto reply = co_await publisher.publish(ch, TEST_MESSAGE);
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result(), 1);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(pub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Subscribe to test pattern
-    auto subscribe_result = consumer.psubscribe("test_*");
-    ASSERT_TRUE(subscribe_result.channel.has_value());
+    completed = false;
+    auto wait_task = [&]() -> qb::io::async::task<void> {
+        co_await qb::io::async::sleep(std::chrono::milliseconds(100));
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(wait_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Publish to a channel matching the pattern
-    EXPECT_EQ(publisher.publish("test_channel", TEST_MESSAGE), 1);
-
-    // Allow time for message processing
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    qb::io::async::run(EVRUN_NOWAIT);
-
-    // Verify message was received
     EXPECT_EQ(message_count, 1);
 
-    // Clean up
-    consumer.punsubscribe("test_*");
+    qb::io::async::run_sync(consumer_with_cb.punsubscribe(pat));
 }
 
 // =============== MULTIPLE SUBSCRIBERS TESTS ===============
 
-TEST(Redis, SYNC_PUBLISH_MULTIPLE_SUBSCRIBERS) {
-    async::init();
+TEST_P(PublishProtocolModesTest, CORO_PUBLISH_MULTIPLE_SUBSCRIBERS) {
+    std::atomic<size_t> message_count1{0};
+    std::atomic<size_t> message_count2{0};
+    auto ch = protocol_key("multi");
 
-    qb::redis::tcp::client publisher{REDIS_URI};
-    std::atomic<size_t>    message_count1{0};
-    std::atomic<size_t>    message_count2{0};
+    qb::redis::tcp::cb_consumer consumer1{REDIS_URI_PROTOCOL, [&](auto&& msg) {
+        EXPECT_EQ(msg.payload, TEST_MESSAGE);
+        ++message_count1;
+    }};
+    qb::redis::tcp::cb_consumer consumer2{REDIS_URI_PROTOCOL, [&](auto&& msg) {
+        EXPECT_EQ(msg.payload, TEST_MESSAGE);
+        ++message_count2;
+    }};
+    ASSERT_TRUE(qb::io::async::run_sync(consumer1.connect()));
+    ASSERT_TRUE(qb::io::async::run_sync(consumer2.connect()));
 
-    // Create two consumers with message callbacks
-    qb::redis::tcp::cb_consumer consumer1{REDIS_URI, [&](auto &&msg) {
-                                              EXPECT_EQ(msg.message, TEST_MESSAGE);
-                                              ++message_count1;
-                                          }};
+    bool completed = false;
+    auto sub_task = [this, &completed, &consumer1, &consumer2, ch]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CONSUMER(consumer1, completed);
+        PROTOCOL_ENSURE_RESP3_CONSUMER(consumer2, completed);
+        auto r1 = co_await consumer1.subscribe(ch);
+        auto r2 = co_await consumer2.subscribe(ch);
+        if (!r1.ok() || !r1.result().channel.has_value() || !r2.ok() || !r2.result().channel.has_value()) {
+            ADD_FAILURE() << "subscribe failed";
+            completed = true;
+            co_return;
+        }
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(sub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    qb::redis::tcp::cb_consumer consumer2{REDIS_URI, [&](auto &&msg) {
-                                              EXPECT_EQ(msg.message, TEST_MESSAGE);
-                                              ++message_count2;
-                                          }};
+    completed = false;
+    auto pub_task = [this, &completed, ch]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
+        auto reply = co_await publisher.publish(ch, TEST_MESSAGE);
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result(), 2);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(pub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Connect publisher and consumers
-    ASSERT_TRUE(publisher.connect());
-    ASSERT_TRUE(consumer1.connect());
-    ASSERT_TRUE(consumer2.connect());
+    completed = false;
+    auto wait_task = [&]() -> qb::io::async::task<void> {
+        co_await qb::io::async::sleep(std::chrono::milliseconds(100));
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(wait_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Subscribe both consumers to test channel
-    auto subscribe_result1 = consumer1.subscribe(TEST_CHANNEL);
-    auto subscribe_result2 = consumer2.subscribe(TEST_CHANNEL);
-
-    ASSERT_TRUE(subscribe_result1.channel.has_value());
-    ASSERT_TRUE(subscribe_result2.channel.has_value());
-
-    // Publish message (should be received by both subscribers)
-    EXPECT_EQ(publisher.publish(TEST_CHANNEL, TEST_MESSAGE), 2);
-
-    // Allow time for message processing
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    qb::io::async::run(EVRUN_NOWAIT);
-
-    // Verify messages were received by both consumers
     EXPECT_EQ(message_count1, 1);
     EXPECT_EQ(message_count2, 1);
 
-    // Clean up
-    consumer1.unsubscribe(TEST_CHANNEL);
-    consumer2.unsubscribe(TEST_CHANNEL);
+    qb::io::async::run_sync(consumer1.unsubscribe(ch));
+    qb::io::async::run_sync(consumer2.unsubscribe(ch));
 }
 
 // =============== EDGE CASES ===============
 
-TEST(Redis, SYNC_PUBLISH_EMPTY_CHANNEL) {
-    async::init();
-
-    qb::redis::tcp::client publisher{REDIS_URI};
-    ASSERT_TRUE(publisher.connect());
-
-    // Publishing to an empty channel should return 0 (no subscribers)
-    EXPECT_EQ(publisher.publish("", TEST_MESSAGE), 0);
+TEST_P(PublishProtocolModesTest, CORO_PUBLISH_EMPTY_CHANNEL) {
+    bool completed = false;
+    auto pub_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
+        auto reply = co_await publisher.publish("", TEST_MESSAGE);
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result(), 0);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(pub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 }
 
-TEST(Redis, SYNC_PUBLISH_EMPTY_MESSAGE) {
-    async::init();
+TEST_P(PublishProtocolModesTest, CORO_PUBLISH_EMPTY_MESSAGE) {
+    std::atomic<size_t> message_count{0};
+    auto ch = protocol_key("empty");
 
-    qb::redis::tcp::client publisher{REDIS_URI};
-    std::atomic<size_t>    message_count{0};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
+        EXPECT_EQ(msg.payload, "");
+        ++message_count;
+    }};
+    ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
-    // Create consumer with message callback
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [&](auto &&msg) {
-                                             EXPECT_EQ(msg.message, "");
-                                             ++message_count;
-                                         }};
+    bool completed = false;
+    auto sub_task = [this, &completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
+        auto reply = co_await consumer_with_cb.subscribe(ch);
+        if (!reply.ok() || !reply.result().channel.has_value()) {
+            ADD_FAILURE() << "subscribe failed";
+            completed = true;
+            co_return;
+        }
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(sub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Connect publisher and consumer
-    ASSERT_TRUE(publisher.connect());
-    ASSERT_TRUE(consumer.connect());
+    completed = false;
+    auto pub_task = [this, &completed, ch]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
+        auto reply = co_await publisher.publish(ch, "");
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result(), 1);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(pub_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Subscribe to test channel
-    auto subscribe_result = consumer.subscribe(TEST_CHANNEL);
-    ASSERT_TRUE(subscribe_result.channel.has_value());
+    completed = false;
+    auto wait_task = [&]() -> qb::io::async::task<void> {
+        co_await qb::io::async::sleep(std::chrono::milliseconds(100));
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(wait_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 
-    // Publishing an empty message should work
-    EXPECT_EQ(publisher.publish(TEST_CHANNEL, ""), 1);
-
-    // Allow time for message processing
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    qb::io::async::run(EVRUN_NOWAIT);
-
-    // Verify empty message was received
     EXPECT_EQ(message_count, 1);
 
-    // Clean up
-    consumer.unsubscribe(TEST_CHANNEL);
+    qb::io::async::run_sync(consumer_with_cb.unsubscribe(ch));
 }
 
-/*
- * ASYNCHRONOUS TESTS
- */
-
-// =============== BASIC PUBLISH TESTS ===============
-
-TEST(Redis, ASYNC_PUBLISH_BASIC) {
-    async::init();
-
-    qb::redis::tcp::client publisher{REDIS_URI};
-    std::atomic<size_t>    message_count{0};
-
-    // Create consumer with message callback
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [&](auto &&msg) {
-                                             EXPECT_EQ(msg.message, TEST_MESSAGE);
-                                             ++message_count;
-                                         }};
-
-    // Connect publisher and consumer
-    ASSERT_TRUE(publisher.connect());
-    ASSERT_TRUE(consumer.connect());
-
-    // Subscribe to test channel
-    auto subscribe_status = false;
-    consumer.subscribe(
-        [&subscribe_status](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_TRUE(reply.result().channel.has_value());
-            EXPECT_EQ(*reply.result().channel, TEST_CHANNEL);
-            subscribe_status = true;
-        },
-        TEST_CHANNEL);
-
-    while (!subscribe_status) {
-        qb::io::async::run(EVRUN_ONCE);
-    }
-
-    // Test publishing with no subscribers (should return 0)
-    bool publish_complete = false;
-    publisher.publish(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            publish_complete = true;
-        },
-        TEST_CHANNEL, TEST_MESSAGE);
-
-    while (!publish_complete) {
-        qb::io::async::run(EVRUN_ONCE);
-    }
-
-    // Allow time for message processing
-    for (int i = 0; i < 10 && message_count < 1; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
-
-    // Verify message was received
-    EXPECT_EQ(message_count, 1);
-
-    // Clean up
-    consumer.unsubscribe(TEST_CHANNEL);
-}
-
-// =============== PATTERN PUBLISH TESTS ===============
-
-TEST(Redis, ASYNC_PUBLISH_PATTERN) {
-    async::init();
-
-    qb::redis::tcp::client publisher{REDIS_URI};
-    std::atomic<size_t>    message_count{0};
-
-    // Create consumer with message callback
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [&](auto &&msg) {
-                                             EXPECT_EQ(msg.message, TEST_MESSAGE);
-                                             ++message_count;
-                                         }};
-
-    // Connect publisher and consumer
-    ASSERT_TRUE(publisher.connect());
-    ASSERT_TRUE(consumer.connect());
-
-    // Subscribe to test pattern
-    auto subscribe_status = false;
-    consumer.psubscribe(
-        [&subscribe_status](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_TRUE(reply.result().channel.has_value());
-            subscribe_status = true;
-        },
-        "test_*");
-
-    while (!subscribe_status) {
-        qb::io::async::run(EVRUN_ONCE);
-    }
-
-    // Publish to a channel matching the pattern
-    bool publish_complete = false;
-    publisher.publish(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            publish_complete = true;
-        },
-        "test_channel", TEST_MESSAGE);
-
-    while (!publish_complete) {
-        qb::io::async::run(EVRUN_ONCE);
-    }
-
-    // Allow time for message processing
-    for (int i = 0; i < 10 && message_count < 1; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
-
-    // Verify message was received
-    EXPECT_EQ(message_count, 1);
-
-    // Clean up
-    consumer.punsubscribe("test_*");
-}
-
-// =============== EDGE CASES ===============
-
-TEST(Redis, ASYNC_PUBLISH_EMPTY_CHANNEL) {
-    async::init();
-
-    qb::redis::tcp::client publisher{REDIS_URI};
-    ASSERT_TRUE(publisher.connect());
-
-    // Publishing to an empty channel should return 0 (no subscribers)
-    bool publish_complete = false;
-    publisher.publish(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 0);
-            publish_complete = true;
-        },
-        "", TEST_MESSAGE);
-
-    while (!publish_complete) {
-        qb::io::async::run(EVRUN_ONCE);
-    }
-}
-
-TEST(Redis, ASYNC_PUBLISH_EMPTY_MESSAGE) {
-    async::init();
-
-    qb::redis::tcp::client publisher{REDIS_URI};
-    std::atomic<size_t>    message_count{0};
-
-    // Create consumer with message callback
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI, [&](auto &&msg) {
-                                             EXPECT_EQ(msg.message, "");
-                                             ++message_count;
-                                         }};
-
-    // Connect publisher and consumer
-    ASSERT_TRUE(publisher.connect());
-    ASSERT_TRUE(consumer.connect());
-
-    // Subscribe to test channel
-    auto subscribe_status = false;
-    consumer.subscribe(
-        [&subscribe_status](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_TRUE(reply.result().channel.has_value());
-            EXPECT_EQ(*reply.result().channel, TEST_CHANNEL);
-            subscribe_status = true;
-        },
-        TEST_CHANNEL);
-
-    while (!subscribe_status) {
-        qb::io::async::run(EVRUN_ONCE);
-    }
-
-    // Publishing an empty message should work
-    bool publish_complete = false;
-    publisher.publish(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            publish_complete = true;
-        },
-        TEST_CHANNEL, "");
-
-    while (!publish_complete) {
-        qb::io::async::run(EVRUN_ONCE);
-    }
-
-    // Allow time for message processing
-    for (int i = 0; i < 10 && message_count < 1; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
-
-    // Verify empty message was received
-    EXPECT_EQ(message_count, 1);
-
-    // Clean up
-    consumer.unsubscribe(TEST_CHANNEL);
+TEST_P(PublishProtocolModesTest, PUBLISH_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("chan");
+        auto r = co_await redis.publish(k, "msg");
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_GE(r.result(), 0);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }

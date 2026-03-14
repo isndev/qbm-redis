@@ -17,501 +17,454 @@
 
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include <thread>
 #include "../redis.h"
-
-// Redis Configuration
-#define REDIS_URI {"tcp://localhost:6379"}
+#include "protocol_test_common.h"
 
 using namespace qb::io;
 using namespace std::chrono;
 
-// Generates unique key prefixes to avoid collisions between tests
-inline std::string
-key_prefix(const std::string &key = "") {
-    static int  counter = 0;
-    std::string prefix  = "qb::redis::hash-test:" + std::to_string(++counter);
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
 
-    if (key.empty()) {
-        return prefix;
-    }
+class HashProtocolModesTest : public ProtocolModesTestBase {};
 
-    return prefix + ":" + key;
-}
-
-// Generates a test key
-inline std::string
-test_key(const std::string &k) {
-    return "{" + key_prefix() + "}::" + k;
-}
-
-// Checks connection and cleans environment before tests
-class RedisTest : public ::testing::Test {
-protected:
-    qb::redis::tcp::client redis{REDIS_URI};
-
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Unable to connect to Redis");
-
-        // Wait for connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
-    }
-};
+INSTANTIATE_PROTOCOL_MODES(HashProtocolModesTest);
 
 /*
- * SYNCHRONOUS TESTS
+ * COROUTINE TESTS
  */
 
 // Test basic HSET and HGET operations
-TEST_F(RedisTest, SYNC_HASH_COMMANDS_HSET_HGET) {
-    // Simple HSET test
-    std::string key = test_key("basic");
+TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_HSET_HGET) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("basic");
 
-    EXPECT_EQ(redis.hset(key, "field1", "value1"), 1);
-    EXPECT_EQ(redis.hset(key, "field2", "value2"), 1);
+        // HSET test
+        auto reply1 = co_await redis.hset(key, "field1", "value1");
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 1);
 
-    // HGET test
-    auto result1 = redis.hget(key, "field1");
-    auto result2 = redis.hget(key, "field2");
-    auto result3 = redis.hget(key, "field3");
+        auto reply2 = co_await redis.hset(key, "field2", "value2");
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 1);
 
-    EXPECT_TRUE(result1.has_value());
-    EXPECT_EQ(*result1, "value1");
-    EXPECT_TRUE(result2.has_value());
-    EXPECT_EQ(*result2, "value2");
-    EXPECT_FALSE(result3.has_value());
+        // HGET test
+        auto result1_reply = co_await redis.hget(key, "field1");
+        EXPECT_TRUE(result1_reply.ok());
+        EXPECT_TRUE(result1_reply.result().has_value());
+        EXPECT_EQ(*result1_reply.result(), "value1");
 
-    // HEXISTS test
-    EXPECT_TRUE(redis.hexists(key, "field1"));
-    EXPECT_FALSE(redis.hexists(key, "field3"));
+        auto result2_reply = co_await redis.hget(key, "field2");
+        EXPECT_TRUE(result2_reply.ok());
+        EXPECT_TRUE(result2_reply.result().has_value());
+        EXPECT_EQ(*result2_reply.result(), "value2");
 
-    // HLEN test
-    EXPECT_EQ(redis.hlen(key), 2);
+        auto result3_reply = co_await redis.hget(key, "field3");
+        EXPECT_TRUE(result3_reply.ok());
+        EXPECT_FALSE(result3_reply.result().has_value());
 
-    // HDEL test
-    EXPECT_EQ(redis.hdel(key, "field1"), 1);
-    EXPECT_FALSE(redis.hget(key, "field1").has_value());
-    EXPECT_EQ(redis.hlen(key), 1);
+        // HEXISTS test
+        auto exists1_reply = co_await redis.hexists(key, "field1");
+        EXPECT_TRUE(exists1_reply.ok());
+        EXPECT_TRUE(exists1_reply.result());
 
-    // Cleanup
-    redis.del(key);
+        auto exists2_reply = co_await redis.hexists(key, "field3");
+        EXPECT_TRUE(exists2_reply.ok());
+        EXPECT_FALSE(exists2_reply.result());
+
+        // HLEN test
+        auto len_reply = co_await redis.hlen(key);
+        EXPECT_TRUE(len_reply.ok());
+        EXPECT_EQ(len_reply.result(), 2);
+
+        // HDEL test
+        auto del_reply = co_await redis.hdel(key, "field1");
+        EXPECT_TRUE(del_reply.ok());
+        EXPECT_EQ(del_reply.result(), 1);
+
+        auto hget_after_del = co_await redis.hget(key, "field1");
+        EXPECT_TRUE(hget_after_del.ok());
+        EXPECT_FALSE(hget_after_del.result().has_value());
+
+        auto len_after_del = co_await redis.hlen(key);
+        EXPECT_TRUE(len_after_del.ok());
+        EXPECT_EQ(len_after_del.result(), 1);
+
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
 // Test HMSET and HMGET operations
-TEST_F(RedisTest, SYNC_HASH_COMMANDS_HMSET_HMGET) {
-    std::string key = test_key("hmset");
+TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_HMSET_HMGET) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("hmset");
 
-    // Test HMSET
-    EXPECT_TRUE(
-        redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3"));
+        // HMSET test
+        auto hmset_reply = co_await redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3");
+        EXPECT_TRUE(hmset_reply.ok());
+        EXPECT_TRUE(hmset_reply.result().ok());
 
-    // Test HMGET
-    auto values = redis.hmget(key, "field1", "field2", "field3", "field4");
-    EXPECT_EQ(values.size(), 4);
-    EXPECT_TRUE(values[0].has_value());
-    EXPECT_EQ(*values[0], "value1");
-    EXPECT_TRUE(values[1].has_value());
-    EXPECT_EQ(*values[1], "value2");
-    EXPECT_TRUE(values[2].has_value());
-    EXPECT_EQ(*values[2], "value3");
-    EXPECT_FALSE(values[3].has_value());
+        // HMGET test
+        auto values_reply = co_await redis.hmget(key, "field1", "field2", "field3", "field4");
+        EXPECT_TRUE(values_reply.ok());
+        EXPECT_EQ(values_reply.result().size(), 4);
+        EXPECT_TRUE(values_reply.result()[0].has_value());
+        EXPECT_EQ(*values_reply.result()[0], "value1");
+        EXPECT_TRUE(values_reply.result()[1].has_value());
+        EXPECT_EQ(*values_reply.result()[1], "value2");
+        EXPECT_TRUE(values_reply.result()[2].has_value());
+        EXPECT_EQ(*values_reply.result()[2], "value3");
+        EXPECT_FALSE(values_reply.result()[3].has_value());
 
-    // Test HGETALL
-    auto all_values = redis.hgetall(key);
-    EXPECT_EQ(all_values.size(), 3);
-    EXPECT_EQ(all_values["field1"], "value1");
-    EXPECT_EQ(all_values["field2"], "value2");
-    EXPECT_EQ(all_values["field3"], "value3");
+        // HGETALL test
+        auto all_values_reply = co_await redis.hgetall(key);
+        EXPECT_TRUE(all_values_reply.ok());
+        EXPECT_EQ(all_values_reply.result().size(), 3);
+        EXPECT_EQ(all_values_reply.result()["field1"], "value1");
+        EXPECT_EQ(all_values_reply.result()["field2"], "value2");
+        EXPECT_EQ(all_values_reply.result()["field3"], "value3");
 
-    // Cleanup
-    redis.del(key);
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
 // Test increment operations
-TEST_F(RedisTest, SYNC_HASH_COMMANDS_INCR) {
-    std::string key = test_key("incr");
+TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_INCR) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("incr");
 
-    // Test HINCRBY
-    EXPECT_EQ(redis.hincrby(key, "counter", 1), 1);
-    EXPECT_EQ(redis.hincrby(key, "counter", 10), 11);
-    EXPECT_EQ(redis.hincrby(key, "counter", -5), 6);
+        // HINCRBY test
+        auto incr1_reply = co_await redis.hincrby(key, "counter", 1);
+        EXPECT_TRUE(incr1_reply.ok());
+        EXPECT_EQ(incr1_reply.result(), 1);
 
-    // Test HINCRBYFLOAT
-    EXPECT_FLOAT_EQ(redis.hincrbyfloat(key, "float", 10.5), 10.5);
-    EXPECT_FLOAT_EQ(redis.hincrbyfloat(key, "float", 0.5), 11.0);
-    EXPECT_FLOAT_EQ(redis.hincrbyfloat(key, "float", -1.5), 9.5);
+        auto incr2_reply = co_await redis.hincrby(key, "counter", 10);
+        EXPECT_TRUE(incr2_reply.ok());
+        EXPECT_EQ(incr2_reply.result(), 11);
 
-    // Verify values
-    EXPECT_EQ(*redis.hget(key, "counter"), "6");
+        auto incr3_reply = co_await redis.hincrby(key, "counter", -5);
+        EXPECT_TRUE(incr3_reply.ok());
+        EXPECT_EQ(incr3_reply.result(), 6);
 
-    auto float_val = redis.hget(key, "float");
-    EXPECT_TRUE(float_val.has_value());
-    EXPECT_EQ(*float_val, "9.5");
+        // HINCRBYFLOAT test
+        auto float1_reply = co_await redis.hincrbyfloat(key, "float", 10.5);
+        EXPECT_TRUE(float1_reply.ok());
+        EXPECT_FLOAT_EQ(float1_reply.result(), 10.5);
 
-    // Cleanup
-    redis.del(key);
+        auto float2_reply = co_await redis.hincrbyfloat(key, "float", 0.5);
+        EXPECT_TRUE(float2_reply.ok());
+        EXPECT_FLOAT_EQ(float2_reply.result(), 11.0);
+
+        auto float3_reply = co_await redis.hincrbyfloat(key, "float", -1.5);
+        EXPECT_TRUE(float3_reply.ok());
+        EXPECT_FLOAT_EQ(float3_reply.result(), 9.5);
+
+        // Verify values
+        auto counter_reply = co_await redis.hget(key, "counter");
+        EXPECT_TRUE(counter_reply.ok());
+        EXPECT_EQ(*counter_reply.result(), "6");
+
+        auto float_reply = co_await redis.hget(key, "float");
+        EXPECT_TRUE(float_reply.ok());
+        EXPECT_EQ(*float_reply.result(), "9.5");
+
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
 // Test HSETNX operation
-TEST_F(RedisTest, SYNC_HASH_COMMANDS_HSETNX) {
-    std::string key = test_key("hsetnx");
+TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_HSETNX) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("hsetnx");
 
-    // Test HSETNX on new field
-    EXPECT_TRUE(redis.hsetnx(key, "field1", "value1"));
-    EXPECT_EQ(*redis.hget(key, "field1"), "value1");
+        // HSETNX on new field
+        auto setnx1_reply = co_await redis.hsetnx(key, "field1", "value1");
+        EXPECT_TRUE(setnx1_reply.ok());
+        EXPECT_TRUE(setnx1_reply.result());
 
-    // Test HSETNX on existing field
-    EXPECT_FALSE(redis.hsetnx(key, "field1", "new-value"));
-    EXPECT_EQ(*redis.hget(key, "field1"), "value1"); // Value should not change
+        auto hget1_reply = co_await redis.hget(key, "field1");
+        EXPECT_TRUE(hget1_reply.ok());
+        EXPECT_EQ(*hget1_reply.result(), "value1");
 
-    // Cleanup
-    redis.del(key);
+        // HSETNX on existing field
+        auto setnx2_reply = co_await redis.hsetnx(key, "field1", "new-value");
+        EXPECT_TRUE(setnx2_reply.ok());
+        EXPECT_FALSE(setnx2_reply.result());
+
+        auto hget2_reply = co_await redis.hget(key, "field1");
+        EXPECT_TRUE(hget2_reply.ok());
+        EXPECT_EQ(*hget2_reply.result(), "value1"); // Value should not change
+
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
 // Test keys and values operations
-TEST_F(RedisTest, SYNC_HASH_COMMANDS_KEYS_VALUES) {
-    std::string key = test_key("keys-values");
+TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_KEYS_VALUES) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("keys-values");
 
-    // Setup hash
-    redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3");
+        // Setup hash
+        (void)co_await redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3");
 
-    // Test HKEYS
-    auto keys = redis.hkeys(key);
-    EXPECT_EQ(keys.size(), 3);
-    EXPECT_TRUE(std::find(keys.begin(), keys.end(), "field1") != keys.end());
-    EXPECT_TRUE(std::find(keys.begin(), keys.end(), "field2") != keys.end());
-    EXPECT_TRUE(std::find(keys.begin(), keys.end(), "field3") != keys.end());
+        // HKEYS test
+        auto keys_reply = co_await redis.hkeys(key);
+        EXPECT_TRUE(keys_reply.ok());
+        EXPECT_EQ(keys_reply.result().size(), 3);
+        EXPECT_TRUE(std::find(keys_reply.result().begin(), keys_reply.result().end(), "field1") != keys_reply.result().end());
+        EXPECT_TRUE(std::find(keys_reply.result().begin(), keys_reply.result().end(), "field2") != keys_reply.result().end());
+        EXPECT_TRUE(std::find(keys_reply.result().begin(), keys_reply.result().end(), "field3") != keys_reply.result().end());
 
-    // Test HVALS
-    auto values = redis.hvals(key);
-    EXPECT_EQ(values.size(), 3);
-    EXPECT_TRUE(std::find(values.begin(), values.end(), "value1") != values.end());
-    EXPECT_TRUE(std::find(values.begin(), values.end(), "value2") != values.end());
-    EXPECT_TRUE(std::find(values.begin(), values.end(), "value3") != values.end());
+        // HVALS test
+        auto values_reply = co_await redis.hvals(key);
+        EXPECT_TRUE(values_reply.ok());
+        EXPECT_EQ(values_reply.result().size(), 3);
+        EXPECT_TRUE(std::find(values_reply.result().begin(), values_reply.result().end(), "value1") != values_reply.result().end());
+        EXPECT_TRUE(std::find(values_reply.result().begin(), values_reply.result().end(), "value2") != values_reply.result().end());
+        EXPECT_TRUE(std::find(values_reply.result().begin(), values_reply.result().end(), "value3") != values_reply.result().end());
 
-    // Test HSTRLEN
-    EXPECT_EQ(redis.hstrlen(key, "field1"), 6); // Length of "value1"
-    EXPECT_EQ(redis.hstrlen(key, "nonexistent"), 0);
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
 
-    // Cleanup
-    redis.del(key);
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test HSTRLEN operation
+TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_STRLEN) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("strlen");
+
+        // Setup hash
+        (void)co_await redis.hset(key, "field1", "hello");
+        (void)co_await redis.hset(key, "field2", "world!");
+
+        // HSTRLEN test
+        auto len1_reply = co_await redis.hstrlen(key, "field1");
+        EXPECT_TRUE(len1_reply.ok());
+        EXPECT_EQ(len1_reply.result(), 5);
+
+        auto len2_reply = co_await redis.hstrlen(key, "field2");
+        EXPECT_TRUE(len2_reply.ok());
+        EXPECT_EQ(len2_reply.result(), 6);
+
+        auto len3_reply = co_await redis.hstrlen(key, "nonexistent");
+        EXPECT_TRUE(len3_reply.ok());
+        EXPECT_EQ(len3_reply.result(), 0);
+
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
 // Test HSCAN operation
-TEST_F(RedisTest, SYNC_HASH_COMMANDS_HSCAN) {
-    std::string key = test_key("hscan");
+TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_SCAN) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("scan");
 
-    // Setup large hash
-    for (int i = 0; i < 20; ++i) {
-        redis.hset(key, "field:" + std::to_string(i), "value:" + std::to_string(i));
-    }
+        // Setup hash with multiple fields
+        (void)co_await redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3");
 
-    // Test HSCAN with pattern
-    auto scan_result = redis.hscan(key, 0, "field:1*");
-    EXPECT_TRUE(scan_result.items.size() >
-                0); // Should find at least "field:1", "field:10"-"field:19"
+        // HSCAN test
+        auto scan_reply = co_await redis.hscan(key, 0, "*", 10);
+        EXPECT_TRUE(scan_reply.ok());
+        EXPECT_EQ(scan_reply.result().items.size(), 3);
 
-    // Count all fields with cursor-based iteration
-    std::size_t cursor       = 0;
-    std::size_t total_fields = 0;
-    do {
-        auto result = redis.hscan(key, cursor);
-        cursor      = result.cursor;
-        total_fields += result.items.size(); // Each field-value pair is two items
-    } while (cursor != 0);
-
-    EXPECT_EQ(total_fields, 20);
-
-    // Cleanup
-    redis.del(key);
-}
-
-/*
- * ASYNCHRONOUS TESTS
- */
-
-// Test basic HSET and HGET operations asynchronously
-TEST_F(RedisTest, ASYNC_HASH_COMMANDS_HSET_HGET) {
-    std::string key            = test_key("async-basic");
-    bool        hset_called    = false;
-    bool        hget_called    = false;
-    bool        hexists_called = false;
-    bool        hdel_called    = false;
-
-    // Test HSET async
-    redis.hset(
-        [&hset_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1); // Created a new field
-            hset_called = true;
-        },
-        key, "field1", "value1");
-
-    redis.await();
-    EXPECT_TRUE(hset_called);
-
-    // Test HGET async
-    redis.hget(
-        [&hget_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_TRUE(reply.result().has_value());
-            EXPECT_EQ(*reply.result(), "value1");
-            hget_called = true;
-        },
-        key, "field1");
-
-    redis.await();
-    EXPECT_TRUE(hget_called);
-
-    // Test HEXISTS async
-    redis.hexists(
-        [&hexists_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            hexists_called = true;
-        },
-        key, "field1");
-
-    redis.await();
-    EXPECT_TRUE(hexists_called);
-
-    // Test HDEL async
-    redis.hdel(
-        [&hdel_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            hdel_called = true;
-        },
-        key, "field1");
-
-    redis.await();
-    EXPECT_TRUE(hdel_called);
-
-    // Cleanup
-    redis.del(key);
-}
-
-// Test HMSET and HMGET operations asynchronously
-TEST_F(RedisTest, ASYNC_HASH_COMMANDS_HMSET_HMGET) {
-    std::string key            = test_key("async-hmset");
-    bool        hmset_called   = false;
-    bool        hmget_called   = false;
-    bool        hgetall_called = false;
-
-    // Test HMSET async
-    redis.hmset(
-        [&hmset_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            hmset_called = true;
-        },
-        key, "field1", "value1", "field2", "value2", "field3", "value3");
-
-    redis.await();
-    EXPECT_TRUE(hmset_called);
-
-    // Test HMGET async
-    redis.hmget(
-        [&hmget_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result().size(), 3);
-            EXPECT_TRUE(reply.result()[0].has_value());
-            EXPECT_EQ(*reply.result()[0], "value1");
-            EXPECT_TRUE(reply.result()[1].has_value());
-            EXPECT_EQ(*reply.result()[1], "value2");
-            EXPECT_TRUE(reply.result()[2].has_value());
-            EXPECT_EQ(*reply.result()[2], "value3");
-            hmget_called = true;
-        },
-        key, "field1", "field2", "field3");
-
-    redis.await();
-    EXPECT_TRUE(hmget_called);
-
-    // Test HGETALL async
-    redis.hgetall(
-        [&hgetall_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result().size(), 3);
-            EXPECT_EQ(reply.result()["field1"], "value1");
-            EXPECT_EQ(reply.result()["field2"], "value2");
-            EXPECT_EQ(reply.result()["field3"], "value3");
-            hgetall_called = true;
-        },
-        key);
-
-    redis.await();
-    EXPECT_TRUE(hgetall_called);
-
-    // Cleanup
-    redis.del(key);
-}
-
-// Test increment operations asynchronously
-TEST_F(RedisTest, ASYNC_HASH_COMMANDS_INCR) {
-    std::string key                 = test_key("async-incr");
-    bool        hincrby_called      = false;
-    bool        hincrbyfloat_called = false;
-
-    // Test HINCRBY async
-    redis.hincrby(
-        [&hincrby_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            hincrby_called = true;
-        },
-        key, "counter", 1);
-
-    redis.await();
-    EXPECT_TRUE(hincrby_called);
-
-    // Test HINCRBYFLOAT async
-    redis.hincrbyfloat(
-        [&hincrbyfloat_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_FLOAT_EQ(reply.result(), 10.5);
-            hincrbyfloat_called = true;
-        },
-        key, "float", 10.5);
-
-    redis.await();
-    EXPECT_TRUE(hincrbyfloat_called);
-
-    // Cleanup
-    redis.del(key);
-}
-
-// Test keys and values operations asynchronously
-TEST_F(RedisTest, ASYNC_HASH_COMMANDS_KEYS_VALUES) {
-    std::string key            = test_key("async-keys-values");
-    bool        hmset_called   = false;
-    bool        hkeys_called   = false;
-    bool        hvals_called   = false;
-    bool        hstrlen_called = false;
-
-    // Setup hash
-    redis.hmset(
-        [&hmset_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            hmset_called = true;
-        },
-        key, "field1", "value1", "field2", "value2", "field3", "value3");
-
-    redis.await();
-    EXPECT_TRUE(hmset_called);
-
-    // Test HKEYS async
-    redis.hkeys(
-        [&hkeys_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result().size(), 3);
-            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
-                                  "field1") != reply.result().end());
-            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
-                                  "field2") != reply.result().end());
-            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
-                                  "field3") != reply.result().end());
-            hkeys_called = true;
-        },
-        key);
-
-    redis.await();
-    EXPECT_TRUE(hkeys_called);
-
-    // Test HVALS async
-    redis.hvals(
-        [&hvals_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result().size(), 3);
-            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
-                                  "value1") != reply.result().end());
-            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
-                                  "value2") != reply.result().end());
-            EXPECT_TRUE(std::find(reply.result().begin(), reply.result().end(),
-                                  "value3") != reply.result().end());
-            hvals_called = true;
-        },
-        key);
-
-    redis.await();
-    EXPECT_TRUE(hvals_called);
-
-    // Test HSTRLEN async
-    redis.hstrlen(
-        [&hstrlen_called](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 6); // Length of "value1"
-            hstrlen_called = true;
-        },
-        key, "field1");
-
-    redis.await();
-    EXPECT_TRUE(hstrlen_called);
-
-    // Cleanup
-    redis.del(key);
-}
-
-// Test command chaining instead of explicit pipeline
-TEST_F(RedisTest, ASYNC_HASH_COMMANDS_CHAINING) {
-    std::string key                    = test_key("hash-chaining");
-    bool        all_commands_completed = false;
-    int         command_count          = 0;
-
-    // Setup callback to track completion
-    auto completion_callback = [&command_count, &all_commands_completed](auto &&) {
-        if (++command_count == 3) {
-            all_commands_completed = true;
-        }
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
     };
 
-    // Chain multiple commands (they will be buffered and sent together)
-    redis.hset(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            completion_callback(reply);
-        },
-        key, "field1", "value1");
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
 
-    redis.hset(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            completion_callback(reply);
-        },
-        key, "field2", "value2");
+// Test multiple hash operations in sequence
+TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_SEQUENCE) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("sequence");
 
-    redis.hincrby(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 5);
-            completion_callback(reply);
-        },
-        key, "counter", 5);
+        // Set multiple fields
+        (void)co_await redis.hset(key, "name", "John");
+        (void)co_await redis.hset(key, "age", "30");
+        (void)co_await redis.hset(key, "city", "NYC");
 
-    // Trigger the async operations and wait for completion
-    redis.await();
-    EXPECT_TRUE(all_commands_completed);
+        // Verify with HGETALL
+        auto all_reply = co_await redis.hgetall(key);
+        EXPECT_TRUE(all_reply.ok());
+        EXPECT_EQ(all_reply.result()["name"], "John");
+        EXPECT_EQ(all_reply.result()["age"], "30");
+        EXPECT_EQ(all_reply.result()["city"], "NYC");
 
-    // Verify the results with synchronous calls
-    auto hgetall_result = redis.hgetall(key);
-    EXPECT_EQ(hgetall_result.size(), 3);
-    EXPECT_EQ(hgetall_result["field1"], "value1");
-    EXPECT_EQ(hgetall_result["field2"], "value2");
-    EXPECT_EQ(hgetall_result["counter"], "5");
+        // Update age
+        (void)co_await redis.hincrby(key, "age", 1);
 
-    // Cleanup
-    redis.del(key);
+        auto age_reply = co_await redis.hget(key, "age");
+        EXPECT_TRUE(age_reply.ok());
+        EXPECT_EQ(*age_reply.result(), "31");
+
+        // Delete a field
+        (void)co_await redis.hdel(key, "city");
+
+        auto len_reply = co_await redis.hlen(key);
+        EXPECT_TRUE(len_reply.ok());
+        EXPECT_EQ(len_reply.result(), 2);
+
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+TEST_P(HashProtocolModesTest, HSET_HGET) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("hash");
+        (void)co_await redis.hset(k, "field", "value");
+        auto r = co_await redis.hget(k, "field");
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok() && r.result()) EXPECT_EQ(*r.result(), "value");
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(HashProtocolModesTest, HGETALL_MAP) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("hgetall");
+        (void)co_await redis.hset(k, "a", "1");
+        (void)co_await redis.hset(k, "b", "2");
+        auto r = co_await redis.hgetall(k);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) {
+            const auto& m = r.result();
+            EXPECT_EQ(m.size(), 2u);
+            EXPECT_EQ(m.at("a"), "1");
+            EXPECT_EQ(m.at("b"), "2");
+        }
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(HashProtocolModesTest, HMGET_HEXISTS) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("hmget");
+        (void)co_await redis.hset(k, "f1", "v1");
+        (void)co_await redis.hset(k, "f2", "v2");
+        auto hmget_r = co_await redis.hmget(k, "f1", "f2", "f3");
+        EXPECT_TRUE(hmget_r.ok()) << hmget_r.error();
+        if (hmget_r.ok()) {
+            const auto& v = hmget_r.result();
+            EXPECT_EQ(v.size(), 3u);
+            EXPECT_TRUE(v[0].has_value() && *v[0] == "v1");
+            EXPECT_TRUE(v[1].has_value() && *v[1] == "v2");
+            EXPECT_FALSE(v[2].has_value());
+        }
+        auto hexists_r = co_await redis.hexists(k, "f1");
+        EXPECT_TRUE(hexists_r.ok()) << hexists_r.error();
+        if (hexists_r.ok()) EXPECT_TRUE(hexists_r.result());
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(HashProtocolModesTest, HINCRBY_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("hincrby");
+        (void)co_await redis.hset(k, "n", "5");
+        auto r = co_await redis.hincrby(k, "n", 3);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), 8);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(HashProtocolModesTest, HDEL_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("hdel");
+        (void)co_await redis.hset(k, "a", "1");
+        (void)co_await redis.hset(k, "b", "2");
+        auto r = co_await redis.hdel(k, "a");
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), 1);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Main function to run the tests

@@ -2,6 +2,8 @@
 
 This document covers Redis commands operating on Geospatial index values.
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Geospatial Commands](https://redis.io/commands/?group=geo)
 
 ## Common Types & Reply Types

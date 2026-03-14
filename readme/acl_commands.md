@@ -2,6 +2,8 @@
 
 This document covers Redis Access Control List (ACL) commands, which are used to manage user permissions and control access to commands and data.
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis ACL Commands](https://redis.io/commands/?group=acl)
 
 ## Common Reply Types
