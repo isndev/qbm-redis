@@ -2,6 +2,8 @@
 
 This document covers Redis commands related to the Publish/Subscribe messaging paradigm, specifically focusing on how clients subscribe to and unsubscribe from channels and patterns.
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Pub/Sub Commands](https://redis.io/commands/?group=pubsub)
 
 ## Key Concepts for Subscriptions

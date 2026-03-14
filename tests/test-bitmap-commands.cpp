@@ -17,275 +17,317 @@
 
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include <thread>
 #include "../redis.h"
-
-// Configuration Redis
-#define REDIS_URI {"tcp://localhost:6379"}
+#include "protocol_test_common.h"
 
 using namespace qb::io;
 using namespace std::chrono;
 
-// Generates unique key prefixes to avoid collisions between tests
-inline std::string
-key_prefix(const std::string &key = "") {
-    static int  counter = 0;
-    std::string prefix  = "qb::redis::bitmap-test:" + std::to_string(++counter);
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
 
-    if (key.empty()) {
-        return prefix;
-    }
+class BitmapProtocolModesTest : public ProtocolModesTestBase {};
 
-    return prefix + ":" + key;
-}
-
-// Generates a test key
-inline std::string
-test_key(const std::string &k) {
-    return "{" + key_prefix() + "}::" + k;
-}
-
-// Verifies connection and cleans environment before tests
-class RedisTest : public ::testing::Test {
-protected:
-    qb::redis::tcp::client redis{REDIS_URI};
-
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Unable to connect to Redis");
-
-        // Wait for connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
-    }
-};
+INSTANTIATE_PROTOCOL_MODES(BitmapProtocolModesTest);
 
 /*
- * TESTS SYNCHRONES
+ * COROUTINE TESTS
  */
 
-// Test BITCOUNT
-TEST_F(RedisTest, SYNC_BITMAP_COMMANDS_BITCOUNT) {
-    std::string key = test_key("bitcount");
+// Test BITCOUNT with coroutines
+TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITCOUNT) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("coro_bitcount");
 
-    // Test with an empty string
-    EXPECT_EQ(redis.bitcount(key), 0);
+        // Set a string with bits
+        (void)co_await redis.set(key, std::string("\xFF\x00\xFF", 3));
 
-    // Test with a string containing bits
-    redis.set(key, std::string("\xFF\x00\xFF", 3));
-    EXPECT_EQ(redis.bitcount(key), 16);
+        // Count all bits
+        auto reply = co_await redis.bitcount(key);
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result(), 16);
 
-    // Test with a specific range
-    EXPECT_EQ(redis.bitcount(key, 0, 0), 8); // First byte
-    EXPECT_EQ(redis.bitcount(key, 1, 1), 0); // Second byte
-    EXPECT_EQ(redis.bitcount(key, 2, 2), 8); // Third byte
-}
+        // Test with a specific range
+        auto reply1 = co_await redis.bitcount(key, 0, 0);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 8);
 
-// Test BITFIELD
-TEST_F(RedisTest, SYNC_BITMAP_COMMANDS_BITFIELD) {
-    std::string key = test_key("bitfield");
+        auto reply2 = co_await redis.bitcount(key, 1, 1);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 0);
 
-    // Test SET and GET
-    std::vector<std::string> operations = {
-        "SET", "u4", "0", "100", // Set 4-bit unsigned integer at offset 0 to 100
-        "GET", "u4", "0"         // Get 4-bit unsigned integer at offset 0
+        auto reply3 = co_await redis.bitcount(key, 2, 2);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_EQ(reply3.result(), 8);
+
+        completed = true;
     };
-
-    auto results = redis.bitfield(key, operations);
-    EXPECT_EQ(results.size(), 2);
-    EXPECT_EQ(results[0], 0); // SET returns the old value
-    EXPECT_EQ(results[1], 4); // GET returns the new value
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test BITOP
-TEST_F(RedisTest, SYNC_BITMAP_COMMANDS_BITOP) {
-    std::string key1    = test_key("bitop1");
-    std::string key2    = test_key("bitop2");
-    std::string destkey = test_key("bitop_dest");
+// Test BITFIELD with coroutines
+TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITFIELD) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("coro_bitfield");
 
-    // Prepare test strings
-    redis.set(key1, std::string("\xFF\x00\xFF", 3));
-    redis.set(key2, "\x0F\xF0"); // 00001111 11110000
+        // Test SET and GET
+        std::vector<std::string> operations = {
+            "SET", "u4", "0", "100",
+            "GET", "u4", "0"
+        };
 
-    // Test AND
-    long long len = redis.bitop("AND", destkey, {key1, key2});
-    // La longueur peut être 2 ou 3 selon la version de Redis
-    EXPECT_TRUE(len == 2 || len == 3);
-    auto result = redis.get(destkey);
-    EXPECT_TRUE(result.has_value());
-    // Vérifie seulement les deux premiers octets
-    EXPECT_EQ(result->substr(0, 2), std::string("\x0F\x00", 2)); // 00001111 00000000
+        auto reply = co_await redis.bitfield(key, operations);
+        EXPECT_TRUE(reply.ok());
+        auto results = reply.result();
+        EXPECT_EQ(results.size(), 2);
+        EXPECT_TRUE(results[0].has_value());
+        EXPECT_TRUE(results[1].has_value());
+        EXPECT_EQ(results[0].value(), 0);
+        EXPECT_EQ(results[1].value(), 4);
 
-    // Test OR
-    len = redis.bitop("OR", destkey, {key1, key2});
-    EXPECT_TRUE(len == 2 || len == 3);
-    result = redis.get(destkey);
-    EXPECT_TRUE(result.has_value());
-    // Vérifie seulement les deux premiers octets
-    EXPECT_EQ(result->substr(0, 2), std::string("\xFF\xF0", 2)); // 11111111 11110000
-
-    // Test XOR
-    len = redis.bitop("XOR", destkey, {key1, key2});
-    EXPECT_TRUE(len == 2 || len == 3);
-    result = redis.get(destkey);
-    EXPECT_TRUE(result.has_value());
-    // Vérifie seulement les deux premiers octets
-    EXPECT_EQ(result->substr(0, 2), std::string("\xF0\xF0", 2)); // 11110000 11110000
-
-    // Test NOT
-    len = redis.bitop("NOT", destkey, {key1});
-    EXPECT_TRUE(len == 2 || len == 3);
-    result = redis.get(destkey);
-    EXPECT_TRUE(result.has_value());
-    // Vérifie seulement les deux premiers octets
-    EXPECT_EQ(result->substr(0, 2), std::string("\x00\xFF", 2)); // 00000000 11111111
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test BITPOS
-TEST_F(RedisTest, SYNC_BITMAP_COMMANDS_BITPOS) {
-    std::string key = test_key("bitpos");
+// Test BITOP with coroutines
+TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITOP) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key1    = protocol_key("coro_bitop1");
+        std::string key2    = protocol_key("coro_bitop2");
+        std::string destkey = protocol_key("coro_bitop_dest");
 
-    // Test with an empty string
-    EXPECT_EQ(redis.bitpos(key, true), -1);
+        // Prepare test strings
+        (void)co_await redis.set(key1, std::string("\xFF\x00\xFF", 3));
+        (void)co_await redis.set(key2, "\x0F\xF0");
 
-    // Test with a string containing bits
-    redis.set(key, std::string("\xFF\x00\xFF", 3));
+        // Test AND
+        auto reply_and = co_await redis.bitop("AND", destkey, std::vector<std::string>{key1, key2});
+        EXPECT_TRUE(reply_and.ok());
+        long long len = reply_and.result();
+        EXPECT_TRUE(len == 2 || len == 3);
 
-    // Find the first bit set to 1
-    EXPECT_EQ(redis.bitpos(key, true), 0);
+        auto result_and = co_await redis.get(destkey);
+        EXPECT_TRUE(result_and.ok());
+        EXPECT_TRUE(result_and.result().has_value());
+        EXPECT_EQ(result_and.result()->substr(0, 2), std::string("\x0F\x00", 2));
 
-    // Find the first bit set to 0
-    EXPECT_EQ(redis.bitpos(key, false), 8);
+        // Test OR
+        auto reply_or = co_await redis.bitop("OR", destkey, std::vector<std::string>{key1, key2});
+        EXPECT_TRUE(reply_or.ok());
+        len = reply_or.result();
+        EXPECT_TRUE(len == 2 || len == 3);
 
-    // Test with a specific range - these tests are adaptive to the Redis version
-    // Either the original behavior or the behavior observed on this system
-    long long pos;
-    
-    pos = redis.bitpos(key, true, 0, 0);
-    EXPECT_TRUE(pos == -1 || pos == 0);
-    
-    pos = redis.bitpos(key, true, 1, 1);
-    EXPECT_TRUE(pos == 8 || pos == -1);
-    
-    pos = redis.bitpos(key, true, 2, 2);
-    EXPECT_TRUE(pos == -1 || pos == 16);
+        auto result_or = co_await redis.get(destkey);
+        EXPECT_TRUE(result_or.ok());
+        EXPECT_TRUE(result_or.result().has_value());
+        EXPECT_EQ(result_or.result()->substr(0, 2), std::string("\xFF\xF0", 2));
+
+        // Test XOR
+        auto reply_xor = co_await redis.bitop("XOR", destkey, std::vector<std::string>{key1, key2});
+        EXPECT_TRUE(reply_xor.ok());
+        len = reply_xor.result();
+        EXPECT_TRUE(len == 2 || len == 3);
+
+        auto result_xor = co_await redis.get(destkey);
+        EXPECT_TRUE(result_xor.ok());
+        EXPECT_TRUE(result_xor.result().has_value());
+        EXPECT_EQ(result_xor.result()->substr(0, 2), std::string("\xF0\xF0", 2));
+
+        // Test NOT
+        auto reply_not = co_await redis.bitop("NOT", destkey, std::vector<std::string>{key1});
+        EXPECT_TRUE(reply_not.ok());
+        len = reply_not.result();
+        EXPECT_TRUE(len == 2 || len == 3);
+
+        auto result_not = co_await redis.get(destkey);
+        EXPECT_TRUE(result_not.ok());
+        EXPECT_TRUE(result_not.result().has_value());
+        EXPECT_EQ(result_not.result()->substr(0, 2), std::string("\x00\xFF", 2));
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test GETBIT and SETBIT
-TEST_F(RedisTest, SYNC_BITMAP_COMMANDS_GETBIT_SETBIT) {
-    std::string key = test_key("getbit_setbit");
+// Test BITPOS with coroutines
+TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITPOS) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("coro_bitpos");
 
-    // Test with a non-existent key
-    // Test with a non-existent key
-    EXPECT_FALSE(redis.getbit(key, 0));
+        // Set a string with bits
+        (void)co_await redis.set(key, std::string("\xFF\x00\xFF", 3));
 
-    // Test SETBIT
-    EXPECT_FALSE(redis.setbit(key, 7, true)); // First bit to 1
-    EXPECT_TRUE(redis.setbit(key, 7, false)); // Returns the old value
-    EXPECT_FALSE(redis.setbit(key, 7, true)); // Returns the new value
+        // Find the first bit set to 1
+        auto reply1 = co_await redis.bitpos(key, true);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 0);
 
-    // Test GETBIT
-    EXPECT_FALSE(redis.getbit(key, 0));
-    EXPECT_TRUE(redis.getbit(key, 7));
-    EXPECT_FALSE(redis.getbit(key, 8)); // Bit out of bounds
+        // Find the first bit set to 0
+        auto reply2 = co_await redis.bitpos(key, false);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 8);
+
+        // Test with specific ranges
+        auto reply3 = co_await redis.bitpos(key, true, 0, 0);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_TRUE(reply3.result() == -1 || reply3.result() == 0);
+
+        auto reply4 = co_await redis.bitpos(key, true, 1, 1);
+        EXPECT_TRUE(reply4.ok());
+        EXPECT_TRUE(reply4.result() == 8 || reply4.result() == -1);
+
+        auto reply5 = co_await redis.bitpos(key, true, 2, 2);
+        EXPECT_TRUE(reply5.ok());
+        EXPECT_TRUE(reply5.result() == -1 || reply5.result() == 16);
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-/*
- * TESTS ASYNCHRONES
- */
+// Test BITFIELD_RO (read-only BITFIELD)
+TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITFIELD_RO) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("coro_bitfield_ro");
 
-// Test asynchrone BITCOUNT
-TEST_F(RedisTest, ASYNC_BITMAP_COMMANDS_BITCOUNT) {
-    std::string key   = test_key("async_bitcount");
-    long long   count = 0;
+        // Set value with BITFIELD first
+        (void)co_await redis.bitfield(key, {"SET", "u8", "0", "42", "GET", "u8", "0"});
 
-    redis.set(key, std::string("\xff\x00\xff", 3)); // 11111111 00000000 11111111
+        // BITFIELD_RO: read-only GET
+        auto reply = co_await redis.bitfieldRo(key, {"GET", "u8", "0"});
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result().size(), 1u);
+        EXPECT_TRUE(reply.result()[0].has_value());
+        EXPECT_EQ(reply.result()[0].value(), 42);
 
-    redis.bitcount([&](auto &&reply) { count = reply.result(); }, key);
-
-    redis.await();
-
-    EXPECT_EQ(count, 16);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 }
 
-// Test asynchrone BITFIELD
-TEST_F(RedisTest, ASYNC_BITMAP_COMMANDS_BITFIELD) {
-    std::string                           key = test_key("async_bitfield");
-    std::vector<std::optional<long long>> results;
+// Test GETBIT and SETBIT with coroutines
+TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_GETBIT_SETBIT) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("coro_getbit_setbit");
 
-    std::vector<std::string> operations = {"SET", "u4", "0", "100", "GET", "u4", "0"};
+        // Test SETBIT
+        auto reply1 = co_await redis.setbit(key, 7, true);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 0);  // Old value was 0
 
-    redis.bitfield([&](auto &&reply) { results = reply.result(); }, key, operations);
+        auto reply2 = co_await redis.setbit(key, 7, false);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 1);  // Old value was 1
 
-    redis.await();
+        auto reply3 = co_await redis.setbit(key, 7, true);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_EQ(reply3.result(), 0);  // Old value was 0
 
-    EXPECT_EQ(results.size(), 2);
-    EXPECT_EQ(results[0], 0);
-    EXPECT_EQ(results[1], 4);
+        // Test GETBIT
+        auto reply4 = co_await redis.getbit(key, 0);
+        EXPECT_TRUE(reply4.ok());
+        EXPECT_EQ(reply4.result(), 0);
+
+        auto reply5 = co_await redis.getbit(key, 7);
+        EXPECT_TRUE(reply5.ok());
+        EXPECT_EQ(reply5.result(), 1);
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test asynchrone BITOP
-TEST_F(RedisTest, ASYNC_BITMAP_COMMANDS_BITOP) {
-    std::string key1          = test_key("async_bitop1");
-    std::string key2          = test_key("async_bitop2");
-    std::string destkey       = test_key("async_bitop_dest");
-    long long   result_length = 0;
-
-    redis.set(key1, std::string("\xff\x00", 2));
-    redis.set(key2, "\x0f\xf0");
-
-    redis.bitop([&](auto &&reply) { result_length = reply.result(); }, "AND", destkey,
-                {key1, key2});
-
-    redis.await();
-
-    EXPECT_EQ(result_length, 2);
-
-    std::optional<std::string> result;
-    redis.get([&](auto &&reply) { result = reply.result(); }, destkey);
-
-    redis.await();
-
-    EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(*result, std::string("\x0f\x00", 2));
+TEST_P(BitmapProtocolModesTest, SETBIT_GETBIT) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("bitmap");
+        (void)co_await redis.setbit(k, 7, true);
+        auto get_r = co_await redis.getbit(k, 7);
+        EXPECT_TRUE(get_r.ok()) << get_r.error();
+        if (get_r.ok()) EXPECT_EQ(get_r.result(), 1);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
-// Test asynchrone BITPOS
-TEST_F(RedisTest, ASYNC_BITMAP_COMMANDS_BITPOS) {
-    std::string key = test_key("async_bitpos");
-    long long   pos = 0;
-
-    redis.set(key, std::string("\x00\xff\x00", 2));
-
-    redis.bitpos([&](auto &&reply) { pos = reply.result(); }, key, true);
-
-    redis.await();
-
-    EXPECT_EQ(pos, 8);
+TEST_P(BitmapProtocolModesTest, BITFIELD_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("bitfield");
+        auto r = co_await redis.bitfield(k, {"SET", "i32", "#0", "100"});
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_FALSE(r.result().empty());
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
-// Test asynchrone GETBIT et SETBIT
-TEST_F(RedisTest, ASYNC_BITMAP_COMMANDS_GETBIT_SETBIT) {
-    std::string key           = test_key("async_getbit_setbit");
-    bool        getbit_result = false;
-    bool        setbit_result = false;
-
-    redis.setbit([&](auto &&reply) { setbit_result = reply.result() == 0; }, key, 7,
-                 true);
-
-    redis.getbit([&](auto &&reply) { getbit_result = reply.result() == 1; }, key, 7);
-
-    redis.await();
-
-    EXPECT_TRUE(setbit_result);
-    EXPECT_TRUE(getbit_result);
+TEST_P(BitmapProtocolModesTest, BITFIELD_RO) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("bitfield_ro");
+        (void)co_await redis.bitfield(k, {"SET", "u8", "0", "100"});
+        auto r = co_await redis.bitfieldRo(k, {"GET", "u8", "0"});
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok() && !r.result().empty() && r.result()[0]) {
+            EXPECT_EQ(r.result()[0].value(), 100);
+        }
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
+
+TEST_P(BitmapProtocolModesTest, BITCOUNT_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("bitcount");
+        (void)co_await redis.setbit(k, 0, true);
+        (void)co_await redis.setbit(k, 1, true);
+        (void)co_await redis.setbit(k, 2, true);
+        auto r = co_await redis.bitcount(k);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), 3);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+// Test async BITCOUNT
+// Test async BITFIELD
+// Test async GETBIT and SETBIT

@@ -26,22 +26,23 @@ namespace qb::redis {
  * @class string_commands
  * @brief Provides Redis string command implementations for manipulating string values.
  *
- * This class implements all Redis string-related commands, providing a comprehensive
- * set of operations for working with string values in Redis. Redis strings are the
- * most basic data type and can store text, serialized objects, counters, bitmaps,
- * or any binary data up to 512MB in size.
+ * This class implements all Redis string-related commands with C++20 coroutine support.
+ * All commands return awaitables that can be co_awaited for true async I/O without
+ * blocking the event loop.
  *
- * Key features of Redis strings:
- * - Binary-safe: can store any kind of data, including binary data
- * - Maximum size of 512MB
- * - Support for atomic operations like increment/decrement
- * - Ability to set expiration times on string values
- * - Bit-level operations (handled by bitmap_commands class)
+ * Key features:
+ * - Coroutine-first: All commands return redis_awaiter for co_await
+ * - Callback fallback: Async callback versions still available for legacy code
+ * - True async: co_await suspends the coroutine, allowing other I/O to proceed
  *
- * Each command is available in both synchronous and asynchronous versions:
- * - Synchronous: Returns the result directly and blocks until completed
- * - Asynchronous: Takes a callback function that will be invoked when the operation
- * completes
+ * Usage:
+ * @code
+ * task<void> handler() {
+ *     auto r = co_await redis.get("mykey");     // Suspends until response
+ *     co_await redis.set("mykey", "value");      // Suspends until confirmation
+ *     auto val = co_await redis.incr("counter"); // Atomic increment
+ * }
+ * @endcode
  *
  * @tparam Derived The derived class type (CRTP pattern)
  */
@@ -55,7 +56,7 @@ private:
 
 public:
     /**
-     * @brief Append a value to the end of a string stored at key.
+     * @brief Append a value to the end of a string stored at key (coroutine awaitable).
      *
      * If the key exists and is a string, this command appends the specified value
      * to the end of the string. If the key does not exist, it is created with an
@@ -63,15 +64,17 @@ public:
      *
      * @param key The key storing the string value
      * @param val The string to append to the existing value
-     * @return The length of the string after the append operation
+     * @return redis_awaiter yielding Reply<long long>
      * @note If the key exists but is not a string, Redis will return an error
-     * @note Time complexity: O(1) - Constant time complexity regardless of the size of
-     * the strings
+     * @note Time complexity: O(1)
      * @see https://redis.io/commands/append
      */
-    long long
-    append(const std::string &key, const std::string &val) {
-        return derived().template command<long long>("APPEND", key, val).result();
+    auto append(const std::string &key, const std::string &val) {
+        return derived().template make_coro_command<long long>(
+            [this, key, val](auto&& callback) {
+                this->append(std::move(callback), key, val);
+            }
+        );
     }
 
     /**
@@ -91,23 +94,18 @@ public:
     }
 
     /**
-     * @brief Decrement the integer value stored at key by one.
-     *
-     * Decrements the number stored at key by one. If the key does not exist, it is set
-     * to 0 before performing the operation. If the key contains a value that cannot be
-     * represented as an integer, Redis will return an error.
+     * @brief Decrement the integer value stored at key by one (coroutine awaitable).
      *
      * @param key The key storing the numeric string value
-     * @return The value after the decrement operation
-     * @note If the key does not exist, it is initialized as 0 before decrementing
-     * @note If the value at key is not an integer, Redis returns an error
-     * @note This operation is limited to 64-bit signed integers
-     * @note Time complexity: O(1)
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/decr
      */
-    long long
-    decr(const std::string &key) {
-        return derived().template command<long long>("DECR", key).result();
+    auto decr(const std::string &key) {
+        return derived().template make_coro_command<long long>(
+            [this, key](auto&& callback) {
+                this->decr(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -126,24 +124,19 @@ public:
     }
 
     /**
-     * @brief Decrement the integer value stored at key by the specified amount.
-     *
-     * Decrements the number stored at key by decrement. If the key does not exist,
-     * it is set to 0 before performing the operation. If the key contains a value
-     * that cannot be represented as an integer, Redis will return an error.
+     * @brief Decrement the integer value stored at key by the specified amount (coroutine awaitable).
      *
      * @param key The key storing the numeric string value
      * @param decrement The amount to decrement the value by
-     * @return The value after the decrement operation
-     * @note If the key does not exist, it is initialized as 0 before decrementing
-     * @note If the value at key is not an integer, Redis returns an error
-     * @note This operation is limited to 64-bit signed integers
-     * @note Time complexity: O(1)
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/decrby
      */
-    long long
-    decrby(const std::string &key, long long decrement) {
-        return derived().template command<long long>("DECRBY", key, decrement).result();
+    auto decrby(const std::string &key, long long decrement) {
+        return derived().template make_coro_command<long long>(
+            [this, key, decrement](auto&& callback) {
+                this->decrby(std::move(callback), key, decrement);
+            }
+        );
     }
 
     /**
@@ -163,24 +156,18 @@ public:
     }
 
     /**
-     * @brief Get the string value stored at key.
-     *
-     * Returns the value of the string stored at key. If the key does not exist,
-     * a null optional is returned (std::nullopt).
+     * @brief Get the string value stored at key (coroutine awaitable).
      *
      * @param key The key to retrieve the value for
-     * @return An optional containing the string value if the key exists, or std::nullopt
-     * if it doesn't
-     * @note If the key exists but holds a non-string value, Redis will return an error
-     * @note Maximum string size that can be retrieved is 512MB
-     * @note Time complexity: O(1) for small strings, O(N) for large strings
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @see https://redis.io/commands/get
      */
-    std::optional<std::string>
-    get(const std::string &key) {
-        return derived()
-            .template command<std::optional<std::string>>("GET", key)
-            .result();
+    auto get(const std::string &key) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key](auto&& callback) {
+                this->get(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -200,29 +187,20 @@ public:
     }
 
     /**
-     * @brief Get a substring of the string stored at key.
-     *
-     * Returns the substring of the string value stored at key, determined by the offsets
-     * start and end (both inclusive). Negative offsets can be used to specify positions
-     * from the end of the string.
+     * @brief Get a substring of the string stored at key (coroutine awaitable).
      *
      * @param key The key storing the string value
-     * @param start Start offset (inclusive), 0-based. Negative values count from the end
-     * of the string
-     * @param end End offset (inclusive). Negative values count from the end of the
-     * string
-     * @return The substring extracted from the string value
-     * @note If the key does not exist, an empty string is returned
-     * @note If start/end are out of range, they are limited to the actual string
-     * boundaries
-     * @note Time complexity: O(N) where N is the length of the returned string
+     * @param start Start offset (inclusive), 0-based
+     * @param end End offset (inclusive)
+     * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/getrange
      */
-    std::string
-    getrange(const std::string &key, long long start, long long end) {
-        return derived()
-            .template command<std::string>("GETRANGE", key, start, end)
-            .result();
+    auto getrange(const std::string &key, long long start, long long end) {
+        return derived().template make_coro_command<std::string>(
+            [this, key, start, end](auto&& callback) {
+                this->getrange(std::move(callback), key, start, end);
+            }
+        );
     }
 
     /**
@@ -243,26 +221,41 @@ public:
     }
 
     /**
-     * @brief Atomically set a string value and return the old value.
-     *
-     * Sets the string value at key and returns the old value. If the key did not exist,
-     * a null optional (std::nullopt) is returned.
+     * @brief Get a substring of the string stored at key (deprecated alias for GETRANGE).
+     * @param key The key storing the string value
+     * @param start Start offset (inclusive), 0-based
+     * @param end End offset (inclusive)
+     * @return redis_awaiter yielding Reply<std::string>
+     * @see https://redis.io/commands/substr
+     */
+    auto substr(const std::string &key, long long start, long long end) {
+        return derived().template make_coro_command<std::string>(
+            [this, key, start, end](auto&& callback) {
+                this->substr(std::move(callback), key, start, end);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
+    substr(Func &&func, const std::string &key, long long start, long long end) {
+        return derived().template command<std::string>(std::forward<Func>(func),
+                                                       "SUBSTR", key, start, end);
+    }
+
+    /**
+     * @brief Atomically set a string value and return the old value (coroutine awaitable).
      *
      * @param key The key to set
      * @param val The new string value to set
-     * @return An optional containing the previous string value if the key existed, or
-     * std::nullopt if it didn't
-     * @note This operation is atomic, so it can be used to implement leader election
-     * @note If the key exists but holds a non-string value, Redis will return an error
-     * @note Time complexity: O(1) for small strings, O(N) for large strings where N is
-     * the length of the string
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @see https://redis.io/commands/getset
      */
-    std::optional<std::string>
-    getset(const std::string &key, const std::string &val) {
-        return derived()
-            .template command<std::optional<std::string>>("GETSET", key, val)
-            .result();
+    auto getset(const std::string &key, const std::string &val) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key, val](auto&& callback) {
+                this->getset(std::move(callback), key, val);
+            }
+        );
     }
 
     /**
@@ -283,23 +276,18 @@ public:
     }
 
     /**
-     * @brief Increment the integer value stored at key by one.
-     *
-     * Increments the number stored at key by one. If the key does not exist, it is set
-     * to 0 before performing the operation. If the key contains a value that cannot be
-     * represented as an integer, Redis will return an error.
+     * @brief Increment the integer value stored at key by one (coroutine awaitable).
      *
      * @param key The key storing the numeric string value
-     * @return The value after the increment operation
-     * @note If the key does not exist, it is initialized as 0 before incrementing
-     * @note If the value at key is not an integer, Redis returns an error
-     * @note This operation is limited to 64-bit signed integers
-     * @note Time complexity: O(1)
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/incr
      */
-    long long
-    incr(const std::string &key) {
-        return derived().template command<long long>("INCR", key).result();
+    auto incr(const std::string &key) {
+        return derived().template make_coro_command<long long>(
+            [this, key](auto&& callback) {
+                this->incr(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -318,24 +306,19 @@ public:
     }
 
     /**
-     * @brief Increment the integer value stored at key by the specified amount.
-     *
-     * Increments the number stored at key by increment. If the key does not exist,
-     * it is set to 0 before performing the operation. If the key contains a value
-     * that cannot be represented as an integer, Redis will return an error.
+     * @brief Increment the integer value stored at key by the specified amount (coroutine awaitable).
      *
      * @param key The key storing the numeric string value
      * @param increment The amount to increment the value by
-     * @return The value after the increment operation
-     * @note If the key does not exist, it is initialized as 0 before incrementing
-     * @note If the value at key is not an integer, Redis returns an error
-     * @note This operation is limited to 64-bit signed integers
-     * @note Time complexity: O(1)
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/incrby
      */
-    long long
-    incrby(const std::string &key, long long increment) {
-        return derived().template command<long long>("INCRBY", key, increment).result();
+    auto incrby(const std::string &key, long long increment) {
+        return derived().template make_coro_command<long long>(
+            [this, key, increment](auto&& callback) {
+                this->incrby(std::move(callback), key, increment);
+            }
+        );
     }
 
     /**
@@ -371,11 +354,12 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/incrbyfloat
      */
-    double
-    incrbyfloat(const std::string &key, double increment) {
-        return derived()
-            .template command<double>("INCRBYFLOAT", key, increment)
-            .result();
+    auto incrbyfloat(const std::string &key, double increment) {
+        return derived().template make_coro_command<double>(
+            [this, key, increment](auto&& callback) {
+                this->incrbyfloat(std::move(callback), key, increment);
+            }
+        );
     }
 
     /**
@@ -405,14 +389,12 @@ public:
      * @note Time complexity: O(N) where N is the number of keys requested
      * @see https://redis.io/commands/mget
      */
-    std::vector<std::optional<std::string>>
-    mget(const std::vector<std::string> &keys) {
-        if (keys.size() == 0) {
-            return {};
-        }
-        return derived()
-            .template command<std::vector<std::optional<std::string>>>("MGET", keys)
-            .result();
+    auto mget(const std::vector<std::string> &keys) {
+        return derived().template make_coro_command<std::vector<std::optional<std::string>>>(
+            [this, keys](auto&& callback) {
+                this->mget(std::move(callback), keys);
+            }
+        );
     }
 
     /**
@@ -443,9 +425,12 @@ public:
      * @note Time complexity: O(N) where N is the number of key-value pairs
      * @see https://redis.io/commands/mset
      */
-    status
-    mset(const std::vector<std::pair<std::string, std::string>> &keys) {
-        return derived().template command<status>("MSET", keys).result();
+    auto mset(const std::vector<std::pair<std::string, std::string>> &keys) {
+        return derived().template make_coro_command<status>(
+            [this, keys](auto&& callback) {
+                this->mset(std::move(callback), keys);
+            }
+        );
     }
 
     /**
@@ -474,12 +459,12 @@ public:
      * least one key exists
      * @see https://redis.io/commands/msetnx
      */
-    bool
-    msetnx(const std::vector<std::pair<std::string, std::string>> &keys) {
-        if (keys.size() == 0) {
-            return false;
-        }
-        return derived().template command<long long>("MSETNX", keys).result();
+    auto msetnx(const std::vector<std::pair<std::string, std::string>> &keys) {
+        return derived().template make_coro_command<bool>(
+            [this, keys](auto&& callback) {
+                this->msetnx(std::move(callback), keys);
+            }
+        );
     }
 
     /**
@@ -493,7 +478,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     msetnx(Func &&func, const std::vector<std::pair<std::string, std::string>> &keys) {
-        return derived().template command<long long>(std::forward<Func>(func), "MSETNX",
+        return derived().template command<bool>(std::forward<Func>(func), "MSETNX",
                                                      keys);
     }
 
@@ -510,9 +495,12 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/psetex
      */
-    status
-    psetex(const std::string &key, long long ttl, const std::string &val) {
-        return derived().template command<status>("PSETEX", key, ttl, val).result();
+    auto psetex(const std::string &key, long long ttl, const std::string &val) {
+        return derived().template make_coro_command<status>(
+            [this, key, ttl, val](auto&& callback) {
+                this->psetex(std::move(callback), key, ttl, val);
+            }
+        );
     }
 
     /**
@@ -546,9 +534,8 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/psetex
      */
-    status
-    psetex(const std::string &key, std::chrono::milliseconds const &ttl,
-           const std::string &val) {
+    auto psetex(const std::string &key, std::chrono::milliseconds const &ttl,
+                const std::string &val) {
         return psetex(key, ttl.count(), val);
     }
 
@@ -570,29 +557,21 @@ public:
     }
 
     /**
-     * @brief Set a key-value pair with optional conditions.
-     *
-     * Sets the string value at key with optional update conditions. The command supports
-     * various options to control how and when the key is updated.
+     * @brief Set a key-value pair with optional conditions (coroutine awaitable).
      *
      * @param key The key to set
      * @param val The string value to set
-     * @param type Update condition:
-     *             - UpdateType::EXIST: Only set if key already exists
-     *             - UpdateType::NOT_EXIST: Only set if key does not exist
-     *             - UpdateType::ALWAYS: Always set (default)
-     * @return status object indicating success or failure
-     * @note Time complexity: O(1)
+     * @param type Update condition (EXIST, NOT_EXIST, or ALWAYS)
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/set
      */
-    status
-    set(const std::string &key, const std::string &val,
-        UpdateType type = UpdateType::ALWAYS) {
-        std::optional<std::string> opt;
-        if (type != UpdateType::ALWAYS)
-            opt = std::to_string(type);
-
-        return derived().template command<status>("SET", key, val, opt).result();
+    auto set(const std::string &key, const std::string &val,
+             UpdateType type = UpdateType::ALWAYS) {
+        return derived().template make_coro_command<status>(
+            [this, key, val, type](auto&& callback) {
+                this->set(std::move(callback), key, val, type);
+            }
+        );
     }
 
     /**
@@ -611,35 +590,29 @@ public:
         UpdateType type = UpdateType::ALWAYS) {
         std::optional<std::string> opt;
         if (type != UpdateType::ALWAYS)
-            opt = std::to_string(type);
+            opt = to_string(type);
 
         return derived().template command<status>(std::forward<Func>(func), "SET", key,
                                                   val, opt);
     }
 
     /**
-     * @brief Set a key-value pair with millisecond precision timeout and conditions.
-     *
-     * Sets the string value at key with a millisecond precision expiration time
-     * and optional update conditions.
+     * @brief Set a key-value pair with millisecond precision timeout and conditions (coroutine awaitable).
      *
      * @param key The key to set
      * @param val The string value to set
      * @param ttl Time-to-live in milliseconds
      * @param type Update condition (EXIST, NOT_EXIST, or ALWAYS)
-     * @return status object indicating success or failure
-     * @note Time complexity: O(1)
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/set
      */
-    status
-    set(const std::string &key, const std::string &val, long long ttl,
-        UpdateType type = UpdateType::ALWAYS) {
-        std::optional<std::string> opt;
-        if (type != UpdateType::ALWAYS)
-            opt = std::to_string(type);
-        return derived()
-            .template command<status>("SET", key, val, "PX", ttl, opt)
-            .result();
+    auto set(const std::string &key, const std::string &val, long long ttl,
+             UpdateType type = UpdateType::ALWAYS) {
+        return derived().template make_coro_command<status>(
+            [this, key, val, ttl, type](auto&& callback) {
+                this->set(std::move(callback), key, val, ttl, type);
+            }
+        );
     }
 
     /**
@@ -659,7 +632,7 @@ public:
         UpdateType type = UpdateType::ALWAYS) {
         std::optional<std::string> opt;
         if (type != UpdateType::ALWAYS)
-            opt = std::to_string(type);
+            opt = to_string(type);
         return derived().template command<status>(std::forward<Func>(func), "SET", key,
                                                   val, "PX", ttl, opt);
     }
@@ -679,9 +652,8 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/set
      */
-    status
-    set(const std::string &key, const std::string &val,
-        const std::chrono::milliseconds &ttl, UpdateType type = UpdateType::ALWAYS) {
+    auto set(const std::string &key, const std::string &val,
+             const std::chrono::milliseconds &ttl, UpdateType type = UpdateType::ALWAYS) {
         return set(key, val, static_cast<long long>(ttl.count()), type);
     }
 
@@ -717,9 +689,12 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/setex
      */
-    status
-    setex(const std::string &key, long long ttl, const std::string &val) {
-        return derived().template command<status>("SETEX", key, ttl, val).result();
+    auto setex(const std::string &key, long long ttl, const std::string &val) {
+        return derived().template make_coro_command<status>(
+            [this, key, ttl, val](auto&& callback) {
+                this->setex(std::move(callback), key, ttl, val);
+            }
+        );
     }
 
     /**
@@ -752,9 +727,8 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/setex
      */
-    status
-    setex(const std::string &key, std::chrono::seconds const &ttl,
-          const std::string &val) {
+    auto setex(const std::string &key, std::chrono::seconds const &ttl,
+               const std::string &val) {
         return setex(key, ttl.count(), val);
     }
 
@@ -787,9 +761,12 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/setnx
      */
-    bool
-    setnx(const std::string &key, const std::string &val) {
-        return derived().template command<bool>("SETNX", key, val).result();
+    auto setnx(const std::string &key, const std::string &val) {
+        return derived().template make_coro_command<bool>(
+            [this, key, val](auto&& callback) {
+                this->setnx(std::move(callback), key, val);
+            }
+        );
     }
 
     /**
@@ -824,11 +801,12 @@ public:
      * the length of val
      * @see https://redis.io/commands/setrange
      */
-    long long
-    setrange(const std::string &key, long long offset, const std::string &val) {
-        return derived()
-            .template command<long long>("SETRANGE", key, offset, val)
-            .result();
+    auto setrange(const std::string &key, long long offset, const std::string &val) {
+        return derived().template make_coro_command<long long>(
+            [this, key, offset, val](auto&& callback) {
+                this->setrange(std::move(callback), key, offset, val);
+            }
+        );
     }
 
     /**
@@ -860,9 +838,12 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/strlen
      */
-    long long
-    strlen(const std::string &key) {
-        return derived().template command<long long>("STRLEN", key).result();
+    auto strlen(const std::string &key) {
+        return derived().template make_coro_command<long long>(
+            [this, key](auto&& callback) {
+                this->strlen(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -892,11 +873,12 @@ public:
      * @note Available since Redis 6.2.0
      * @see https://redis.io/commands/getdel
      */
-    std::optional<std::string>
-    getdel(const std::string &key) {
-        return derived()
-            .template command<std::optional<std::string>>("GETDEL", key)
-            .result();
+    auto getdel(const std::string &key) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key](auto&& callback) {
+                this->getdel(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -929,11 +911,12 @@ public:
      * @note Available since Redis 6.2.0
      * @see https://redis.io/commands/getex
      */
-    std::optional<std::string>
-    getex(const std::string &key, long long ttl) {
-        return derived()
-            .template command<std::optional<std::string>>("GETEX", key, "EX", ttl)
-            .result();
+    auto getex(const std::string &key, long long ttl) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key, ttl](auto&& callback) {
+                this->getex(std::move(callback), key, ttl);
+            }
+        );
     }
 
     /**
@@ -949,12 +932,12 @@ public:
      * @note Available since Redis 6.2.0
      * @see https://redis.io/commands/getex
      */
-    std::optional<std::string>
-    getex(const std::string &key, std::chrono::milliseconds const &ttl) {
-        return derived()
-            .template command<std::optional<std::string>>("GETEX", key, "PX",
-                                                          ttl.count())
-            .result();
+    auto getex(const std::string &key, std::chrono::milliseconds const &ttl) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key, ttl](auto&& callback) {
+                this->getex(std::move(callback), key, ttl);
+            }
+        );
     }
 
     /**
@@ -1007,9 +990,12 @@ public:
      * @note Available since Redis 7.0.0
      * @see https://redis.io/commands/lcs
      */
-    std::string
-    lcs(const std::string &key1, const std::string &key2) {
-        return derived().template command<std::string>("LCS", key1, key2).result();
+    auto lcs(const std::string &key1, const std::string &key2) {
+        return derived().template make_coro_command<std::string>(
+            [this, key1, key2](auto&& callback) {
+                this->lcs(std::move(callback), key1, key2);
+            }
+        );
     }
 
     /**

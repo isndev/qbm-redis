@@ -2,6 +2,8 @@
 
 This document covers Redis commands operating on List values. Redis Lists are implemented as linked lists, making head/tail additions (LPUSH/RPUSH) very fast (O(1)), while index-based access (LINDEX) is slower (O(N)).
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis List Commands](https://redis.io/commands/?group=list)
 
 ## Common Reply Types
@@ -20,29 +22,29 @@ Reference: [Redis List Commands](https://redis.io/commands/?group=list)
 
 Inserts elements at the head (left side) of the list. Returns the length of the list after the push.
 
-*   **Sync:** `Reply<long long> lpush(const std::string &key, Args &&...args)`
-*   **Async:** `void lpush_async(const std::string &key, std::vector<std::string> elements, Callback<long long> cb)` (Note: Async takes vector)
+*   **Coroutine:** `Reply<long long> lpush(const std::string &key, Args &&...args)`
+*   **Callback:** `void lpush_async(const std::string &key, std::vector<std::string> elements, Callback<long long> cb)` (Note: Async takes vector)
 
 ### `LPUSHX key element [element ...]`
 
 Inserts elements at the head only if the key already exists and holds a list. Returns the length of the list after the push.
 
-*   **Sync:** `Reply<long long> lpushx(const std::string &key, Args &&...args)`
-*   **Async:** `void lpushx_async(const std::string &key, std::vector<std::string> elements, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> lpushx(const std::string &key, Args &&...args)`
+*   **Callback:** `void lpushx_async(const std::string &key, std::vector<std::string> elements, Callback<long long> cb)`
 
 ### `RPUSH key element [element ...]`
 
 Inserts elements at the tail (right side) of the list. Returns the length of the list after the push.
 
-*   **Sync:** `Reply<long long> rpush(const std::string &key, Args &&...args)`
-*   **Async:** `void rpush_async(const std::string &key, std::vector<std::string> elements, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> rpush(const std::string &key, Args &&...args)`
+*   **Callback:** `void rpush_async(const std::string &key, std::vector<std::string> elements, Callback<long long> cb)`
 
 ### `RPUSHX key element [element ...]`
 
 Inserts elements at the tail only if the key already exists and holds a list. Returns the length of the list after the push.
 
-*   **Sync:** `Reply<long long> rpushx(const std::string &key, const std::string &val)` (Note: Sync currently only supports single value for RPUSHX)
-*   **Async:** `void rpushx_async(const std::string &key, std::vector<std::string> elements, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> rpushx(const std::string &key, const std::string &val)` (Note: Sync currently only supports single value for RPUSHX)
+*   **Callback:** `void rpushx_async(const std::string &key, std::vector<std::string> elements, Callback<long long> cb)`
 
 ### `LPOP key [count]`
 
@@ -66,30 +68,30 @@ Removes and returns the last element (tail) of the list.
 
 Gets the element at `index` (0-based, negative indices count from the end).
 
-*   **Sync:** `Reply<std::optional<std::string>> lindex(const std::string &key, long long index)`
-*   **Async:** `void lindex_async(const std::string &key, long long index, Callback<std::optional<std::string>> cb)`
+*   **Coroutine:** `Reply<std::optional<std::string>> lindex(const std::string &key, long long index)`
+*   **Callback:** `void lindex_async(const std::string &key, long long index, Callback<std::optional<std::string>> cb)`
 
 ### `LINSERT key BEFORE|AFTER pivot element`
 
 Inserts `element` into the list either before or after the `pivot` element. Returns the length of the list after insertion, or -1 if pivot not found.
 
-*   **Sync:** `Reply<long long> linsert(const std::string &key, InsertPosition position, const std::string &pivot, const std::string &val)`
-*   **Async:** `void linsert_async(const std::string &key, InsertPosition position, const std::string &pivot, const std::string &val, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> linsert(const std::string &key, InsertPosition position, const std::string &pivot, const std::string &val)`
+*   **Callback:** `void linsert_async(const std::string &key, InsertPosition position, const std::string &pivot, const std::string &val, Callback<long long> cb)`
 *   **`InsertPosition` Enum:** `BEFORE`, `AFTER`.
 
 ### `LLEN key`
 
 Returns the length of the list.
 
-*   **Sync:** `Reply<long long> llen(const std::string &key)`
-*   **Async:** `void llen_async(const std::string &key, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> llen(const std::string &key)`
+*   **Callback:** `void llen_async(const std::string &key, Callback<long long> cb)`
 
 ### `LRANGE key start stop`
 
 Returns the specified range of elements from the list.
 
-*   **Sync:** `Reply<std::vector<std::string>> lrange(const std::string &key, long long start, long long stop)`
-*   **Async:** `void lrange_async(const std::string &key, long long start, long long stop, Callback<std::vector<std::string>> cb)`
+*   **Coroutine:** `Reply<std::vector<std::string>> lrange(const std::string &key, long long start, long long stop)`
+*   **Callback:** `void lrange_async(const std::string &key, long long start, long long stop, Callback<std::vector<std::string>> cb)`
 
 ### `LREM key count element`
 
@@ -100,47 +102,47 @@ Removes occurrences of `element` from the list.
 *   `count = 0`: Remove all elements equal to `element`.
 *   Returns the number of removed elements.
 
-*   **Sync:** `Reply<long long> lrem(const std::string &key, long long count, const std::string &val)`
-*   **Async:** `void lrem_async(const std::string &key, long long count, const std::string &val, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> lrem(const std::string &key, long long count, const std::string &val)`
+*   **Callback:** `void lrem_async(const std::string &key, long long count, const std::string &val, Callback<long long> cb)`
 
 ### `LSET key index element`
 
 Sets the list element at `index` to `element`.
 
-*   **Sync:** `status lset(const std::string &key, long long index, const std::string &val)`
-*   **Async:** `void lset_async(const std::string &key, long long index, const std::string &val, Callback<status> cb)`
+*   **Coroutine:** `status lset(const std::string &key, long long index, const std::string &val)`
+*   **Callback:** `redis.lset(callback, key, index, val)`
 
 ### `LTRIM key start stop`
 
 Trims the list so that it only contains elements in the specified range.
 
-*   **Sync:** `status ltrim(const std::string &key, long long start, long long stop)`
-*   **Async:** `void ltrim_async(const std::string &key, long long start, long long stop, Callback<status> cb)`
+*   **Coroutine:** `status ltrim(const std::string &key, long long start, long long stop)`
+*   **Callback:** `redis.ltrim(callback, key, start, stop)`
 
 ### Blocking Operations
 
 These commands block the *connection* until an element is available or a timeout occurs. They are useful for implementing reliable queues. **Use the asynchronous versions within actors.**
 
 *   **`BLPOP key [key ...] timeout`**: Blocks until an element can be popped from the *head* of one of the specified lists. `timeout` is in seconds (0 means block indefinitely).
-    *   **Sync:** `Reply<std::optional<std::vector<std::string>>> blpop(const std::vector<std::string> &keys, long long timeout)`
-    *   **Async:** `void blpop_async(const std::vector<std::string> &keys, long long timeout, Callback<std::optional<std::vector<std::string>>> cb)`
+    *   **Coroutine:** `Reply<std::optional<std::vector<std::string>>> blpop(const std::vector<std::string> &keys, long long timeout)`
+    *   **Callback:** `redis.blpop(callback, keys, timeout)`
 *   **`BRPOP key [key ...] timeout`**: Blocks until an element can be popped from the *tail* of one of the specified lists.
-    *   **Sync:** `Reply<std::optional<std::vector<std::string>>> brpop(const std::vector<std::string> &keys, long long timeout)`
-    *   **Async:** `void brpop_async(const std::vector<std::string> &keys, long long timeout, Callback<std::optional<std::vector<std::string>>> cb)`
+    *   **Coroutine:** `Reply<std::optional<std::vector<std::string>>> brpop(const std::vector<std::string> &keys, long long timeout)`
+    *   **Callback:** `redis.brpop(callback, keys, timeout)`
 *   **`BRPOPLPUSH source destination timeout`**: Atomically pops an element from the tail of `source` and pushes it to the head of `destination`.
-    *   **Sync:** `Reply<std::optional<std::string>> brpoplpush(const std::string &source, const std::string &destination, long long timeout)`
-    *   **Async:** `void brpoplpush_async(const std::string &source, const std::string &destination, long long timeout, Callback<std::optional<std::string>> cb)`
+    *   **Coroutine:** `Reply<std::optional<std::string>> brpoplpush(const std::string &source, const std::string &destination, long long timeout)`
+    *   **Callback:** `redis.brpoplpush(callback, source, destination, timeout)`
 *   **`BLMOVE source destination LEFT|RIGHT LEFT|RIGHT timeout`**: Atomically pops element from `source` (from specified side) and pushes to `destination` (to specified side).
-    *   **Sync:** `Reply<std::optional<std::string>> blmove(const std::string &source, const std::string &destination, ListPosition src_pos, ListPosition dest_pos, long long timeout)`
-    *   **Async:** `void blmove_async(const std::string &source, const std::string &destination, ListPosition src_pos, ListPosition dest_pos, long long timeout, Callback<std::optional<std::string>> cb)`
+    *   **Coroutine:** `Reply<std::optional<std::string>> blmove(const std::string &source, const std::string &destination, ListPosition src_pos, ListPosition dest_pos, long long timeout)`
+    *   **Callback:** `redis.blmove(callback, source, destination, src_pos, dest_pos, timeout)`
     *   **`ListPosition` Enum:** `LEFT`, `RIGHT`.
 
 ### `LMOVE source destination LEFT|RIGHT LEFT|RIGHT`
 
 Atomically moves an element from `source` list to `destination` list.
 
-*   **Sync:** `Reply<std::optional<std::string>> lmove(const std::string &source, const std::string &destination, ListPosition src_pos, ListPosition dest_pos)`
-*   **Async:** `void lmove_async(const std::string &source, const std::string &destination, ListPosition src_pos, ListPosition dest_pos, Callback<std::optional<std::string>> cb)`
+*   **Coroutine:** `Reply<std::optional<std::string>> lmove(const std::string &source, const std::string &destination, ListPosition src_pos, ListPosition dest_pos)`
+*   **Callback:** `redis.lmove(callback, source, destination, src_pos, dest_pos)`
 
 ### `LPOS key element [RANK rank] [COUNT num_matches] [MAXLEN len]`
 
@@ -155,13 +157,13 @@ Finds the index of matching elements in a list.
 
 Atomically pops elements from the first non-empty list key from the list of provided keys.
 
-*   **Sync:** `Reply<std::optional<list_pop_result>> lmpop(const std::vector<std::string> &keys, ListPosition position, long long count = 1)`
-*   **Async:** `void lmpop_async(const std::vector<std::string> &keys, ListPosition position, long long count, Callback<std::optional<list_pop_result>> cb)`
+*   **Coroutine:** `Reply<std::optional<list_pop_result>> lmpop(const std::vector<std::string> &keys, ListPosition position, long long count = 1)`
+*   **Callback:** `redis.lmpop(callback, keys, position, count)`
 *   **`list_pop_result` Struct:** Contains `key_popped_from` and `elements` (vector).
 
 ### `BLMPOP timeout numkeys key [key ...] LEFT|RIGHT [COUNT count]`
 
 Blocking version of `LMPOP`.
 
-*   **Sync:** `Reply<std::optional<list_pop_result>> blmpop(long long timeout, const std::vector<std::string> &keys, ListPosition position, long long count = 1)`
-*   **Async:** `void blmpop_async(long long timeout, const std::vector<std::string> &keys, ListPosition position, long long count, Callback<std::optional<list_pop_result>> cb)` 
+*   **Coroutine:** `Reply<std::optional<list_pop_result>> blmpop(keys, position, timeout, count)`
+*   **Callback:** `redis.blmpop(callback, keys, position, timeout, count)` 

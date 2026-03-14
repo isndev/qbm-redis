@@ -2,6 +2,8 @@
 
 This document covers Redis commands related to server management, monitoring, and configuration.
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Server Commands](https://redis.io/commands/?group=server)
 
 ## Common Reply Types

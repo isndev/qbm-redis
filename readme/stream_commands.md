@@ -2,6 +2,8 @@
 
 This document covers Redis commands operating on Stream values. Redis Streams are append-only logs.
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Stream Commands](https://redis.io/commands/?group=stream)
 
 ## Common Types & Reply Types
@@ -27,65 +29,65 @@ Reference: [Redis Stream Commands](https://redis.io/commands/?group=stream)
 
 Appends a new entry to the stream. Returns the ID of the added entry.
 
-*   **Sync:** `Reply<std::optional<stream_id>> xadd(const std::string &key, const std::vector<std::pair<std::string, std::string>> &entries, const std::optional<std::string> &id = std::nullopt)`
-*   **Async:** `void xadd_async(const std::string &key, const std::vector<std::pair<std::string, std::string>> &entries, Callback<std::optional<stream_id>> cb, const std::optional<std::string> &id = std::nullopt)`
+*   **Coroutine:** `Reply<std::optional<stream_id>> xadd(const std::string &key, const std::vector<std::pair<std::string, std::string>> &entries, const std::optional<std::string> &id = std::nullopt)`
+*   **Callback:** `void xadd_async(const std::string &key, const std::vector<std::pair<std::string, std::string>> &entries, Callback<std::optional<stream_id>> cb, const std::optional<std::string> &id = std::nullopt)`
 *   **Note:** Trim options (`MAXLEN`, `MINID`) and `NOMKSTREAM` are not directly exposed; build the command manually if needed.
 
 ### `XLEN key`
 
 Returns the number of entries in a stream.
 
-*   **Sync:** `Reply<long long> xlen(const std::string &key)`
-*   **Async:** `void xlen_async(const std::string &key, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> xlen(const std::string &key)`
+*   **Callback:** `void xlen_async(const std::string &key, Callback<long long> cb)`
 
 ### `XDEL key id [id ...]`
 
 Removes the specified entries from a stream. Returns the number of entries deleted.
 
-*   **Sync:** `Reply<long long> xdel(const std::string &key, Ids &&...ids)` (Variadic template takes `stream_id` or `std::string`)
-*   **Async:** `void xdel_async(const std::string &key, std::vector<std::string> ids, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> xdel(const std::string &key, Ids &&...ids)` (Variadic template takes `stream_id` or `std::string`)
+*   **Callback:** `void xdel_async(const std::string &key, std::vector<std::string> ids, Callback<long long> cb)`
 
 ### `XGROUP CREATE key groupname id|$ [MKSTREAM] [ENTRIESREAD entries_read]`
 
 Creates a consumer group.
 
-*   **Sync:** `status xgroup_create(const std::string &key, const std::string &group, const std::string &id, bool mkstream = false)`
-*   **Async:** `void xgroup_create_async(const std::string &key, const std::string &group, const std::string &id, Callback<status> cb, bool mkstream = false)`
+*   **Coroutine:** `status xgroup_create(const std::string &key, const std::string &group, const std::string &id, bool mkstream = false)`
+*   **Callback:** `void xgroup_create_async(const std::string &key, const std::string &group, const std::string &id, Callback<status> cb, bool mkstream = false)`
 
 ### `XGROUP DESTROY key groupname`
 
 Destroys a consumer group.
 
-*   **Sync:** `Reply<long long> xgroup_destroy(const std::string &key, const std::string &group)`
-*   **Async:** `void xgroup_destroy_async(const std::string &key, const std::string &group, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> xgroup_destroy(const std::string &key, const std::string &group)`
+*   **Callback:** `void xgroup_destroy_async(const std::string &key, const std::string &group, Callback<long long> cb)`
 
 ### `XGROUP DELCONSUMER key groupname consumername`
 
 Deletes a consumer from a consumer group.
 
-*   **Sync:** `Reply<long long> xgroup_delconsumer(const std::string &key, const std::string &group, const std::string &consumer)`
-*   **Async:** `void xgroup_delconsumer_async(const std::string &key, const std::string &group, const std::string &consumer, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> xgroup_delconsumer(const std::string &key, const std::string &group, const std::string &consumer)`
+*   **Callback:** `void xgroup_delconsumer_async(const std::string &key, const std::string &group, const std::string &consumer, Callback<long long> cb)`
 
 ### `XGROUP SETID key groupname id|$ [ENTRIESREAD entries_read]`
 
 Sets the last delivered ID for a consumer group.
 
-*   **Sync:** `status xgroup_setid(const std::string &key, const std::string &group, const std::string &id)`
-*   **Async:** `void xgroup_setid_async(const std::string &key, const std::string &group, const std::string &id, Callback<status> cb)`
+*   **Coroutine:** `status xgroup_setid(const std::string &key, const std::string &group, const std::string &id)`
+*   **Callback:** `void xgroup_setid_async(const std::string &key, const std::string &group, const std::string &id, Callback<status> cb)`
 
 ### `XACK key group id [id ...]`
 
 Acknowledges the processing of one or more messages for a consumer group.
 
-*   **Sync:** `Reply<long long> xack(const std::string &key, const std::string &group, Ids &&...ids)` (Variadic template takes `stream_id` or `std::string`)
-*   **Async:** `void xack_async(const std::string &key, const std::string &group, std::vector<std::string> ids, Callback<long long> cb)`
+*   **Coroutine:** `Reply<long long> xack(const std::string &key, const std::string &group, Ids &&...ids)` (Variadic template takes `stream_id` or `std::string`)
+*   **Callback:** `void xack_async(const std::string &key, const std::string &group, std::vector<std::string> ids, Callback<long long> cb)`
 
 ### `XTRIM key MAXLEN|MINID [=|~] threshold [LIMIT count]`
 
 Trims the stream to a given number of items, deleting older items.
 
-*   **Sync:** `Reply<long long> xtrim(const std::string &key, long long maxlen, bool approximate = false)`
-*   **Async:** `void xtrim_async(const std::string &key, long long maxlen, Callback<long long> cb, bool approximate = false)`
+*   **Coroutine:** `Reply<long long> xtrim(const std::string &key, long long maxlen, bool approximate = false)`
+*   **Callback:** `void xtrim_async(const std::string &key, long long maxlen, Callback<long long> cb, bool approximate = false)`
 *   **Note:** `MINID` trimming strategy is not directly exposed.
 
 ### `XPENDING key group [IDLE min-idle-time] [start end count] [consumer]`
@@ -101,19 +103,59 @@ Inspects the list of pending messages for a consumer group.
 
 Read data from one or multiple streams, only returning entries with IDs greater than the specified ones.
 
-*   **Sync:** `Reply<map_stream_entry_list> xread(const std::vector<std::string> &keys, const std::vector<std::string> &ids, std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt)`
+*   **Coroutine:** `Reply<map_stream_entry_list> xread(const std::vector<std::string> &keys, const std::vector<std::string> &ids, std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt)`
 *   **Sync (Single Stream):** Overload available taking `const std::string &key, const std::string &id`.
-*   **Async:** `void xread_async(const std::vector<std::string> &keys, const std::vector<std::string> &ids, Callback<map_stream_entry_list> cb, std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt)`
+*   **Callback:** `void xread_async(const std::vector<std::string> &keys, const std::vector<std::string> &ids, Callback<map_stream_entry_list> cb, std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt)`
 *   **Async (Single Stream):** Overload available.
 
 ### `XREADGROUP GROUP group consumer [COUNT count] [BLOCK milliseconds] [NOACK] STREAMS key [key ...] id [id ...]`
 
 Read data from one or multiple streams via a consumer group.
 
-*   **Sync:** `Reply<map_stream_entry_list> xreadgroup(const std::string &group, const std::string &consumer, const std::vector<std::string> &keys, const std::vector<std::string> &ids, std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt)`
+*   **Coroutine:** `Reply<map_stream_entry_list> xreadgroup(const std::string &group, const std::string &consumer, const std::vector<std::string> &keys, const std::vector<std::string> &ids, std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt)`
 *   **Sync (Single Stream):** Overload available.
-*   **Async:** `void xreadgroup_async(const std::string &group, const std::string &consumer, const std::vector<std::string> &keys, const std::vector<std::string> &ids, Callback<map_stream_entry_list> cb, std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt)`
+*   **Callback:** `void xreadgroup_async(const std::string &group, const std::string &consumer, const std::vector<std::string> &keys, const std::vector<std::string> &ids, Callback<map_stream_entry_list> cb, std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt)`
 *   **Async (Single Stream):** Overload available.
 *   **Note:** `NOACK` option is not directly exposed.
 
-(... Add XRANGE, XREVRANGE, XCLAIM, XAUTOCLAIM, XINFO if implemented ...) 
+### `XRANGE key start end [COUNT count]`
+
+Returns stream entries within the given ID range.
+
+*   **Coroutine:** `Reply<stream_entry_list> xrange(key, start, end, count)`
+*   **Callback:** `redis.xrange(callback, key, start, end, count)`
+
+### `XREVRANGE key end start [COUNT count]`
+
+Returns stream entries in reverse order.
+
+*   **Coroutine:** `Reply<stream_entry_list> xrevrange(key, end, start, count)`
+*   **Callback:** `redis.xrevrange(callback, key, end, start, count)`
+
+### `XCLAIM key group consumer min-idle-time id [id ...]`
+
+Claims pending messages for a consumer.
+
+*   **Coroutine:** `Reply<stream_entry_list> xclaim(key, group, consumer, min_idle_time, ids)`
+*   **Callback:** `redis.xclaim(callback, key, group, consumer, min_idle_time, ids)`
+
+### `XAUTOCLAIM key group consumer min-idle-time start [COUNT count]`
+
+Automatically claims pending messages.
+
+*   **Coroutine:** `Reply<...> xautoclaim(key, group, consumer, min_idle_time, start, count)`
+*   **Callback:** `redis.xautoclaim(callback, ...)`
+
+### `XGROUP SETID key group id [ENTRIESREAD entries_read]`
+
+Sets the last delivered ID for a consumer group.
+
+*   **Coroutine:** `Reply<status> xgroupSetid(key, group, id, entries_read)`
+*   **Callback:** `redis.xgroupSetid(callback, key, group, id, entries_read)`
+
+### `XGROUP CREATECONSUMER key group consumername`
+
+Creates a consumer in a consumer group.
+
+*   **Coroutine:** `Reply<long long> xgroupCreateconsumer(key, group, consumer)`
+*   **Callback:** `redis.xgroupCreateconsumer(callback, key, group, consumer)` 

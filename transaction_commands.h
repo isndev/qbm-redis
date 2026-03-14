@@ -48,19 +48,20 @@ private:
 
 public:
     /**
-     * @brief Marks the start of a transaction block.
+     * @brief Marks the start of a transaction block (coroutine awaitable).
      *
      * All commands after this call will be queued for atomic execution using EXEC.
      *
-     * @return status object with the result
+     * @return Awaitable that yields Reply<status>
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/multi
      */
-    status
-    multi() {
-        auto reply = derived().template command<status>("MULTI");
-        exec_flag_ = reply.ok();
-        return reply.result();
+    auto multi() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->multi(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -82,21 +83,23 @@ public:
     }
 
     /**
-     * @brief Executes all commands issued after MULTI.
+     * @brief Executes all commands issued after MULTI (coroutine awaitable).
      *
      * Executes all previously queued commands in a transaction and restores
      * the connection state to normal.
      *
      * @tparam Result Result type for the transaction commands
-     * @return Vector containing the results of all commands in the transaction
+     * @return Awaitable that yields Reply<std::vector<Result>>
      * @note Time complexity: O(N) where N is the number of commands in the transaction
      * @see https://redis.io/commands/exec
      */
     template <typename Result>
-    std::vector<Result>
-    exec() {
-        exec_flag_ = false;
-        return derived().template command<std::vector<Result>>("EXEC").result();
+    auto exec() {
+        return derived().template make_coro_command<std::vector<Result>>(
+            [this](auto&& callback) {
+                this->exec<Result>(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -120,19 +123,21 @@ public:
     }
 
     /**
-     * @brief Discards all commands issued after MULTI.
+     * @brief Discards all commands issued after MULTI (coroutine awaitable).
      *
      * Flushes all previously queued commands in a transaction and restores
      * the connection state to normal.
      *
-     * @return status object with the result
+     * @return Awaitable that yields Reply<status>
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/discard
      */
-    status
-    discard() {
-        exec_flag_ = false;
-        return derived().template command<status>("DISCARD").result();
+    auto discard() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->discard(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -154,21 +159,21 @@ public:
     }
 
     /**
-     * @brief Watches the given keys for changes.
+     * @brief Watches the given keys for changes (coroutine awaitable).
      *
      * Marks the given keys to be watched for conditional execution of a transaction.
      *
      * @param key Key to watch
-     * @return status object with the result
+     * @return Awaitable that yields Reply<status>
      * @note Time complexity: O(1) for every key
      * @see https://redis.io/commands/watch
      */
-    status
-    watch(const std::string &key) {
-        if (key.empty()) {
-            return status("");
-        }
-        return derived().template command<status>("WATCH", key).result();
+    auto watch(const std::string &key) {
+        return derived().template make_coro_command<status>(
+            [this, key](auto&& callback) {
+                this->watch(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -190,19 +195,19 @@ public:
     }
 
     /**
-     * @brief Watches multiple keys for changes.
+     * @brief Watches multiple keys for changes (coroutine awaitable).
      *
      * @param keys Vector of keys to watch
-     * @return status object with the result
+     * @return Awaitable that yields Reply<status>
      * @note Time complexity: O(N) where N is the number of keys to watch
      * @see https://redis.io/commands/watch
      */
-    status
-    watch(const std::vector<std::string> &keys) {
-        if (keys.empty()) {
-            return status("");
-        }
-        return derived().template command<status>("WATCH", keys).result();
+    auto watch(const std::vector<std::string> &keys) {
+        return derived().template make_coro_command<status>(
+            [this, keys](auto&& callback) {
+                this->watch(std::move(callback), keys);
+            }
+        );
     }
 
     /**
@@ -224,17 +229,20 @@ public:
     }
 
     /**
-     * @brief Unwatches all previously watched keys.
+     * @brief Unwatches all previously watched keys (coroutine awaitable).
      *
      * Flushes all the watched keys for a transaction.
      *
-     * @return status object with the result
+     * @return Awaitable that yields Reply<status>
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/unwatch
      */
-    status
-    unwatch() {
-        return derived().template command<status>("UNWATCH").result();
+    auto unwatch() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->unwatch(std::move(callback));
+            }
+        );
     }
 
     /**

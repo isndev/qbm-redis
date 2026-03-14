@@ -17,160 +17,40 @@
 
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include "../redis.h"
-
-// Redis Configuration
-#define REDIS_URI {"tcp://localhost:6379"}
+#include "protocol_test_common.h"
 
 using namespace qb::io;
 using namespace std::chrono;
 using namespace qb::redis;
 
-// Generates unique key prefixes to avoid collisions between tests
-inline std::string
-key_prefix(const std::string &key = "") {
-    static int  counter = 0;
-    std::string prefix  = "qb::redis::module-test:" + std::to_string(++counter);
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
 
-    if (key.empty()) {
-        return prefix;
-    }
+class ModuleProtocolModesTest : public ProtocolModesTestBase {};
 
-    return prefix + ":" + key;
-}
-
-// Generates a test key
-inline std::string
-test_key(const std::string &k) {
-    return "{" + key_prefix() + "}::" + k;
-}
-
-// Verifies connection and cleans environment before tests
-class RedisTest : public ::testing::Test {
-protected:
-    qb::redis::tcp::client redis{REDIS_URI};
-
-    // Explicitly declare a virtual destructor as noexcept to match the base class
-    ~RedisTest() noexcept override = default;
-
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Unable to connect to Redis");
-
-        // Wait for connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
-    }
-};
+INSTANTIATE_PROTOCOL_MODES(ModuleProtocolModesTest);
 
 /*
- * SYNCHRONOUS TESTS
+ * COROUTINE TESTS
  */
 
-// Test MODULE LIST command
-TEST_F(RedisTest, SYNC_MODULE_COMMANDS_LIST) {
-    try {
-        auto modules = redis.module_list();
-        
-        // Check that the result is an array (even if empty)
-        EXPECT_TRUE(modules.is_array());
-        
-        // If modules are loaded, each entry should have a "name" field
-        if (!modules.empty()) {
-            for (const auto& module : modules) {
-                EXPECT_TRUE(module.contains("name"));
-                EXPECT_TRUE(module["name"].is_string());
-            }
-        }
-    } catch (const std::exception& e) {
-        // This might happen if the Redis server doesn't support modules
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                   error.find("module") != std::string::npos);
-    }
-}
+// Test MODULE LIST command using coroutines
+TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_LIST) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        try {
+            auto reply = co_await redis.module_list();
 
-// Test MODULE LOAD command (we can't actually load a module in tests,
-// but we can check the command structure)
-TEST_F(RedisTest, SYNC_MODULE_COMMANDS_LOAD) {
-    try {
-        // This should fail with "wrong number of arguments"
-        // because we're not providing a real module path
-        redis.module_load("");
-        FAIL() << "Expected an exception because no module path was provided";
-    } catch (const std::exception& e) {
-        // This is expected - either "wrong number of arguments" or "unknown command"
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("wrong number") != std::string::npos ||
-                   error.find("unknown command") != std::string::npos ||
-                   error.find("ERR") != std::string::npos);
-    }
-}
-
-// Test MODULE UNLOAD command (we can't actually unload a module in tests,
-// but we can check the command structure)
-TEST_F(RedisTest, SYNC_MODULE_COMMANDS_UNLOAD) {
-    try {
-        // This should fail with "ERR module not loaded" or similar
-        redis.module_unload("nonexistent_module");
-        FAIL() << "Expected an exception for nonexistent module";
-    } catch (const std::exception& e) {
-        // This is expected - either "module not loaded" or "unknown command"
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("module not loaded") != std::string::npos ||
-                   error.find("unknown command") != std::string::npos ||
-                   error.find("ERR") != std::string::npos);
-    }
-}
-
-// Test MODULE HELP command
-TEST_F(RedisTest, SYNC_MODULE_COMMANDS_HELP) {
-    try {
-        auto help = redis.module_help();
-        
-        // Check that the result is a vector of strings
-        EXPECT_TRUE(!help.empty());
-        
-        // Each line of help should be a string
-        for (const auto& line : help) {
-            EXPECT_TRUE(!line.empty());
-        }
-    } catch (const std::exception& e) {
-        // This might happen if the Redis server doesn't support module commands
-        std::string error = e.what();
-        EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                   error.find("module") != std::string::npos);
-    }
-}
-
-/*
- * ASYNCHRONOUS TESTS
- */
-
-// Test async MODULE LIST command
-TEST_F(RedisTest, ASYNC_MODULE_COMMANDS_LIST) {
-    bool list_completed = false;
-    
-    // Use direct command call to test for proper JSON response
-    redis.command<qb::json>(
-        [&](auto &&reply) {
-            list_completed = true;
-            
             if (reply.ok()) {
                 auto modules = reply.result();
-                
+
                 // Check that the result is an array (even if empty)
                 EXPECT_TRUE(modules.is_array());
-                
+
                 // If modules are loaded, each entry should have a "name" field
                 if (!modules.empty()) {
                     for (const auto& module : modules) {
@@ -184,72 +64,83 @@ TEST_F(RedisTest, ASYNC_MODULE_COMMANDS_LIST) {
                 EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
                            error.find("module") != std::string::npos);
             }
-        }, "MODULE", "LIST");
-    
-    redis.await();
-    EXPECT_TRUE(list_completed);
+        } catch (const std::exception& e) {
+            // This might happen if the Redis server doesn't support module commands
+            std::string error = e.what();
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
+                       error.find("module") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async MODULE LOAD command
-TEST_F(RedisTest, ASYNC_MODULE_COMMANDS_LOAD) {
-    bool load_completed = false;
-    
-    // Use direct command call to test for proper status response
-    redis.command<status>(
-        [&](auto &&reply) {
-            load_completed = true;
-            
-            // This should fail with "wrong number of arguments"
-            // because we're not providing a real module path
-            EXPECT_FALSE(reply.ok());
-            
-            std::string error = std::string(reply.error());
+// Test MODULE LOAD command using coroutines
+TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_LOAD) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        // Empty path must produce an error reply, never an exception
+        auto reply = co_await redis.module_load("");
+        EXPECT_FALSE(reply.ok());
+        if (!reply.ok()) {
+            std::string error{reply.error()};
             EXPECT_TRUE(error.find("wrong number") != std::string::npos ||
-                       error.find("unknown command") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
-        }, "MODULE", "LOAD", "");
-    
-    redis.await();
-    EXPECT_TRUE(load_completed);
+                        error.find("unknown command") != std::string::npos ||
+                        error.find("ERR") != std::string::npos ||
+                        error.find("path") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async MODULE UNLOAD command
-TEST_F(RedisTest, ASYNC_MODULE_COMMANDS_UNLOAD) {
-    bool unload_completed = false;
-    
-    // Use direct command call to test for proper status response
-    redis.command<status>(
-        [&](auto &&reply) {
-            unload_completed = true;
-            
-            // This should fail with "ERR module not loaded" or similar
-            EXPECT_FALSE(reply.ok());
-            
-            std::string error = std::string(reply.error());
+// Test MODULE UNLOAD command using coroutines
+TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_UNLOAD) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        // Unloading a non-existent module must produce an error reply
+        auto reply = co_await redis.module_unload("nonexistent_module");
+        EXPECT_FALSE(reply.ok());
+        if (!reply.ok()) {
+            std::string error{reply.error()};
             EXPECT_TRUE(error.find("module not loaded") != std::string::npos ||
-                       error.find("unknown command") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
-        }, "MODULE", "UNLOAD", "nonexistent_module");
-    
-    redis.await();
-    EXPECT_TRUE(unload_completed);
+                        error.find("unknown command") != std::string::npos ||
+                        error.find("ERR") != std::string::npos ||
+                        error.find("No such module") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test async MODULE HELP command
-TEST_F(RedisTest, ASYNC_MODULE_COMMANDS_HELP) {
-    bool help_completed = false;
-    
-    // Use direct command call to test for proper vector response
-    redis.command<std::vector<std::string>>(
-        [&](auto &&reply) {
-            help_completed = true;
-            
+// Test MODULE HELP command using coroutines
+TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_HELP) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        try {
+            auto reply = co_await redis.module_help();
+
             if (reply.ok()) {
                 auto help = reply.result();
-                
-                // Check that the result is a non-empty vector
+
+                // Check that the result is a vector of strings
                 EXPECT_FALSE(help.empty());
-                
+
                 // Each line of help should be a string
                 for (const auto& line : help) {
                     EXPECT_FALSE(line.empty());
@@ -260,15 +151,34 @@ TEST_F(RedisTest, ASYNC_MODULE_COMMANDS_HELP) {
                 EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
                            error.find("module") != std::string::npos);
             }
-        }, "MODULE", "HELP");
-    
-    redis.await();
-    EXPECT_TRUE(help_completed);
+        } catch (const std::exception& e) {
+            // This might happen if the Redis server doesn't support module commands
+            std::string error = e.what();
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
+                       error.find("module") != std::string::npos);
+        }
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Main function to run the tests
-int
-main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+TEST_P(ModuleProtocolModesTest, MODULE_LIST_JSON) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        try {
+            auto r = co_await redis.module_list();
+            if (r.ok()) EXPECT_TRUE(r.result().is_array());
+        } catch (const std::exception&) {
+            // MODULE not available on older Redis
+        }
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
+
+// Test async MODULE LIST command

@@ -40,6 +40,9 @@ set(REDIS_TESTS
         module-commands
         cluster-commands
         json-parse
+        reconnect
+        parser
+        server-api
 )
 
 # Register each test
@@ -49,4 +52,15 @@ foreach (TEST ${REDIS_TESTS})
         TEST_NAME ${TEST}
         SOURCES test-${TEST}.cpp
     )
+endforeach ()
+
+# Suppress nodiscard warnings for cleanup/setup co_await calls in tests
+foreach (TEST ${REDIS_TESTS})
+    set(test_target "qbm-redis-test-${TEST}")
+    if(TARGET ${test_target})
+        target_compile_options(${test_target} PRIVATE
+            $<$<CXX_COMPILER_ID:Clang>:-Wno-unused-result>
+            $<$<CXX_COMPILER_ID:GNU>:-Wno-unused-result>
+        )
+    endif()
 endforeach ()

@@ -27,7 +27,7 @@ namespace qb::redis {
  * @brief Provides Redis bitmap command implementations.
  *
  * This class implements Redis bitmap operations, which provide a way to manipulate
- * string values as arrays of bits. Each command has both synchronous and asynchronous
+ * string values as arrays of bits. Each command has both coroutine and asynchronous
  * versions.
  *
  * Redis bitmaps are implemented as strings, where each byte represents 8 bits.
@@ -46,7 +46,7 @@ private:
 
 public:
     /**
-     * @brief Count the number of set bits (population counting) in a string.
+     * @brief Count the number of set bits (population counting) in a string (coroutine awaitable).
      *
      * By default all the bytes contained in the string are examined. It is possible
      * to specify the counting operation only in an interval passing the additional
@@ -57,19 +57,17 @@ public:
      * of the string
      * @param end End offset (inclusive). Negative values count from the end of the
      * string
-     * @return The number of bits set to 1
+     * @return redis_awaiter yielding Reply<long long>
      * @note If start and end are not specified, the entire string is examined
      * @note Time complexity: O(N) where N is the number of bytes examined
      * @see https://redis.io/commands/bitcount
      */
-    long long
-    bitcount(const std::string &key, long long start = 0, long long end = -1) {
-        if (key.empty()) {
-            return 0;
-        }
-        return derived()
-            .template command<long long>("BITCOUNT", key, start, end)
-            .result();
+    auto bitcount(const std::string &key, long long start = 0, long long end = -1) {
+        return derived().template make_coro_command<long long>(
+            [this, key, start, end](auto&& callback) {
+                this->bitcount(std::move(callback), key, start, end);
+            }
+        );
     }
 
     /**
@@ -93,7 +91,7 @@ public:
     }
 
     /**
-     * @brief Perform arbitrary bitfield integer operations on strings.
+     * @brief Perform arbitrary bitfield integer operations on strings (coroutine awaitable).
      *
      * The command treats a Redis string as an array of bits, and is capable of
      * addressing specific integer fields of varying bit widths and arbitrary
@@ -101,19 +99,16 @@ public:
      *
      * @param key The key storing the string value
      * @param operations Vector of operations to perform
-     * @return Vector of results for each operation
+     * @return redis_awaiter yielding Reply<std::vector<std::optional<long long>>>
      * @note Time complexity: O(1) for each operation
      * @see https://redis.io/commands/bitfield
      */
-    std::vector<std::optional<long long>>
-    bitfield(const std::string &key, const std::vector<std::string> &operations) {
-        if (key.empty() || operations.empty()) {
-            return {};
-        }
-        return derived()
-            .template command<std::vector<std::optional<long long>>>("BITFIELD", key,
-                                                                     operations)
-            .result();
+    auto bitfield(const std::string &key, const std::vector<std::string> &operations) {
+        return derived().template make_coro_command<std::vector<std::optional<long long>>>(
+            [this, key, operations](auto&& callback) {
+                this->bitfield(std::move(callback), key, operations);
+            }
+        );
     }
 
     /**
@@ -136,7 +131,7 @@ public:
     }
 
     /**
-     * @brief Perform bitwise operations between strings.
+     * @brief Perform bitwise operations between strings (coroutine awaitable).
      *
      * Performs a bitwise operation between multiple keys (containing string values)
      * and stores the result in the destination key.
@@ -144,19 +139,17 @@ public:
      * @param operation The bitwise operation to perform (AND, OR, XOR, NOT)
      * @param destkey The key to store the result
      * @param keys Vector of keys to perform the operation on
-     * @return The size of the string stored in the destination key
+     * @return redis_awaiter yielding Reply<long long>
      * @note Time complexity: O(N) where N is the size of the longest string
      * @see https://redis.io/commands/bitop
      */
-    long long
-    bitop(const std::string &operation, const std::string &destkey,
+    auto bitop(const std::string &operation, const std::string &destkey,
           const std::vector<std::string> &keys) {
-        if (destkey.empty() || keys.empty()) {
-            return 0;
-        }
-        return derived()
-            .template command<long long>("BITOP", operation, destkey, keys)
-            .result();
+        return derived().template make_coro_command<long long>(
+            [this, operation, destkey, keys](auto&& callback) {
+                this->bitop(std::move(callback), operation, destkey, keys);
+            }
+        );
     }
 
     /**
@@ -178,7 +171,7 @@ public:
     }
 
     /**
-     * @brief Find first bit set or cleared in a string.
+     * @brief Find first bit set or cleared in a string (coroutine awaitable).
      *
      * Returns the position of the first bit set to 1 or 0 in a string.
      *
@@ -188,19 +181,17 @@ public:
      * of the string
      * @param end End offset (inclusive). Negative values count from the end of the
      * string
-     * @return The position of the first bit set to the specified value
+     * @return redis_awaiter yielding Reply<long long>
      * @note Returns -1 if no bit is found
      * @note Time complexity: O(N) where N is the number of bytes examined
      * @see https://redis.io/commands/bitpos
      */
-    long long
-    bitpos(const std::string &key, bool bit, long long start = 0, long long end = -1) {
-        if (key.empty()) {
-            return -1;
-        }
-        return derived()
-            .template command<long long>("BITPOS", key, bit ? 1 : 0, start, end)
-            .result();
+    auto bitpos(const std::string &key, bool bit, long long start = 0, long long end = -1) {
+        return derived().template make_coro_command<long long>(
+            [this, key, bit, start, end](auto&& callback) {
+                this->bitpos(std::move(callback), key, bit, start, end);
+            }
+        );
     }
 
     /**
@@ -225,23 +216,22 @@ public:
     }
 
     /**
-     * @brief Get the value of a bit at offset in the string value stored at key.
+     * @brief Get the value of a bit at offset in the string value stored at key (coroutine awaitable).
      *
      * Returns the bit value at offset in the string value stored at key.
      *
      * @param key The key storing the string value
      * @param offset The bit offset
-     * @return The bit value (0 or 1)
+     * @return redis_awaiter yielding Reply<long long> (0 or 1)
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/getbit
      */
-    bool
-    getbit(const std::string &key, long long offset) {
-        if (key.empty()) {
-            return false;
-        }
-        return derived().template command<long long>("GETBIT", key, offset).result() ==
-               1;
+    auto getbit(const std::string &key, long long offset) {
+        return derived().template make_coro_command<long long>(
+            [this, key, offset](auto&& callback) {
+                this->getbit(std::move(callback), key, offset);
+            }
+        );
     }
 
     /**
@@ -261,26 +251,23 @@ public:
     }
 
     /**
-     * @brief Set or clear the bit at offset in the string value stored at key.
+     * @brief Set or clear the bit at offset in the string value stored at key (coroutine awaitable).
      *
      * Sets or clears the bit at offset in the string value stored at key.
      *
      * @param key The key storing the string value
      * @param offset The bit offset
      * @param value The bit value to set (0 or 1)
-     * @return The original bit value stored at offset
+     * @return redis_awaiter yielding Reply<long long> with the original bit value
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/setbit
      */
-    bool
-    setbit(const std::string &key, long long offset, bool value) {
-        if (key.empty()) {
-            return false;
-        }
-        return derived()
-                   .template command<long long>("SETBIT", key, offset,
-                                                static_cast<int>(value))
-                   .result() == 1;
+    auto setbit(const std::string &key, long long offset, bool value) {
+        return derived().template make_coro_command<long long>(
+            [this, key, offset, value](auto&& callback) {
+                this->setbit(std::move(callback), key, offset, value);
+            }
+        );
     }
 
     /**
@@ -298,6 +285,31 @@ public:
     setbit(Func &&func, const std::string &key, long long offset, bool value) {
         return derived().template command<long long>(
             std::forward<Func>(func), "SETBIT", key, offset, static_cast<int>(value));
+    }
+
+    /**
+     * @brief Read-only variant of BITFIELD - only GET operations (coroutine awaitable).
+     * @param key The key storing the string value.
+     * @param operations Vector of GET operations (e.g. "i8", "0" for signed 8-bit at offset 0).
+     * @return redis_awaiter yielding Reply<std::vector<std::optional<long long>>>
+     * @see https://redis.io/commands/bitfield_ro
+     */
+    auto bitfieldRo(const std::string &key,
+                    const std::vector<std::string> &operations) {
+        return derived().template make_coro_command<std::vector<std::optional<long long>>>(
+            [this, key, operations](auto&& callback) {
+                this->bitfieldRo(std::move(callback), key, operations);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<
+        std::is_invocable_v<Func, Reply<std::vector<std::optional<long long>>> &&>,
+        Derived &>
+    bitfieldRo(Func &&func, const std::string &key,
+               const std::vector<std::string> &operations) {
+        return derived().template command<std::vector<std::optional<long long>>>(
+            std::forward<Func>(func), "BITFIELD_RO", key, operations);
     }
 };
 

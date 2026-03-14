@@ -2,6 +2,8 @@
 
 This document covers Redis commands related to managing and inspecting a Redis Cluster.
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Cluster Commands](https://redis.io/commands/?group=cluster)
 
 ## Common Reply Types

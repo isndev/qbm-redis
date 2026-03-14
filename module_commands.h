@@ -40,18 +40,21 @@ private:
 
 public:
     /**
-     * @brief List all loaded modules
+     * @brief List all loaded modules (coroutine awaitable)
      *
      * Returns a list of modules loaded in the Redis server as a structured JSON array.
      * Each entry contains information about a module, including name, version, and
      * other details.
      *
-     * @return qb::json array of loaded modules
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/module-list
      */
-    qb::json
-    module_list() {
-        return derived().template command<qb::json>("MODULE", "LIST").result();
+    auto module_list() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) {
+                this->module_list(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -68,20 +71,23 @@ public:
     }
 
     /**
-     * @brief Load a module into Redis
+     * @brief Load a module into Redis (coroutine awaitable)
      *
      * Loads a module from a shared library file into the Redis server.
      * Optionally accepts additional arguments to be passed to the module.
      *
      * @param path Path to the module's shared library file
      * @param args Optional additional arguments to pass to the module
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/module-load
      */
     template <typename... Args>
-    status
-    module_load(const std::string &path, Args&&... args) {
-        return derived().template command<status>("MODULE", "LOAD", path, std::forward<Args>(args)...).result();
+    auto module_load(const std::string &path, Args&&... args) {
+        return derived().template make_coro_command<status>(
+            [this, path, ...args = std::forward<Args>(args)](auto&& callback) mutable {
+                this->module_load(std::move(callback), path, std::forward<Args>(args)...);
+            }
+        );
     }
 
     /**
@@ -100,17 +106,20 @@ public:
     }
 
     /**
-     * @brief Unload a module from Redis
+     * @brief Unload a module from Redis (coroutine awaitable)
      *
      * Unloads a module from the Redis server, removing all commands registered by the module.
      *
      * @param name Name of the module to unload
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/module-unload
      */
-    status
-    module_unload(const std::string &name) {
-        return derived().template command<status>("MODULE", "UNLOAD", name).result();
+    auto module_unload(const std::string &name) {
+        return derived().template make_coro_command<status>(
+            [this, name](auto&& callback) {
+                this->module_unload(std::move(callback), name);
+            }
+        );
     }
 
     /**
@@ -128,16 +137,19 @@ public:
     }
 
     /**
-     * @brief Get help information about module commands
+     * @brief Get help information about module commands (coroutine awaitable)
      *
      * Returns an array of strings with help information about Redis module commands.
      *
-     * @return std::vector<std::string> of help strings
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/module-help
      */
-    std::vector<std::string>
-    module_help() {
-        return derived().template command<std::vector<std::string>>("MODULE", "HELP").result();
+    auto module_help() {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this](auto&& callback) {
+                this->module_help(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -156,4 +168,4 @@ public:
 
 } // namespace qb::redis
 
-#endif // QBM_REDIS_MODULE_COMMANDS_H 
+#endif // QBM_REDIS_MODULE_COMMANDS_H

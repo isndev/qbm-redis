@@ -41,18 +41,21 @@ private:
 
 public:
     /**
-     * @brief Get information about the Redis cluster
+     * @brief Get information about the Redis cluster (coroutine awaitable)
      *
      * Returns general information about the cluster as a JSON object.
      * The information includes the current state, size, statistics about
      * the communication between nodes, and more.
      *
-     * @return qb::json with cluster information
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/cluster-info
      */
-    qb::json
-    cluster_info() {
-        return derived().template command<qb::json>("CLUSTER", "INFO").result();
+    auto cluster_info() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) {
+                this->cluster_info(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -69,18 +72,21 @@ public:
     }
 
     /**
-     * @brief Get information about all cluster nodes
+     * @brief Get information about all cluster nodes (coroutine awaitable)
      *
      * Returns information about all cluster nodes as a structured JSON object.
      * The information includes the node ID, IP address and port, flags, master ID if
      * the node is a replica, ping and pong timestamps, and more.
      *
-     * @return qb::json with node information
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/cluster-nodes
      */
-    qb::json
-    cluster_nodes() {
-        return derived().template command<qb::json>("CLUSTER", "NODES").result();
+    auto cluster_nodes() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) {
+                this->cluster_nodes(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -97,18 +103,21 @@ public:
     }
 
     /**
-     * @brief Get mapping of hash slots to nodes
+     * @brief Get mapping of hash slots to nodes (coroutine awaitable)
      *
      * Returns a mapping of hash slots to nodes as a structured JSON object.
      * This information is used for determining which nodes are responsible for
      * which hash slots.
      *
-     * @return qb::json with hash slot mapping
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/cluster-slots
      */
-    qb::json
-    cluster_slots() {
-        return derived().template command<qb::json>("CLUSTER", "SLOTS").result();
+    auto cluster_slots() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) {
+                this->cluster_slots(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -125,18 +134,21 @@ public:
     }
 
     /**
-     * @brief Force a node to join the cluster
+     * @brief Force a node to join the cluster (coroutine awaitable)
      *
      * Forces a Redis node to join the cluster by connecting to the specified node.
      *
      * @param ip IP address of the node to connect to
      * @param port Port of the node to connect to
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/cluster-meet
      */
-    status
-    cluster_meet(const std::string &ip, int port) {
-        return derived().template command<status>("CLUSTER", "MEET", ip, port).result();
+    auto cluster_meet(const std::string &ip, int port) {
+        return derived().template make_coro_command<status>(
+            [this, ip, port](auto&& callback) {
+                this->cluster_meet(std::move(callback), ip, port);
+            }
+        );
     }
 
     /**
@@ -155,17 +167,20 @@ public:
     }
 
     /**
-     * @brief Remove a node from the cluster
+     * @brief Remove a node from the cluster (coroutine awaitable)
      *
      * Removes a node from the nodes table by ID.
      *
      * @param node_id ID of the node to remove
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/cluster-forget
      */
-    status
-    cluster_forget(const std::string &node_id) {
-        return derived().template command<status>("CLUSTER", "FORGET", node_id).result();
+    auto cluster_forget(const std::string &node_id) {
+        return derived().template make_coro_command<status>(
+            [this, node_id](auto&& callback) {
+                this->cluster_forget(std::move(callback), node_id);
+            }
+        );
     }
 
     /**
@@ -183,18 +198,21 @@ public:
     }
 
     /**
-     * @brief Reset a Redis cluster node
+     * @brief Reset a Redis cluster node (coroutine awaitable)
      *
      * Resets a Redis cluster node, making it forget all previously associated nodes
      * and assigned slots.
      *
      * @param mode Optional reset mode, "HARD" or "SOFT" (default is "SOFT")
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/cluster-reset
      */
-    status
-    cluster_reset(const std::string &mode = "SOFT") {
-        return derived().template command<status>("CLUSTER", "RESET", mode).result();
+    auto cluster_reset(const std::string &mode = "SOFT") {
+        return derived().template make_coro_command<status>(
+            [this, mode](auto&& callback) {
+                this->cluster_reset(std::move(callback), mode);
+            }
+        );
     }
 
     /**
@@ -212,21 +230,21 @@ public:
     }
 
     /**
-     * @brief Forces a replica to initiate a manual failover
+     * @brief Forces a replica to initiate a manual failover (coroutine awaitable)
      *
      * Forces a replica to perform a manual failover of its master, taking over
      * its hash slots.
      *
      * @param option Optional failover mode: "FORCE", "TAKEOVER", or none for default behavior
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/cluster-failover
      */
-    status
-    cluster_failover(const std::string &option = "") {
-        if (option.empty()) {
-            return derived().template command<status>("CLUSTER", "FAILOVER").result();
-        }
-        return derived().template command<status>("CLUSTER", "FAILOVER", option).result();
+    auto cluster_failover(const std::string &option = "") {
+        return derived().template make_coro_command<status>(
+            [this, option](auto&& callback) {
+                this->cluster_failover(std::move(callback), option);
+            }
+        );
     }
 
     /**
@@ -247,17 +265,20 @@ public:
     }
 
     /**
-     * @brief Reconfigure a node as a replica of another node
+     * @brief Reconfigure a node as a replica of another node (coroutine awaitable)
      *
      * Reconfigures a node to be a replica of the specified master node.
      *
      * @param node_id ID of the master node
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/cluster-replicate
      */
-    status
-    cluster_replicate(const std::string &node_id) {
-        return derived().template command<status>("CLUSTER", "REPLICATE", node_id).result();
+    auto cluster_replicate(const std::string &node_id) {
+        return derived().template make_coro_command<status>(
+            [this, node_id](auto&& callback) {
+                this->cluster_replicate(std::move(callback), node_id);
+            }
+        );
     }
 
     /**
@@ -275,16 +296,19 @@ public:
     }
 
     /**
-     * @brief Save the cluster configuration to disk
+     * @brief Save the cluster configuration to disk (coroutine awaitable)
      *
      * Forces the node to save the cluster configuration to disk.
      *
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/cluster-saveconfig
      */
-    status
-    cluster_saveconfig() {
-        return derived().template command<status>("CLUSTER", "SAVECONFIG").result();
+    auto cluster_saveconfig() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->cluster_saveconfig(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -301,17 +325,20 @@ public:
     }
 
     /**
-     * @brief Set the configuration epoch for a node
+     * @brief Set the configuration epoch for a node (coroutine awaitable)
      *
      * Sets the configuration epoch for a node.
      *
      * @param epoch Configuration epoch to set
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/cluster-set-config-epoch
      */
-    status
-    cluster_set_config_epoch(long long epoch) {
-        return derived().template command<status>("CLUSTER", "SET-CONFIG-EPOCH", epoch).result();
+    auto cluster_set_config_epoch(long long epoch) {
+        return derived().template make_coro_command<status>(
+            [this, epoch](auto&& callback) {
+                this->cluster_set_config_epoch(std::move(callback), epoch);
+            }
+        );
     }
 
     /**
@@ -329,16 +356,19 @@ public:
     }
 
     /**
-     * @brief Advance the cluster config epoch
+     * @brief Advance the cluster config epoch (coroutine awaitable)
      *
      * Increments the cluster configuration epoch.
      *
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/cluster-bumpepoch
      */
-    status
-    cluster_bumpepoch() {
-        return derived().template command<status>("CLUSTER", "BUMPEPOCH").result();
+    auto cluster_bumpepoch() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->cluster_bumpepoch(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -355,16 +385,19 @@ public:
     }
 
     /**
-     * @brief Get the ID of the current node
+     * @brief Get the ID of the current node (coroutine awaitable)
      *
      * Returns the ID of the Redis node, as a 40 character string.
      *
-     * @return std::string Node ID
+     * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/cluster-myid
      */
-    std::string
-    cluster_myid() {
-        return derived().template command<std::string>("CLUSTER", "MYID").result();
+    auto cluster_myid() {
+        return derived().template make_coro_command<std::string>(
+            [this](auto&& callback) {
+                this->cluster_myid(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -381,17 +414,20 @@ public:
     }
 
     /**
-     * @brief Get the hash slot for a key
+     * @brief Get the hash slot for a key (coroutine awaitable)
      *
      * Returns the hash slot number for the specified key.
      *
      * @param key The key to get the hash slot for
-     * @return long long Hash slot number
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/cluster-keyslot
      */
-    long long
-    cluster_keyslot(const std::string &key) {
-        return derived().template command<long long>("CLUSTER", "KEYSLOT", key).result();
+    auto cluster_keyslot(const std::string &key) {
+        return derived().template make_coro_command<long long>(
+            [this, key](auto&& callback) {
+                this->cluster_keyslot(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -409,17 +445,20 @@ public:
     }
 
     /**
-     * @brief Count the number of keys in a hash slot
+     * @brief Count the number of keys in a hash slot (coroutine awaitable)
      *
      * Returns the number of keys in the specified hash slot.
      *
      * @param slot The hash slot to count keys for
-     * @return long long Number of keys in the slot
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/cluster-countkeysinslot
      */
-    long long
-    cluster_countkeysinslot(int slot) {
-        return derived().template command<long long>("CLUSTER", "COUNTKEYSINSLOT", slot).result();
+    auto cluster_countkeysinslot(int slot) {
+        return derived().template make_coro_command<long long>(
+            [this, slot](auto&& callback) {
+                this->cluster_countkeysinslot(std::move(callback), slot);
+            }
+        );
     }
 
     /**
@@ -437,18 +476,21 @@ public:
     }
 
     /**
-     * @brief Get keys in a hash slot
+     * @brief Get keys in a hash slot (coroutine awaitable)
      *
      * Returns a list of keys in the specified hash slot.
      *
      * @param slot The hash slot to get keys from
      * @param count Maximum number of keys to return
-     * @return std::vector<std::string> List of keys in the slot
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/cluster-getkeysinslot
      */
-    std::vector<std::string>
-    cluster_getkeysinslot(int slot, int count) {
-        return derived().template command<std::vector<std::string>>("CLUSTER", "GETKEYSINSLOT", slot, count).result();
+    auto cluster_getkeysinslot(int slot, int count) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, slot, count](auto&& callback) {
+                this->cluster_getkeysinslot(std::move(callback), slot, count);
+            }
+        );
     }
 
     /**
@@ -465,8 +507,216 @@ public:
     cluster_getkeysinslot(Func &&func, int slot, int count) {
         return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "CLUSTER", "GETKEYSINSLOT", slot, count);
     }
+
+    // =============== New Cluster Commands (TODO_COMMANDS.md) ===============
+
+    auto asking() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) { this->asking(std::move(callback)); });
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    asking(Func &&func) {
+        return derived().template command<status>(std::forward<Func>(func), "ASKING");
+    }
+
+    auto readonly() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) { this->readonly(std::move(callback)); });
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    readonly(Func &&func) {
+        return derived().template command<status>(std::forward<Func>(func), "READONLY");
+    }
+
+    auto readwrite() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) { this->readwrite(std::move(callback)); });
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    readwrite(Func &&func) {
+        return derived().template command<status>(std::forward<Func>(func), "READWRITE");
+    }
+
+    template <typename... Slots>
+    auto cluster_addslots(Slots &&...slots) {
+        return derived().template make_coro_command<status>(
+            [this, ...slots = std::forward<Slots>(slots)](auto&& callback) mutable {
+                this->cluster_addslots(std::move(callback), std::forward<Slots>(slots)...);
+            }
+        );
+    }
+    template <typename Func, typename... Slots>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    cluster_addslots(Func &&func, Slots &&...slots) {
+        return derived().template command<status>(std::forward<Func>(func), "CLUSTER",
+                                                  "ADDSLOTS", std::forward<Slots>(slots)...);
+    }
+
+    auto cluster_addslotsrange(const std::vector<std::pair<int, int>> &ranges) {
+        return derived().template make_coro_command<status>(
+            [this, ranges](auto&& callback) {
+                this->cluster_addslotsrange(std::move(callback), ranges);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    cluster_addslotsrange(Func &&func,
+                          const std::vector<std::pair<int, int>> &ranges) {
+        std::vector<std::string> args;
+        for (const auto &r : ranges) {
+            args.push_back(std::to_string(r.first));
+            args.push_back(std::to_string(r.second));
+        }
+        return derived().template command<status>(
+            std::forward<Func>(func), "CLUSTER", "ADDSLOTSRANGE", args);
+    }
+
+    auto cluster_count_failure_reports(const std::string &node_id) {
+        return derived().template make_coro_command<long long>(
+            [this, node_id](auto&& callback) {
+                this->cluster_count_failure_reports(std::move(callback), node_id);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
+    cluster_count_failure_reports(Func &&func, const std::string &node_id) {
+        return derived().template command<long long>(
+            std::forward<Func>(func), "CLUSTER", "COUNT-FAILURE-REPORTS", node_id);
+    }
+
+    template <typename... Slots>
+    auto cluster_delslots(Slots &&...slots) {
+        return derived().template make_coro_command<status>(
+            [this, ...slots = std::forward<Slots>(slots)](auto&& callback) mutable {
+                this->cluster_delslots(std::move(callback), std::forward<Slots>(slots)...);
+            }
+        );
+    }
+    template <typename Func, typename... Slots>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    cluster_delslots(Func &&func, Slots &&...slots) {
+        return derived().template command<status>(std::forward<Func>(func), "CLUSTER",
+                                                  "DELSLOTS", std::forward<Slots>(slots)...);
+    }
+
+    auto cluster_delslotsrange(const std::vector<std::pair<int, int>> &ranges) {
+        return derived().template make_coro_command<status>(
+            [this, ranges](auto&& callback) {
+                this->cluster_delslotsrange(std::move(callback), ranges);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    cluster_delslotsrange(Func &&func,
+                          const std::vector<std::pair<int, int>> &ranges) {
+        std::vector<std::string> args;
+        for (const auto &r : ranges) {
+            args.push_back(std::to_string(r.first));
+            args.push_back(std::to_string(r.second));
+        }
+        return derived().template command<status>(
+            std::forward<Func>(func), "CLUSTER", "DELSLOTSRANGE", args);
+    }
+
+    auto cluster_flushslots() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) { this->cluster_flushslots(std::move(callback)); });
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    cluster_flushslots(Func &&func) {
+        return derived().template command<status>(
+            std::forward<Func>(func), "CLUSTER", "FLUSHSLOTS");
+    }
+
+    auto cluster_links() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) { this->cluster_links(std::move(callback)); });
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    cluster_links(Func &&func) {
+        return derived().template command<qb::json>(
+            std::forward<Func>(func), "CLUSTER", "LINKS");
+    }
+
+    auto cluster_myshardid() {
+        return derived().template make_coro_command<std::string>(
+            [this](auto&& callback) { this->cluster_myshardid(std::move(callback)); });
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
+    cluster_myshardid(Func &&func) {
+        return derived().template command<std::string>(
+            std::forward<Func>(func), "CLUSTER", "MYSHARDID");
+    }
+
+    auto cluster_replicas(const std::string &node_id) {
+        return derived().template make_coro_command<qb::json>(
+            [this, node_id](auto&& callback) {
+                this->cluster_replicas(std::move(callback), node_id);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    cluster_replicas(Func &&func, const std::string &node_id) {
+        return derived().template command<qb::json>(
+            std::forward<Func>(func), "CLUSTER", "REPLICAS", node_id);
+    }
+
+    auto cluster_setslot(int slot, const std::string &subcommand,
+                        const std::string &node_id = "") {
+        return derived().template make_coro_command<status>(
+            [this, slot, subcommand, node_id](auto&& callback) {
+                this->cluster_setslot(std::move(callback), slot, subcommand, node_id);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    cluster_setslot(Func &&func, int slot, const std::string &subcommand,
+                    const std::string &node_id = "") {
+        if (node_id.empty()) {
+            return derived().template command<status>(
+                std::forward<Func>(func), "CLUSTER", "SETSLOT", slot, subcommand);
+        }
+        return derived().template command<status>(
+            std::forward<Func>(func), "CLUSTER", "SETSLOT", slot, subcommand, node_id);
+    }
+
+    auto cluster_shards() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) { this->cluster_shards(std::move(callback)); });
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    cluster_shards(Func &&func) {
+        return derived().template command<qb::json>(
+            std::forward<Func>(func), "CLUSTER", "SHARDS");
+    }
+
+    auto cluster_slaves(const std::string &node_id) {
+        return derived().template make_coro_command<qb::json>(
+            [this, node_id](auto&& callback) {
+                this->cluster_slaves(std::move(callback), node_id);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    cluster_slaves(Func &&func, const std::string &node_id) {
+        return derived().template command<qb::json>(
+            std::forward<Func>(func), "CLUSTER", "SLAVES", node_id);
+    }
 };
 
 } // namespace qb::redis
 
-#endif // QBM_REDIS_CLUSTER_COMMANDS_H 
+#endif // QBM_REDIS_CLUSTER_COMMANDS_H

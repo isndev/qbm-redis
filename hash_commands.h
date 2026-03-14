@@ -26,7 +26,7 @@ namespace qb::redis {
  * @brief Provides Redis hash command implementations.
  *
  * This class implements Redis hash operations, which provide a mapping of string
- * fields to string values. Each command has both synchronous and asynchronous versions.
+ * fields to string values. Commands return awaiters for coroutine-first async I/O.
  *
  * Redis hashes are particularly useful for representing objects with multiple fields
  * and for efficient field-based operations.
@@ -45,15 +45,18 @@ private:
      * @class scanner
      * @brief Helper class for implementing incremental scanning of hashes
      *
+     * Uses shared_ptr for automatic memory management. Safe even if exceptions occur.
+     *
      * @tparam Func Callback function type
      */
     template <typename Func>
-    class scanner {
+    class scanner : public std::enable_shared_from_this<scanner<Func>> {
         Derived                            &_handler;
         std::string                         _key;
         std::string                         _pattern;
         Func                                _func;
         qb::redis::Reply<qb::redis::scan<>> _reply;
+        bool                                _started{false};
 
     public:
         /**
@@ -68,8 +71,21 @@ private:
             : _handler(handler)
             , _key(std::move(key))
             , _pattern(std::move(pattern))
-            , _func(std::forward<Func>(func)) {
-            _handler.hscan(std::ref(*this), _key, 0, _pattern, 100);
+            , _func(std::forward<Func>(func)) {}
+
+        /**
+         * @brief Start the scanning process
+         */
+        void
+        start() {
+            if (!_started) {
+                _started = true;
+                // Capture shared_ptr to keep alive during async operations
+                auto self = this->shared_from_this();
+                _handler.hscan(
+                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
+                    _key, 0, _pattern, 100);
+            }
         }
 
         /**
@@ -82,13 +98,30 @@ private:
             _reply.ok() = reply.ok();
             std::move(reply.result().items.begin(), reply.result().items.end(),
                       std::back_inserter(_reply.result().items));
-            if (reply.ok() && reply.result().cursor)
-                _handler.hscan(std::ref(*this), _key, reply.result().cursor, _pattern,
-                               100);
-            else {
-                _func(std::move(_reply));
-                delete this;
+            if (reply.ok() && reply.result().cursor) {
+                // Continue scanning - capture shared_ptr to keep alive
+                auto self = this->shared_from_this();
+                _handler.hscan(
+                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
+                    _key, reply.result().cursor, _pattern, 100);
+            } else {
+                try {
+                    _func(std::move(_reply));
+                } catch (std::exception const &e) {
+                    LOG_WARN("[qbm][redis] scanner callback failed: " << e.what());
+                }
+                // Automatically destroyed when shared_ptr reference count reaches 0
             }
+        }
+
+        /**
+         * @brief Factory method to create and start a scanner safely
+         */
+        static void
+        create_and_start(Derived &handler, std::string key, std::string pattern, Func &&func) {
+            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern),
+                                                 std::forward<Func>(func));
+            ptr->start();
         }
     };
 
@@ -96,13 +129,16 @@ private:
      * @class multi_hvals
      * @brief Helper class for getting values from multiple hashes
      *
+     * Uses shared_ptr for automatic memory management. Safe even if exceptions occur.
+     *
      * @tparam Func Callback function type
      */
     template <typename Func>
-    class multi_hvals {
+    class multi_hvals : public std::enable_shared_from_this<multi_hvals<Func>> {
         const std::vector<std::string>  _keys;
         Func                            _func;
         Reply<std::vector<std::string>> _reply;
+        std::atomic<size_t>             _pending{0};
 
     public:
         /**
@@ -112,46 +148,86 @@ private:
          * @param keys Keys where the hashes are stored
          * @param func Callback function to process results
          */
-        multi_hvals(Derived &handler, std::vector<std::string> keys, Func &&func)
+        multi_hvals(std::vector<std::string> keys, Func &&func)
             : _keys(std::move(keys))
             , _func(std::forward<Func>(func))
-            , _reply{true} {
-            if (!_keys.empty()) {
-                for (auto it = _keys.begin(); it != std::end(_keys); ++it) {
-                    handler.hvals(
-                        [this, is_last = ((it + 1) == _keys.end())](auto &&reply) {
-                            _reply.ok() &= reply.ok();
-                            std::move(reply.result().begin(), reply.result().end(),
-                                      std::back_inserter(_reply.result()));
-                            if (is_last) {
-                                this->_func(std::move(_reply));
-                                delete this;
-                            }
-                        },
-                        *it);
-                }
-            } else {
-                this->_func(std::move(_reply));
-                delete this;
+            , _reply{true}
+            , _pending(_keys.empty() ? 1 : _keys.size()) {}
+
+        /**
+         * @brief Start the processing
+         */
+        void
+        start(Derived &handler) {
+            if (_keys.empty()) {
+                complete();
+                return;
             }
+
+            for (auto it = _keys.begin(); it != std::end(_keys); ++it) {
+                // Capture shared_ptr to keep alive during async operations
+                auto self = this->shared_from_this();
+                handler.hvals(
+                    [self](auto &&reply) {
+                        self->handle_reply(std::forward<decltype(reply)>(reply));
+                    },
+                    *it);
+            }
+        }
+
+        /**
+         * @brief Handle a single reply
+         */
+        void
+        handle_reply(Reply<std::vector<std::string>> &&reply) {
+            _reply.ok() &= reply.ok();
+            std::move(reply.result().begin(), reply.result().end(),
+                      std::back_inserter(_reply.result()));
+
+            if (--_pending == 0) {
+                complete();
+            }
+        }
+
+        /**
+         * @brief Complete the operation and call the callback
+         */
+        void
+        complete() {
+            try {
+                _func(std::move(_reply));
+            } catch (std::exception const &e) {
+                LOG_WARN("[qbm][redis] multi_hvals callback failed: " << e.what());
+            }
+            // Automatically destroyed when shared_ptr reference count reaches 0
+        }
+
+        /**
+         * @brief Factory method to create and start a multi_hvals safely
+         */
+        static void
+        create_and_start(Derived &handler, std::vector<std::string> keys, Func &&func) {
+            auto ptr = std::make_shared<multi_hvals>(std::move(keys), std::forward<Func>(func));
+            ptr->start(handler);
         }
     };
 
 public:
     /**
-     * @brief Deletes one or more hash fields
+     * @brief Deletes one or more hash fields (coroutine awaitable)
      *
      * @tparam Fields Variadic types for field names
      * @param key Key where the hash is stored
      * @param fields Fields to delete
-     * @return Number of fields that were removed
+     * @return redis_awaiter yielding Reply<long long>
      */
     template <typename... Fields>
-    long long
-    hdel(const std::string &key, Fields &&...fields) {
-        return derived()
-            .template command<long long>("HDEL", key, std::forward<Fields>(fields)...)
-            .result();
+    auto hdel(const std::string &key, Fields &&...fields) {
+        return derived().template make_coro_command<long long>(
+            [this, key, ...fields = std::forward<Fields>(fields)](auto&& callback) mutable {
+                this->hdel(std::move(callback), key, std::forward<decltype(fields)>(fields)...);
+            }
+        );
     }
 
     /**
@@ -172,15 +248,18 @@ public:
     }
 
     /**
-     * @brief Determines if a hash field exists
+     * @brief Determines if a hash field exists (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param field Field to check
-     * @return true if the field exists, false otherwise
+     * @return redis_awaiter yielding Reply<bool>
      */
-    bool
-    hexists(const std::string &key, const std::string &field) {
-        return derived().template command<bool>("HEXISTS", key, field).result();
+    auto hexists(const std::string &key, const std::string &field) {
+        return derived().template make_coro_command<bool>(
+            [this, key, field](auto&& callback) {
+                this->hexists(std::move(callback), key, field);
+            }
+        );
     }
 
     /**
@@ -200,17 +279,18 @@ public:
     }
 
     /**
-     * @brief Gets the value of a hash field
+     * @brief Gets the value of a hash field (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param field Field to get
-     * @return Value of the field, or std::nullopt if the field does not exist
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
      */
-    std::optional<std::string>
-    hget(const std::string &key, const std::string &field) {
-        return derived()
-            .template command<std::optional<std::string>>("HGET", key, field)
-            .result();
+    auto hget(const std::string &key, const std::string &field) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key, field](auto&& callback) {
+                this->hget(std::move(callback), key, field);
+            }
+        );
     }
 
     /**
@@ -230,17 +310,17 @@ public:
     }
 
     /**
-     * @brief Gets all fields and values of a hash
+     * @brief Gets all fields and values of a hash (coroutine awaitable)
      *
      * @param key Key where the hash is stored
-     * @return Map of field-value pairs
+     * @return redis_awaiter yielding Reply<qb::unordered_map<std::string, std::string>>
      */
-    qb::unordered_map<std::string, std::string>
-    hgetall(const std::string &key) {
-        return derived()
-            .template command<qb::unordered_map<std::string, std::string>>("HGETALL",
-                                                                           key)
-            .result();
+    auto hgetall(const std::string &key) {
+        return derived().template make_coro_command<qb::unordered_map<std::string, std::string>>(
+            [this, key](auto&& callback) {
+                this->hgetall(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -259,18 +339,19 @@ public:
     }
 
     /**
-     * @brief Increments the integer value of a hash field by the given amount
+     * @brief Increments the integer value of a hash field (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param field Field to increment
      * @param increment Increment amount
-     * @return Value of the field after the increment
+     * @return redis_awaiter yielding Reply<long long>
      */
-    long long
-    hincrby(const std::string &key, const std::string &field, long long increment) {
-        return derived()
-            .template command<long long>("HINCRBY", key, field, increment)
-            .result();
+    auto hincrby(const std::string &key, const std::string &field, long long increment) {
+        return derived().template make_coro_command<long long>(
+            [this, key, field, increment](auto&& callback) {
+                this->hincrby(std::move(callback), key, field, increment);
+            }
+        );
     }
 
     /**
@@ -292,18 +373,19 @@ public:
     }
 
     /**
-     * @brief Increments the float value of a hash field by the given amount
+     * @brief Increments the float value of a hash field (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param field Field to increment
      * @param increment Increment amount
-     * @return Value of the field after the increment
+     * @return redis_awaiter yielding Reply<double>
      */
-    double
-    hincrbyfloat(const std::string &key, const std::string &field, double increment) {
-        return derived()
-            .template command<double>("HINCRBYFLOAT", key, field, increment)
-            .result();
+    auto hincrbyfloat(const std::string &key, const std::string &field, double increment) {
+        return derived().template make_coro_command<double>(
+            [this, key, field, increment](auto&& callback) {
+                this->hincrbyfloat(std::move(callback), key, field, increment);
+            }
+        );
     }
 
     /**
@@ -325,16 +407,18 @@ public:
     }
 
     /**
-     * @brief Gets all fields in a hash matching a pattern
+     * @brief Gets all field names in a hash (coroutine awaitable)
      *
-     * @param pattern Pattern to match fields against
-     * @return Vector of matching field names
+     * @param key Key where the hash is stored
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/hkeys
      */
-    std::vector<std::string>
-    hkeys(const std::string &pattern = "*") {
-        return derived()
-            .template command<std::vector<std::string>>("HKEYS", pattern)
-            .result();
+    auto hkeys(const std::string &key) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key](auto&& callback) {
+                this->hkeys(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -342,26 +426,30 @@ public:
      *
      * @tparam Func Callback function type
      * @param func Callback function
-     * @param pattern Pattern to match fields against
+     * @param key Key where the hash is stored
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hkeys
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
                      Derived &>
-    hkeys(Func &&func, const std::string &pattern = "*") {
+    hkeys(Func &&func, const std::string &key) {
         return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "HKEYS", pattern);
+            std::forward<Func>(func), "HKEYS", key);
     }
 
     /**
-     * @brief Gets the number of fields in a hash
+     * @brief Gets the number of fields in a hash (coroutine awaitable)
      *
      * @param key Key where the hash is stored
-     * @return Number of fields in the hash
+     * @return redis_awaiter yielding Reply<long long>
      */
-    long long
-    hlen(const std::string &key) {
-        return derived().template command<long long>("HLEN", key).result();
+    auto hlen(const std::string &key) {
+        return derived().template make_coro_command<long long>(
+            [this, key](auto&& callback) {
+                this->hlen(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -380,20 +468,20 @@ public:
     }
 
     /**
-     * @brief Gets the values of all specified hash fields
+     * @brief Gets the values of all specified hash fields (coroutine awaitable)
      *
      * @tparam Fields Variadic types for field names
      * @param key Key where the hash is stored
      * @param fields Fields to get
-     * @return Vector of field values (as optional strings)
+     * @return redis_awaiter yielding Reply<std::vector<std::optional<std::string>>>
      */
     template <typename... Fields>
-    std::vector<std::optional<std::string>>
-    hmget(const std::string &key, Fields &&...fields) {
-        return derived()
-            .template command<std::vector<std::optional<std::string>>>(
-                "HMGET", key, std::forward<Fields>(fields)...)
-            .result();
+    auto hmget(const std::string &key, Fields &&...fields) {
+        return derived().template make_coro_command<std::vector<std::optional<std::string>>>(
+            [this, key, ...fields = std::forward<Fields>(fields)](auto&& callback) mutable {
+                this->hmget(std::move(callback), key, std::forward<decltype(fields)>(fields)...);
+            }
+        );
     }
 
     /**
@@ -416,20 +504,20 @@ public:
     }
 
     /**
-     * @brief Sets multiple hash fields to multiple values
+     * @brief Sets multiple hash fields to multiple values (coroutine awaitable)
      *
      * @tparam FieldValues Variadic types for field-value pairs
      * @param key Key where the hash is stored
      * @param field_values Field-value pairs to set
-     * @return status object indicating success or failure
+     * @return redis_awaiter yielding Reply<status>
      */
     template <typename... FieldValues>
-    status
-    hmset(const std::string &key, FieldValues &&...field_values) {
-        return derived()
-            .template command<status>("HMSET", key,
-                                      std::forward<FieldValues>(field_values)...)
-            .result();
+    auto hmset(const std::string &key, FieldValues &&...field_values) {
+        return derived().template make_coro_command<status>(
+            [this, key, ...field_values = std::forward<FieldValues>(field_values)](auto&& callback) mutable {
+                this->hmset(std::move(callback), key, std::forward<decltype(field_values)>(field_values)...);
+            }
+        );
     }
 
     /**
@@ -451,26 +539,23 @@ public:
     }
 
     /**
-     * @brief Incrementally iterates hash fields and values
+     * @brief Incrementally iterates hash fields and values (coroutine awaitable)
      *
      * @tparam Out Type of the output container
      * @param key Key where the hash is stored
      * @param cursor Cursor position to start iteration from
      * @param pattern Pattern to filter fields
      * @param count Hint for how many field-value pairs to return per call
-     * @return Scan result containing next cursor and matching field-value pairs
+     * @return redis_awaiter yielding Reply<qb::redis::scan<Out>>
      */
     template <typename Out = qb::unordered_map<std::string, std::string>>
-    qb::redis::scan<Out>
-    hscan(const std::string &key, long long cursor, const std::string &pattern = "*",
-          long long count = 10) {
-        if (key.empty()) {
-            return {};
-        }
-        return derived()
-            .template command<qb::redis::scan<Out>>("HSCAN", key, cursor, "MATCH",
-                                                    pattern, "COUNT", count)
-            .result();
+    auto hscan(const std::string &key, long long cursor, const std::string &pattern = "*",
+               long long count = 10) {
+        return derived().template make_coro_command<qb::redis::scan<Out>>(
+            [this, key, cursor, pattern, count](auto&& callback) {
+                this->hscan(std::move(callback), key, cursor, pattern, count);
+            }
+        );
     }
 
     /**
@@ -515,22 +600,24 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>,
                      Derived &>
     hscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
-        new scanner<Func>(derived(), key, pattern, std::forward<Func>(func));
+        scanner<Func>::create_and_start(derived(), key, pattern, std::forward<Func>(func));
         return derived();
     }
 
     /**
-     * @brief Sets the string value of a hash field
+     * @brief Sets the string value of a hash field (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param field Field to set
      * @param val Value to set
-     * @return 1 if field is a new field and value was set, 0 if field already exists and
-     * value was updated
+     * @return redis_awaiter yielding Reply<long long>
      */
-    long long
-    hset(const std::string &key, const std::string &field, const std::string &val) {
-        return derived().template command<long long>("HSET", key, field, val).result();
+    auto hset(const std::string &key, const std::string &field, const std::string &val) {
+        return derived().template make_coro_command<long long>(
+            [this, key, field, val](auto&& callback) {
+                this->hset(std::move(callback), key, field, val);
+            }
+        );
     }
 
     /**
@@ -552,14 +639,13 @@ public:
     }
 
     /**
-     * @brief Sets the string value of a hash field using a key-value pair
+     * @brief Sets the string value of a hash field using a key-value pair (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param item Pair containing field name and value
-     * @return true if the operation was successful
+     * @return redis_awaiter yielding Reply<long long>
      */
-    bool
-    hset(const std::string &key, const std::pair<std::string, std::string> &item) {
+    auto hset(const std::string &key, const std::pair<std::string, std::string> &item) {
         return hset(key, item.first, item.second);
     }
 
@@ -580,16 +666,19 @@ public:
     }
 
     /**
-     * @brief Sets the value of a hash field, only if the field does not exist
+     * @brief Sets the value of a hash field, only if the field does not exist (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param field Field to set
      * @param val Value to set
-     * @return true if field was set, false if field already exists
+     * @return redis_awaiter yielding Reply<bool>
      */
-    bool
-    hsetnx(const std::string &key, const std::string &field, const std::string &val) {
-        return derived().template command<bool>("HSETNX", key, field, val).result();
+    auto hsetnx(const std::string &key, const std::string &field, const std::string &val) {
+        return derived().template make_coro_command<bool>(
+            [this, key, field, val](auto&& callback) {
+                this->hsetnx(std::move(callback), key, field, val);
+            }
+        );
     }
 
     /**
@@ -611,15 +700,13 @@ public:
     }
 
     /**
-     * @brief Sets the value of a hash field using a key-value pair, only if the field
-     * does not exist
+     * @brief Sets the value of a hash field using a key-value pair, only if the field does not exist (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param item Pair containing field name and value
-     * @return true if field was set, false if field already exists
+     * @return redis_awaiter yielding Reply<bool>
      */
-    bool
-    hsetnx(const std::string &key, const std::pair<std::string, std::string> &item) {
+    auto hsetnx(const std::string &key, const std::pair<std::string, std::string> &item) {
         return hsetnx(key, item.first, item.second);
     }
 
@@ -640,15 +727,18 @@ public:
     }
 
     /**
-     * @brief Gets the length of the value of a hash field
+     * @brief Gets the length of the value of a hash field (coroutine awaitable)
      *
      * @param key Key where the hash is stored
      * @param field Field to get length of
-     * @return Length of the field value
+     * @return redis_awaiter yielding Reply<long long>
      */
-    long long
-    hstrlen(const std::string &key, const std::string &field) {
-        return derived().template command<long long>("HSTRLEN", key, field).result();
+    auto hstrlen(const std::string &key, const std::string &field) {
+        return derived().template make_coro_command<long long>(
+            [this, key, field](auto&& callback) {
+                this->hstrlen(std::move(callback), key, field);
+            }
+        );
     }
 
     /**
@@ -668,16 +758,17 @@ public:
     }
 
     /**
-     * @brief Gets all values in a hash
+     * @brief Gets all values in a hash (coroutine awaitable)
      *
      * @param key Key where the hash is stored
-     * @return Vector of all values
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      */
-    std::vector<std::string>
-    hvals(const std::string &key) {
-        return derived()
-            .template command<std::vector<std::string>>("HVALS", key)
-            .result();
+    auto hvals(const std::string &key) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key](auto&& callback) {
+                this->hvals(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -706,7 +797,7 @@ public:
     template <typename Func>
     Derived &
     hvals(Func &&func, std::vector<std::string> keys) {
-        new multi_hvals<Func>(derived(), std::move(keys), std::forward<Func>(func));
+        multi_hvals<Func>::create_and_start(derived(), std::move(keys), std::forward<Func>(func));
         return derived();
     }
 };

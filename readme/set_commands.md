@@ -1,6 +1,8 @@
 # `qbm-redis`: Set Commands
 
-This document covers Redis commands operating on Set values. Redis Sets are unordered collections of unique strings.
+This document covers Redis commands operating on Set values.
+
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`). Redis Sets are unordered collections of unique strings.
 
 Reference: [Redis Set Commands](https://redis.io/commands/?group=set)
 

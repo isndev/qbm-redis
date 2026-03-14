@@ -40,17 +40,20 @@ private:
 
 public:
     /**
-     * @brief List all ACL rules
+     * @brief List all ACL rules (coroutine awaitable)
      *
      * Returns all the ACL rules defined on the Redis server as a structured JSON array.
      * Each entry represents a user and their associated permissions.
      *
-     * @return qb::json array of ACL rules
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/acl-list
      */
-    qb::json
-    acl_list() {
-        return derived().template command<qb::json>("ACL", "LIST").result();
+    auto acl_list() {
+        return derived().template make_coro_command<qb::json>(
+            [this](auto&& callback) {
+                this->acl_list(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -67,23 +70,22 @@ public:
     }
 
     /**
-     * @brief Get ACL security events logs
+     * @brief Get ACL security events logs (coroutine awaitable)
      *
      * Returns a structured JSON array of denied commands due to ACL rules.
      * Each entry includes information about the denied command, the user that 
      * attempted to run it, the client IP address, and more.
      *
      * @param count Optional number of entries to return
-     * @return qb::json array of ACL security events
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/acl-log
      */
-    qb::json
-    acl_log(std::optional<long long> count = std::nullopt) {
-        if (count) {
-            return derived().template command<qb::json>("ACL", "LOG", *count).result();
-        } else {
-            return derived().template command<qb::json>("ACL", "LOG").result();
-        }
+    auto acl_log(std::optional<long long> count = std::nullopt) {
+        return derived().template make_coro_command<qb::json>(
+            [this, count](auto&& callback) mutable {
+                this->acl_log(std::move(callback), count);
+            }
+        );
     }
 
     /**
@@ -107,22 +109,21 @@ public:
     }
 
     /**
-     * @brief List command categories for ACL
+     * @brief List command categories for ACL (coroutine awaitable)
      *
      * Returns all the command categories that can be used with ACL rules.
      * When called with a category name parameter, returns all commands in that category.
      *
      * @param category Optional category name to list commands for
-     * @return std::vector<std::string> of categories or commands
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/acl-cat
      */
-    std::vector<std::string>
-    acl_cat(const std::string &category = "") {
-        if (category.empty()) {
-            return derived().template command<std::vector<std::string>>("ACL", "CAT").result();
-        } else {
-            return derived().template command<std::vector<std::string>>("ACL", "CAT", category).result();
-        }
+    auto acl_cat(const std::string &category = "") {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, category](auto&& callback) {
+                this->acl_cat(std::move(callback), category);
+            }
+        );
     }
 
     /**
@@ -144,18 +145,21 @@ public:
     }
 
     /**
-     * @brief Get details about a Redis ACL user
+     * @brief Get details about a Redis ACL user (coroutine awaitable)
      *
      * Returns a structured JSON object with information about the specified user,
      * including their flags, passwords, commands allowed, and key patterns.
      *
      * @param username Name of the user to get information for
-     * @return qb::json object with user information
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/acl-getuser
      */
-    qb::json
-    acl_getuser(const std::string &username) {
-        return derived().template command<qb::json>("ACL", "GETUSER", username).result();
+    auto acl_getuser(const std::string &username) {
+        return derived().template make_coro_command<qb::json>(
+            [this, username](auto&& callback) {
+                this->acl_getuser(std::move(callback), username);
+            }
+        );
     }
 
     /**
@@ -174,16 +178,19 @@ public:
     }
 
     /**
-     * @brief List all Redis ACL users
+     * @brief List all Redis ACL users (coroutine awaitable)
      *
      * Returns a list of all configured user names.
      *
-     * @return std::vector<std::string> of user names
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/acl-users
      */
-    std::vector<std::string>
-    acl_users() {
-        return derived().template command<std::vector<std::string>>("ACL", "USERS").result();
+    auto acl_users() {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this](auto&& callback) {
+                this->acl_users(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -200,16 +207,19 @@ public:
     }
 
     /**
-     * @brief Return the username of the current connection
+     * @brief Return the username of the current connection (coroutine awaitable)
      *
      * Returns the username that is currently authenticated for the connection.
      *
-     * @return std::string with the username
+     * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/acl-whoami
      */
-    std::string
-    acl_whoami() {
-        return derived().template command<std::string>("ACL", "WHOAMI").result();
+    auto acl_whoami() {
+        return derived().template make_coro_command<std::string>(
+            [this](auto&& callback) {
+                this->acl_whoami(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -226,16 +236,19 @@ public:
     }
 
     /**
-     * @brief Get help information about ACL commands
+     * @brief Get help information about ACL commands (coroutine awaitable)
      *
      * Returns an array of strings with help information about ACL commands.
      *
-     * @return std::vector<std::string> of help strings
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/acl-help
      */
-    std::vector<std::string>
-    acl_help() {
-        return derived().template command<std::vector<std::string>>("ACL", "HELP").result();
+    auto acl_help() {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this](auto&& callback) {
+                this->acl_help(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -252,17 +265,20 @@ public:
     }
 
     /**
-     * @brief Delete an ACL user
+     * @brief Delete an ACL user (coroutine awaitable)
      * 
      * Removes the specified user from the Redis ACL system.
      * 
      * @param username Name of the user to delete
-     * @return long long Number of users removed (0 or 1)
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/acl-deluser
      */
-    long long
-    acl_deluser(const std::string &username) {
-        return derived().template command<long long>("ACL", "DELUSER", username).result();
+    auto acl_deluser(const std::string &username) {
+        return derived().template make_coro_command<long long>(
+            [this, username](auto&& callback) {
+                this->acl_deluser(std::move(callback), username);
+            }
+        );
     }
 
     /**
@@ -280,21 +296,20 @@ public:
     }
 
     /**
-     * @brief Generate a random secure password
+     * @brief Generate a random secure password (coroutine awaitable)
      * 
      * Generates a strong, secure password that can be used for Redis ACL users.
      * 
      * @param bits Optional number of bits of entropy (default 256)
-     * @return std::string The generated password
+     * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/acl-genpass
      */
-    std::string
-    acl_genpass(std::optional<long long> bits = std::nullopt) {
-        if (bits) {
-            return derived().template command<std::string>("ACL", "GENPASS", *bits).result();
-        } else {
-            return derived().template command<std::string>("ACL", "GENPASS").result();
-        }
+    auto acl_genpass(std::optional<long long> bits = std::nullopt) {
+        return derived().template make_coro_command<std::string>(
+            [this, bits](auto&& callback) mutable {
+                this->acl_genpass(std::move(callback), bits);
+            }
+        );
     }
 
     /**
@@ -316,16 +331,19 @@ public:
     }
 
     /**
-     * @brief Load ACL rules from the ACL file
+     * @brief Load ACL rules from the ACL file (coroutine awaitable)
      * 
      * Loads the ACL rules from the configured ACL file on disk.
      * 
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/acl-load
      */
-    status
-    acl_load() {
-        return derived().template command<status>("ACL", "LOAD").result();
+    auto acl_load() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->acl_load(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -342,16 +360,19 @@ public:
     }
 
     /**
-     * @brief Save ACL rules to the ACL file
+     * @brief Save ACL rules to the ACL file (coroutine awaitable)
      * 
      * Saves the current ACL rules to the configured ACL file on disk.
      * 
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/acl-save
      */
-    status
-    acl_save() {
-        return derived().template command<status>("ACL", "SAVE").result();
+    auto acl_save() {
+        return derived().template make_coro_command<status>(
+            [this](auto&& callback) {
+                this->acl_save(std::move(callback));
+            }
+        );
     }
 
     /**
@@ -368,19 +389,22 @@ public:
     }
 
     /**
-     * @brief Create or modify an ACL user
+     * @brief Create or modify an ACL user (coroutine awaitable)
      * 
      * Modifies the rules for a Redis ACL user.
      * 
      * @param username Name of the user to create/modify
      * @param rules Variable list of rules to apply
-     * @return status Success/failure status
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/acl-setuser
      */
     template <typename... Args>
-    status
-    acl_setuser(const std::string &username, Args&&... rules) {
-        return derived().template command<status>("ACL", "SETUSER", username, std::forward<Args>(rules)...).result();
+    auto acl_setuser(const std::string &username, Args&&... rules) {
+        return derived().template make_coro_command<status>(
+            [this, username, ...rules = std::forward<Args>(rules)](auto&& callback) mutable {
+                this->acl_setuser(std::move(callback), username, std::forward<Args>(rules)...);
+            }
+        );
     }
 
     /**
@@ -398,8 +422,31 @@ public:
         return derived().template command<status>(std::forward<Func>(func), "ACL", "SETUSER", 
                                                  username, std::forward<Args>(rules)...);
     }
+
+    /**
+     * @brief Simulate if a user can execute a command (coroutine awaitable).
+     * @param username User to check.
+     * @param command Command name.
+     * @param args Command arguments.
+     * @see https://redis.io/commands/acl-dryrun
+     */
+    auto acl_dryrun(const std::string &username, const std::string &command,
+                   const std::vector<std::string> &args = {}) {
+        return derived().template make_coro_command<qb::json>(
+            [this, username, command, args](auto&& callback) {
+                this->acl_dryrun(std::move(callback), username, command, args);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
+    acl_dryrun(Func &&func, const std::string &username, const std::string &command,
+               const std::vector<std::string> &args = {}) {
+        return derived().template command<qb::json>(
+            std::forward<Func>(func), "ACL", "DRYRUN", username, command, args);
+    }
 };
 
 } // namespace qb::redis
 
-#endif // QBM_REDIS_ACL_COMMANDS_H 
+#endif // QBM_REDIS_ACL_COMMANDS_H

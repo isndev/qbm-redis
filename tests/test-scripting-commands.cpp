@@ -17,494 +17,291 @@
 
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include "../redis.h"
-
-// Redis Configuration
-#define REDIS_URI {"tcp://localhost:6379"}
+#include "protocol_test_common.h"
 
 using namespace qb::io;
 using namespace std::chrono;
 using namespace qb::redis;
 
-// Generates unique key prefixes to avoid collisions between tests
-inline std::string
-key_prefix(const std::string &key = "") {
-    static int  counter = 0;
-    std::string prefix  = "qb::redis::scripting-test:" + std::to_string(++counter);
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
 
-    if (key.empty()) {
-        return prefix;
-    }
+class ScriptingProtocolModesTest : public ProtocolModesTestBase {};
 
-    return prefix + ":" + key;
-}
-
-// Generates a test key
-inline std::string
-test_key(const std::string &k) {
-    return "{" + key_prefix() + "}::" + k;
-}
-
-// Checks connection and cleans environment before tests
-class RedisTest : public ::testing::Test {
-protected:
-    qb::redis::tcp::client redis{REDIS_URI};
-
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Unable to connect to Redis");
-
-        // Wait for connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
-    }
-};
+INSTANTIATE_PROTOCOL_MODES(ScriptingProtocolModesTest);
 
 /*
- * SYNCHRONOUS TESTS
+ * COROUTINE TESTS
  */
 
-// Test basic EVAL operation
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_EVAL) {
-    std::string              key    = test_key("eval");
-    std::string              script = "return redis.call('SET', KEYS[1], ARGV[1])";
-    std::vector<std::string> keys   = {key};
-    std::vector<std::string> args   = {"test_value"};
-
-    // Execute script
-    auto result = redis.eval<std::string>(script, keys, args);
-    EXPECT_EQ(result, "OK");
-
-    // Verify the key was set
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "test_value");
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_EVAL) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string              key    = protocol_key("eval");
+        std::string              script = "return redis.call('SET', KEYS[1], ARGV[1])";
+        std::vector<std::string> keys   = {key};
+        std::vector<std::string> args   = {"test_value"};
+        auto eval_reply = co_await redis.eval<std::string>(script, keys, args);
+        EXPECT_TRUE(eval_reply.ok());
+        EXPECT_EQ(eval_reply.result(), "OK");
+        auto get_reply = co_await redis.get(key);
+        EXPECT_TRUE(get_reply.ok());
+        EXPECT_TRUE(get_reply.result().has_value());
+        EXPECT_EQ(*get_reply.result(), "test_value");
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test EVAL with multiple keys and arguments
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_EVAL_MULTIPLE) {
-    std::string              key1   = test_key("eval1");
-    std::string              key2   = test_key("eval2");
-    std::string              script = R"(
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_EVAL_MULTIPLE) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string              key1   = protocol_key("eval1");
+        std::string              key2   = protocol_key("eval2");
+        std::string              script = R"(
         redis.call('SET', KEYS[1], ARGV[1])
         redis.call('SET', KEYS[2], ARGV[2])
         return "OK"
     )";
-    std::vector<std::string> keys   = {key1, key2};
-    std::vector<std::string> args   = {"value1", "value2"};
-
-    // Execute script
-    auto result = redis.eval<std::string>(script, keys, args);
-    EXPECT_EQ(result, "OK");
-
-    // Verify both keys were set
-    auto value1 = redis.get(key1);
-    auto value2 = redis.get(key2);
-    EXPECT_TRUE(value1.has_value());
-    EXPECT_TRUE(value2.has_value());
-    EXPECT_EQ(*value1, "value1");
-    EXPECT_EQ(*value2, "value2");
-}
-
-// Test EVALSHA operation
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_EVALSHA) {
-    std::string key    = test_key("evalsha");
-    std::string script = "return redis.call('SET', KEYS[1], ARGV[1])";
-
-    // First load the script
-    std::string sha = redis.script_load(script);
-    EXPECT_FALSE(sha.empty());
-
-    // Execute script using SHA
-    std::vector<std::string> keys   = {key};
-    std::vector<std::string> args   = {"test_value"};
-    auto                     result = redis.evalsha<std::string>(sha, keys, args);
-    EXPECT_EQ(result, "OK");
-
-    // Verify the key was set
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "test_value");
-}
-
-// Test SCRIPT EXISTS
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_EXISTS) {
-    std::string script = "return redis.call('SET', KEYS[1], ARGV[1])";
-
-    // Load a script
-    std::string sha = redis.script_load(script);
-    EXPECT_FALSE(sha.empty());
-
-    // Check if script exists
-    auto exists = redis.script_exists(sha);
-    EXPECT_EQ(exists.size(), 1);
-    EXPECT_TRUE(exists[0]);
-
-    // Check non-existent script
-    exists = redis.script_exists("invalid_sha");
-    EXPECT_EQ(exists.size(), 1);
-    EXPECT_FALSE(exists[0]);
-}
-
-// Test SCRIPT FLUSH
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_FLUSH) {
-    std::string script = "return redis.call('SET', KEYS[1], ARGV[1])";
-
-    // Load a script
-    std::string sha = redis.script_load(script);
-    EXPECT_FALSE(sha.empty());
-
-    // Verify script exists
-    auto exists = redis.script_exists(sha);
-    EXPECT_EQ(exists.size(), 1);
-    EXPECT_TRUE(exists[0]);
-
-    // Flush scripts
-    bool flushed = redis.script_flush();
-    EXPECT_TRUE(flushed);
-
-    // Verify script no longer exists
-    exists = redis.script_exists(sha);
-    EXPECT_EQ(exists.size(), 1);
-    EXPECT_FALSE(exists[0]);
-}
-
-// Test SCRIPT KILL
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_KILL) {
-    // Note: This test might fail if no script is currently running
-    // It's more of a smoke test to verify the command works
-    try {
-        bool killed = redis.script_kill();
-        (void) killed; // hide warning
-    } catch (...) {
+        std::vector<std::string> keys   = {key1, key2};
+        std::vector<std::string> args   = {"value1", "value2"};
+        auto eval_reply = co_await redis.eval<std::string>(script, keys, args);
+        EXPECT_TRUE(eval_reply.ok());
+        EXPECT_EQ(eval_reply.result(), "OK");
+        auto get1 = co_await redis.get(key1);
+        auto get2 = co_await redis.get(key2);
+        EXPECT_TRUE(get1.ok() && get2.ok());
+        EXPECT_TRUE(get1.result().has_value() && get2.result().has_value());
+        EXPECT_EQ(*get1.result(), "value1");
+        EXPECT_EQ(*get2.result(), "value2");
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
     }
-    // We don't assert the result as it depends on the Redis server state
 }
 
-/*
- * ASYNCHRONOUS TESTS
- */
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_EVALSHA) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key    = protocol_key("evalsha");
+        std::string script = "return redis.call('SET', KEYS[1], ARGV[1])";
+        auto load_reply = co_await redis.script_load(script);
+        EXPECT_TRUE(load_reply.ok());
+        std::string sha = load_reply.result();
+        EXPECT_FALSE(sha.empty());
+        std::vector<std::string> keys = {key};
+        std::vector<std::string> args = {"test_value"};
+        auto evalsha_reply = co_await redis.evalsha<std::string>(sha, keys, args);
+        EXPECT_TRUE(evalsha_reply.ok());
+        EXPECT_EQ(evalsha_reply.result(), "OK");
+        auto get_reply = co_await redis.get(key);
+        EXPECT_TRUE(get_reply.ok());
+        EXPECT_TRUE(get_reply.result().has_value());
+        EXPECT_EQ(*get_reply.result(), "test_value");
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_EXISTS) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string script = "return redis.call('SET', KEYS[1], ARGV[1])";
+        auto load_reply = co_await redis.script_load(script);
+        EXPECT_TRUE(load_reply.ok());
+        std::string sha = load_reply.result();
+        EXPECT_FALSE(sha.empty());
+        auto exists_reply = co_await redis.script_exists(sha);
+        EXPECT_TRUE(exists_reply.ok());
+        EXPECT_EQ(exists_reply.result().size(), 1);
+        EXPECT_TRUE(exists_reply.result()[0]);
+        auto invalid_reply = co_await redis.script_exists("invalid_sha");
+        EXPECT_TRUE(invalid_reply.ok());
+        EXPECT_EQ(invalid_reply.result().size(), 1);
+        EXPECT_FALSE(invalid_reply.result()[0]);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_FLUSH) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string script = "return redis.call('SET', KEYS[1], ARGV[1])";
+        auto load_reply = co_await redis.script_load(script);
+        EXPECT_TRUE(load_reply.ok());
+        std::string sha = load_reply.result();
+        EXPECT_FALSE(sha.empty());
+        auto exists1_reply = co_await redis.script_exists(sha);
+        EXPECT_TRUE(exists1_reply.ok());
+        EXPECT_EQ(exists1_reply.result().size(), 1);
+        EXPECT_TRUE(exists1_reply.result()[0]);
+        auto flush_reply = co_await redis.script_flush();
+        EXPECT_TRUE(flush_reply.ok());
+        auto exists2_reply = co_await redis.script_exists(sha);
+        EXPECT_TRUE(exists2_reply.ok());
+        EXPECT_EQ(exists2_reply.result().size(), 1);
+        EXPECT_FALSE(exists2_reply.result()[0]);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_KILL) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        try {
+            auto kill_reply = co_await redis.script_kill();
+            (void) kill_reply;
+        } catch (...) {
+        }
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test EVAL_RO (read-only EVAL - script cannot perform writes)
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_EVAL_RO) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("eval_ro");
+        (void)co_await redis.set(key, "existing");
+        // Read-only script: GET only, no writes
+        std::string script = "return redis.call('GET', KEYS[1])";
+        std::vector<std::string> keys = {key};
+        auto reply = co_await redis.evalRo<std::string>(script, keys);
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result(), "existing");
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+// Test EVALSHA_RO (read-only EVALSHA)
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_EVALSHA_RO) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("evalsha_ro");
+        (void)co_await redis.set(key, "value");
+        std::string script = "return redis.call('GET', KEYS[1])";
+        auto load_r = co_await redis.script_load(script);
+        EXPECT_TRUE(load_r.ok());
+        std::vector<std::string> keys = {key};
+        auto reply = co_await redis.evalshaRo<std::string>(load_r.result(), keys);
+        EXPECT_TRUE(reply.ok());
+        EXPECT_EQ(reply.result(), "value");
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+// Test SCRIPT DEBUG (set debug mode)
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_SCRIPT_DEBUG) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto reply = co_await redis.scriptDebug("NO");
+        EXPECT_TRUE(reply.ok());
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+}
 
 // Test async EVAL operation
-TEST_F(RedisTest, ASYNC_SCRIPTING_COMMANDS_EVAL) {
-    std::string              key    = test_key("async_eval");
-    std::string              script = "return redis.call('SET', KEYS[1], ARGV[1])";
-    std::vector<std::string> keys   = {key};
-    std::vector<std::string> args   = {"test_value"};
-    bool                     eval_completed = false;
-
-    // Execute script asynchronously
-    redis.eval<std::string>(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), "OK");
-            eval_completed = true;
-        },
-        script, std::move(keys), std::move(args));
-
-    redis.await();
-    EXPECT_TRUE(eval_completed);
-
-    // Verify the key was set
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "test_value");
-}
-
-// Test async EVALSHA operation
-TEST_F(RedisTest, ASYNC_SCRIPTING_COMMANDS_EVALSHA) {
-    std::string key            = test_key("async_evalsha");
-    std::string script         = "return redis.call('SET', KEYS[1], ARGV[1])";
-    bool        load_completed = false;
-    bool        eval_completed = false;
-    std::string script_sha;
-
-    // Load script asynchronously
-    redis.script_load(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            script_sha     = reply.result();
-            load_completed = true;
-        },
-        script);
-
-    redis.await();
-    EXPECT_TRUE(load_completed);
-    EXPECT_FALSE(script_sha.empty());
-
-    // Execute script using SHA asynchronously
-    std::vector<std::string> keys = {key};
-    std::vector<std::string> args = {"test_value"};
-    redis.evalsha<std::string>(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), "OK");
-            eval_completed = true;
-        },
-        script_sha, std::move(keys), std::move(args));
-
-    redis.await();
-    EXPECT_TRUE(eval_completed);
-
-    // Verify the key was set
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "test_value");
-}
-
-// Test async SCRIPT EXISTS
-TEST_F(RedisTest, ASYNC_SCRIPTING_COMMANDS_EXISTS) {
-    std::string script           = "return redis.call('SET', KEYS[1], ARGV[1])";
-    bool        load_completed   = false;
-    bool        exists_completed = false;
-    std::string script_sha;
-
-    // Load script asynchronously
-    redis.script_load(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            script_sha     = reply.result();
-            load_completed = true;
-        },
-        script);
-
-    redis.await();
-    EXPECT_TRUE(load_completed);
-    EXPECT_FALSE(script_sha.empty());
-
-    // Check if script exists asynchronously
-    redis.script_exists(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result().size(), 1);
-            EXPECT_TRUE(reply.result()[0]);
-            exists_completed = true;
-        },
-        script_sha);
-
-    redis.await();
-    EXPECT_TRUE(exists_completed);
-}
-
-// Test async SCRIPT FLUSH
-TEST_F(RedisTest, ASYNC_SCRIPTING_COMMANDS_FLUSH) {
-    std::string script           = "return redis.call('SET', KEYS[1], ARGV[1])";
-    bool        load_completed   = false;
-    bool        flush_completed  = false;
-    bool        verify_completed = false;
-    std::string script_sha;
-
-    // Load script asynchronously
-    redis.script_load(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            script_sha     = reply.result();
-            load_completed = true;
-        },
-        script);
-
-    redis.await();
-    EXPECT_TRUE(load_completed);
-    EXPECT_FALSE(script_sha.empty());
-
-    // Flush scripts asynchronously
-    redis.script_flush([&](auto &&reply) {
-        EXPECT_TRUE(reply.ok());
-        flush_completed = true;
-    });
-
-    redis.await();
-    EXPECT_TRUE(flush_completed);
-
-    // Verify script no longer exists asynchronously
-    redis.script_exists(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result().size(), 1);
-            EXPECT_FALSE(reply.result()[0]);
-            verify_completed = true;
-        },
-        script_sha);
-
-    redis.await();
-    EXPECT_TRUE(verify_completed);
-}
-
-// Test async SCRIPT KILL
-TEST_F(RedisTest, ASYNC_SCRIPTING_COMMANDS_KILL) {
-    bool kill_completed = false;
-
-    // Kill script asynchronously
-    redis.script_kill([&](auto &&reply) {
-        // We don't assert the result as it depends on the Redis server state
-        kill_completed = true;
-    });
-
-    redis.await();
-    EXPECT_TRUE(kill_completed);
-}
-
-// Test command chaining
-TEST_F(RedisTest, ASYNC_SCRIPTING_COMMANDS_CHAINING) {
-    std::string key                    = test_key("scripting_chaining");
-    std::string script                 = "return redis.call('SET', KEYS[1], ARGV[1])";
-    bool        all_commands_completed = false;
-    int         command_count          = 0;
-
-    // Setup callback to track completion
-    auto completion_callback = [&command_count, &all_commands_completed](auto &&) {
-        if (++command_count == 3) {
-            all_commands_completed = true;
-        }
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_ERROR) {
+    bool completed = false;
+    bool got_error = false;
+    auto test_task = [this, &completed, &got_error]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string              key    = protocol_key("error");
+        std::string              script = "error('This is a test error')";
+        std::vector<std::string> keys   = {key};
+        auto eval_reply = co_await redis.eval<std::string>(script, keys);
+        got_error = !eval_reply.ok();
+        completed = true;
     };
-
-    // Chain multiple commands
-    redis.script_load(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            completion_callback(reply);
-        },
-        script);
-
-    redis.script_exists(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            completion_callback(reply);
-        },
-        "some_sha");
-
-    redis.script_flush([&](auto &&reply) {
-        EXPECT_TRUE(reply.ok());
-        completion_callback(reply);
-    });
-
-    // Trigger the async operations and wait for completion
-    redis.await();
-    EXPECT_TRUE(all_commands_completed);
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+    EXPECT_TRUE(got_error);
 }
 
-// Test async SCRIPT LOAD
-TEST_F(RedisTest, ASYNC_SCRIPTING_COMMANDS_LOAD) {
-    std::string script         = "return redis.call('SET', KEYS[1], ARGV[1])";
-    bool        load_completed = false;
-    std::string script_sha;
-
-    // Load script asynchronously
-    redis.script_load(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            script_sha     = reply.result();
-            load_completed = true;
-        },
-        script);
-
-    redis.await();
-    EXPECT_TRUE(load_completed);
-    EXPECT_FALSE(script_sha.empty());
-
-    // Verify the script exists
-    auto exists = redis.script_exists(script_sha);
-    EXPECT_EQ(exists.size(), 1);
-    EXPECT_TRUE(exists[0]);
-}
-
-// Test script with complex operations
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_COMPLEX) {
-    std::string key1   = test_key("complex1");
-    std::string key2   = test_key("complex2");
-    std::string script = R"(
-        local val1 = redis.call('GET', KEYS[1])
-        local val2 = redis.call('GET', KEYS[2])
-        if val1 == nil then val1 = '0' end
-        if val2 == nil then val2 = '0' end
-        local sum = tonumber(val1) + tonumber(val2)
-        redis.call('SET', KEYS[1], tostring(sum))
-        redis.call('SET', KEYS[2], tostring(sum))
-        return sum
-    )";
-
-    // Set initial values
-    redis.set(key1, "10");
-    redis.set(key2, "20");
-
-    // Execute complex script
-    std::vector<std::string> keys   = {key1, key2};
-    auto                     result = redis.eval<long long>(script, keys);
-    EXPECT_EQ(result, 30);
-
-    // Verify both keys were updated
-    auto value1 = redis.get(key1);
-    auto value2 = redis.get(key2);
-    EXPECT_TRUE(value1.has_value());
-    EXPECT_TRUE(value2.has_value());
-    EXPECT_EQ(*value1, "30");
-    EXPECT_EQ(*value2, "30");
-}
-
-// Test script with error handling
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_ERROR) {
-    std::string              key    = test_key("error");
-    std::string              script = "error('This is a test error')";
-    std::vector<std::string> keys   = {key};
-
-    // Execute script that should throw an error
-    EXPECT_THROW(redis.eval<std::string>(script, keys), std::runtime_error);
-}
-
-// Test script with multiple return types
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_MULTIPLE_TYPES) {
-    std::string key = test_key("types");
-
-    // Premier script qui définit une clé et renvoie OK
-    std::string set_script = R"(
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_MULTIPLE_TYPES) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("types");
+        std::string set_script = R"(
         return redis.call('SET', KEYS[1], ARGV[1])
     )";
-
-    std::vector<std::string> keys = {key};
-    std::vector<std::string> args = {"test_value"};
-
-    // Execute script and verify it returns OK
-    auto set_result = redis.eval<std::string>(set_script, keys, args);
-    EXPECT_EQ(set_result, "OK");
-
-    // Verify the key was set
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "test_value");
-
-    // Second script that returns a number
-    std::string number_script = "return 42";
-    auto        number_result = redis.eval<long long>(number_script);
-    EXPECT_EQ(number_result, 42);
-
-    // Third script that returns a boolean
-    std::string bool_script = "return true";
-    auto        bool_result = redis.eval<bool>(bool_script);
-    EXPECT_TRUE(bool_result);
-
-    // Fourth script that returns an array
-    std::string array_script = "return {1, 2, 3}";
-    auto        array_result = redis.eval<std::vector<long long>>(array_script);
-    EXPECT_EQ(array_result.size(), 3);
-    EXPECT_EQ(array_result[0], 1);
-    EXPECT_EQ(array_result[1], 2);
-    EXPECT_EQ(array_result[2], 3);
+        std::vector<std::string> keys = {key};
+        std::vector<std::string> args = {"test_value"};
+        auto set_reply = co_await redis.eval<std::string>(set_script, keys, args);
+        EXPECT_TRUE(set_reply.ok());
+        EXPECT_EQ(set_reply.result(), "OK");
+        auto get_reply = co_await redis.get(key);
+        EXPECT_TRUE(get_reply.ok());
+        EXPECT_TRUE(get_reply.result().has_value());
+        EXPECT_EQ(*get_reply.result(), "test_value");
+        auto num_reply = co_await redis.eval<long long>("return 42");
+        EXPECT_TRUE(num_reply.ok());
+        EXPECT_EQ(num_reply.result(), 42);
+        auto bool_reply = co_await redis.eval<bool>("return true");
+        EXPECT_TRUE(bool_reply.ok());
+        EXPECT_TRUE(bool_reply.result());
+        auto arr_reply = co_await redis.eval<std::vector<long long>>("return {1, 2, 3}");
+        EXPECT_TRUE(arr_reply.ok());
+        EXPECT_EQ(arr_reply.result().size(), 3);
+        EXPECT_EQ(arr_reply.result()[0], 1);
+        EXPECT_EQ(arr_reply.result()[1], 2);
+        EXPECT_EQ(arr_reply.result()[2], 3);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test script with atomic operations
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_ATOMIC) {
-    std::string key1   = test_key("atomic1");
-    std::string key2   = test_key("atomic2");
-    std::string script = R"(
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_ATOMIC) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key1   = protocol_key("atomic1");
+        std::string key2   = protocol_key("atomic2");
+        std::string script = R"(
         local val1 = redis.call('GET', KEYS[1])
         local val2 = redis.call('GET', KEYS[2])
         if val1 == nil or val2 == nil then
@@ -514,29 +311,32 @@ TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_ATOMIC) {
         redis.call('SET', KEYS[2], val1)
         return true
     )";
-
-    // Set initial values
-    redis.set(key1, "value1");
-    redis.set(key2, "value2");
-
-    // Execute atomic swap script
-    std::vector<std::string> keys   = {key1, key2};
-    auto                     result = redis.eval<bool>(script, keys);
-    EXPECT_TRUE(result);
-
-    // Verify values were swapped
-    auto value1 = redis.get(key1);
-    auto value2 = redis.get(key2);
-    EXPECT_TRUE(value1.has_value());
-    EXPECT_TRUE(value2.has_value());
-    EXPECT_EQ(*value1, "value2");
-    EXPECT_EQ(*value2, "value1");
+        (void)co_await redis.set(key1, "value1");
+        (void)co_await redis.set(key2, "value2");
+        std::vector<std::string> keys = {key1, key2};
+        auto eval_reply = co_await redis.eval<bool>(script, keys);
+        EXPECT_TRUE(eval_reply.ok());
+        EXPECT_TRUE(eval_reply.result());
+        auto get1 = co_await redis.get(key1);
+        auto get2 = co_await redis.get(key2);
+        EXPECT_TRUE(get1.ok() && get2.ok());
+        EXPECT_TRUE(get1.result().has_value() && get2.result().has_value());
+        EXPECT_EQ(*get1.result(), "value2");
+        EXPECT_EQ(*get2.result(), "value1");
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test script with conditional operations
-TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_CONDITIONAL) {
-    std::string key    = test_key("conditional");
-    std::string script = R"(
+TEST_P(ScriptingProtocolModesTest, CORO_SCRIPTING_COMMANDS_CONDITIONAL) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key    = protocol_key("conditional");
+        std::string script = R"(
         local val = redis.call('GET', KEYS[1])
         if val == ARGV[1] then
             redis.call('SET', KEYS[1], ARGV[2])
@@ -544,30 +344,75 @@ TEST_F(RedisTest, SYNC_SCRIPTING_COMMANDS_CONDITIONAL) {
         end
         return 0
     )";
+        (void)co_await redis.set(key, "initial");
+        std::vector<std::string> keys = {key};
+        std::vector<std::string> args = {"initial", "updated"};
+        auto r1_reply = co_await redis.eval<bool>(script, keys, args);
+        EXPECT_TRUE(r1_reply.ok());
+        EXPECT_TRUE(r1_reply.result());
+        auto get1 = co_await redis.get(key);
+        EXPECT_TRUE(get1.ok());
+        EXPECT_TRUE(get1.result().has_value());
+        EXPECT_EQ(*get1.result(), "updated");
+        args = {"wrong", "not_updated"};
+        auto r2_reply = co_await redis.eval<bool>(script, keys, args);
+        EXPECT_TRUE(r2_reply.ok());
+        EXPECT_FALSE(r2_reply.result());
+        auto get2 = co_await redis.get(key);
+        EXPECT_TRUE(get2.ok());
+        EXPECT_TRUE(get2.result().has_value());
+        EXPECT_EQ(*get2.result(), "updated");
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
 
-    // Set initial value
-    redis.set(key, "initial");
+TEST_P(ScriptingProtocolModesTest, EVAL) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto r = co_await redis.eval<long long>("return 42");
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), 42);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
 
-    // Test matching condition
-    std::vector<std::string> keys   = {key};
-    std::vector<std::string> args   = {"initial", "updated"};
-    auto                     result = redis.eval<bool>(script, keys, args);
-    EXPECT_TRUE(result);
+TEST_P(ScriptingProtocolModesTest, EVAL_WITH_KEYS_ARGS) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("eval_key");
+        std::string script = "return redis.call('SET', KEYS[1], ARGV[1])";
+        auto r = co_await redis.eval<std::string>(script, {k}, {"value"});
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), "OK");
+        auto get_r = co_await redis.get(k);
+        EXPECT_TRUE(get_r.ok() && get_r.result() && *get_r.result() == "value");
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
 
-    // Verify value was updated
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "updated");
-
-    // Test non-matching condition
-    args   = {"wrong", "not_updated"};
-    result = redis.eval<bool>(script, keys, args);
-    EXPECT_FALSE(result);
-
-    // Verify value wasn't changed
-    value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "updated");
+TEST_P(ScriptingProtocolModesTest, SCRIPT_LOAD_EVALSHA) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        std::string script = "return 123";
+        auto load_r = co_await redis.script_load(script);
+        EXPECT_TRUE(load_r.ok()) << load_r.error();
+        if (!load_r.ok()) { done = true; co_return; }
+        auto sha = load_r.result();
+        auto evalsha_r = co_await redis.evalsha<long long>(sha);
+        EXPECT_TRUE(evalsha_r.ok()) << evalsha_r.error();
+        if (evalsha_r.ok()) EXPECT_EQ(evalsha_r.result(), 123);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Main function to run the tests

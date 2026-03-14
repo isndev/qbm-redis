@@ -17,8 +17,10 @@
 
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include <thread>
 #include "../redis.h"
+#include "protocol_test_common.h"
 
 // Redis Configuration
 #define REDIS_URI {"tcp://localhost:6379"}
@@ -26,154 +28,148 @@
 using namespace qb::io;
 using namespace std::chrono;
 
-// Helper function to generate unique key prefixes
-inline std::string
-key_prefix(const std::string &key = "") {
-    static int  counter = 0;
-    std::string prefix  = "qb::redis::hyperloglog-test:" + std::to_string(++counter);
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
 
-    if (key.empty()) {
-        return prefix;
-    }
+class HyperLogLogProtocolModesTest : public ProtocolModesTestBase {};
 
-    return prefix + ":" + key;
-}
-
-// Helper function to generate test keys
-inline std::string
-test_key(const std::string &k) {
-    return "{" + key_prefix() + "}::" + k;
-}
-
-// Test fixture for Redis HyperLogLog commands
-class RedisHyperLogLogTest : public ::testing::Test {
-protected:
-    qb::redis::tcp::client redis{REDIS_URI};
-
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Failed to connect to Redis");
-
-        // Wait for connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
-    }
-};
+INSTANTIATE_PROTOCOL_MODES(HyperLogLogProtocolModesTest);
 
 /*
- * SYNCHRONOUS TESTS
+ * COROUTINE TESTS
  */
 
-// Test PFADD
-TEST_F(RedisHyperLogLogTest, SYNC_HYPERLOGLOG_PFADD) {
-    std::string key = test_key("pfadd");
+// Test PFADD with coroutines
+TEST_P(HyperLogLogProtocolModesTest, CORO_HYPERLOGLOG_PFADD) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto key = protocol_key("pfadd");
 
-    // Test adding single element
-    EXPECT_TRUE(redis.pfadd(key, "element1"));
+        // Test adding single element
+        auto reply1 = co_await redis.pfadd(key, "element1");
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_TRUE(reply1.result());
 
-    // Test adding multiple elements
-    EXPECT_TRUE(redis.pfadd(key, "element2", "element3", "element4"));
+        // Test adding multiple elements
+        auto reply2 = co_await redis.pfadd(key, "element2", "element3", "element4");
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_TRUE(reply2.result());
 
-    // Test adding duplicate elements (should not affect cardinality)
-    EXPECT_FALSE(redis.pfadd(key, "element1", "element2"));
+        // Test adding duplicate elements (should not affect cardinality)
+        auto reply3 = co_await redis.pfadd(key, "element1", "element2");
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_FALSE(reply3.result());
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test PFCOUNT
-TEST_F(RedisHyperLogLogTest, SYNC_HYPERLOGLOG_PFCOUNT) {
-    std::string key1 = test_key("pfcount1");
-    std::string key2 = test_key("pfcount2");
+// Test PFCOUNT with coroutines
+TEST_P(HyperLogLogProtocolModesTest, CORO_HYPERLOGLOG_PFCOUNT) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto key1 = protocol_key("pfcount1");
+        auto key2 = protocol_key("pfcount2");
 
-    // Add elements to first HyperLogLog
-    redis.pfadd(key1, "element1", "element2", "element3");
+        // Add elements to first HyperLogLog
+        (void)co_await redis.pfadd(key1, "element1", "element2", "element3");
 
-    // Add elements to second HyperLogLog
-    redis.pfadd(key2, "element3", "element4", "element5");
+        // Add elements to second HyperLogLog
+        (void)co_await redis.pfadd(key2, "element3", "element4", "element5");
 
-    // Test counting single HyperLogLog
-    EXPECT_EQ(redis.pfcount(key1), 3);
+        // Test counting single HyperLogLog
+        auto reply1 = co_await redis.pfcount(key1);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 3);
 
-    // Test counting multiple HyperLogLogs (union)
-    EXPECT_EQ(redis.pfcount(key1, key2), 5);
+        // Test counting multiple HyperLogLogs (union)
+        auto reply2 = co_await redis.pfcount(key1, key2);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 5);
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test PFMERGE
-TEST_F(RedisHyperLogLogTest, SYNC_HYPERLOGLOG_PFMERGE) {
-    std::string key1    = test_key("pfmerge1");
-    std::string key2    = test_key("pfmerge2");
-    std::string destkey = test_key("pfmerge_dest");
+// Test PFMERGE with coroutines
+TEST_P(HyperLogLogProtocolModesTest, CORO_HYPERLOGLOG_PFMERGE) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        auto key1    = protocol_key("pfmerge1");
+        auto key2    = protocol_key("pfmerge2");
+        auto destkey = protocol_key("pfmerge_dest");
 
-    // Add elements to source HyperLogLogs
-    redis.pfadd(key1, "element1", "element2", "element3");
-    redis.pfadd(key2, "element3", "element4", "element5");
+        // Add elements to source HyperLogLogs
+        (void)co_await redis.pfadd(key1, "element1", "element2", "element3");
+        (void)co_await redis.pfadd(key2, "element3", "element4", "element5");
 
-    // Merge HyperLogLogs
-    EXPECT_TRUE(redis.pfmerge(destkey, key1, key2));
+        // Merge HyperLogLogs
+        auto reply = co_await redis.pfmerge(destkey, key1, key2);
+        EXPECT_TRUE(reply.ok());
+        EXPECT_TRUE(reply.result().ok());
 
-    // Verify merged result
-    EXPECT_EQ(redis.pfcount(destkey), 5);
+        // Verify merged result
+        auto count_reply = co_await redis.pfcount(destkey);
+        EXPECT_TRUE(count_reply.ok());
+        EXPECT_EQ(count_reply.result(), 5);
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-/*
- * ASYNCHRONOUS TESTS
- */
+TEST_P(HyperLogLogProtocolModesTest, PFADD_PFCOUNT) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(done);
+        auto k = protocol_key("hll");
+        (void)co_await redis.pfadd(k, "a", "b", "c");
+        auto count_r = co_await redis.pfcount(k);
+        EXPECT_TRUE(count_r.ok()) << count_r.error();
+        if (count_r.ok()) EXPECT_EQ(count_r.result(), 3);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(HyperLogLogProtocolModesTest, PFMERGE_STATUS) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(done);
+        auto k1 = protocol_key("pfmerge1");
+        auto k2 = protocol_key("pfmerge2");
+        auto dest = protocol_key("pfmerge_dest");
+        (void)co_await redis.pfadd(k1, "a", "b");
+        (void)co_await redis.pfadd(k2, "c", "d");
+        auto r = co_await redis.pfmerge(dest, k1, k2);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_TRUE(r.result().ok());
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
 
 // Test async PFADD
-TEST_F(RedisHyperLogLogTest, ASYNC_HYPERLOGLOG_PFADD) {
-    std::string key    = test_key("async_pfadd");
-    bool        result = false;
-
-    redis.pfadd([&](auto &&reply) { result = reply.ok(); }, key, "element1", "element2",
-                "element3");
-
-    redis.await();
-    EXPECT_TRUE(result);
-}
-
 // Test async PFCOUNT
-TEST_F(RedisHyperLogLogTest, ASYNC_HYPERLOGLOG_PFCOUNT) {
-    std::string key1  = test_key("async_pfcount1");
-    std::string key2  = test_key("async_pfcount2");
-    long long   count = 0;
-
-    // Add elements to HyperLogLogs
-    redis.pfadd(key1, "element1", "element2", "element3");
-    redis.pfadd(key2, "element3", "element4", "element5");
-
-    redis.pfcount([&](auto &&reply) { count = reply.result(); }, key1, key2);
-
-    redis.await();
-    EXPECT_EQ(count, 5);
-}
-
 // Test async PFMERGE
-TEST_F(RedisHyperLogLogTest, ASYNC_HYPERLOGLOG_PFMERGE) {
-    std::string key1    = test_key("async_pfmerge1");
-    std::string key2    = test_key("async_pfmerge2");
-    std::string destkey = test_key("async_pfmerge_dest");
-    bool        result  = false;
-
-    // Add elements to source HyperLogLogs
-    redis.pfadd(key1, "element1", "element2", "element3");
-    redis.pfadd(key2, "element3", "element4", "element5");
-
-    redis.pfmerge([&](auto &&reply) { result = reply.ok(); }, destkey, key1, key2);
-
-    redis.await();
-    EXPECT_TRUE(result);
-
-    // Verify merged result
-    long long count = 0;
-    redis.pfcount([&](auto &&reply) { count = reply.result(); }, destkey);
-
-    redis.await();
-    EXPECT_EQ(count, 5);
+// Main function to run the tests
+int
+main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }

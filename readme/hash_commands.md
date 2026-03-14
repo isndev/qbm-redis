@@ -1,6 +1,8 @@
 # `qbm-redis`: Hash Commands
 
-This document covers Redis commands operating on Hash values. Redis Hashes are maps between string fields and string values.
+This document covers Redis commands operating on Hash values.
+
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`). Redis Hashes are maps between string fields and string values.
 
 Reference: [Redis Hash Commands](https://redis.io/commands/?group=hash)
 

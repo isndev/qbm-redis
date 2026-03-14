@@ -18,727 +18,786 @@
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include "../redis.h"
-
-// Redis Configuration
-#define REDIS_URI {"tcp://localhost:6379"}
+#include "protocol_test_common.h"
 
 using namespace qb::io;
 using namespace std::chrono;
 using namespace qb::redis;
 
-// Generates unique key prefixes to avoid collisions between tests
-inline std::string
-key_prefix(const std::string &key = "") {
-    static int  counter = 0;
-    std::string prefix  = "qb::redis::string-test:" + std::to_string(++counter);
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
 
-    if (key.empty()) {
-        return prefix;
-    }
+class StringProtocolModesTest : public ProtocolModesTestBase {};
 
-    return prefix + ":" + key;
-}
-
-// Generates a test key
-inline std::string
-test_key(const std::string &k) {
-    return "{" + key_prefix() + "}::" + k;
-}
-
-// Checks connection and cleans environment before tests
-class RedisTest : public ::testing::Test {
-protected:
-    qb::redis::tcp::client redis{REDIS_URI};
-
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Unable to connect to Redis");
-
-        // Wait for connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
-    }
-};
+INSTANTIATE_PROTOCOL_MODES(StringProtocolModesTest);
 
 /*
- * SYNCHRONOUS TESTS
+ * COROUTINE TESTS
  */
 
-// Test APPEND command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_APPEND) {
-    std::string key = test_key("append");
-
-    // Test basic append
-    EXPECT_EQ(redis.append(key, "Hello"), 5);
-    EXPECT_EQ(redis.append(key, " World"), 11);
-
-    // Verify the final value
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "Hello World");
-}
-
-// Test DECR/DECRBY commands
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_DECR) {
-    std::string key = test_key("decr");
-
-    // Set initial value
-    redis.set(key, "10");
-
-    // Test DECR
-    EXPECT_EQ(redis.decr(key), 9);
-    EXPECT_EQ(redis.decr(key), 8);
-
-    // Test DECRBY
-    EXPECT_EQ(redis.decrby(key, 3), 5);
-    EXPECT_EQ(redis.decrby(key, 2), 3);
-
-    // Test with non-existent key
-    std::string new_key = test_key("decr_new");
-    EXPECT_EQ(redis.decr(new_key), -1);
-    EXPECT_EQ(redis.decrby(new_key, 5), -6);
-}
-
-// Test GET/GETRANGE commands
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_GET) {
-    std::string key   = test_key("get");
-    std::string value = "Hello World";
-
-    // Set value
-    redis.set(key, value);
-
-    // Test GET
-    auto result = redis.get(key);
-    EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(*result, value);
-
-    // Test GET with non-existent key
-    auto empty = redis.get(test_key("nonexistent"));
-    EXPECT_FALSE(empty.has_value());
-
-    // Test GETRANGE
-    EXPECT_EQ(redis.getrange(key, 0, 4), "Hello");
-    EXPECT_EQ(redis.getrange(key, 6, 10), "World");
-    EXPECT_EQ(redis.getrange(key, -5, -1), "World");
-}
-
-// Test GETSET command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_GETSET) {
-    std::string key = test_key("getset");
-
-    // Test with non-existent key
-    auto result = redis.getset(key, "new_value");
-    EXPECT_FALSE(result.has_value());
-
-    // Test with existing key
-    redis.set(key, "old_value");
-    result = redis.getset(key, "new_value");
-    EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(*result, "old_value");
-
-    // Verify new value
-    auto current = redis.get(key);
-    EXPECT_TRUE(current.has_value());
-    EXPECT_EQ(*current, "new_value");
-}
-
-// Test INCR/INCRBY commands
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_INCR) {
-    std::string key = test_key("incr");
-
-    // Test INCR
-    EXPECT_EQ(redis.incr(key), 1);
-    EXPECT_EQ(redis.incr(key), 2);
-
-    // Test INCRBY
-    EXPECT_EQ(redis.incrby(key, 3), 5);
-    EXPECT_EQ(redis.incrby(key, 2), 7);
-
-    // Test with non-existent key
-    std::string new_key = test_key("incr_new");
-    EXPECT_EQ(redis.incr(new_key), 1);
-    EXPECT_EQ(redis.incrby(new_key, 5), 6);
-}
-
-// Test INCRBYFLOAT command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_INCRBYFLOAT) {
-    std::string key = test_key("incrbyfloat");
-
-    // Set initial value
-    redis.set(key, "10.5");
-
-    // Test increment
-    EXPECT_DOUBLE_EQ(redis.incrbyfloat(key, 0.1), 10.6);
-    EXPECT_DOUBLE_EQ(redis.incrbyfloat(key, 0.5), 11.1);
-
-    // Test with non-existent key
-    std::string new_key = test_key("incrbyfloat_new");
-    EXPECT_DOUBLE_EQ(redis.incrbyfloat(new_key, 1.5), 1.5);
-}
-
-// Test MGET/MSET commands
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_MGET_MSET) {
-    std::string key1 = test_key("mget1");
-    std::string key2 = test_key("mget2");
-    std::string key3 = test_key("mget3");
-
-    // Test MSET
-    EXPECT_TRUE(redis.mset({{key1, "value1"}, {key2, "value2"}, {key3, "value3"}}));
-
-    // Test MGET
-    auto results = redis.mget({key1, key2, key3, test_key("nonexistent")});
-    EXPECT_EQ(results.size(), 4);
-    EXPECT_EQ(results[0], "value1");
-    EXPECT_EQ(results[1], "value2");
-    EXPECT_EQ(results[2], "value3");
-    EXPECT_FALSE(results[3].has_value());
-}
-
-// Test MSETNX command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_MSETNX) {
-    std::string key1 = test_key("msetnx1");
-    std::string key2 = test_key("msetnx2");
-    std::string key3 = test_key("msetnx3");
-
-    // Test successful MSETNX
-    EXPECT_TRUE(redis.msetnx({{key1, "value1"}, {key2, "value2"}}));
-
-    // Test failed MSETNX (key already exists)
-    EXPECT_FALSE(redis.msetnx({{key1, "new_value1"}, {key3, "value3"}}));
-
-    // Verify values
-    auto value1 = redis.get(key1);
-    auto value2 = redis.get(key2);
-    auto value3 = redis.get(key3);
-
-    EXPECT_TRUE(value1.has_value());
-    EXPECT_TRUE(value2.has_value());
-    EXPECT_FALSE(value3.has_value());
-    EXPECT_EQ(*value1, "value1");
-    EXPECT_EQ(*value2, "value2");
-}
-
-// Test PSETEX command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_PSETEX) {
-    std::string key = test_key("psetex");
-
-    // Test with milliseconds
-    EXPECT_TRUE(redis.psetex(key, 1000, "value"));
-
-    // Verify value exists
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "value");
-
-    // Wait for expiration
-    std::this_thread::sleep_for(milliseconds(1100));
-
-    // Verify value is gone
-    value = redis.get(key);
-    EXPECT_FALSE(value.has_value());
-}
-
-// Test SET command with various options
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_SET) {
-    std::string key = test_key("set");
-
-    // Test basic SET
-    EXPECT_TRUE(redis.set(key, "value"));
-
-    // Test SET with expiration
-    EXPECT_TRUE(redis.set(key, "value2", 1));
-    std::this_thread::sleep_for(seconds(2));
-    auto value = redis.get(key);
-    EXPECT_FALSE(value.has_value());
-
-    // Test SET with NX option
-    EXPECT_TRUE(redis.set(key, "value3", UpdateType::NOT_EXIST));
-    EXPECT_THROW(redis.set(key, "value4", UpdateType::NOT_EXIST), std::runtime_error);
-
-    // Test SET with XX option
-    EXPECT_TRUE(redis.set(key, "value5", UpdateType::EXIST));
-    EXPECT_THROW(redis.set(test_key("nonexistent"), "value6", UpdateType::EXIST),
-                 std::runtime_error);
-}
-
-// Test SETEX command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_SETEX) {
-    std::string key = test_key("setex");
-
-    // Test SETEX
-    EXPECT_TRUE(redis.setex(key, 1, "value"));
-
-    // Verify value exists
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "value");
-
-    // Wait for expiration
-    std::this_thread::sleep_for(seconds(2));
-
-    // Verify value is gone
-    value = redis.get(key);
-    EXPECT_FALSE(value.has_value());
-}
-
-// Test SETNX command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_SETNX) {
-    std::string key = test_key("setnx");
-
-    // Test SETNX
-    EXPECT_TRUE(redis.setnx(key, "value1"));
-    EXPECT_FALSE(redis.setnx(key, "value2"));
-
-    // Verify value
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "value1");
-}
-
-// Test SETRANGE command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_SETRANGE) {
-    std::string key = test_key("setrange");
-
-    // Set initial value
-    redis.set(key, "Hello World");
-
-    // Test SETRANGE
-    EXPECT_EQ(redis.setrange(key, 6, "Redis"), 11);
-
-    // Verify result
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "Hello Redis");
-}
-
-// Test STRLEN command
-TEST_F(RedisTest, SYNC_STRING_COMMANDS_STRLEN) {
-    std::string key = test_key("strlen");
-
-    // Test with existing key
-    redis.set(key, "Hello World");
-    EXPECT_EQ(redis.strlen(key), 11);
-
-    // Test with non-existent key
-    EXPECT_EQ(redis.strlen(test_key("nonexistent")), 0);
-}
-
-/*
- * ASYNCHRONOUS TESTS
- */
-
-// Test async APPEND command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_APPEND) {
-    std::string key              = test_key("async_append");
-    bool        append_completed = false;
-
-    redis.append(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 5);
-            append_completed = true;
-        },
-        key, "Hello");
-
-    redis.await();
-    EXPECT_TRUE(append_completed);
-
-    // Verify the value
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "Hello");
-}
-
-// Test async DECR/DECRBY commands
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_DECR) {
-    std::string key              = test_key("async_decr");
-    bool        decr_completed   = false;
-    bool        decrby_completed = false;
-
-    // Set initial value
-    redis.set(key, "10");
-
-    redis.decr(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 9);
-            decr_completed = true;
-        },
-        key);
-
-    redis.decrby(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 6);
-            decrby_completed = true;
-        },
-        key, 3);
-
-    redis.await();
-    EXPECT_TRUE(decr_completed);
-    EXPECT_TRUE(decrby_completed);
-}
-
-// Test async GET/GETRANGE commands
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_GET) {
-    std::string key                = test_key("async_get");
-    bool        get_completed      = false;
-    bool        getrange_completed = false;
-
-    // Set value
-    redis.set(key, "Hello World");
-
-    redis.get(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_TRUE(reply.result().has_value());
-            EXPECT_EQ(*reply.result(), "Hello World");
-            get_completed = true;
-        },
-        key);
-
-    redis.getrange(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), "Hello");
-            getrange_completed = true;
-        },
-        key, 0, 4);
-
-    redis.await();
-    EXPECT_TRUE(get_completed);
-    EXPECT_TRUE(getrange_completed);
-}
-
-// Test async GETSET command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_GETSET) {
-    std::string key              = test_key("async_getset");
-    bool        getset_completed = false;
-
-    // Set initial value
-    redis.set(key, "old_value");
-
-    redis.getset(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_TRUE(reply.result().has_value());
-            EXPECT_EQ(*reply.result(), "old_value");
-            getset_completed = true;
-        },
-        key, "new_value");
-
-    redis.await();
-    EXPECT_TRUE(getset_completed);
-
-    // Verify new value
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "new_value");
-}
-
-// Test async INCR/INCRBY commands
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_INCR) {
-    std::string key              = test_key("async_incr");
-    bool        incr_completed   = false;
-    bool        incrby_completed = false;
-
-    redis.incr(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 1);
-            incr_completed = true;
-        },
-        key);
-
-    redis.incrby(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 4);
-            incrby_completed = true;
-        },
-        key, 3);
-
-    redis.await();
-    EXPECT_TRUE(incr_completed);
-    EXPECT_TRUE(incrby_completed);
-}
-
-// Test async INCRBYFLOAT command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_INCRBYFLOAT) {
-    std::string key                   = test_key("async_incrbyfloat");
-    bool        incrbyfloat_completed = false;
-
-    // Set initial value
-    redis.set(key, "10.5");
-
-    redis.incrbyfloat(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_DOUBLE_EQ(reply.result(), 11.0);
-            incrbyfloat_completed = true;
-        },
-        key, 0.5);
-
-    redis.await();
-    EXPECT_TRUE(incrbyfloat_completed);
-}
-
-// Test async MGET/MSET commands
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_MGET_MSET) {
-    std::string key1           = test_key("async_mget1");
-    std::string key2           = test_key("async_mget2");
-    bool        mset_completed = false;
-    bool        mget_completed = false;
-
-    redis.mset(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            mset_completed = true;
-        },
-        {{key1, "value1"}, {key2, "value2"}});
-
-    redis.await();
-    EXPECT_TRUE(mset_completed);
-
-    redis.mget(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result().size(), 2);
-            EXPECT_EQ(reply.result()[0], "value1");
-            EXPECT_EQ(reply.result()[1], "value2");
-            mget_completed = true;
-        },
-        {key1, key2});
-
-    redis.await();
-    EXPECT_TRUE(mget_completed);
-}
-
-// Test async MSETNX command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_MSETNX) {
-    std::string key1             = test_key("async_msetnx1");
-    std::string key2             = test_key("async_msetnx2");
-    bool        msetnx_completed = false;
-
-    redis.msetnx(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            msetnx_completed = true;
-        },
-        {{key1, "value1"}, {key2, "value2"}});
-
-    redis.await();
-    EXPECT_TRUE(msetnx_completed);
-
-    // Verify values
-    auto value1 = redis.get(key1);
-    auto value2 = redis.get(key2);
-    EXPECT_TRUE(value1.has_value());
-    EXPECT_TRUE(value2.has_value());
-    EXPECT_EQ(*value1, "value1");
-    EXPECT_EQ(*value2, "value2");
-}
-
-// Test async PSETEX command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_PSETEX) {
-    std::string key              = test_key("async_psetex");
-    bool        psetex_completed = false;
-
-    redis.psetex(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            psetex_completed = true;
-        },
-        key, 1000, "value");
-
-    redis.await();
-    EXPECT_TRUE(psetex_completed);
-
-    // Verify value exists
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "value");
-
-    // Wait for expiration
-    std::this_thread::sleep_for(milliseconds(1100));
-
-    // Verify value is gone
-    value = redis.get(key);
-    EXPECT_FALSE(value.has_value());
-}
-
-// Test async SET command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_SET) {
-    std::string key           = test_key("async_set");
-    bool        set_completed = false;
-
-    redis.set(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            set_completed = true;
-        },
-        key, "value", 1);
-
-    redis.await();
-    EXPECT_TRUE(set_completed);
-
-    // Verify value exists
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "value");
-
-    // Wait for expiration
-    std::this_thread::sleep_for(seconds(2));
-
-    // Verify value is gone
-    value = redis.get(key);
-    EXPECT_FALSE(value.has_value());
-}
-
-// Test async SETEX command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_SETEX) {
-    std::string key             = test_key("async_setex");
-    bool        setex_completed = false;
-
-    redis.setex(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            setex_completed = true;
-        },
-        key, 1, "value");
-
-    redis.await();
-    EXPECT_TRUE(setex_completed);
-
-    // Verify value exists
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "value");
-
-    // Wait for expiration
-    std::this_thread::sleep_for(seconds(2));
-
-    // Verify value is gone
-    value = redis.get(key);
-    EXPECT_FALSE(value.has_value());
-}
-
-// Test async SETNX command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_SETNX) {
-    std::string key             = test_key("async_setnx");
-    bool        setnx_completed = false;
-
-    redis.setnx(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            setnx_completed = true;
-        },
-        key, "value");
-
-    redis.await();
-    EXPECT_TRUE(setnx_completed);
-
-    // Verify value
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "value");
-}
-
-// Test async SETRANGE command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_SETRANGE) {
-    std::string key                = test_key("async_setrange");
-    bool        setrange_completed = false;
-
-    // Set initial value
-    redis.set(key, "Hello World");
-
-    redis.setrange(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 11);
-            setrange_completed = true;
-        },
-        key, 6, "Redis");
-
-    redis.await();
-    EXPECT_TRUE(setrange_completed);
-
-    // Verify result
-    auto value = redis.get(key);
-    EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(*value, "Hello Redis");
-}
-
-// Test async STRLEN command
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_STRLEN) {
-    std::string key              = test_key("async_strlen");
-    bool        strlen_completed = false;
-
-    // Set value
-    redis.set(key, "Hello World");
-
-    redis.strlen(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 11);
-            strlen_completed = true;
-        },
-        key);
-
-    redis.await();
-    EXPECT_TRUE(strlen_completed);
-}
-
-// Test command chaining
-TEST_F(RedisTest, ASYNC_STRING_COMMANDS_CHAINING) {
-    std::string key                    = test_key("string_chaining");
-    bool        all_commands_completed = false;
-    int         command_count          = 0;
-
-    // Setup callback to track completion
-    auto completion_callback = [&command_count, &all_commands_completed](auto &&) {
-        if (++command_count == 3) {
-            all_commands_completed = true;
-        }
+// Test APPEND command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_APPEND) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("append");
+
+        // Test basic append with co_await
+        auto reply1 = co_await redis.append(key, "Hello");
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 5);
+
+        auto reply2 = co_await redis.append(key, " World");
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 11);
+
+        // Verify the final value
+        auto reply3 = co_await redis.get(key);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_TRUE(reply3.result().has_value());
+        EXPECT_EQ(*reply3.result(), "Hello World");
+
+        completed = true;
     };
 
-    // Chain multiple commands
-    redis.set(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            completion_callback(reply);
-        },
-        key, "value");
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
 
-    redis.append(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_EQ(reply.result(), 14);
-            completion_callback(reply);
-        },
-        key, " appended");
+// Test DECR/DECRBY commands (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_DECR) {
+    bool completed = false;
 
-    redis.get(
-        [&](auto &&reply) {
-            EXPECT_TRUE(reply.ok());
-            EXPECT_TRUE(reply.result().has_value());
-            EXPECT_EQ(*reply.result(), "value appended");
-            completion_callback(reply);
-        },
-        key);
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("decr");
 
-    // Trigger the async operations and wait for completion
-    redis.await();
-    EXPECT_TRUE(all_commands_completed);
+        // Set initial value
+        (void)co_await redis.set(key, "10");
+
+        // Test DECR with co_await
+        auto reply1 = co_await redis.decr(key);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 9);
+
+        auto reply2 = co_await redis.decr(key);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 8);
+
+        // Test DECRBY
+        auto reply3 = co_await redis.decrby(key, 3);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_EQ(reply3.result(), 5);
+
+        auto reply4 = co_await redis.decrby(key, 2);
+        EXPECT_TRUE(reply4.ok());
+        EXPECT_EQ(reply4.result(), 3);
+
+        // Test with non-existent key
+        std::string new_key = protocol_key("decr_new");
+        auto reply5 = co_await redis.decr(new_key);
+        EXPECT_TRUE(reply5.ok());
+        EXPECT_EQ(reply5.result(), -1);
+
+        auto reply6 = co_await redis.decrby(new_key, 5);
+        EXPECT_TRUE(reply6.ok());
+        EXPECT_EQ(reply6.result(), -6);
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test GET/GETRANGE commands (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_GET) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key   = protocol_key("get");
+        std::string value = "Hello World";
+
+        // Set value
+        (void)co_await redis.set(key, value);
+
+        // Test GET
+        auto reply1 = co_await redis.get(key);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_TRUE(reply1.result().has_value());
+        EXPECT_EQ(*reply1.result(), value);
+
+        // Test GET with non-existent key
+        auto reply2 = co_await redis.get(protocol_key("nonexistent"));
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_FALSE(reply2.result().has_value());
+
+        // Test GETRANGE
+        auto reply3 = co_await redis.getrange(key, 0, 4);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_EQ(reply3.result(), "Hello");
+
+        auto reply4 = co_await redis.getrange(key, 6, 10);
+        EXPECT_TRUE(reply4.ok());
+        EXPECT_EQ(reply4.result(), "World");
+
+        auto reply5 = co_await redis.getrange(key, -5, -1);
+        EXPECT_TRUE(reply5.ok());
+        EXPECT_EQ(reply5.result(), "World");
+
+        // Test SUBSTR (deprecated alias for GETRANGE)
+        auto reply6 = co_await redis.substr(key, 0, 4);
+        EXPECT_TRUE(reply6.ok());
+        EXPECT_EQ(reply6.result(), "Hello");
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test GETSET command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_GETSET) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("getset");
+
+        // Test with non-existent key
+        auto reply1 = co_await redis.getset(key, "new_value");
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_FALSE(reply1.result().has_value());
+
+        // Test with existing key
+        (void)co_await redis.set(key, "old_value");
+        auto reply2 = co_await redis.getset(key, "new_value");
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_TRUE(reply2.result().has_value());
+        EXPECT_EQ(*reply2.result(), "old_value");
+
+        // Verify new value
+        auto reply3 = co_await redis.get(key);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_TRUE(reply3.result().has_value());
+        EXPECT_EQ(*reply3.result(), "new_value");
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test INCR/INCRBY commands (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_INCR) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("incr");
+
+        // Test INCR
+        auto reply1 = co_await redis.incr(key);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 1);
+
+        auto reply2 = co_await redis.incr(key);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 2);
+
+        // Test INCRBY
+        auto reply3 = co_await redis.incrby(key, 3);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_EQ(reply3.result(), 5);
+
+        auto reply4 = co_await redis.incrby(key, 2);
+        EXPECT_TRUE(reply4.ok());
+        EXPECT_EQ(reply4.result(), 7);
+
+        // Test with non-existent key
+        std::string new_key = protocol_key("incr_new");
+        auto reply5 = co_await redis.incr(new_key);
+        EXPECT_TRUE(reply5.ok());
+        EXPECT_EQ(reply5.result(), 1);
+
+        auto reply6 = co_await redis.incrby(new_key, 5);
+        EXPECT_TRUE(reply6.ok());
+        EXPECT_EQ(reply6.result(), 6);
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test INCRBYFLOAT command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_INCRBYFLOAT) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("incrbyfloat");
+
+        // Set initial value
+        (void)co_await redis.set(key, "10.5");
+
+        // Test increment
+        auto reply1 = co_await redis.incrbyfloat(key, 0.1);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_DOUBLE_EQ(reply1.result(), 10.6);
+
+        auto reply2 = co_await redis.incrbyfloat(key, 0.5);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_DOUBLE_EQ(reply2.result(), 11.1);
+
+        // Test with non-existent key
+        std::string new_key = protocol_key("incrbyfloat_new");
+        auto reply3 = co_await redis.incrbyfloat(new_key, 1.5);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_DOUBLE_EQ(reply3.result(), 1.5);
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test MGET/MSET commands (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_MGET_MSET) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key1 = protocol_key("mget1");
+        std::string key2 = protocol_key("mget2");
+        std::string key3 = protocol_key("mget3");
+
+        // Test MSET
+        auto reply1 = co_await redis.mset({{key1, "value1"}, {key2, "value2"}, {key3, "value3"}});
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), "OK");
+
+        // Test MGET
+        auto reply2 = co_await redis.mget({key1, key2, key3, protocol_key("nonexistent")});
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result().size(), 4);
+        EXPECT_EQ(reply2.result()[0], "value1");
+        EXPECT_EQ(reply2.result()[1], "value2");
+        EXPECT_EQ(reply2.result()[2], "value3");
+        EXPECT_FALSE(reply2.result()[3].has_value());
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test MSETNX command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_MSETNX) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key1 = protocol_key("msetnx1");
+        std::string key2 = protocol_key("msetnx2");
+        std::string key3 = protocol_key("msetnx3");
+
+        // Test successful MSETNX
+        auto reply1 = co_await redis.msetnx({{key1, "value1"}, {key2, "value2"}});
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), true);
+
+        // Test failed MSETNX (key already exists)
+        auto reply2 = co_await redis.msetnx({{key1, "new_value1"}, {key3, "value3"}});
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), false);
+
+        // Verify values
+        auto reply3 = co_await redis.get(key1);
+        auto reply4 = co_await redis.get(key2);
+        auto reply5 = co_await redis.get(key3);
+
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_TRUE(reply4.ok());
+        EXPECT_TRUE(reply5.ok());
+        EXPECT_TRUE(reply3.result().has_value());
+        EXPECT_TRUE(reply4.result().has_value());
+        EXPECT_FALSE(reply5.result().has_value());
+        EXPECT_EQ(*reply3.result(), "value1");
+        EXPECT_EQ(*reply4.result(), "value2");
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test PSETEX command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_PSETEX) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("psetex");
+
+        // Test with milliseconds
+        auto reply1 = co_await redis.psetex(key, 1000, "value");
+        EXPECT_TRUE(reply1.ok());
+
+        // Verify value exists
+        auto reply2 = co_await redis.get(key);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_TRUE(reply2.result().has_value());
+        EXPECT_EQ(*reply2.result(), "value");
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test SET command with various options (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_SET) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("set");
+
+        // Test basic SET
+        auto reply1 = co_await redis.set(key, "value");
+        EXPECT_TRUE(reply1.ok());
+
+        // Test SET with expiration
+        auto reply2 = co_await redis.set(key, "value2", 1000);
+        EXPECT_TRUE(reply2.ok());
+
+        // Test SET with NX option
+        std::string key2 = protocol_key("set_nx");
+        auto reply3 = co_await redis.set(key2, "value3", UpdateType::NOT_EXIST);
+        EXPECT_TRUE(reply3.ok());
+
+        // Test SET with XX option
+        auto reply4 = co_await redis.set(key, "value5", UpdateType::EXIST);
+        EXPECT_TRUE(reply4.ok());
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test SETEX command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_SETEX) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("setex");
+
+        // Test SETEX
+        auto reply1 = co_await redis.setex(key, 1, "value");
+        EXPECT_TRUE(reply1.ok());
+
+        // Verify value exists
+        auto reply2 = co_await redis.get(key);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_TRUE(reply2.result().has_value());
+        EXPECT_EQ(*reply2.result(), "value");
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test SETNX command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_SETNX) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("setnx");
+
+        // Test SETNX
+        auto reply1 = co_await redis.setnx(key, "value1");
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), true);
+
+        auto reply2 = co_await redis.setnx(key, "value2");
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), false);
+
+        // Verify value
+        auto reply3 = co_await redis.get(key);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_TRUE(reply3.result().has_value());
+        EXPECT_EQ(*reply3.result(), "value1");
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test SETRANGE command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_SETRANGE) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("setrange");
+
+        // Set initial value
+        (void)co_await redis.set(key, "Hello World");
+
+        // Test SETRANGE
+        auto reply1 = co_await redis.setrange(key, 6, "Redis");
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 11);
+
+        // Verify result
+        auto reply2 = co_await redis.get(key);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_TRUE(reply2.result().has_value());
+        EXPECT_EQ(*reply2.result(), "Hello Redis");
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test STRLEN command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_STRLEN) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("strlen");
+
+        // Test with existing key
+        (void)co_await redis.set(key, "Hello World");
+        auto reply1 = co_await redis.strlen(key);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_EQ(reply1.result(), 11);
+
+        // Test with non-existent key
+        auto reply2 = co_await redis.strlen(protocol_key("nonexistent"));
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_EQ(reply2.result(), 0);
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test GETDEL command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_GETDEL) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("getdel");
+
+        // GETDEL on non-existent key returns nullopt
+        auto reply1 = co_await redis.getdel(protocol_key("nonexistent_getdel"));
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_FALSE(reply1.result().has_value());
+
+        // Set and then GETDEL
+        (void)co_await redis.set(key, "to_delete");
+        auto reply2 = co_await redis.getdel(key);
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_TRUE(reply2.result().has_value());
+        EXPECT_EQ(*reply2.result(), "to_delete");
+
+        // Key should no longer exist
+        auto ex_reply = co_await redis.exists(key);
+        EXPECT_EQ(ex_reply.result(), 0);
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test GETEX command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_GETEX) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("getex");
+
+        (void)co_await redis.set(key, "value");
+
+        // GETEX with TTL (milliseconds integer)
+        auto reply1 = co_await redis.getex(key, 5000LL);
+        EXPECT_TRUE(reply1.ok());
+        EXPECT_TRUE(reply1.result().has_value());
+        EXPECT_EQ(*reply1.result(), "value");
+
+        // Verify TTL was set
+        auto pttl_reply = co_await redis.pttl(key);
+        EXPECT_TRUE(pttl_reply.ok());
+        EXPECT_GT(pttl_reply.result(), 0);
+
+        // GETEX with chrono overload
+        auto reply2 = co_await redis.getex(key, std::chrono::milliseconds{10000});
+        EXPECT_TRUE(reply2.ok());
+        EXPECT_TRUE(reply2.result().has_value());
+        EXPECT_EQ(*reply2.result(), "value");
+
+        // GETEX on non-existent key returns nullopt
+        auto reply3 = co_await redis.getex(protocol_key("nonexistent_getex"), 1000LL);
+        EXPECT_TRUE(reply3.ok());
+        EXPECT_FALSE(reply3.result().has_value());
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test LCS command (coroutine version)
+TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_LCS) {
+    bool completed = false;
+
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key1 = protocol_key("lcs1");
+        std::string key2 = protocol_key("lcs2");
+
+        (void)co_await redis.set(key1, "ohmytext");
+        (void)co_await redis.set(key2, "mynewtext");
+
+        // LCS basic: longest common substring
+        auto reply = co_await redis.lcs(key1, key2);
+        EXPECT_TRUE(reply.ok());
+        // "mytext" is the LCS
+        EXPECT_EQ(reply.result(), "mytext");
+
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+TEST_P(StringProtocolModesTest, SET_GET) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("set_get");
+        (void)co_await redis.set(k, "val");
+        auto r = co_await redis.get(k);
+        EXPECT_TRUE(r.ok()) << r.error();
+        EXPECT_TRUE(r.result().has_value());
+        if (r.result()) EXPECT_EQ(*r.result(), "val");
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, GET_MISSING_KEY) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto r = co_await redis.get(protocol_key("nonexistent"));
+        EXPECT_TRUE(r.ok()) << r.error();
+        EXPECT_FALSE(r.result().has_value());
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, MSET_MGET) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k1 = protocol_key("mset1");
+        auto k2 = protocol_key("mset2");
+        (void)co_await redis.mset({{k1, "a"}, {k2, "b"}});
+        auto r = co_await redis.mget({k1, k2});
+        EXPECT_TRUE(r.ok()) << r.error();
+        auto v = r.result();
+        EXPECT_EQ(v.size(), 2u);
+        if (v.size() >= 2) {
+            EXPECT_TRUE(v[0].has_value());
+            EXPECT_TRUE(v[1].has_value());
+            if (v[0]) EXPECT_EQ(*v[0], "a");
+            if (v[1]) EXPECT_EQ(*v[1], "b");
+        }
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, APPEND) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("append");
+        (void)co_await redis.append(k, "Hello");
+        auto r = co_await redis.append(k, " World");
+        EXPECT_TRUE(r.ok()) << r.error();
+        EXPECT_EQ(r.result(), 11);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, INCR_DECR) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("incr_decr");
+        (void)co_await redis.set(k, "10");
+        auto r1 = co_await redis.incr(k);
+        EXPECT_TRUE(r1.ok()) << r1.error();
+        EXPECT_EQ(r1.result(), 11);
+        auto r2 = co_await redis.decr(k);
+        EXPECT_TRUE(r2.ok()) << r2.error();
+        EXPECT_EQ(r2.result(), 10);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, INCRBYFLOAT_DOUBLE) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("incrbyfloat");
+        (void)co_await redis.set(k, "1.5");
+        auto r = co_await redis.incrbyfloat(k, 0.5);
+        EXPECT_TRUE(r.ok()) << r.error();
+        EXPECT_DOUBLE_EQ(r.result(), 2.0);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, STRLEN_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("strlen");
+        (void)co_await redis.set(k, "hello");
+        auto r = co_await redis.strlen(k);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), 5);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, SETEX_STATUS) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("setex");
+        auto r = co_await redis.setex(k, 60, "val");
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_TRUE(r.result().ok());
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, GETRANGE_STRING) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("getrange");
+        (void)co_await redis.set(k, "hello");
+        auto r = co_await redis.getrange(k, 0, 2);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), "hel");
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, SUBSTR_STRING) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("substr");
+        (void)co_await redis.set(k, "HelloWorld");
+        auto r = co_await redis.substr(k, 0, 4);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), "Hello");
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+TEST_P(StringProtocolModesTest, DECR_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("decr");
+        (void)co_await redis.set(k, "10");
+        auto r = co_await redis.decr(k);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), 9);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Main function to run the tests

@@ -4,490 +4,313 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Redis-6%2B-red.svg" alt="Redis"/>
-  <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17"/>
+  <img src="https://img.shields.io/badge/C%2B%2B-23-blue.svg" alt="C++23"/>
   <img src="https://img.shields.io/badge/Cross--Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg" alt="Cross Platform"/>
   <img src="https://img.shields.io/badge/Arch-x86__64%20%7C%20ARM64-lightgrey.svg" alt="Architecture"/>
   <img src="https://img.shields.io/badge/SSL-TLS-green.svg" alt="SSL/TLS"/>
+  <img src="https://img.shields.io/badge/Protocol-RESP2%20%7C%20RESP3-orange.svg" alt="RESP2/RESP3"/>
   <img src="https://img.shields.io/badge/License-Apache%202.0-green.svg" alt="License"/>
 </p>
 
-`qbm-redis` delivers comprehensive Redis capabilities to the QB Actor Framework, providing both synchronous and asynchronous APIs for all major Redis operations. Built on QB's non-blocking I/O foundation, it enables high-performance Redis interactions without actor blocking, perfect for caching, pub/sub messaging, and real-time data processing.
+`qbm-redis` delivers comprehensive Redis capabilities to the QB Actor Framework. It provides a **coroutine-first** API with full C++23 support, native RESP2/RESP3 protocol parsing (zero external Redis dependencies), and callback fallback for legacy code. Built on QB's non-blocking I/O, it enables high-performance Redis interactions without blocking the event loop.
 
-## Quick Integration with QB
+**There is no simpler or more complete Redis client in C++ today** — zero external dependencies, full protocol support, and a single, elegant API.
 
-### Adding to Your QB Project
+## Key Features
 
-```bash
-# Add the module as a submodule
-git submodule add https://github.com/isndev/qbm-redis qbm/redis
-```
+- **Native Protocol Parser**: Zero-copy RESP2/RESP3 parsing, no hiredis or external Redis libraries
+- **Coroutine-First API**: `co_await redis.get("key")` — true async without blocking
+- **Dual API**: Coroutines (`co_await`) and callbacks (`redis.cmd(callback, ...)`) — same method names
+- **RESP2 & RESP3**: Full support; use `hello(3)` to switch to RESP3
+- **Auto-Reconnect**: Configurable retry policy with backoff
+- **Type-Safe**: `qb::redis::Reply<T>` with `ok()`, `result()`, `error()`
+- **Elegant API**: `if (r)` instead of `if (r.ok())`; `r.value_or("")` for optional results — no verbose `.has_value()` checks
+
+## Quick Integration
 
 ### CMake Setup
 
 ```cmake
-# QB framework setup
-add_subdirectory(qb)
-include_directories(${QB_PATH}/include)
-
-# Load QB modules (automatically discovers qbm-redis)
 qb_load_modules("${CMAKE_CURRENT_SOURCE_DIR}/qbm")
-
-# Link against the Redis module
 target_link_libraries(your_target PRIVATE qbm::redis)
 ```
 
-### Include and Use
+### Include
 
 ```cpp
 #include <redis/redis.h>
 ```
 
-## Why Choose `qbm-redis`?
-
-**Complete Redis Coverage**: Supports all major Redis data types, commands, and features including pub/sub, streams, scripting, and clustering.
-
-**Dual API Design**: Both asynchronous (perfect for actors) and synchronous APIs for maximum flexibility across different use cases.
-
-**Type-Safe Operations**: Strongly typed Redis operations with automatic serialization/deserialization for C++ types.
-
-**Performance Optimized**: Connection pooling, pipelining support, and zero-copy operations where possible.
-
-**Cross-Platform**: Same code runs on Linux, macOS, Windows (x86_64, ARM64) with identical performance.
-
-## Quick Start: Your First Redis Actor
+## Quick Start: Coroutine-Based
 
 ```cpp
+#include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include <redis/redis.h>
-#include <qb/main.h>
 
-class CacheActor : public qb::Actor {
-    qb::redis::tcp::client _redis{{"tcp://localhost:6379"}};
-    
-public:
-    bool onInit() override {
-        if (!_redis.connect()) {
-            qb::io::cout() << "Failed to connect to Redis" << std::endl;
-            return false;
-        }
-        
-        qb::io::cout() << "Connected to Redis successfully!" << std::endl;
-        
-        // Basic SET operation
-        if (!_redis.set("greeting", "Hello Redis!")) {
-            qb::io::cout() << "SET operation failed" << std::endl;
-            return false;
-        }
-        qb::io::cout() << "Key set successfully!" << std::endl;
-        
-        // Basic GET operation
-        auto value = _redis.get("greeting");
-        if (value.has_value()) {
-            qb::io::cout() << "Retrieved: " << *value << std::endl;
-        } else {
-            qb::io::cout() << "Key not found" << std::endl;
-        }
-        
-        // Cleanup
-        _redis.del("greeting");
-        kill(); // Done
-        
-        return true;
+qb::io::async::task<void> redis_example() {
+    qb::redis::tcp::client redis{qb::io::uri{"tcp://localhost:6379"}};
+
+    if (!co_await redis.connect()) {
+        qb::io::cerr() << "Connection failed" << std::endl;
+        co_return;
     }
-};
 
-int main() {
-    qb::Main engine;
-    engine.addActor<CacheActor>(0);
-    engine.start();
-    return 0;
+    // Optional: switch to RESP3
+    // co_await redis.hello(3);
+
+    auto set_r = co_await redis.set("greeting", "Hello Redis!");
+    if (!set_r) { /* handle error */ }
+
+    auto val = (co_await redis.get("greeting")).value_or("");
+    if (!val.empty()) qb::io::cout() << "Retrieved: " << val << std::endl;
+
+    co_await redis.del(std::vector<std::string>{"greeting"});
 }
 ```
 
-That's it! Clean, actor-based Redis operations with full synchronous support.
+## Blocking Usage (Tests, Scripts)
+
+```cpp
+#include <qb/io/async.h>
+#include <redis/redis.h>
+
+int main() {
+    qb::io::async::init();
+
+    qb::redis::tcp::client redis{qb::io::uri{"tcp://localhost:6379"}};
+    if (!qb::io::async::run_sync(redis.connect())) {
+        return 1;
+    }
+
+    auto set_r = qb::io::async::run_sync(redis.set("key", "value"));
+    auto get_r = qb::io::async::run_sync(redis.get("key"));
+
+    return 0;
+}
+```
 
 ## Real-World Examples
 
-### Session Store with Expiration
+The following examples demonstrate the power and simplicity of `qbm-redis` for common Redis patterns. All run asynchronously without blocking the event loop.
+
+### Pub/Sub — Callback Consumer
+
+Use `cb_consumer` for event-driven message handling. Messages are delivered via callbacks; ideal for actors or event loops.
 
 ```cpp
+#include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include <redis/redis.h>
-#include <qb/main.h>
 
-class SessionManager : public qb::Actor {
-    qb::redis::tcp::client _redis{{"tcp://localhost:6379"}};
-
-public:
-    bool onInit() override {
-        if (!_redis.connect()) {
-            return false;
-        }
-        
-        // Demo: Create and manage user sessions
-        create_session("user:123", "session_data_here");
-        return true;
-    }
-
-private:
-    void create_session(const std::string& user_id, const std::string& session_data) {
-        // Create session with 1 hour expiration
-        std::string session_key = "session:" + user_id;
-        
-        if (_redis.setex(session_key, 3600, session_data)) {
-            qb::io::cout() << "Session created for user: " << user_id << std::endl;
-            check_session_ttl(user_id);
-                    } else {
-            qb::io::cout() << "Failed to create session" << std::endl;
-            kill();
-        }
-    }
-    
-    void check_session_ttl(const std::string& user_id) {
-        std::string session_key = "session:" + user_id;
-        
-        auto ttl = _redis.ttl(session_key);
-        qb::io::cout() << "Session TTL for " << user_id << ": " << ttl << " seconds" << std::endl;
-        
-        if (ttl > 3000) {
-            extend_session(user_id);
-            } else {
-            qb::io::cout() << "Session will expire soon" << std::endl;
-                kill();
-            }
-    }
-    
-    void extend_session(const std::string& user_id) {
-        std::string session_key = "session:" + user_id;
-        
-        auto result = _redis.expire(session_key, 7200); // Extend to 2 hours
-        if (result == 1) {
-            qb::io::cout() << "Session extended successfully" << std::endl;
-        } else {
-            qb::io::cout() << "Failed to extend session" << std::endl;
-        }
-        kill();
-    }
-};
-
-int main() {
-    qb::Main engine;
-    engine.addActor<SessionManager>(0);
-    engine.start();
-    return 0;
-}
-```
-
-### Real-time Leaderboard System
-
-```cpp
-#include <redis/redis.h>
-#include <qb/main.h>
-
-class LeaderboardActor : public qb::Actor {
-    qb::redis::tcp::client _redis{{"tcp://localhost:6379"}};
-    
-public:
-    bool onInit() override {
-        if (!_redis.connect()) {
-            return false;
-        }
-        
-        // Demo: Gaming leaderboard operations
-        setup_leaderboard();
-        return true;
-    }
-    
-private:
-    void setup_leaderboard() {
-        // Add some sample scores
-        _redis.zadd("game:leaderboard", 1000, "player1");
-        _redis.zadd("game:leaderboard", 1500, "player2");
-        _redis.zadd("game:leaderboard", 2000, "player3");
-        _redis.zadd("game:leaderboard", 750, "player4");
-        
-        qb::io::cout() << "Added players to leaderboard" << std::endl;
-        show_top_players();
-    }
-    
-    void show_top_players() {
-        // Get top 3 players with scores
-        auto results = _redis.zrevrange_withscores("game:leaderboard", 0, 2);
-        
-        qb::io::cout() << "=== Top Players ===" << std::endl;
-        for (size_t i = 0; i < results.size(); i += 2) {
-            std::string player = results[i];
-            std::string score = results[i + 1];
-            qb::io::cout() << "#" << (i/2 + 1) << ": " << player 
-                           << " (Score: " << score << ")" << std::endl;
-        }
-        
-        update_player_score();
-    }
-    
-    void update_player_score() {
-        // Player achieves new high score
-        _redis.zadd("game:leaderboard", 2500, "player1");
-        qb::io::cout() << "Updated player1 score!" << std::endl;
-        
-        // Check new rank
-        auto rank = _redis.zrevrank("game:leaderboard", "player1");
-        if (rank.has_value()) {
-            qb::io::cout() << "player1 new rank: #" << (*rank + 1) << std::endl;
-        }
-        kill();
-    }
-};
-
-int main() {
-    qb::Main engine;
-    engine.addActor<LeaderboardActor>(0);
-    engine.start();
-    return 0;
-}
-```
-
-### Pub/Sub Messaging System
-
-```cpp
-#include <redis/redis.h>
-#include <qb/main.h>
-
-class ChatPublisher : public qb::Actor {
-    qb::redis::tcp::client _redis{{"tcp://localhost:6379"}};
-    
-public:
-    bool onInit() override {
-        if (!_redis.connect()) {
-            return false;
-        }
-        
-        // Publish messages to chat channels
-        publish_messages();
-        return true;
-    }
-    
-private:
-    void publish_messages() {
-        auto count1 = _redis.publish("chat:general", "Hello everyone!");
-        qb::io::cout() << "Published to " << count1 << " subscribers" << std::endl;
-        
-        auto count2 = _redis.publish("chat:announcements", "Server maintenance in 1 hour");
-        qb::io::cout() << "Announcement sent to " << count2 << " subscribers" << std::endl;
-        
-        kill();
-    }
-};
-
-class ChatSubscriber : public qb::Actor {
-    qb::redis::tcp::cb_consumer _consumer{{"tcp://localhost:6379"}, [this](auto&& msg) {
-        // Callback called when message is received
-        qb::io::cout() << "[" << msg.channel << "] " << msg.message << std::endl;
+qb::redis::tcp::cb_consumer consumer{qb::io::uri{"tcp://localhost:6379"},
+    [](qb::redis::message&& msg) {
+        qb::io::cout() << "[" << msg.channel << "] " << msg.payload << "\n";
     }};
-    
-public:
-    bool onInit() override {
-        if (!_consumer.connect()) {
-            return false;
-        }
-        
-        // Subscribe to chat channels
-        auto result1 = _consumer.subscribe("chat:general");
-        auto result2 = _consumer.subscribe("chat:announcements");
-        
-        if (result1.channel.has_value() && result2.channel.has_value()) {
-            qb::io::cout() << "Successfully subscribed to chat channels" << std::endl;
-        } else {
-            qb::io::cout() << "Failed to subscribe" << std::endl;
-            return false;
-        }
-        
-        return true;
-    }
-};
 
-int main() {
-    qb::Main engine;
-    
-    // Start subscriber first
-    engine.addActor<ChatSubscriber>(0);
-    
-    // Publisher sends messages after delay
-    qb::io::async::callback([&engine]() {
-        engine.addActor<ChatPublisher>(0);
-    }, 1.0); // 1 second delay
-    
-    engine.start();
-    return 0;
+co_await consumer.connect();
+co_await consumer.hello(3);  // RESP3 for pub/sub
+co_await consumer.subscribe("alerts");
+co_await consumer.psubscribe("user:*:updates");  // Pattern: user.123.updates
+
+// Publisher (separate client)
+qb::redis::tcp::client publisher{qb::io::uri{"tcp://localhost:6379"}};
+co_await publisher.connect();
+co_await publisher.publish("alerts", "Server restarted");
+co_await publisher.publish("user:42:updates", R"({"event":"login"})");
+```
+
+### Pub/Sub — Coroutine Consumer
+
+Use `co_consumer` when you prefer `co_await` for receiving messages. Clean, sequential flow.
+
+```cpp
+qb::redis::tcp::co_consumer consumer{qb::io::uri{"tcp://localhost:6379"}};
+co_await consumer.connect();
+co_await consumer.hello(3);
+co_await consumer.subscribe("notifications");
+
+while (true) {
+    auto msg = co_await consumer.receive();
+    if (!msg) break;  // Disconnected
+    qb::io::cout() << "Notification: " << msg->payload << "\n";
 }
 ```
 
-### Synchronous Usage (for Scripts)
+### Session Store (Hash + TTL)
 
-    ```cpp
-    #include <redis/redis.h> 
+Store user sessions with automatic expiration. One hash per session, TTL for cleanup.
 
-int main() {
-    qb::io::async::init(); // Required for sync usage
-    
-    qb::redis::tcp::client redis{{"tcp://localhost:6379"}};
-    
-    if (!redis.connect()) {
-        qb::io::cerr() << "Connection failed" << std::endl;
-        return 1;
-    }
-    
-    qb::io::cout() << "Connected to Redis successfully!" << std::endl;
-    
-    // Synchronous operations
-    if (redis.set("sync_key", "sync_value")) {
-        qb::io::cout() << "Key set successfully" << std::endl;
-    }
-    
-    auto get_result = redis.get("sync_key");
-    if (get_result.has_value()) {
-        qb::io::cout() << "Retrieved: " << *get_result << std::endl;
-    }
-    
-    // Work with lists
-    redis.rpush("my_list", "item1");
-    redis.rpush("my_list", "item2");
-    redis.rpush("my_list", "item3");
-    
-    auto list_result = redis.lrange("my_list", 0, -1);
-    qb::io::cout() << "List contents:" << std::endl;
-    for (const auto& item : list_result) {
-        qb::io::cout() << "  - " << item << std::endl;
-    }
-    
-    // Hash operations
-    redis.hset("user:1001", "name", "Alice");
-    redis.hset("user:1001", "email", "alice@example.com");
-    redis.hset("user:1001", "age", "25");
-    
-    auto hash_result = redis.hgetall("user:1001");
-    qb::io::cout() << "User data:" << std::endl;
-    for (const auto& [field, value] : hash_result) {
-        qb::io::cout() << "  " << field << ": " << value << std::endl;
-    }
-    
-    // Cleanup
-    redis.del("sync_key", "my_list", "user:1001");
-    
-    return 0;
+```cpp
+std::string session_id = "sess:" + user_id;
+co_await redis.hset(session_id, "user_id", user_id);
+co_await redis.hset(session_id, "email", email);
+co_await redis.hset(session_id, "created_at", std::to_string(now));
+co_await redis.expire(session_id, 3600);  // 1 hour
+
+// Retrieve
+if (auto email = (co_await redis.hget(session_id, "email")).value_or(""); !email.empty()) {
+    // Session valid
 }
 ```
 
-## Comprehensive Redis Command Support
+### Leaderboard (Sorted Set)
 
-**String Operations**: `GET`, `SET`, `INCR`, `APPEND`, `GETRANGE`, `SETEX`, `SETNX`, and more.
+Real-time rankings with `ZADD` and `ZREVRANGE`. Scores = points; members = player IDs.
 
-**Hash Operations**: `HGET`, `HSET`, `HGETALL`, `HINCRBY`, `HEXISTS`, `HDEL`, field operations.
+```cpp
+// Update score
+co_await redis.zadd("leaderboard:global", {{score, player_id}});
 
-**List Operations**: `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LRANGE`, `LINDEX`, blocking operations.
+// Top 10 (with scores)
+if (auto top = co_await redis.zrevrange("leaderboard:global", 0, 9); top) {
+    for (const auto& sm : top.result())
+        qb::io::cout() << sm.member << ": " << sm.score << "\n";
+}
 
-**Set Operations**: `SADD`, `SREM`, `SMEMBERS`, `SISMEMBER`, `SUNION`, `SINTER`, `SDIFF`.
+// Player rank (1-based)
+long long rank = (co_await redis.zrevrank("leaderboard:global", player_id)).value_or(-1) + 1;
+```
 
-**Sorted Set Operations**: `ZADD`, `ZRANGE`, `ZREVRANGE`, `ZSCORE`, `ZRANK`, `ZINTERSTORE`.
+### Event Stream (Redis Streams)
 
-**Advanced Features**:
-- **Streams**: `XADD`, `XREAD`, `XREADGROUP`, `XACK`, consumer groups
-- **Pub/Sub**: `PUBLISH`, `SUBSCRIBE`, `PSUBSCRIBE`, pattern matching
-- **Transactions**: `MULTI`, `EXEC`, `DISCARD`, `WATCH`
-- **Scripting**: `EVAL`, `EVALSHA`, Lua script execution
-- **Clustering**: `CLUSTER` commands for distributed setups
+Append events and consume with consumer groups. Ideal for activity feeds, audit logs, job queues.
 
-## Features
+```cpp
+// Producer
+auto id = co_await redis.xadd("events:orders",
+    {{"user", "42"}, {"amount", "99.99"}, {"ts", std::to_string(now)}});
 
-**Dual API**: Both asynchronous (callback-based) and synchronous (blocking) operations.
+// Consumer — read entries (block 5s if empty)
+if (auto entries = co_await redis.xread("events:orders", "0", 10, 5000); entries) {
+    // entries.result() is qb::json; parse stream data as needed
+}
+```
 
-**Type Safety**: Automatic serialization for C++ types with `qb::redis::Reply<T>` wrappers.
+### Atomic Transaction (MULTI/EXEC)
 
-**Connection Management**: Automatic reconnection, connection pooling, and SSL support.
+Batch commands atomically. All succeed or all fail.
 
-**Performance**: Pipelining support, connection reuse, and optimized data structures.
+```cpp
+co_await redis.multi();
+co_await redis.set("key1", "value1");
+co_await redis.set("key2", "value2");
+co_await redis.lpush("history", event);
 
-**Error Handling**: Comprehensive Redis error reporting with detailed diagnostics.
+if (auto exec_r = co_await redis.exec<std::string>(); exec_r) {
+    // All commands applied; exec_r.result() = vector of per-command replies
+}
+```
 
-**Actor Integration**: Perfect integration with QB's actor model and event loop.
+### Generic Command (Unwrapped)
 
-## Build Information
+For commands without a dedicated wrapper, use `command<T>()`:
 
-### Requirements
-- **QB Framework**: This module requires the QB Actor Framework as its foundation
-- **C++17** compatible compiler
+```cpp
+auto r = co_await redis.command<qb::json>("JSON.GET", "user:1", "$.name");
+auto keys = co_await redis.command<std::vector<std::string>>(
+    "COMMAND", "GETKEYS", "SET", "mykey", "value");
+```
+
+## Comprehensive Command Support
+
+### Connection
+`AUTH`, `ECHO`, `HELLO`, `PING`, `QUIT`, `RESET`, `SELECT`, `SWAPDB`
+
+### String
+`APPEND`, `DECR`, `DECRBY`, `GET`, `GETDEL`, `GETEX`, `GETRANGE`, `GETSET`, `INCR`, `INCRBY`, `INCRBYFLOAT`, `LCS`, `MGET`, `MSET`, `MSETNX`, `PSETEX`, `SET`, `SETEX`, `SETNX`, `SETRANGE`, `STRLEN`, `SUBSTR`
+
+### Key
+`COPY`, `DEL`, `DUMP`, `EXISTS`, `EXPIRE`, `EXPIREAT`, `EXPIRETIME`, `KEYS`, `MIGRATE`, `MOVE`, `OBJECT` (ENCODING, FREQ, IDLETIME, REFCOUNT), `PERSIST`, `PEXPIRE`, `PEXPIREAT`, `PEXPIRETIME`, `PTTL`, `RANDOMKEY`, `RENAME`, `RENAMENX`, `RESTORE`, `SCAN`, `SORT`, `SORT_RO`, `SORT STORE`, `TOUCH`, `TTL`, `TYPE`, `UNLINK`, `WAIT`, `WAITAOF`
+
+### List
+`BLMOVE`, `BLMPOP`, `BLPOP`, `BRPOP`, `BRPOPLPUSH`, `LINDEX`, `LINSERT`, `LLEN`, `LMOVE`, `LMPOP`, `LPOP`, `LPOS`, `LPUSH`, `LPUSHX`, `LRANGE`, `LREM`, `LSET`, `LTRIM`, `RPOP`, `RPOPLPUSH`, `RPUSH`, `RPUSHX`
+
+### Hash
+`HDEL`, `HEXISTS`, `HGET`, `HGETALL`, `HINCRBY`, `HKEYS`, `HLEN`, `HMGET`, `HMSET`, `HSCAN`, `HSET`, `HSETNX`, `HSTRLEN`, `HVALS`
+
+### Set
+`SADD`, `SCARD`, `SDIFF`, `SDIFFSTORE`, `SINTER`, `SINTERCARD`, `SINTERSTORE`, `SISMEMBER`, `SMEMBERS`, `SMOVE`, `SPOP`, `SRANDMEMBER`, `SREM`, `SSCAN`, `SUNION`, `SUNIONSTORE`
+
+### Sorted Set
+`BZMPOP`, `BZPOPMAX`, `BZPOPMIN`, `ZADD`, `ZCARD`, `ZCOUNT`, `ZDIFF`, `ZDIFFSTORE`, `ZINCRBY`, `ZINTER`, `ZINTERCARD`, `ZINTERSTORE`, `ZLEXCOUNT`, `ZMPOP`, `ZMSCORE`, `ZPOPMAX`, `ZPOPMIN`, `ZRANDMEMBER`, `ZRANGE`, `ZRANGEBYLEX`, `ZRANGEBYSCORE`, `ZRANGESTORE`, `ZRANK`, `ZREM`, `ZREMRANGEBYLEX`, `ZREMRANGEBYRANK`, `ZREMRANGEBYSCORE`, `ZREVRANGE`, `ZREVRANGEBYLEX`, `ZREVRANGEBYSCORE`, `ZREVRANK`, `ZSCAN`, `ZSCORE`, `ZUNIONSTORE`
+
+### HyperLogLog
+`PFADD`, `PFCOUNT`, `PFMERGE`
+
+### Bitmap
+`BITCOUNT`, `BITFIELD`, `BITFIELD_RO`, `BITOP`, `BITPOS`, `GETBIT`, `SETBIT`
+
+### Stream
+`XACK`, `XADD`, `XAUTOCLAIM`, `XCLAIM`, `XDEL`, `XGROUP CREATECONSUMER`, `XGROUP CREATE`, `XGROUP DELCONSUMER`, `XGROUP DESTROY`, `XGROUP SETID`, `XLEN`, `XPENDING`, `XRANGE`, `XREAD`, `XREADGROUP`, `XREVRANGE`, `XTRIM`
+
+### Pub/Sub
+`PUBLISH`, `PSUBSCRIBE`, `SUBSCRIBE`, `UNSUBSCRIBE`, `UNSUBSCRIBE` (pattern)
+
+### Transaction
+`DISCARD`, `EXEC`, `MULTI`, `UNWATCH`, `WATCH`
+
+### Scripting
+`EVAL`, `EVALSHA`, `EVAL_RO`, `EVALSHA_RO`, `SCRIPT DEBUG`, `SCRIPT EXISTS`, `SCRIPT FLUSH`, `SCRIPT KILL`, `SCRIPT LOAD`
+
+### Function (Redis 7+)
+`FCALL`, `FCALL_RO`, `FUNCTION DELETE`, `FUNCTION DUMP`, `FUNCTION FLUSH`, `FUNCTION KILL`, `FUNCTION LIST`, `FUNCTION LOAD`, `FUNCTION RESTORE`, `FUNCTION STATS`
+
+### Server
+`ACL`, `BGREWRITEAOF`, `BGSAVE`, `CLIENT` (ID, CACHING, GETREDIR, INFO, NO-EVICT, NO-TOUCH, REPLY, SETINFO, UNPAUSE, etc.), `COMMAND`, `CONFIG`, `DBSIZE`, `FAILOVER`, `FLUSHALL`, `FLUSHDB`, `INFO`, `LATENCY` (DOCTOR, GRAPH, HISTOGRAM), `LASTSAVE`, `MEMORY`, `MODULE`, `SAVE`, `SHUTDOWN`, `SLAVEOF`, `SLOWLOG`, `SYNC`, `TIME`
+
+### Cluster
+`ASKING`, `CLUSTER` (ADDSLOTS, ADDSLOTSRANGE, COUNT-FAILURE-REPORTS, DELSLOTS, DELSLOTSRANGE, FLUSHSLOTS, INFO, KEYSLOT, LINKS, MEET, MYID, NODES, REPLICAS, RESET, SETSLOT, SHARDS, SLAVES, SLOTS), `READONLY`, `READWRITE`
+
+## Consumer Types
+
+- **`qb::redis::tcp::client`** — Standard client for commands
+- **`qb::redis::tcp::cb_consumer`** — Callback-based pub/sub consumer
+- **`qb::redis::tcp::co_consumer`** — Coroutine-based pub/sub consumer
+
+## Auto-Reconnect
+
+```cpp
+redis.enable_auto_reconnect(RetryPolicy{}
+    .with_initial_delay(50ms)
+    .with_max_delay(2s)
+    .with_connect_timeout(2.0));
+redis.disconnect();  // Triggers background reconnect
+// After reconnect in RESP3: co_await redis.hello(3);
+```
+
+## Why qbm-redis?
+
+| Feature | qbm-redis | Other C++ Redis clients |
+|---------|-----------|--------------------------|
+| **Dependencies** | Zero — no hiredis, no libuv | hiredis, redis-plus-plus, etc. |
+| **Protocol** | Native RESP2/RESP3 parser | Often RESP2 only |
+| **Async model** | C++23 coroutines + callbacks | Callbacks or threads |
+| **API style** | `co_await redis.get("k")` | Verbose or sync-only |
+| **Pub/Sub** | `cb_consumer` / `co_consumer` | Manual or limited |
+| **Completeness** | 200+ commands, all groups | Partial coverage |
+| **Integration** | QB Actor Framework | Standalone |
+
+**One include, one link, one API.** No external Redis libraries. No blocking. No thread pools.
+
+## Build Requirements
+
+- **QB Framework** with `qb-io` (async I/O)
+- **C++23** compiler
 - **CMake 3.14+**
-- **hiredis**: Redis C client library (automatically managed by CMake)
+- **OpenSSL** (for SSL/TLS; `QB_IO_WITH_SSL=ON`)
 
-### Optional Dependencies
-- **OpenSSL**: For secure Redis connections (SSL/TLS). Enable with `QB_IO_WITH_SSL=ON`
+**No hiredis** — uses native C++23 Redis protocol parser.
 
-### Building with QB
-When using the QB project template, simply add this module as shown in the integration section above. The `qb_load_modules()` function will automatically handle the configuration.
+## Documentation
 
-### Manual Build (Advanced)
-```cmake
-# If building outside QB framework context
-find_package(qb REQUIRED)
-target_link_libraries(your_target PRIVATE qbm-redis)
-```
+**📖 [Complete Documentation](./readme/README.md)**
 
-## Advanced Documentation
-
-For in-depth technical documentation, implementation details, and comprehensive API reference:
-
-**📖 [Complete Redis Module Documentation](./readme/README.md)**
-
-This detailed documentation covers:
-- **[Connection Management](./readme/connection.md)** - Connection handling, pooling, and configuration
-- **[Error Handling](./readme/error_handling.md)** - Comprehensive error management strategies
-- **[Commands Overview](./readme/commands_overview.md)** - Complete command reference and usage patterns
-- **[String Commands](./readme/string_commands.md)** - All string operations with examples
-- **[Hash Commands](./readme/hash_commands.md)** - Hash data structure operations
-- **[List Commands](./readme/list_commands.md)** - List manipulation and blocking operations
-- **[Set Commands](./readme/set_commands.md)** - Set operations and intersections
-- **[Sorted Set Commands](./readme/sorted_set_commands.md)** - Ranked data operations
-- **[Key Commands](./readme/key_commands.md)** - Key management and expiration
-- **[Pub/Sub Commands](./readme/publish_commands.md)** - Publish/subscribe messaging
-- **[Stream Commands](./readme/stream_commands.md)** - Redis Streams for event processing
-- **[Transaction Commands](./readme/transaction_commands.md)** - MULTI/EXEC transactions
-- **[Scripting Commands](./readme/scripting_commands.md)** - Lua script execution
-- **[Server Commands](./readme/server_commands.md)** - Server administration
-- **[ACL Commands](./readme/acl_commands.md)** - Access control lists
-- **[Cluster Commands](./readme/cluster_commands.md)** - Redis cluster operations
-- **[Subscription Commands](./readme/subscription_commands.md)** - Advanced pub/sub patterns
-
-## Documentation & Examples
-
-For comprehensive examples and detailed usage patterns:
-
-- **[QB Examples Repository](https://github.com/isndev/qb-examples):** Real-world Redis integration patterns
-- **Unit Tests**: The `qbm/redis/tests/` directory contains extensive test coverage for all command groups
-
-**Example Categories:**
-- Caching and session management
-- Real-time leaderboards and analytics
-- Pub/sub messaging systems
-- Stream processing patterns
-- Lua scripting integration
-- Clustering and high availability
-
-## Contributing
-
-We welcome contributions! Please see the main [QB Contributing Guidelines](https://github.com/isndev/qb/blob/master/CONTRIBUTING.md) for details.
+- [Connection](./readme/connection.md) — Connect, HELLO, RESET, auto-reconnect
+- [Commands Overview](./readme/commands_overview.md) — Coroutine vs callback API
+- [Error Handling](./readme/error_handling.md) — `reply.ok()`, `reply.error()`
+- Per-command docs: [string](./readme/string_commands.md), [key](./readme/key_commands.md), [list](./readme/list_commands.md), [hash](./readme/hash_commands.md), [set](./readme/set_commands.md), [sorted set](./readme/sorted_set_commands.md), [hyperloglog](./readme/hyperloglog_commands.md), [bitmap](./readme/bitmap_commands.md), [stream](./readme/stream_commands.md), [publish](./readme/publish_commands.md), [subscription](./readme/subscription_commands.md), [transaction](./readme/transaction_commands.md), [scripting](./readme/scripting_commands.md), [function](./readme/function_commands.md), [server](./readme/server_commands.md), [acl](./readme/acl_commands.md), [cluster](./readme/cluster_commands.md), [module](./readme/module_commands.md), [geo](./readme/geo_commands.md)
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](./LICENSE) for details.
-
-## Acknowledgments
-
-The QB Redis Module builds upon the excellent work of:
-
-- **[hiredis](https://github.com/redis/hiredis)** - For Redis protocol parsing structures (I/O handled by qb-io)
-
-This library enables the module to efficiently parse Redis protocol responses while maintaining QB's high-performance asynchronous I/O capabilities.
-
----
-
-**Part of the [QB Actor Framework](https://github.com/isndev/qb) ecosystem - Build the future of concurrent C++ applications.**
-
-
+Apache License 2.0. Part of the [QB Actor Framework](https://github.com/isndev/qb) ecosystem.

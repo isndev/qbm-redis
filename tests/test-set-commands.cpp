@@ -17,576 +17,490 @@
 
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
+#include <thread>
 #include "../redis.h"
-
-// Configuration Redis
-#define REDIS_URI {"tcp://localhost:6379"}
+#include "protocol_test_common.h"
 
 using namespace qb::io;
 using namespace std::chrono;
 
-// Generates unique key prefixes to avoid collisions between tests
-inline std::string
-key_prefix(const std::string &key = "") {
-    static int  counter = 0;
-    std::string prefix  = "qb::redis::set-test:" + std::to_string(++counter);
+// ============================================================================
+// Fixture: all tests run in both RESP2 and RESP3
+// ============================================================================
 
-    if (key.empty()) {
-        return prefix;
-    }
+class SetProtocolModesTest : public ProtocolModesTestBase {};
 
-    return prefix + ":" + key;
-}
-
-// Generates a test key
-inline std::string
-test_key(const std::string &k) {
-    return "{" + key_prefix() + "}::" + k;
-}
-
-// Verifies connection and cleans environment before tests
-class RedisTest : public ::testing::Test {
-protected:
-    qb::redis::tcp::client redis{REDIS_URI};
-
-    void
-    SetUp() override {
-        async::init();
-        if (!redis.connect() || !redis.flushall())
-            throw std::runtime_error("Unable to connect to Redis");
-
-        // Wait for connection to be established
-        redis.await();
-        TearDown();
-    }
-
-    void
-    TearDown() override {
-        // Cleanup after tests
-        redis.flushall();
-        redis.await();
-    }
-};
+INSTANTIATE_PROTOCOL_MODES(SetProtocolModesTest);
 
 /*
- * TESTS SYNCHRONES
+ * COROUTINE TESTS
  */
 
-// Test SADD/SCARD
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SADD_SCARD) {
-    std::string key = test_key("sadd_scard");
+// Test basic SADD, SCARD, SMEMBERS operations
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_BASIC) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("basic");
 
-    // Ajouter des membres
-    EXPECT_EQ(redis.sadd(key, "member1", "member2", "member3"), 3);
+        // SADD test
+        auto add_reply1 = co_await redis.sadd(key, "member1");
+        EXPECT_TRUE(add_reply1.ok());
+        EXPECT_EQ(add_reply1.result(), 1);
 
-    // Verify the number of members
-    EXPECT_EQ(redis.scard(key), 3);
+        auto add_reply2 = co_await redis.sadd(key, "member2", "member3");
+        EXPECT_TRUE(add_reply2.ok());
+        EXPECT_EQ(add_reply2.result(), 2);
 
-    // Ajouter des membres existants
-    EXPECT_EQ(redis.sadd(key, "member1", "member2"), 0);
+        // Duplicate add
+        auto add_reply3 = co_await redis.sadd(key, "member1");
+        EXPECT_TRUE(add_reply3.ok());
+        EXPECT_EQ(add_reply3.result(), 0); // Already exists
 
-    // Verify that the number hasn't changed
-    EXPECT_EQ(redis.scard(key), 3);
-}
+        // SCARD test
+        auto card_reply = co_await redis.scard(key);
+        EXPECT_TRUE(card_reply.ok());
+        EXPECT_EQ(card_reply.result(), 3);
 
-// Test SDIFF/SDIFFSTORE
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SDIFF_SDIFFSTORE) {
-    std::string key1 = test_key("sdiff1");
-    std::string key2 = test_key("sdiff2");
-    std::string dest = test_key("sdiff_dest");
+        // SMEMBERS test
+        auto members_reply = co_await redis.smembers(key);
+        EXPECT_TRUE(members_reply.ok());
+        EXPECT_EQ(members_reply.result().size(), 3);
 
-    // Create the sets
-    redis.sadd(key1, "a", "b", "c");
-    redis.sadd(key2, "c", "d", "e");
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
 
-    // Calculate the difference
-    auto diff = redis.sdiff({key1, key2});
-    EXPECT_EQ(diff.size(), 2);
-    EXPECT_TRUE(std::find(diff.begin(), diff.end(), "a") != diff.end());
-    EXPECT_TRUE(std::find(diff.begin(), diff.end(), "b") != diff.end());
-
-    // Store the difference
-    EXPECT_EQ(redis.sdiffstore(dest, {key1, key2}), 2);
-
-    // Verify the stored result
-    auto stored = redis.smembers(dest);
-    EXPECT_EQ(stored.size(), 2);
-    EXPECT_TRUE(stored.find("a") != stored.end());
-    EXPECT_TRUE(stored.find("b") != stored.end());
-}
-
-// Test SINTER/SINTERSTORE/SINTERCARD
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SINTER) {
-    std::string key1 = test_key("sinter1");
-    std::string key2 = test_key("sinter2");
-    std::string dest = test_key("sinter_dest");
-
-    // Create the sets
-    redis.sadd(key1, "a", "b", "c");
-    redis.sadd(key2, "b", "c", "d");
-
-    // Calculate the intersection
-    auto inter = redis.sinter({key1, key2});
-    EXPECT_EQ(inter.size(), 2);
-    EXPECT_TRUE(std::find(inter.begin(), inter.end(), "b") != inter.end());
-    EXPECT_TRUE(std::find(inter.begin(), inter.end(), "c") != inter.end());
-
-    // Store the intersection
-    EXPECT_EQ(redis.sinterstore(dest, {key1, key2}), 2);
-
-    // Verify the stored result
-    auto stored = redis.smembers(dest);
-    EXPECT_EQ(stored.size(), 2);
-    EXPECT_TRUE(stored.find("b") != stored.end());
-    EXPECT_TRUE(stored.find("c") != stored.end());
-
-    // Verify the cardinality of the intersection
-    EXPECT_EQ(redis.sintercard({key1, key2}), 2);
-    EXPECT_EQ(redis.sintercard({key1, key2}, 1), 1);
-}
-
-// Test SISMEMBER/SMISMEMBER
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SISMEMBER) {
-    std::string key = test_key("sismember");
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
-
-    // Verify membership
-    EXPECT_TRUE(redis.sismember(key, "member1"));
-    EXPECT_FALSE(redis.sismember(key, "member4"));
-
-    // Verify multiple membership
-    auto results = redis.smismember(key, "member1", "member2", "member4");
-    EXPECT_EQ(results.size(), 3);
-    EXPECT_TRUE(results[0]);
-    EXPECT_TRUE(results[1]);
-    EXPECT_FALSE(results[2]);
-}
-
-// Test SMEMBERS
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SMEMBERS) {
-    std::string key = test_key("smembers");
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
-
-    // Retrieve all members
-    auto members = redis.smembers(key);
-    EXPECT_EQ(members.size(), 3);
-    EXPECT_TRUE(members.find("member1") != members.end());
-    EXPECT_TRUE(members.find("member2") != members.end());
-    EXPECT_TRUE(members.find("member3") != members.end());
-}
-
-// Test SMOVE
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SMOVE) {
-    std::string source = test_key("smove_source");
-    std::string dest   = test_key("smove_dest");
-
-    // Add a member to the source
-    redis.sadd(source, "member1");
-
-    // Move the member
-    EXPECT_TRUE(redis.smove(source, dest, "member1"));
-
-    // Verify that the member has been moved
-    EXPECT_FALSE(redis.sismember(source, "member1"));
-    EXPECT_TRUE(redis.sismember(dest, "member1"));
-}
-
-// Test SPOP
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SPOP) {
-    std::string key = test_key("spop");
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
-
-    // Pop a member
-    auto popped = redis.spop(key);
-    EXPECT_TRUE(popped.has_value());
-    EXPECT_EQ(redis.scard(key), 2);
-
-    // Pop multiple members
-    auto popped_many = redis.spop(key, 2);
-    EXPECT_EQ(popped_many.size(), 2);
-    EXPECT_EQ(redis.scard(key), 0);
-}
-
-// Test SRANDMEMBER
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SRANDMEMBER) {
-    std::string key = test_key("srandmember");
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
-
-    // Get a random member
-    auto member = redis.srandmember(key);
-    EXPECT_TRUE(member.has_value());
-
-    // Get multiple random members
-    auto members = redis.srandmember(key, 2);
-    EXPECT_EQ(members.size(), 2);
-}
-
-// Test SREM
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SREM) {
-    std::string key = test_key("srem");
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
-
-    // Verify that the members have been removed
-    EXPECT_EQ(redis.srem(key, "member1", "member2"), 2);
-
-    EXPECT_EQ(redis.scard(key), 1);
-    EXPECT_TRUE(redis.sismember(key, "member3"));
-}
-
-// Test SSCAN
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SSCAN) {
-    std::string key = test_key("sscan");
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
-
-    // Scan members
-    std::unordered_set<std::string> res;
-    long long                       cursor = 0;
-    while (true) {
-        auto scan = redis.sscan(key, cursor, "member*", 2);
-        cursor    = scan.cursor;
-        std::move(scan.items.begin(), scan.items.end(), std::inserter(res, res.end()));
-        if (cursor == 0) {
-            break;
-        }
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
     }
-    EXPECT_EQ(res.size(), 5);
-    EXPECT_TRUE(res.find("member1") != res.end());
-    EXPECT_TRUE(res.find("member2") != res.end());
-    EXPECT_TRUE(res.find("member3") != res.end());
-    EXPECT_TRUE(res.find("member4") != res.end());
-    EXPECT_TRUE(res.find("member5") != res.end());
+}
 
-    // Scan all members
-    res.clear();
-    cursor = 0;
-    while (true) {
-        auto scan = redis.sscan(key, cursor, "*", 2);
-        cursor    = scan.cursor;
-        std::move(scan.items.begin(), scan.items.end(), std::inserter(res, res.end()));
-        if (cursor == 0) {
-            break;
-        }
+// Test SISMEMBER and SMISMEMBER
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_ISMEMBER) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("ismember");
+
+        // Setup set
+        (void)co_await redis.sadd(key, "member1", "member2", "member3");
+
+        // SISMEMBER test
+        auto ismem1_reply = co_await redis.sismember(key, "member1");
+        EXPECT_TRUE(ismem1_reply.ok());
+        EXPECT_TRUE(ismem1_reply.result());
+
+        auto ismem2_reply = co_await redis.sismember(key, "nonexistent");
+        EXPECT_TRUE(ismem2_reply.ok());
+        EXPECT_FALSE(ismem2_reply.result());
+
+        // SMISMEMBER test
+        auto mismem_reply = co_await redis.smismember(key, "member1", "member2", "nonexistent");
+        EXPECT_TRUE(mismem_reply.ok());
+        EXPECT_EQ(mismem_reply.result().size(), 3);
+        EXPECT_TRUE(mismem_reply.result()[0]);
+        EXPECT_TRUE(mismem_reply.result()[1]);
+        EXPECT_FALSE(mismem_reply.result()[2]);
+
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
     }
-    EXPECT_EQ(res.size(), 5);
 }
 
-// Test SUNION/SUNIONSTORE
-TEST_F(RedisTest, SYNC_SET_COMMANDS_SUNION) {
-    std::string key1 = test_key("sunion1");
-    std::string key2 = test_key("sunion2");
-    std::string dest = test_key("sunion_dest");
+// Test SREM operation
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_REMOVE) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("remove");
 
-    // Create the sets
-    redis.sadd(key1, "a", "b", "c");
-    redis.sadd(key2, "c", "d", "e");
+        // Setup set
+        (void)co_await redis.sadd(key, "member1", "member2", "member3", "member4");
 
-    // Calculate the union
-    auto union_result = redis.sunion({key1, key2});
-    EXPECT_EQ(union_result.size(), 5);
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "a") !=
-                union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "b") !=
-                union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "c") !=
-                union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "d") !=
-                union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "e") !=
-                union_result.end());
+        // SREM test
+        auto rem_reply = co_await redis.srem(key, "member1", "member2");
+        EXPECT_TRUE(rem_reply.ok());
+        EXPECT_EQ(rem_reply.result(), 2);
 
-    // Store the union
-    EXPECT_EQ(redis.sunionstore(dest, {key1, key2}), 5);
+        // Verify
+        auto card_reply = co_await redis.scard(key);
+        EXPECT_TRUE(card_reply.ok());
+        EXPECT_EQ(card_reply.result(), 2);
 
-    // Verify the stored result
-    auto stored = redis.smembers(dest);
-    EXPECT_EQ(stored.size(), 5);
-    EXPECT_TRUE(stored.find("a") != stored.end());
-    EXPECT_TRUE(stored.find("b") != stored.end());
-    EXPECT_TRUE(stored.find("c") != stored.end());
-    EXPECT_TRUE(stored.find("d") != stored.end());
-    EXPECT_TRUE(stored.find("e") != stored.end());
+        // Remove non-existent
+        auto rem2_reply = co_await redis.srem(key, "nonexistent");
+        EXPECT_TRUE(rem2_reply.ok());
+        EXPECT_EQ(rem2_reply.result(), 0);
+
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-/*
- * TESTS ASYNCHRONES
- */
+// Test SPOP operation
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_POP) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("pop");
 
-// Test asynchrone SADD/SCARD
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SADD_SCARD) {
-    std::string key          = test_key("async_sadd_scard");
-    long long   sadd_result  = 0;
-    long long   scard_result = 0;
+        // Setup set
+        (void)co_await redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
 
-    // Add members asynchronously
-    redis.sadd([&](auto &&reply) { sadd_result = reply.result(); }, key, "member1",
-               "member2", "member3");
+        // SPOP single
+        auto pop1_reply = co_await redis.spop(key);
+        EXPECT_TRUE(pop1_reply.ok());
+        EXPECT_TRUE(pop1_reply.result().has_value());
 
-    redis.await();
-    EXPECT_EQ(sadd_result, 3);
+        auto card1_reply = co_await redis.scard(key);
+        EXPECT_TRUE(card1_reply.ok());
+        EXPECT_EQ(card1_reply.result(), 4);
 
-    // Verify the number of members asynchronously
-    redis.scard([&](auto &&reply) { scard_result = reply.result(); }, key);
+        // SPOP multiple
+        auto pop2_reply = co_await redis.spop(key, 2);
+        EXPECT_TRUE(pop2_reply.ok());
+        EXPECT_EQ(pop2_reply.result().size(), 2);
 
-    redis.await();
-    EXPECT_EQ(scard_result, 3);
+        auto card2_reply = co_await redis.scard(key);
+        EXPECT_TRUE(card2_reply.ok());
+        EXPECT_EQ(card2_reply.result(), 2);
+
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test asynchrone SDIFF/SDIFFSTORE
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SDIFF_SDIFFSTORE) {
-    std::string              key1 = test_key("async_sdiff1");
-    std::string              key2 = test_key("async_sdiff2");
-    std::string              dest = test_key("async_sdiff_dest");
-    std::vector<std::string> diff_result;
-    long long                diffstore_result = 0;
+// Test SRANDMEMBER operation
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_RANDMEMBER) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("randmember");
 
-    // Create the sets
-    redis.sadd(key1, "a", "b", "c");
-    redis.sadd(key2, "c", "d", "e");
+        // Setup set
+        (void)co_await redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
 
-    // Calculate the difference asynchronously
-    redis.sdiff([&](auto &&reply) { diff_result = reply.result(); }, {key1, key2});
+        // SRANDMEMBER single
+        auto rand1_reply = co_await redis.srandmember(key);
+        EXPECT_TRUE(rand1_reply.ok());
+        EXPECT_TRUE(rand1_reply.result().has_value());
 
-    redis.await();
-    EXPECT_EQ(diff_result.size(), 2);
-    EXPECT_TRUE(std::find(diff_result.begin(), diff_result.end(), "a") !=
-                diff_result.end());
-    EXPECT_TRUE(std::find(diff_result.begin(), diff_result.end(), "b") !=
-                diff_result.end());
+        // Verify set size unchanged
+        auto card1_reply = co_await redis.scard(key);
+        EXPECT_TRUE(card1_reply.ok());
+        EXPECT_EQ(card1_reply.result(), 5);
 
-    // Store the difference asynchronously
-    redis.sdiffstore([&](auto &&reply) { diffstore_result = reply.result(); }, dest,
-                     {key1, key2});
+        // SRANDMEMBER multiple
+        auto rand2_reply = co_await redis.srandmember(key, 3);
+        EXPECT_TRUE(rand2_reply.ok());
+        EXPECT_EQ(rand2_reply.result().size(), 3);
 
-    redis.await();
-    EXPECT_EQ(diffstore_result, 2);
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test asynchrone SINTER/SINTERSTORE/SINTERCARD
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SINTER) {
-    std::string              key1 = test_key("async_sinter1");
-    std::string              key2 = test_key("async_sinter2");
-    std::string              dest = test_key("async_sinter_dest");
-    std::vector<std::string> inter_result;
-    long long                interstore_result = 0;
-    long long                intercard_result  = 0;
+// Test SMOVE operation
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_MOVE) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string source = protocol_key("source");
+        std::string dest = protocol_key("dest");
 
-    // Create the sets
-    redis.sadd(key1, "a", "b", "c");
-    redis.sadd(key2, "b", "c", "d");
+        // Setup sets
+        (void)co_await redis.sadd(source, "member1", "member2", "member3");
+        (void)co_await redis.sadd(dest, "member4");
 
-    // Calculate the intersection asynchronously
-    redis.sinter([&](auto &&reply) { inter_result = reply.result(); }, {key1, key2});
+        // SMOVE test
+        auto move1_reply = co_await redis.smove(source, dest, "member1");
+        EXPECT_TRUE(move1_reply.ok());
+        EXPECT_TRUE(move1_reply.result());
 
-    redis.await();
-    EXPECT_EQ(inter_result.size(), 2);
-    EXPECT_TRUE(std::find(inter_result.begin(), inter_result.end(), "b") !=
-                inter_result.end());
-    EXPECT_TRUE(std::find(inter_result.begin(), inter_result.end(), "c") !=
-                inter_result.end());
+        // Verify
+        auto source_card_reply = co_await redis.scard(source);
+        auto dest_card_reply = co_await redis.scard(dest);
+        EXPECT_TRUE(source_card_reply.ok());
+        EXPECT_TRUE(dest_card_reply.ok());
+        EXPECT_EQ(source_card_reply.result(), 2);
+        EXPECT_EQ(dest_card_reply.result(), 2);
 
-    // Store the intersection asynchronously
-    redis.sinterstore([&](auto &&reply) { interstore_result = reply.result(); }, dest,
-                      {key1, key2});
+        // Move non-existent
+        auto move2_reply = co_await redis.smove(source, dest, "nonexistent");
+        EXPECT_TRUE(move2_reply.ok());
+        EXPECT_FALSE(move2_reply.result());
 
-    redis.await();
-    EXPECT_EQ(interstore_result, 2);
+        // Cleanup
+        (void)co_await redis.del(source, dest);
+        completed = true;
+    };
 
-    // Verify the cardinality of the intersection asynchronously
-    redis.sintercard([&](auto &&reply) { intercard_result = reply.result(); },
-                     {key1, key2});
-
-    redis.await();
-    EXPECT_EQ(intercard_result, 2);
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test asynchrone SISMEMBER/SMISMEMBER
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SISMEMBER) {
-    std::string       key             = test_key("async_sismember");
-    bool              ismember_result = false;
-    std::vector<bool> mismember_result;
+// Test set operations: SDIFF, SINTER, SUNION
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_OPERATIONS) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string set1 = protocol_key("set1");
+        std::string set2 = protocol_key("set2");
 
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
+        // Setup sets
+        (void)co_await redis.sadd(set1, "a", "b", "c", "d");
+        (void)co_await redis.sadd(set2, "b", "c", "e", "f");
 
-    // Verify membership asynchronously
-    redis.sismember([&](auto &&reply) { ismember_result = reply.ok(); }, key, "member1");
+        // SDIFF test
+        auto diff_reply = co_await redis.sdiff({set1, set2});
+        EXPECT_TRUE(diff_reply.ok());
+        EXPECT_EQ(diff_reply.result().size(), 2); // a, d
 
-    redis.await();
-    EXPECT_TRUE(ismember_result);
+        // SINTER test
+        auto inter_reply = co_await redis.sinter({set1, set2});
+        EXPECT_TRUE(inter_reply.ok());
+        EXPECT_EQ(inter_reply.result().size(), 2); // b, c
 
-    // Verify multiple membership asynchronously
-    redis.smismember([&](auto &&reply) { mismember_result = reply.result(); }, key,
-                     "member1", "member2", "member4");
+        // SUNION test
+        auto union_reply = co_await redis.sunion({set1, set2});
+        EXPECT_TRUE(union_reply.ok());
+        EXPECT_EQ(union_reply.result().size(), 6); // a, b, c, d, e, f
 
-    redis.await();
-    EXPECT_EQ(mismember_result.size(), 3);
-    EXPECT_TRUE(mismember_result[0]);
-    EXPECT_TRUE(mismember_result[1]);
-    EXPECT_FALSE(mismember_result[2]);
+        // SINTERCARD test
+        auto intercard_reply = co_await redis.sintercard({set1, set2});
+        EXPECT_TRUE(intercard_reply.ok());
+        EXPECT_EQ(intercard_reply.result(), 2);
+
+        // Cleanup
+        (void)co_await redis.del(set1, set2);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test asynchrone SMEMBERS
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SMEMBERS) {
-    std::string                    key = test_key("async_smembers");
-    qb::unordered_set<std::string> members_result;
+// Test set store operations: SDIFFSTORE, SINTERSTORE, SUNIONSTORE
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_STORE) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string set1 = protocol_key("set1");
+        std::string set2 = protocol_key("set2");
+        std::string dest1 = protocol_key("dest1");
+        std::string dest2 = protocol_key("dest2");
+        std::string dest3 = protocol_key("dest3");
 
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
+        // Setup sets
+        (void)co_await redis.sadd(set1, "a", "b", "c", "d");
+        (void)co_await redis.sadd(set2, "b", "c", "e", "f");
 
-    // Retrieve all members asynchronously
-    redis.smembers([&](auto &&reply) { members_result = reply.result(); }, key);
+        // SDIFFSTORE test
+        auto diffstore_reply = co_await redis.sdiffstore(dest1, {set1, set2});
+        EXPECT_TRUE(diffstore_reply.ok());
+        EXPECT_EQ(diffstore_reply.result(), 2); // a, d
 
-    redis.await();
-    EXPECT_EQ(members_result.size(), 3);
-    EXPECT_TRUE(members_result.find("member1") != members_result.end());
-    EXPECT_TRUE(members_result.find("member2") != members_result.end());
-    EXPECT_TRUE(members_result.find("member3") != members_result.end());
+        // SINTERSTORE test
+        auto interstore_reply = co_await redis.sinterstore(dest2, {set1, set2});
+        EXPECT_TRUE(interstore_reply.ok());
+        EXPECT_EQ(interstore_reply.result(), 2); // b, c
+
+        // SUNIONSTORE test
+        auto unionstore_reply = co_await redis.sunionstore(dest3, {set1, set2});
+        EXPECT_TRUE(unionstore_reply.ok());
+        EXPECT_EQ(unionstore_reply.result(), 6); // a, b, c, d, e, f
+
+        // Cleanup
+        (void)co_await redis.del(set1, set2, dest1, dest2, dest3);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test asynchrone SMOVE
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SMOVE) {
-    std::string source       = test_key("async_smove_source");
-    std::string dest         = test_key("async_smove_dest");
-    bool        smove_result = false;
+// Test SSCAN operation
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_SCAN) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key = protocol_key("scan");
 
-    // Add a member to the source
-    redis.sadd(source, "member1");
+        // Setup set with multiple members
+        (void)co_await redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
 
-    // Move the member asynchronously
-    redis.smove([&](auto &&reply) { smove_result = reply.ok(); }, source, dest,
-                "member1");
+        // SSCAN test
+        auto scan_reply = co_await redis.sscan(key, 0, "*", 10);
+        EXPECT_TRUE(scan_reply.ok());
+        EXPECT_EQ(scan_reply.result().items.size(), 5);
 
-    redis.await();
-    EXPECT_TRUE(smove_result);
+        // Cleanup
+        (void)co_await redis.del(key);
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test asynchrone SPOP
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SPOP) {
-    std::string                key = test_key("async_spop");
-    std::optional<std::string> pop_result;
-    std::vector<std::string>   pop_many_result;
+// Test SINTERCARD with limit parameter
+TEST_P(SetProtocolModesTest, CORO_SET_COMMANDS_SINTERCARD_WITH_LIMIT) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string set1 = protocol_key("sintercard_limit1");
+        std::string set2 = protocol_key("sintercard_limit2");
 
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
+        // set1: {a, b, c, d, e}, set2: {a, b, c, f, g}
+        // intersection: {a, b, c}
+        (void)co_await redis.sadd(set1, "a", "b", "c", "d", "e");
+        (void)co_await redis.sadd(set2, "a", "b", "c", "f", "g");
 
-    // Pop a member asynchronously
-    redis.spop([&](auto &&reply) { pop_result = reply.result(); }, key);
+        // Without limit: all 3 common members
+        auto full_reply = co_await redis.sintercard({set1, set2});
+        EXPECT_TRUE(full_reply.ok());
+        EXPECT_EQ(full_reply.result(), 3);
 
-    redis.await();
-    EXPECT_TRUE(pop_result.has_value());
+        // With limit=2: stops counting at 2
+        auto limited_reply = co_await redis.sintercard({set1, set2}, 2LL);
+        EXPECT_TRUE(limited_reply.ok());
+        EXPECT_EQ(limited_reply.result(), 2);
 
-    // Pop multiple members asynchronously
-    redis.spop([&](auto &&reply) { pop_many_result = reply.result(); }, key, 2);
+        // With limit=1: stops counting at 1
+        auto one_reply = co_await redis.sintercard({set1, set2}, 1LL);
+        EXPECT_TRUE(one_reply.ok());
+        EXPECT_EQ(one_reply.result(), 1);
 
-    redis.await();
-    EXPECT_EQ(pop_many_result.size(), 2);
+        // With limit greater than actual count: returns actual count
+        auto big_limit = co_await redis.sintercard({set1, set2}, 100LL);
+        EXPECT_TRUE(big_limit.ok());
+        EXPECT_EQ(big_limit.result(), 3);
+
+        (void)co_await redis.del(set1, set2);
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
 }
 
-// Test asynchrone SRANDMEMBER
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SRANDMEMBER) {
-    std::string                key = test_key("async_srandmember");
-    std::optional<std::string> rand_result;
-    std::vector<std::string>   rand_many_result;
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
-
-    // Get a random member asynchronously
-    redis.srandmember([&](auto &&reply) { rand_result = reply.result(); }, key);
-
-    redis.await();
-    EXPECT_TRUE(rand_result.has_value());
-
-    // Get multiple random members asynchronously
-    redis.srandmember([&](auto &&reply) { rand_many_result = reply.result(); }, key, 2);
-
-    redis.await();
-    EXPECT_EQ(rand_many_result.size(), 2);
+TEST_P(SetProtocolModesTest, SADD_SMEMBERS) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("set");
+        auto add_r = co_await redis.sadd(k, "x", "y", "z");
+        EXPECT_TRUE(add_r.ok()) << add_r.error();
+        if (add_r.ok()) EXPECT_EQ(add_r.result(), 3);
+        auto members_r = co_await redis.smembers(k);
+        EXPECT_TRUE(members_r.ok()) << members_r.error();
+        if (members_r.ok()) EXPECT_EQ(members_r.result().size(), 3u);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
-// Test asynchrone SREM
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SREM) {
-    std::string key         = test_key("async_srem");
-    long long   srem_result = 0;
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3");
-
-    // Remove members asynchronously
-    redis.srem([&](auto &&reply) { srem_result = reply.result(); }, key, "member1",
-               "member2");
-
-    redis.await();
-    EXPECT_EQ(srem_result, 2);
+TEST_P(SetProtocolModesTest, SISMEMBER_BOOLEAN) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("sismember");
+        (void)co_await redis.sadd(k, "a");
+        auto r = co_await redis.sismember(k, "a");
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_TRUE(r.result());
+        auto r2 = co_await redis.sismember(k, "b");
+        EXPECT_TRUE(r2.ok());
+        if (r2.ok()) EXPECT_FALSE(r2.result());
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
-// Test asynchrone SSCAN
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SSCAN) {
-    std::string                     key = test_key("async_sscan");
-    std::unordered_set<std::string> scan_result;
-    bool                            scan_completed = false;
-
-    // Ajouter des membres
-    redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
-
-    // Scan members asynchronously
-    redis.sscan(
-        [&](auto &&reply) {
-            std::move(reply.result().items.begin(), reply.result().items.end(),
-                      std::inserter(scan_result, scan_result.end()));
-            scan_completed = true;
-        },
-        key, 0, "member*", 2);
-
-    redis.await();
-    EXPECT_TRUE(scan_completed);
-    EXPECT_GE(scan_result.size(), 2); // With count=2, we should only have 2 elements
+TEST_P(SetProtocolModesTest, SINTER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k1 = protocol_key("sinter1");
+        auto k2 = protocol_key("sinter2");
+        (void)co_await redis.sadd(k1, "a", "b", "c");
+        (void)co_await redis.sadd(k2, "b", "c", "d");
+        auto r = co_await redis.sinter({k1, k2});
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result().size(), 2u);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
-// Test asynchrone SUNION/SUNIONSTORE
-TEST_F(RedisTest, ASYNC_SET_COMMANDS_SUNION) {
-    std::string              key1 = test_key("async_sunion1");
-    std::string              key2 = test_key("async_sunion2");
-    std::string              dest = test_key("async_sunion_dest");
-    std::vector<std::string> union_result;
-    long long                unionstore_result = 0;
+TEST_P(SetProtocolModesTest, SREM_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("srem");
+        (void)co_await redis.sadd(k, "a", "b", "c");
+        auto r = co_await redis.srem(k, "a");
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), 1);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
 
-    // Create the sets
-    redis.sadd(key1, "a", "b", "c");
-    redis.sadd(key2, "c", "d", "e");
+TEST_P(SetProtocolModesTest, SCARD_INTEGER) {
+    bool done = false;
+    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3();
+        auto k = protocol_key("scard");
+        (void)co_await redis.sadd(k, "x", "y", "z");
+        auto r = co_await redis.scard(k);
+        EXPECT_TRUE(r.ok()) << r.error();
+        if (r.ok()) EXPECT_EQ(r.result(), 3);
+        done = true;
+    }());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
 
-    // Calculate the union asynchronously
-    redis.sunion([&](auto &&reply) { union_result = reply.result(); }, {key1, key2});
-
-    redis.await();
-    EXPECT_EQ(union_result.size(), 5);
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "a") !=
-                union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "b") !=
-                union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "c") !=
-                union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "d") !=
-                union_result.end());
-    EXPECT_TRUE(std::find(union_result.begin(), union_result.end(), "e") !=
-                union_result.end());
-
-    // Store the union asynchronously
-    redis.sunionstore([&](auto &&reply) { unionstore_result = reply.result(); }, dest,
-                      {key1, key2});
-
-    redis.await();
-    EXPECT_EQ(unionstore_result, 5);
+// Main function to run the tests
+int
+main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }

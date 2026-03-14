@@ -28,7 +28,7 @@ namespace qb::redis {
  * @brief Provides Redis list command implementations.
  *
  * This class implements Redis list operations, which provide an ordered collection
- * of strings. Each command has both synchronous and asynchronous versions.
+ * of strings. Commands return awaiters for coroutine-first async I/O.
  *
  * Redis lists are implemented as linked lists, which provide fast operations
  * when adding elements to the head or tail, as well as manipulating elements
@@ -48,17 +48,17 @@ public:
     // =============== Basic List Operations ===============
 
     /**
-     * @brief Get the length of the list.
+     * @brief Get the length of the list (coroutine awaitable).
      * @param key Key where the list is stored.
-     * @return The length of the list.
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/llen
      */
-    long long
-    llen(const std::string &key) {
-        if (key.empty()) {
-            return 0;
-        }
-        return derived().template command<long long>("LLEN", key).result();
+    auto llen(const std::string &key) {
+        return derived().template make_coro_command<long long>(
+            [this, key](auto&& callback) {
+                this->llen(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -78,21 +78,19 @@ public:
     // =============== Push Operations ===============
 
     /**
-     * @brief Push multiple elements to the beginning of the list.
+     * @brief Push multiple elements to the beginning of the list (coroutine awaitable).
      * @param key Key where the list is stored.
      * @param values Values to be pushed.
-     * @return The length of the list after the operation.
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/lpush
      */
     template <typename... Args>
-    long long
-    lpush(const std::string &key, Args &&...args) {
-        if (key.empty() || sizeof...(args) == 0) {
-            return 0;
-        }
-        return derived()
-            .template command<long long>("LPUSH", key, std::forward<Args>(args)...)
-            .result();
+    auto lpush(const std::string &key, Args &&...args) {
+        return derived().template make_coro_command<long long>(
+            [this, key, ...args = std::forward<Args>(args)](auto&& callback) mutable {
+                this->lpush(std::move(callback), key, std::forward<decltype(args)>(args)...);
+            }
+        );
     }
 
     /**
@@ -111,27 +109,23 @@ public:
     }
 
     /**
-     * @brief Push an element to the beginning of the list, only if the list already
-     * exists.
+     * @brief Push an element to the beginning of the list, only if the list already exists (coroutine awaitable).
      * @param key Key where the list is stored.
      * @param val Element to be pushed.
-     * @return The length of the list after the operation.
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/lpushx
      */
     template <typename... Args>
-    long long
-    lpushx(const std::string &key, Args &&...args) {
-        if (key.empty() || sizeof...(args) == 0) {
-            return 0;
-        }
-        return derived()
-            .template command<long long>("LPUSHX", key, std::forward<Args>(args)...)
-            .result();
+    auto lpushx(const std::string &key, Args &&...args) {
+        return derived().template make_coro_command<long long>(
+            [this, key, ...args = std::forward<Args>(args)](auto&& callback) mutable {
+                this->lpushx(std::move(callback), key, std::forward<decltype(args)>(args)...);
+            }
+        );
     }
 
     /**
-     * @brief Push an element to the beginning of the list asynchronously, only if the
-     * list exists.
+     * @brief Push an element to the beginning of the list asynchronously, only if the list exists.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
      * @param val Element to be pushed.
@@ -146,21 +140,19 @@ public:
     }
 
     /**
-     * @brief Push multiple elements to the end of the list.
+     * @brief Push multiple elements to the end of the list (coroutine awaitable).
      * @param key Key where the list is stored.
      * @param values Values to be pushed.
-     * @return The length of the list after the operation.
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/rpush
      */
     template <typename... Args>
-    long long
-    rpush(const std::string &key, Args &&...args) {
-        if (key.empty() || sizeof...(args) == 0) {
-            return 0;
-        }
-        return derived()
-            .template command<long long>("RPUSH", key, std::forward<Args>(args)...)
-            .result();
+    auto rpush(const std::string &key, Args &&...args) {
+        return derived().template make_coro_command<long long>(
+            [this, key, ...args = std::forward<Args>(args)](auto&& callback) mutable {
+                this->rpush(std::move(callback), key, std::forward<decltype(args)>(args)...);
+            }
+        );
     }
 
     /**
@@ -179,24 +171,23 @@ public:
     }
 
     /**
-     * @brief Push an element to the end of the list, only if the list already exists.
+     * @brief Push element(s) to the end of the list, only if the list already exists (coroutine awaitable).
      * @param key Key where the list is stored.
-     * @param val Element to be pushed.
-     * @return The length of the list after the operation.
-     * @note If the list does not exist, `rpushx` returns 0.
+     * @param args Elements to be pushed.
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/rpushx
      */
-    long long
-    rpushx(const std::string &key, const std::string &val) {
-        if (key.empty() || val.empty()) {
-            return 0;
-        }
-        return derived().template command<long long>("RPUSHX", key, val).result();
+    template <typename... Args>
+    auto rpushx(const std::string &key, Args &&...args) {
+        return derived().template make_coro_command<long long>(
+            [this, key, ...args = std::forward<Args>(args)](auto&& callback) mutable {
+                this->rpushx(std::move(callback), key, std::forward<decltype(args)>(args)...);
+            }
+        );
     }
 
     /**
-     * @brief Push an element to the end of the list asynchronously, only if the list
-     * exists.
+     * @brief Push an element to the end of the list asynchronously, only if the list exists.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
      * @param val Element to be pushed.
@@ -213,21 +204,18 @@ public:
     // =============== Pop Operations ===============
 
     /**
-     * @brief Pop the first element(s) of the list.
+     * @brief Pop the first element(s) of the list (coroutine awaitable).
      * @param key Key where the list is stored.
      * @param count Number of elements to pop (optional).
-     * @return The popped element(s).
-     * @note If list is empty, i.e. key does not exist, returns empty vector.
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/lpop
      */
-    std::vector<std::string>
-    lpop(const std::string &key, long long count) {
-        if (key.empty() || count < 1) {
-            return {};
-        }
-        return derived()
-            .template command<std::vector<std::string>>("LPOP", key, count)
-            .result();
+    auto lpop(const std::string &key, long long count) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key, count](auto&& callback) {
+                this->lpop(std::move(callback), key, count);
+            }
+        );
     }
 
     /**
@@ -247,16 +235,17 @@ public:
     }
 
     /**
-     * @brief Pop a single element from the left of the list.
+     * @brief Pop a single element from the left of the list (coroutine awaitable).
      * @param key Key where the list is stored.
-     * @return The popped element or nullopt if the list is empty.
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @see https://redis.io/commands/lpop
      */
-    std::optional<std::string>
-    lpop(const std::string &key) {
-        return derived()
-            .template command<std::optional<std::string>>("LPOP", key)
-            .result();
+    auto lpop(const std::string &key) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key](auto&& callback) {
+                this->lpop(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -275,21 +264,18 @@ public:
     }
 
     /**
-     * @brief Pop the last element(s) of the list.
+     * @brief Pop the last element(s) of the list (coroutine awaitable).
      * @param key Key where the list is stored.
      * @param count Number of elements to pop (optional).
-     * @return The popped element(s).
-     * @note If list is empty, i.e. key does not exist, returns empty vector.
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/rpop
      */
-    std::vector<std::string>
-    rpop(const std::string &key, long long count) {
-        if (key.empty() || count < 1) {
-            return {};
-        }
-        return derived()
-            .template command<std::vector<std::string>>("RPOP", key, count)
-            .result();
+    auto rpop(const std::string &key, long long count) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key, count](auto&& callback) {
+                this->rpop(std::move(callback), key, count);
+            }
+        );
     }
 
     /**
@@ -309,16 +295,17 @@ public:
     }
 
     /**
-     * @brief Pop a single element from the right of the list.
+     * @brief Pop a single element from the right of the list (coroutine awaitable).
      * @param key Key where the list is stored.
-     * @return The popped element or nullopt if the list is empty.
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @see https://redis.io/commands/rpop
      */
-    std::optional<std::string>
-    rpop(const std::string &key) {
-        return derived()
-            .template command<std::optional<std::string>>("RPOP", key)
-            .result();
+    auto rpop(const std::string &key) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key](auto&& callback) {
+                this->rpop(std::move(callback), key);
+            }
+        );
     }
 
     /**
@@ -339,22 +326,18 @@ public:
     // =============== Blocking Operations ===============
 
     /**
-     * @brief Pop the first element of the list in a blocking way.
+     * @brief Pop the first element of the list in a blocking way (coroutine awaitable).
      * @param keys List of keys to check.
      * @param timeout Timeout in seconds. 0 means block forever.
-     * @return Key-element pair.
-     * @note If list is empty and timeout reaches, return `std::nullopt`.
+     * @return redis_awaiter yielding Reply<std::optional<std::pair<std::string, std::string>>>
      * @see https://redis.io/commands/blpop
      */
-    std::optional<std::pair<std::string, std::string>>
-    blpop(const std::vector<std::string> &keys, long long timeout = 0) {
-        if (keys.size() == 0) {
-            return std::nullopt;
-        }
-        return derived()
-            .template command<std::optional<std::pair<std::string, std::string>>>(
-                "BLPOP", keys, timeout)
-            .result();
+    auto blpop(const std::vector<std::string> &keys, long long timeout = 0) {
+        return derived().template make_coro_command<std::optional<std::pair<std::string, std::string>>>(
+            [this, keys, timeout](auto&& callback) {
+                this->blpop(std::move(callback), keys, timeout);
+            }
+        );
     }
 
     /**
@@ -377,15 +360,13 @@ public:
     }
 
     /**
-     * @brief Pop the first element of the list in a blocking way.
+     * @brief Pop the first element of the list in a blocking way (chrono version, coroutine awaitable).
      * @param keys List of keys to check.
      * @param timeout Timeout duration.
-     * @return Key-element pair.
-     * @note If list is empty and timeout reaches, return `std::nullopt`.
+     * @return redis_awaiter yielding Reply<std::optional<std::pair<std::string, std::string>>>
      * @see https://redis.io/commands/blpop
      */
-    std::optional<std::pair<std::string, std::string>>
-    blpop(const std::vector<std::string> &keys, const std::chrono::seconds &timeout) {
+    auto blpop(const std::vector<std::string> &keys, const std::chrono::seconds &timeout) {
         return blpop(keys, timeout.count());
     }
     /**
@@ -403,26 +384,22 @@ public:
         Derived &>
     blpop(Func &&func, const std::vector<std::string> &keys,
           const std::chrono::seconds &timeout) {
-        return blpop(func, keys, timeout.count());
+        return blpop(std::forward<Func>(func), keys, timeout.count());
     }
 
     /**
-     * @brief Pop the last element of the list in a blocking way.
+     * @brief Pop the last element of the list in a blocking way (coroutine awaitable).
      * @param keys List of keys to check.
      * @param timeout Timeout in seconds. 0 means block forever.
-     * @return Key-element pair.
-     * @note If list is empty and timeout reaches, return `std::nullopt`.
+     * @return redis_awaiter yielding Reply<std::optional<std::pair<std::string, std::string>>>
      * @see https://redis.io/commands/brpop
      */
-    std::optional<std::pair<std::string, std::string>>
-    brpop(const std::vector<std::string> &keys, long long timeout = 0) {
-        if (keys.size() == 0) {
-            return std::nullopt;
-        }
-        return derived()
-            .template command<std::optional<std::pair<std::string, std::string>>>(
-                "BRPOP", keys, timeout)
-            .result();
+    auto brpop(const std::vector<std::string> &keys, long long timeout = 0) {
+        return derived().template make_coro_command<std::optional<std::pair<std::string, std::string>>>(
+            [this, keys, timeout](auto&& callback) {
+                this->brpop(std::move(callback), keys, timeout);
+            }
+        );
     }
 
     /**
@@ -445,15 +422,13 @@ public:
     }
 
     /**
-     * @brief Pop the last element of the list in a blocking way.
+     * @brief Pop the last element of the list in a blocking way (chrono version, coroutine awaitable).
      * @param keys List of keys to check.
      * @param timeout Timeout duration.
-     * @return Key-element pair.
-     * @note If list is empty and timeout reaches, return `std::nullopt`.
+     * @return redis_awaiter yielding Reply<std::optional<std::pair<std::string, std::string>>>
      * @see https://redis.io/commands/brpop
      */
-    std::optional<std::pair<std::string, std::string>>
-    brpop(const std::vector<std::string> &keys, const std::chrono::seconds &timeout) {
+    auto brpop(const std::vector<std::string> &keys, const std::chrono::seconds &timeout) {
         return brpop(keys, timeout.count());
     }
 
@@ -472,26 +447,24 @@ public:
         Derived &>
     brpop(Func &&func, const std::vector<std::string> &keys,
           const std::chrono::seconds &timeout) {
-        return brpop(func, keys, timeout.count());
+        return brpop(std::forward<Func>(func), keys, timeout.count());
     }
 
     // =============== List Manipulation Operations ===============
 
     /**
-     * @brief Get the element at the given index of the list.
+     * @brief Get the element at the given index of the list (coroutine awaitable).
      * @param key Key where the list is stored.
      * @param index Zero-base index, and -1 means the last element.
-     * @return The element at the given index.
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @see https://redis.io/commands/lindex
      */
-    std::optional<std::string>
-    lindex(const std::string &key, long long index) {
-        if (key.empty()) {
-            return std::nullopt;
-        }
-        return derived()
-            .template command<std::optional<std::string>>("LINDEX", key, index)
-            .result();
+    auto lindex(const std::string &key, long long index) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, key, index](auto&& callback) {
+                this->lindex(std::move(callback), key, index);
+            }
+        );
     }
 
     /**
@@ -511,37 +484,29 @@ public:
     }
 
     /**
-     * @brief Insert an element to a list before or after the pivot element.
+     * @brief Insert an element to a list before or after the pivot element (coroutine awaitable).
      * @param key Key where the list is stored.
      * @param position Before or after the pivot element.
-     * @param pivot The pivot value. The `pivot` is the value of the element, not the
-     * index.
+     * @param pivot The pivot value.
      * @param val Element to be inserted.
-     * @return The length of the list after the operation.
-     * @note If the pivot value is not found, `linsert` returns -1.
-     * @see `InsertPosition`
+     * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/linsert
      */
-    long long
-    linsert(const std::string &key, InsertPosition position, const std::string &pivot,
-            const std::string &val) {
-        if (key.empty() || pivot.empty() || val.empty()) {
-            return -1;
-        }
-        return derived()
-            .template command<long long>("LINSERT", key, std::to_string(position), pivot,
-                                         val)
-            .result();
+    auto linsert(const std::string &key, InsertPosition position, const std::string &pivot,
+                 const std::string &val) {
+        return derived().template make_coro_command<long long>(
+            [this, key, position, pivot, val](auto&& callback) {
+                this->linsert(std::move(callback), key, position, pivot, val);
+            }
+        );
     }
 
     /**
-     * @brief Insert an element to a list before or after the pivot element
-     * asynchronously.
+     * @brief Insert an element to a list asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
      * @param position Before or after the pivot element.
-     * @param pivot The pivot value. The `pivot` is the value of the element, not the
-     * index.
+     * @param pivot The pivot value.
      * @param val Element to be inserted.
      * @return Reference to the derived class.
      * @see https://redis.io/commands/linsert
@@ -551,35 +516,31 @@ public:
     linsert(Func &&func, const std::string &key, InsertPosition position,
             const std::string &pivot, const std::string &val) {
         return derived().template command<long long>(std::forward<Func>(func), "LINSERT",
-                                                     key, std::to_string(position),
+                                                     key, to_string(position),
                                                      pivot, val);
     }
 
     /**
-     * @brief Get elements in the given range of the given list.
+     * @brief Get elements in the given range of the given list (coroutine awaitable).
      * @param key Key where the list is stored.
-     * @param start Start index of the range. Index can be negative, which mean index
-     * from the end.
+     * @param start Start index of the range.
      * @param stop End index of the range.
-     * @return All elements found in a std::vector<std::string>.
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/lrange
      */
-    std::vector<std::string>
-    lrange(const std::string &key, long long start, long long stop) {
-        if (key.empty()) {
-            return {};
-        }
-        return derived()
-            .template command<std::vector<std::string>>("LRANGE", key, start, stop)
-            .result();
+    auto lrange(const std::string &key, long long start, long long stop) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key, start, stop](auto&& callback) {
+                this->lrange(std::move(callback), key, start, stop);
+            }
+        );
     }
 
     /**
      * @brief Get elements in the given range of the given list asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
-     * @param start Start index of the range. Index can be negative, which mean index
-     * from the end.
+     * @param start Start index of the range.
      * @param stop End index of the range.
      * @return Reference to the derived class.
      * @see https://redis.io/commands/lrange
@@ -601,12 +562,12 @@ public:
      * @note `count` can be positive, negative and 0. Check the reference for detail.
      * @see https://redis.io/commands/lrem
      */
-    long long
-    lrem(const std::string &key, long long count, const std::string &val) {
-        if (key.empty() || val.empty()) {
-            return 0;
-        }
-        return derived().template command<long long>("LREM", key, count, val).result();
+    auto lrem(const std::string &key, long long count, const std::string &val) {
+        return derived().template make_coro_command<long long>(
+            [this, key, count, val](auto&& callback) {
+                this->lrem(std::move(callback), key, count, val);
+            }
+        );
     }
 
     /**
@@ -634,12 +595,12 @@ public:
      * @return status object indicating success or failure.
      * @see https://redis.io/commands/lset
      */
-    status
-    lset(const std::string &key, long long index, const std::string &val) {
-        if (key.empty() || val.empty()) {
-            return {};
-        }
-        return derived().template command<status>("LSET", key, index, val).result();
+    auto lset(const std::string &key, long long index, const std::string &val) {
+        return derived().template make_coro_command<status>(
+            [this, key, index, val](auto&& callback) {
+                this->lset(std::move(callback), key, index, val);
+            }
+        );
     }
 
     /**
@@ -666,12 +627,12 @@ public:
      * @return status object indicating success or failure.
      * @see https://redis.io/commands/ltrim
      */
-    status
-    ltrim(const std::string &key, long long start, long long stop) {
-        if (key.empty()) {
-            return {};
-        }
-        return derived().template command<status>("LTRIM", key, start, stop).result();
+    auto ltrim(const std::string &key, long long start, long long stop) {
+        return derived().template make_coro_command<status>(
+            [this, key, start, stop](auto&& callback) {
+                this->ltrim(std::move(callback), key, start, stop);
+            }
+        );
     }
 
     /**
@@ -700,15 +661,12 @@ public:
      * @note If the source list does not exist, returns `std::nullopt`.
      * @see https://redis.io/commands/brpoplpush
      */
-    std::optional<std::string>
-    rpoplpush(const std::string &source, const std::string &destination) {
-        if (source.empty() || destination.empty()) {
-            return std::nullopt;
-        }
-        return derived()
-            .template command<std::optional<std::string>>("RPOPLPUSH", source,
-                                                          destination)
-            .result();
+    auto rpoplpush(const std::string &source, const std::string &destination) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, source, destination](auto&& callback) {
+                this->rpoplpush(std::move(callback), source, destination);
+            }
+        );
     }
 
     /**
@@ -738,17 +696,13 @@ public:
      * @note If source list is empty, returns `std::nullopt`.
      * @see https://redis.io/commands/lmove
      */
-    std::optional<std::string>
-    lmove(const std::string &source, const std::string &destination,
-          ListPosition wherefrom, ListPosition whereto) {
-        if (source.empty() || destination.empty()) {
-            return std::nullopt;
-        }
-        return derived()
-            .template command<std::optional<std::string>>("LMOVE", source, destination,
-                                                          std::to_string(wherefrom),
-                                                          std::to_string(whereto))
-            .result();
+    auto lmove(const std::string &source, const std::string &destination,
+               ListPosition wherefrom, ListPosition whereto) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, source, destination, wherefrom, whereto](auto&& callback) {
+                this->lmove(std::move(callback), source, destination, wherefrom, whereto);
+            }
+        );
     }
 
     /**
@@ -768,7 +722,7 @@ public:
           ListPosition wherefrom, ListPosition whereto) {
         return derived().template command<std::optional<std::string>>(
             std::forward<Func>(func), "LMOVE", source, destination,
-            std::to_string(wherefrom), std::to_string(whereto));
+            to_string(wherefrom), to_string(whereto));
     }
 
     /**
@@ -776,51 +730,128 @@ public:
      * key names.
      * @param keys List of keys to check.
      * @param position Where to pop from (LEFT or RIGHT).
-     * @param count Number of elements to pop (optional).
+     * @param count Number of elements to pop (optional, default 1).
      * @return A pair containing the key name and the popped elements.
      * @note If all lists are empty, returns `std::nullopt`.
      * @see https://redis.io/commands/lmpop
      */
-    // Todo : implement lmpop
-    // std::optional<std::pair<std::string, std::vector<std::string>>>
-    // lmpop(const std::vector<std::string> &keys, ListPosition position, long long
-    // count) {
-    //     if (keys.size() == 0 || count < 1) {
-    //         return std::nullopt;
-    //     }
-    //     return derived()
-    //         .template command<std::optional<std::pair<std::string,
-    //         std::vector<std::string>>>>(
-    //             "LMPOP",
-    //             1,
-    //             keys,
-    //             std::to_string(position),
-    //             count)
-    //         .result();
-    //// }
-    ///**
-    // * @brief Pop elements from the first non-empty list key asynchronously.
-    // * @param func Callback function to handle the result.
-    // * @param keys List of keys to check.
-    // * @param position Where to pop from (LEFT or RIGHT).
-    // * @param count Number of elements to pop (optional).
-    // * @return Reference to the derived class.
-    // */
-    // template <typename Func>
-    // std::enable_if_t<std::is_invocable_v<Func,
-    // Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>,
-    // Derived &> lmpop(Func &&func, const std::vector<std::string> &keys, ListPosition
-    // position, long long count) {
-    //    return derived()
-    //        .template command<std::optional<std::pair<std::string,
-    //        std::vector<std::string>>>>(
-    //            std::forward<Func>(func),
-    //            "LMPOP",
-    //            1,
-    //            keys,
-    //            std::to_string(position),
-    //            count);
-    //}
+    auto lmpop(const std::vector<std::string> &keys, ListPosition position,
+               long long count = 1) {
+        return derived().template make_coro_command<
+            std::optional<std::pair<std::string, std::vector<std::string>>>>(
+            [this, keys, position, count](auto&& callback) {
+                this->lmpop(std::move(callback), keys, position, count);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<
+        std::is_invocable_v<Func,
+                           Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>,
+        Derived &>
+    lmpop(Func &&func, const std::vector<std::string> &keys, ListPosition position,
+          long long count = 1) {
+        if (keys.empty()) {
+            return derived();
+        }
+        std::vector<std::string> opt;
+        if (count > 1) {
+            opt.push_back("COUNT");
+            opt.push_back(std::to_string(count));
+        }
+        return derived()
+            .template command<std::optional<std::pair<std::string, std::vector<std::string>>>>(
+                std::forward<Func>(func), "LMPOP", keys.size(), keys,
+                to_string(position), opt);
+    }
+
+    /**
+     * @brief Blocking variant of LMPOP (coroutine awaitable).
+     * @param keys List of keys to check.
+     * @param position Where to pop from (LEFT or RIGHT).
+     * @param timeout Timeout in seconds. 0 means block forever.
+     * @param count Number of elements to pop (optional).
+     * @see https://redis.io/commands/blmpop
+     */
+    auto blmpop(const std::vector<std::string> &keys, ListPosition position,
+               long long timeout, long long count = 1) {
+        return derived().template make_coro_command<
+            std::optional<std::pair<std::string, std::vector<std::string>>>>(
+            [this, keys, position, timeout, count](auto&& callback) {
+                this->blmpop(std::move(callback), keys, position, timeout, count);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<
+        std::is_invocable_v<Func,
+                           Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>,
+        Derived &>
+    blmpop(Func &&func, const std::vector<std::string> &keys, ListPosition position,
+           long long timeout, long long count = 1) {
+        if (keys.empty()) {
+            return derived();
+        }
+        std::vector<std::string> opt;
+        if (count > 1) {
+            opt.push_back("COUNT");
+            opt.push_back(std::to_string(count));
+        }
+        return derived()
+            .template command<std::optional<std::pair<std::string, std::vector<std::string>>>>(
+                std::forward<Func>(func), "BLMPOP", timeout, keys.size(), keys,
+                to_string(position), opt);
+    }
+
+    /**
+     * @brief Blocking variant of LMOVE (coroutine awaitable).
+     * @param source Source list key.
+     * @param destination Destination list key.
+     * @param wherefrom Where to pop from (LEFT or RIGHT).
+     * @param whereto Where to push to (LEFT or RIGHT).
+     * @param timeout Timeout in seconds. 0 means block forever.
+     * @see https://redis.io/commands/blmove
+     */
+    auto blmove(const std::string &source, const std::string &destination,
+                ListPosition wherefrom, ListPosition whereto, long long timeout) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, source, destination, wherefrom, whereto, timeout](auto&& callback) {
+                this->blmove(std::move(callback), source, destination, wherefrom,
+                             whereto, timeout);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
+    blmove(Func &&func, const std::string &source, const std::string &destination,
+           ListPosition wherefrom, ListPosition whereto, long long timeout) {
+        return derived().template command<std::optional<std::string>>(
+            std::forward<Func>(func), "BLMOVE", source, destination,
+            to_string(wherefrom), to_string(whereto), timeout);
+    }
+
+    /**
+     * @brief Pop element from source list, push to destination, blocking (coroutine awaitable).
+     * @deprecated Use blmove instead.
+     * @see https://redis.io/commands/brpoplpush
+     */
+    auto brpoplpush(const std::string &source, const std::string &destination,
+                    long long timeout) {
+        return derived().template make_coro_command<std::optional<std::string>>(
+            [this, source, destination, timeout](auto&& callback) {
+                this->brpoplpush(std::move(callback), source, destination, timeout);
+            }
+        );
+    }
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
+                     Derived &>
+    brpoplpush(Func &&func, const std::string &source, const std::string &destination,
+              long long timeout) {
+        return derived().template command<std::optional<std::string>>(
+            std::forward<Func>(func), "BRPOPLPUSH", source, destination, timeout);
+    }
 
     /**
      * @brief Get the position of an element in a list.
@@ -833,31 +864,15 @@ public:
      * @note If element is not found, returns empty vector.
      * @see https://redis.io/commands/lpos
      */
-    std::vector<long long>
-    lpos(const std::string &key, const std::string &element,
-         std::optional<long long> rank   = std::nullopt,
-         std::optional<long long> count  = std::nullopt,
-         std::optional<long long> maxlen = std::nullopt) {
-        if (key.empty() || element.empty()) {
-            return {};
-        }
-        std::vector<std::string> args;
-        args.reserve(6); // Reserve space for all possible arguments
-
-        if (rank) {
-            args.push_back("RANK");
-            args.push_back(std::to_string(*rank));
-        }
-        args.push_back("COUNT");
-        args.push_back(count ? std::to_string(*count) : "0");
-        if (maxlen) {
-            args.push_back("MAXLEN");
-            args.push_back(std::to_string(*maxlen));
-        }
-
-        return derived()
-            .template command<std::vector<long long>>("LPOS", key, element, args)
-            .result();
+    auto lpos(const std::string &key, const std::string &element,
+              std::optional<long long> rank   = std::nullopt,
+              std::optional<long long> count  = std::nullopt,
+              std::optional<long long> maxlen = std::nullopt) {
+        return derived().template make_coro_command<std::vector<long long>>(
+            [this, key, element, rank, count, maxlen](auto&& callback) mutable {
+                this->lpos(std::move(callback), key, element, std::move(rank), std::move(count), std::move(maxlen));
+            }
+        );
     }
 
     /**

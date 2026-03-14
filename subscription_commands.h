@@ -27,7 +27,7 @@ namespace qb::redis {
  *
  * This class implements Redis Pub/Sub subscription commands, allowing
  * applications to subscribe to channels and receive published messages.
- * Each command has both synchronous and asynchronous versions.
+ * Each command has both coroutine and asynchronous versions.
  *
  * Redis Pub/Sub is a messaging paradigm where senders (publishers) send messages to
  * specific channels without knowledge of which receivers (subscribers) will receive
@@ -50,24 +50,22 @@ public:
     // =============== Channel Subscription Commands ===============
 
     /**
-     * @brief Subscribes to one or more channels
+     * @brief Subscribes to one or more channels (coroutine awaitable)
      *
      * This command subscribes the client to the specified channels. Once the client
      * enters the subscribed state, it can no longer issue any other commands except
      * additional subscription commands.
      *
      * @param channel Channel name to subscribe to
-     * @return Subscription information (channel name and current channel count)
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/subscribe
      */
-    qb::redis::subscription
-    subscribe(const std::string &channel) {
-        if (channel.empty()) {
-            return qb::redis::subscription{};
-        }
-        return derived()
-            .template command<qb::redis::subscription>("SUBSCRIBE", channel)
-            .result();
+    auto subscribe(const std::string &channel) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, channel](auto&& callback) {
+                this->subscribe(std::move(callback), channel);
+            }
+        );
     }
 
     /**
@@ -94,23 +92,20 @@ public:
     }
 
     /**
-     * @brief Subscribes to multiple channels
+     * @brief Subscribes to multiple channels (coroutine awaitable)
      *
      * This version allows subscribing to multiple channels at once.
      *
      * @param channels Vector of channel names to subscribe to
-     * @return Subscription information for the last channel (channel name and current
-     * channel count)
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/subscribe
      */
-    qb::redis::subscription
-    subscribe(const std::vector<std::string> &channels) {
-        if (channels.empty()) {
-            return qb::redis::subscription{};
-        }
-        return derived()
-            .template command<qb::redis::subscription>("SUBSCRIBE", channels)
-            .result();
+    auto subscribe(const std::vector<std::string> &channels) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, channels](auto&& callback) {
+                this->subscribe(std::move(callback), channels);
+            }
+        );
     }
 
     /**
@@ -137,26 +132,22 @@ public:
     }
 
     /**
-     * @brief Unsubscribes from one or more channels
+     * @brief Unsubscribes from one or more channels (coroutine awaitable)
      *
      * This command unsubscribes the client from the given channels, or from all
      * channels if none is given.
      *
      * @param channel Channel name to unsubscribe from (empty string to unsubscribe from
      * all)
-     * @return Unsubscription information (channel name and remaining channel count)
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/unsubscribe
      */
-    qb::redis::subscription
-    unsubscribe(const std::string &channel = "") {
-        if (channel.empty()) {
-            return derived()
-                .template command<qb::redis::subscription>("UNSUBSCRIBE")
-                .result();
-        }
-        return derived()
-            .template command<qb::redis::subscription>("UNSUBSCRIBE", channel)
-            .result();
+    auto unsubscribe(const std::string &channel = "") {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, channel](auto&& callback) {
+                this->unsubscribe(std::move(callback), channel);
+            }
+        );
     }
 
     /**
@@ -182,23 +173,18 @@ public:
     }
 
     /**
-     * @brief Unsubscribes from multiple channels
+     * @brief Unsubscribes from multiple channels (coroutine awaitable)
      *
      * @param channels Vector of channel names to unsubscribe from
-     * @return Unsubscription information for the last channel (channel name and
-     * remaining channel count)
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/unsubscribe
      */
-    qb::redis::subscription
-    unsubscribe(const std::vector<std::string> &channels) {
-        if (channels.empty()) {
-            return derived()
-                .template command<qb::redis::subscription>("UNSUBSCRIBE")
-                .result();
-        }
-        return derived()
-            .template command<qb::redis::subscription>("UNSUBSCRIBE", channels)
-            .result();
+    auto unsubscribe(const std::vector<std::string> &channels) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, channels](auto&& callback) {
+                this->unsubscribe(std::move(callback), channels);
+            }
+        );
     }
 
     /**
@@ -225,7 +211,7 @@ public:
     // =============== Pattern Subscription Commands ===============
 
     /**
-     * @brief Subscribes to channels matching the given pattern
+     * @brief Subscribes to channels matching the given pattern (coroutine awaitable)
      *
      * This command subscribes the client to channels matching the given patterns.
      * Supported glob-style patterns:
@@ -234,17 +220,15 @@ public:
      * - h[ae]llo subscribes to hello and hallo, but not hillo
      *
      * @param pattern Pattern to match channel names against
-     * @return Subscription information (pattern and current pattern count)
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/psubscribe
      */
-    qb::redis::subscription
-    psubscribe(const std::string &pattern) {
-        if (pattern.empty()) {
-            return qb::redis::subscription{};
-        }
-        return derived()
-            .template command<qb::redis::subscription>("PSUBSCRIBE", pattern)
-            .result();
+    auto psubscribe(const std::string &pattern) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, pattern](auto&& callback) {
+                this->psubscribe(std::move(callback), pattern);
+            }
+        );
     }
 
     /**
@@ -271,21 +255,18 @@ public:
     }
 
     /**
-     * @brief Subscribes to multiple patterns
+     * @brief Subscribes to multiple patterns (coroutine awaitable)
      *
      * @param patterns Vector of patterns to match channel names against
-     * @return Subscription information for the last pattern (pattern and current pattern
-     * count)
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/psubscribe
      */
-    qb::redis::subscription
-    psubscribe(const std::vector<std::string> &patterns) {
-        if (patterns.empty()) {
-            return qb::redis::subscription{};
-        }
-        return derived()
-            .template command<qb::redis::subscription>("PSUBSCRIBE", patterns)
-            .result();
+    auto psubscribe(const std::vector<std::string> &patterns) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, patterns](auto&& callback) {
+                this->psubscribe(std::move(callback), patterns);
+            }
+        );
     }
 
     /**
@@ -312,26 +293,22 @@ public:
     }
 
     /**
-     * @brief Unsubscribes from channels matching the given pattern
+     * @brief Unsubscribes from channels matching the given pattern (coroutine awaitable)
      *
      * This command unsubscribes the client from the given patterns, or from all
      * patterns if none is given.
      *
      * @param pattern Pattern to stop matching channel names against (empty string to
      * unsubscribe from all patterns)
-     * @return Unsubscription information (pattern and remaining pattern count)
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/punsubscribe
      */
-    qb::redis::subscription
-    punsubscribe(const std::string &pattern = "") {
-        if (pattern.empty()) {
-            return derived()
-                .template command<qb::redis::subscription>("PUNSUBSCRIBE")
-                .result();
-        }
-        return derived()
-            .template command<qb::redis::subscription>("PUNSUBSCRIBE", pattern)
-            .result();
+    auto punsubscribe(const std::string &pattern = "") {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, pattern](auto&& callback) {
+                this->punsubscribe(std::move(callback), pattern);
+            }
+        );
     }
 
     /**
@@ -357,23 +334,18 @@ public:
     }
 
     /**
-     * @brief Unsubscribes from multiple patterns
+     * @brief Unsubscribes from multiple patterns (coroutine awaitable)
      *
      * @param patterns Vector of patterns to stop matching channel names against
-     * @return Unsubscription information for the last pattern (pattern and remaining
-     * pattern count)
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/punsubscribe
      */
-    qb::redis::subscription
-    punsubscribe(const std::vector<std::string> &patterns) {
-        if (patterns.empty()) {
-            return derived()
-                .template command<qb::redis::subscription>("PUNSUBSCRIBE")
-                .result();
-        }
-        return derived()
-            .template command<qb::redis::subscription>("PUNSUBSCRIBE", patterns)
-            .result();
+    auto punsubscribe(const std::vector<std::string> &patterns) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, patterns](auto&& callback) {
+                this->punsubscribe(std::move(callback), patterns);
+            }
+        );
     }
 
     /**

@@ -2,6 +2,8 @@
 
 This document covers Redis commands for managing transactions (MULTI/EXEC).
 
+**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+
 Reference: [Redis Transaction Commands](https://redis.io/commands/?group=transactions)
 
 ## Key Concepts

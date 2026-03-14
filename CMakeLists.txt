@@ -29,25 +29,24 @@ if(NOT QB_HAS_SSL)
     return()
 endif()
 
-# Add the internal hiredis dependency
-set(DISABLE_TESTS ON)
-add_subdirectory(not-qb/hiredis)
-
 # Register the Redis module using the new framework functions
+# Note: Uses the new C++23 native parser instead of hiredis
 qb_register_module(
     NAME redis
     VERSION 1.0.0
-    DEPENDS qb-core hiredis
+    DEPENDS qb-core
     SOURCES
         redis.cpp
         reply.cpp
     INCLUDES
-        not-qb
+        ${CMAKE_CURRENT_SOURCE_DIR}
     DEFINES
         QBM_REDIS_VERSION=1.0.0
+        QBM_REDIS_USE_NATIVE_PARSER=1
 )
 
-target_include_directories(qbm-redis PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/not-qb)
+# Parser headers are header-only and included in the module
+target_include_directories(qbm-redis PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Add tests if enabled
 if(QB_BUILD_TESTS)

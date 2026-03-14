@@ -44,22 +44,23 @@ private:
 
 public:
     /**
-     * @brief Publishes a message to a channel
+     * @brief Publishes a message to a channel (coroutine awaitable)
      *
      * This command sends a message to all clients that have subscribed to the given
      * channel. The command returns the number of clients that received the message.
      *
      * @param channel Channel name to publish the message to
      * @param message Message content to publish
-     * @return Number of clients that received the message (0 if no subscribers)
+     * @return Awaitable that yields Reply<long long> with the number of clients that received the message
      * @throws std::runtime_error if channel is empty
      * @see https://redis.io/commands/publish
      */
-    long long
-    publish(const std::string &channel, const std::string &message) {
-        return derived()
-            .template command<long long>("PUBLISH", channel, message)
-            .result();
+    auto publish(const std::string &channel, const std::string &message) {
+        return derived().template make_coro_command<long long>(
+            [this, channel, message](auto&& callback) {
+                this->publish(std::move(callback), channel, message);
+            }
+        );
     }
 
     /**
