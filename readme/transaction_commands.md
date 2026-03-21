@@ -16,17 +16,17 @@ Reference: [Redis Transaction Commands](https://redis.io/commands/?group=transac
 
 ## Client State
 
-The `qbm-redis` client maintains an internal flag (`_in_multi`) to track whether it's currently inside a `MULTI` block.
+The `qbm-redis` client keeps a **client-side** boolean `in_multi_` (implementation detail of `transaction_commands`) to know whether the connection is in MULTI mode after a successful `MULTI`.
 
-*   **Entering MULTI:** Calling `multi()` sets the flag.
-*   **Exiting MULTI:** Calling `exec()` or `discard()` clears the flag.
-*   **Behavior:** When `_in_multi` is true, commands sent to Redis return a simple "QUEUED" status immediately. The actual results are returned as an array reply only when `exec()` is called.
+*   **Entering MULTI:** A successful `multi()` sets `in_multi_`.
+*   **Exiting MULTI:** `exec()` and `discard()` clear `in_multi_` when the operation is issued (callbacks / coroutine completion follow the usual reply path).
+*   **Disconnect:** If the connection drops, `Redis` drains pending reply handlers and calls `reset_transaction_state()` so `in_multi_` is cleared. Do not assume the server still has a transaction open after a reconnect.
+*   **Behavior:** While `in_multi_` is true, commands you send are part of the transaction; server replies for queued commands are typically simple `QUEUED` statuses until `EXEC` returns the array of results.
 
 ## Common Reply Types
 
 *   `qb::redis::status`: For `MULTI`, `DISCARD`, `WATCH`, `UNWATCH`.
-*   `qb::redis::Reply<qb::redis::pipeline_result>`: For `EXEC`. The `pipeline_result` struct contains a `std::vector<redisReply*>` (or similar representation) holding the individual replies for each queued command.
-    *   **Note:** Parsing the results within the `pipeline_result` requires careful handling, as the types depend on the commands queued in the transaction. The library currently returns the raw replies for `EXEC`.
+*   `qb::redis::Reply<std::vector<T>>` (or your chosen `T` per `exec<T>()`): For `EXEC`, one element per queued command. Parse each element according to the command you queued.
 
 ## Commands
 
@@ -34,34 +34,27 @@ The `qbm-redis` client maintains an internal flag (`_in_multi`) to track whether
 
 Marks the start of a transaction block. Subsequent commands are queued.
 
-*   **Sync:** `status multi()`
-*   **Async:** `void multi_async(Callback<status> cb)`
+*   **Coroutine:** `co_await redis.multi()` → `Reply<status>`
+*   **Callback:** `redis.multi(callback)` with `Callback<status>`
 
 ### `EXEC`
 
 Executes all commands queued since `MULTI`. Returns an array of replies, one for each command.
 
-*   **Sync:** `Reply<pipeline_result> exec()`
-*   **Async:** `void exec_async(Callback<pipeline_result> cb)`
+*   **Coroutine:** `co_await redis.exec<Result>()` → `Reply<std::vector<Result>>`
+*   **Callback:** `redis.exec<Result>(callback)`
 
 ```cpp
-// Sync Example
-redis.multi();
-redis.set("a", "1"); // Reply is likely QUEUED status
-redis.set("b", "2"); // Reply is likely QUEUED status
-auto exec_reply = redis.exec();
+// Coroutine-style sketch
+co_await redis.multi();
+co_await redis.set("a", "1");  // typically QUEUED / status
+co_await redis.set("b", "2");
+auto exec_reply = co_await redis.exec<qb::redis::status>();
 
 if (exec_reply) {
-    // exec_reply.value() is a pipeline_result
-    // Iterate through raw replies and parse manually if needed
-    const auto& results = exec_reply.value().replies;
-    if (results.size() == 2) {
-        // Assuming hiredis redisReply*
-        if (results[0]->type == REDIS_REPLY_STATUS && strcmp(results[0]->str, "OK") == 0) { ... }
-        if (results[1]->type == REDIS_REPLY_STATUS && strcmp(results[1]->str, "OK") == 0) { ... }
-    }
+    const auto& results = exec_reply.value();
+    // Inspect each Reply<Result> in results for per-command outcomes
 } else {
-    // Transaction failed (e.g., due to WATCH)
     qb::io::cout() << "EXEC failed: " << exec_reply.error().what() << std::endl;
 }
 ```
@@ -70,21 +63,17 @@ if (exec_reply) {
 
 Discards all commands queued since `MULTI`.
 
-*   **Sync:** `status discard()`
-*   **Async:** `void discard_async(Callback<status> cb)`
+*   **Coroutine:** `co_await redis.discard()`
+*   **Callback:** `redis.discard(callback)`
 
 ### `WATCH key [key ...]`
 
-Marks the given keys to be watched for conditional execution of a transaction. If any watched key is modified before `EXEC`, the transaction aborts.
+Marks keys for optimistic execution. If any watched key changes before `EXEC`, the transaction aborts.
 
-*   **Sync (Single):** `status watch(const std::string &key)`
-*   **Sync (Multiple):** `status watch(const std::vector<std::string> &keys)`
-*   **Async (Single):** `void watch_async(const std::string &key, Callback<status> cb)`
-*   **Async (Multiple):** `void watch_async(const std::vector<std::string> &keys, Callback<status> cb)`
+*   **Coroutine / callback:** `watch`, `watch(keys)`, `watch_async`, etc. (see `transaction_commands.h`)
 
 ### `UNWATCH`
 
-Flushes all the previously watched keys for the current connection.
+Clears watched keys for the connection.
 
-*   **Sync:** `status unwatch()`
-*   **Async:** `void unwatch_async(Callback<status> cb)` 
+*   **Coroutine / callback:** `unwatch`, `unwatch_async`

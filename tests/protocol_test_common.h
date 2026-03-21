@@ -21,9 +21,26 @@
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include <string>
 #include "../redis.h"
 
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #define REDIS_URI_PROTOCOL {"tcp://localhost:6379"}
+
+namespace qbm_redis_test_detail {
+[[nodiscard]] inline int process_id_for_keys() noexcept {
+#if defined(_WIN32)
+    return static_cast<int>(_getpid());
+#else
+    return static_cast<int>(getpid());
+#endif
+}
+} // namespace qbm_redis_test_detail
 
 enum class ProtocolMode { RESP2, RESP3 };
 
@@ -48,7 +65,10 @@ protected:
     }
 
     std::string protocol_key(const char* base) const {
-        return std::string(base) + (GetParam() == ProtocolMode::RESP3 ? ":resp3" : ":resp2");
+        // Include process id so two concurrent ctest workers (or manual parallel runs)
+        // against the same Redis do not reuse identical key names.
+        return std::string(base) + (GetParam() == ProtocolMode::RESP3 ? ":resp3" : ":resp2") +
+               ":pid" + std::to_string(qbm_redis_test_detail::process_id_for_keys());
     }
 };
 

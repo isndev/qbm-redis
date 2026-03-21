@@ -135,7 +135,8 @@ TEST_P(KeyProtocolModesTest, CORO_KEY_COMMANDS_KEYS) {
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string suffix  = (GetParam() == ProtocolMode::RESP3 ? ":resp3" : ":resp2");
-        std::string pattern = "keys*" + suffix;
+        // protocol_key() adds ":pid<N>"; glob must allow trailing segment after :resp2/:resp3
+        std::string pattern = std::string("keys*") + suffix + "*";
         std::string key1    = protocol_key("keys1");
         std::string key2    = protocol_key("keys2");
         std::string key3    = protocol_key("other");
@@ -190,7 +191,7 @@ TEST_P(KeyProtocolModesTest, CORO_KEY_COMMANDS_SCAN) {
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string suffix  = (GetParam() == ProtocolMode::RESP3 ? ":resp3" : ":resp2");
-        std::string pattern = "scan*" + suffix;
+        std::string pattern = std::string("scan*") + suffix + "*";
         std::vector<std::string> keys;
         for (int i = 0; i < 10; ++i) {
             std::string k = std::string("scan") + std::to_string(i);
