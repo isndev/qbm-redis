@@ -84,6 +84,7 @@ public:
         if (channel.empty()) {
             Reply<qb::redis::subscription> reply;
             reply.ok() = false;
+            reply.error() = "Channel name cannot be empty";
             func(std::move(reply));
             return derived();
         }
@@ -124,6 +125,7 @@ public:
         if (channels.empty()) {
             Reply<qb::redis::subscription> reply;
             reply.ok() = false;
+            reply.error() = "Channel list cannot be empty";
             func(std::move(reply));
             return derived();
         }
@@ -247,6 +249,7 @@ public:
         if (pattern.empty()) {
             Reply<qb::redis::subscription> reply;
             reply.ok() = false;
+            reply.error() = "Pattern cannot be empty";
             func(std::move(reply));
             return derived();
         }
@@ -285,6 +288,7 @@ public:
         if (patterns.empty()) {
             Reply<qb::redis::subscription> reply;
             reply.ok() = false;
+            reply.error() = "Pattern list cannot be empty";
             func(std::move(reply));
             return derived();
         }

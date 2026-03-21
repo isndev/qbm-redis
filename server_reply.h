@@ -1,3 +1,7 @@
+/**
+ * @file server_reply.h
+ * @brief Server-side reply types, ValueExtractor, and AsyncResult
+ */
 /*
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
@@ -34,6 +38,11 @@ namespace qb::redis {
 // Modern Reply Types - Direct use of parser::Value
 // ============================================================================
 
+/**
+ * @struct ServerReply
+ * @brief Simplified reply wrapper for server-side Redis handlers
+ * @tparam T The result value type
+ */
 template <typename T>
 struct ServerReply {
     bool ok{false};
@@ -47,7 +56,7 @@ struct ServerReply {
     [[nodiscard]] const std::string& error_message() const { return error; }
 };
 
-// Specialization for void (commands that don't return data)
+/** @brief Specialization for void (commands that don't return data) */
 template <>
 struct ServerReply<void> {
     bool ok{false};
@@ -61,6 +70,13 @@ struct ServerReply<void> {
 // Value Extractors - Modern C++23 approach
 // ============================================================================
 
+/**
+ * @class ValueExtractor
+ * @brief Safe extraction of typed values from parser::Value
+ *
+ * Provides optional-based accessors for string, integer, double, bool,
+ * array, map, set, and error message.
+ */
 class ValueExtractor {
     const parser::Value* _value;
     
@@ -207,6 +223,11 @@ public:
 // Async result wrapper for coroutines
 // ============================================================================
 
+/**
+ * @class AsyncResult
+ * @brief Coroutine-friendly result wrapper using std::expected
+ * @tparam T The value type on success
+ */
 template <typename T>
 class AsyncResult {
     std::expected<T, std::string> _result;

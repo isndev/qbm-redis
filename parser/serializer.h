@@ -1,3 +1,7 @@
+/**
+ * @file parser/serializer.h
+ * @brief RESP serializer and CommandBuilder for wire format
+ */
 /*
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
@@ -28,6 +32,11 @@ namespace qb::redis::parser {
 // ============================================================================
 // RESP Serializer - converts values to RESP wire format
 // ============================================================================
+
+/**
+ * @class Serializer
+ * @brief Converts Value and primitives to RESP2/RESP3 wire format
+ */
 class Serializer {
 public:
     // Serialize to string
@@ -316,6 +325,11 @@ private:
 // ============================================================================
 // Command builder - fluent interface for building Redis commands
 // ============================================================================
+
+/**
+ * @class CommandBuilder
+ * @brief Fluent builder for Redis commands (RESP array format)
+ */
 class CommandBuilder {
 public:
     CommandBuilder() {

@@ -270,6 +270,44 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_SUCCESS) {
     }
 }
 
+// Test WATCH with empty key returns failed Reply (validation)
+TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_EMPTY_KEY) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+
+        auto watch_reply = co_await redis.watch("");
+        EXPECT_FALSE(watch_reply.ok());
+        EXPECT_FALSE(watch_reply.error().empty());
+        EXPECT_TRUE(watch_reply.error().find("empty") != std::string::npos);
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
+// Test WATCH with empty key list returns failed Reply (validation)
+TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_EMPTY_KEYS) {
+    bool completed = false;
+    auto test_task = [this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+
+        auto watch_reply = co_await redis.watch(std::vector<std::string>{});
+        EXPECT_FALSE(watch_reply.ok());
+        EXPECT_FALSE(watch_reply.error().empty());
+        EXPECT_TRUE(watch_reply.error().find("empty") != std::string::npos);
+
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(test_task());
+    while (!completed) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+}
+
 // Test UNWATCH followed by transaction
 TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_UNWATCH_THEN_EXEC) {
     bool completed = false;

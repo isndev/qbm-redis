@@ -1,3 +1,7 @@
+/**
+ * @file parser/types.h
+ * @brief RESP protocol types: Value, Array, Map, Set, Push, etc.
+ */
 /*
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
@@ -40,6 +44,8 @@ namespace qb::redis::parser {
 // ============================================================================
 // Protocol version
 // ============================================================================
+
+/** @brief Redis protocol version (RESP2 or RESP3) */
 enum class ProtocolVersion {
     RESP2 = 2,
     RESP3 = 3
@@ -48,6 +54,8 @@ enum class ProtocolVersion {
 // ============================================================================
 // Error types
 // ============================================================================
+
+/** @brief Parser error codes */
 enum class ParseErrorCode {
     OK = 0,
     INCOMPLETE_DATA,          // Need more data
@@ -63,6 +71,7 @@ enum class ParseErrorCode {
     PROTOCOL_ERROR,           // General protocol error
 };
 
+/** @brief Parser error with code and optional message */
 class ParseError {
 public:
     ParseError(ParseErrorCode code, std::string_view message = {})
@@ -94,6 +103,7 @@ private:
     std::string _message;
 };
 
+/** @brief Result type for parse operations (value or ParseError) */
 template<typename T>
 using ParseResult = std::expected<T, ParseError>;
 
@@ -143,12 +153,12 @@ struct Attribute;
 // Simple RESP Value types (non-recursive)
 // ============================================================================
 
-// Null (RESP3): _\r\n
+/** @brief RESP3 null type (_\\r\\n) */
 struct Null {
     bool operator==(const Null&) const = default;
 };
 
-// Simple string: +OK\r\n
+/** @brief RESP simple string (+OK\\r\\n) */
 struct SimpleString {
     std::string value;
     bool operator==(const SimpleString& other) const = default;
@@ -168,14 +178,14 @@ struct SimpleError {
     bool operator==(const SimpleError& other) const = default;
 };
 
-// Integer: :123\r\n
+/** @brief RESP integer (:123\\r\\n) */
 struct Integer {
     int64_t value;
     bool operator==(const Integer& other) const = default;
     operator int64_t() const { return value; }
 };
 
-// Bulk string: $5\r\nhello\r\n
+/** @brief RESP bulk string ($5\\r\\nhello\\r\\n) */
 struct BulkString {
     std::string value;
     
@@ -243,7 +253,7 @@ struct VerbatimString {
 // Recursive aggregate types (using unique_ptr to break circular dependency)
 // ============================================================================
 
-// Array: *N\r\n<elements...>
+/** @brief RESP array (*N\\r\\n<elements...>) */
 struct Array {
     std::vector<std::unique_ptr<Value>> elements;
     
@@ -262,7 +272,7 @@ struct Array {
     bool operator==(const Array& other) const;
 };
 
-// Map: %N\r\n<key1><value1><key2><value2>...
+/** @brief RESP3 map (%N\\r\\n<key1><value1>...) */
 struct Map {
     std::vector<std::pair<std::unique_ptr<Value>, std::unique_ptr<Value>>> entries;
     
@@ -318,8 +328,11 @@ struct Push {
 };
 
 // ============================================================================
+// ============================================================================
 // Variant Value type - the main type representing any RESP value
 // ============================================================================
+
+/** @brief Base variant type for all RESP values */
 using ValueBase = std::variant<
     Null,                    // _\r\n
     SimpleString,            // +\r\n
@@ -339,6 +352,7 @@ using ValueBase = std::variant<
     Push                     // >\r\n
 >;
 
+/** @brief Main RESP value type - variant of all RESP2/RESP3 types */
 struct Value : ValueBase {
     using ValueBase::ValueBase;
     

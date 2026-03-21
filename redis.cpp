@@ -114,7 +114,7 @@ BoundedInterval<double>::BoundedInterval(double min, double max, BoundType type)
             break;
 
         default:
-            throw Error("Unknow BoundType");
+            throw Error("Unknown BoundType");
     }
 }
 
@@ -229,7 +229,7 @@ BoundedInterval<std::string>::BoundedInterval(const std::string &min,
             break;
 
         default:
-            throw Error("Unknow BoundType");
+            throw Error("Unknown BoundType");
     }
 }
 

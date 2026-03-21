@@ -141,6 +141,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of del
+     * @see https://redis.io/commands/del
+     */
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     del(Func &&func, Keys &&...keys) {
@@ -161,6 +166,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of dump
+     * @see https://redis.io/commands/dump
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
                      Derived &>
@@ -183,6 +193,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of exists
+     * @see https://redis.io/commands/exists
+     */
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     exists(Func &&func, Keys &&...keys) {
@@ -204,6 +219,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of expire
+     * @see https://redis.io/commands/expire
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     expire(Func &&func, const std::string &key, long long timeout) {
@@ -221,6 +241,11 @@ public:
     auto expire(const std::string &key, const std::chrono::seconds &timeout) {
         return expire(key, timeout.count());
     }
+
+    /**
+     * @brief Asynchronous version of expire (chrono overload)
+     * @see https://redis.io/commands/expire
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     expire(Func &&func, const std::string &key, const std::chrono::seconds &timeout) {
@@ -241,6 +266,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of expireat
+     * @see https://redis.io/commands/expireat
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     expireat(Func &&func, const std::string &key, long long timestamp) {
@@ -260,6 +290,11 @@ public:
                                                 std::chrono::seconds> &tp) {
         return expireat(key, tp.time_since_epoch().count());
     }
+
+    /**
+     * @brief Asynchronous version of expireat (chrono overload)
+     * @see https://redis.io/commands/expireat
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     expireat(Func &&func, const std::string &key,
@@ -281,6 +316,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of keys
+     * @see https://redis.io/commands/keys
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
                      Derived &>
@@ -303,6 +343,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of move
+     * @see https://redis.io/commands/move
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     move(Func &&func, const std::string &key, long long destination_db) {
@@ -323,6 +368,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of persist
+     * @see https://redis.io/commands/persist
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     persist(Func &&func, const std::string &key) {
@@ -344,6 +394,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of pexpire
+     * @see https://redis.io/commands/pexpire
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pexpire(Func &&func, const std::string &key, long long timeout) {
@@ -361,6 +416,11 @@ public:
     auto pexpire(const std::string &key, const std::chrono::milliseconds &timeout) {
         return pexpire(key, timeout.count());
     }
+
+    /**
+     * @brief Asynchronous version of pexpire (chrono overload)
+     * @see https://redis.io/commands/pexpire
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pexpire(Func &&func, const std::string &key,
@@ -382,6 +442,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of pexpireat
+     * @see https://redis.io/commands/pexpireat
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pexpireat(Func &&func, const std::string &key, long long timestamp) {
@@ -401,6 +466,11 @@ public:
                                                  std::chrono::milliseconds> &tp) {
         return pexpireat(key, tp.time_since_epoch().count());
     }
+
+    /**
+     * @brief Asynchronous version of pexpireat (chrono overload)
+     * @see https://redis.io/commands/pexpireat
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pexpireat(Func &&func, const std::string &key,
@@ -422,6 +492,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of pttl
+     * @see https://redis.io/commands/pttl
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     pttl(Func &&func, const std::string &key) {
@@ -441,6 +516,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of randomkey
+     * @see https://redis.io/commands/randomkey
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
                      Derived &>
@@ -454,6 +534,7 @@ public:
      * @param key Key name to rename
      * @param new_key New name for the key
      * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/rename
      */
     auto rename(const std::string &key, const std::string &new_key) {
         return derived().template make_coro_command<status>(
@@ -470,6 +551,7 @@ public:
      * @param key Key name to rename
      * @param new_key New name for the key
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/rename
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -492,6 +574,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of renamenx
+     * @see https://redis.io/commands/renamenx
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     renamenx(Func &&func, const std::string &key, const std::string &new_key) {
@@ -506,6 +593,7 @@ public:
      * @param ttl Time-to-live in milliseconds
      * @param replace Whether to replace the key if it already exists
      * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/restore
      */
     auto restore(const std::string &key, const std::string &val, long long ttl,
                  bool replace = false) {
@@ -525,6 +613,7 @@ public:
      * @param ttl Time-to-live in milliseconds
      * @param replace Whether to replace the key if it already exists
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/restore
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -553,6 +642,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of scan (single iteration)
+     * @see https://redis.io/commands/scan
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<>> &&>, Derived &>
     scan(Func &&func, long long cursor, const std::string &pattern = "*",
@@ -560,6 +654,11 @@ public:
         return derived().template command<qb::redis::scan<>>(
             std::forward<Func>(func), "SCAN", cursor, "MATCH", pattern, "COUNT", count);
     }
+
+    /**
+     * @brief Asynchronous version of scan (iterates until cursor 0)
+     * @see https://redis.io/commands/scan
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<>> &&>, Derived &>
     scan(Func &&func, const std::string &pattern = "*") {
@@ -581,6 +680,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of touch
+     * @see https://redis.io/commands/touch
+     */
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     touch(Func &&func, Keys &&...keys) {
@@ -601,6 +705,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of ttl
+     * @see https://redis.io/commands/ttl
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     ttl(Func &&func, const std::string &key) {
@@ -621,6 +730,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of type
+     * @see https://redis.io/commands/type
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     type(Func &&func, const std::string &key) {
@@ -642,6 +756,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of unlink
+     * @see https://redis.io/commands/unlink
+     */
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     unlink(Func &&func, Keys &&...keys) {
@@ -663,6 +782,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of wait
+     * @see https://redis.io/commands/wait
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     wait(Func &&func, long long num_slaves, long long timeout) {
@@ -686,6 +810,11 @@ public:
               const std::chrono::milliseconds &ttl = std::chrono::milliseconds{0}) {
         return wait(num_slaves, ttl.count());
     }
+
+    /**
+     * @brief Asynchronous version of wait (chrono overload)
+     * @see https://redis.io/commands/wait
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     wait(Func &&func, long long num_slaves,
@@ -712,6 +841,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of copyKey
+     * @see https://redis.io/commands/copy
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     copyKey(Func &&func, const std::string &source, const std::string &destination,
@@ -741,6 +875,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of expiretime
+     * @see https://redis.io/commands/expiretime
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     expiretime(Func &&func, const std::string &key) {
@@ -761,6 +900,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of pexpiretime
+     * @see https://redis.io/commands/pexpiretime
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     pexpiretime(Func &&func, const std::string &key) {
@@ -791,6 +935,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of migrate
+     * @see https://redis.io/commands/migrate
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     migrate(Func &&func, const std::string &host, int port, const std::string &key,
@@ -822,6 +971,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of objectEncoding
+     * @see https://redis.io/commands/object
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
                      Derived &>
@@ -843,6 +997,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of objectFreq
+     * @see https://redis.io/commands/object
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>,
                      Derived &>
@@ -864,6 +1023,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of objectIdletime
+     * @see https://redis.io/commands/object
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>,
                      Derived &>
@@ -885,6 +1049,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of objectRefcount
+     * @see https://redis.io/commands/object
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>,
                      Derived &>
@@ -909,6 +1078,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of sortKey
+     * @see https://redis.io/commands/sort
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
                      Derived &>
@@ -936,6 +1110,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of sortKeyStore
+     * @see https://redis.io/commands/sort
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     sortKeyStore(Func &&func, const std::string &key,
@@ -963,6 +1142,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of sortKeyRo
+     * @see https://redis.io/commands/sort_ro
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
                      Derived &>
@@ -989,6 +1173,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of waitaof
+     * @see https://redis.io/commands/waitaof
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     waitaof(Func &&func, long long num_local, long long num_replicas,

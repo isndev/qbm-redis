@@ -744,6 +744,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of lmpop
+     * @see https://redis.io/commands/lmpop
+     */
     template <typename Func>
     std::enable_if_t<
         std::is_invocable_v<Func,
@@ -782,6 +787,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of blmpop
+     * @see https://redis.io/commands/blmpop
+     */
     template <typename Func>
     std::enable_if_t<
         std::is_invocable_v<Func,
@@ -821,6 +831,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of blmove
+     * @see https://redis.io/commands/blmove
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
                      Derived &>
@@ -884,6 +899,7 @@ public:
      * @param count Number of matches to return (optional).
      * @param maxlen Maximum number of elements to scan (optional).
      * @return Reference to the derived class.
+     * @see https://redis.io/commands/lpos
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<long long>> &&>,

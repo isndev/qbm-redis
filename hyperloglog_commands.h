@@ -47,7 +47,8 @@ public:
      * @tparam Elements Variadic types for elements to add
      * @param key Key under which the HyperLogLog is stored
      * @param elements Elements to add to the HyperLogLog
-     * @return Awaitable that yields Reply<bool>
+     * @return redis_awaiter yielding Reply<bool> (true if cardinality changed)
+     * @see https://redis.io/commands/pfadd
      */
     template <typename... Elements>
     auto pfadd(const std::string &key, Elements &&...elements) {
@@ -67,6 +68,7 @@ public:
      * @param key Key under which the HyperLogLog is stored
      * @param elements Elements to add to the HyperLogLog
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/pfadd
      */
     template <typename Func, typename... Elements>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
@@ -80,7 +82,8 @@ public:
      *
      * @tparam Keys Variadic types for key names
      * @param keys Keys containing HyperLogLog structures
-     * @return Awaitable that yields Reply<long long>
+     * @return redis_awaiter yielding Reply<long long> (estimated cardinality)
+     * @see https://redis.io/commands/pfcount
      */
     template <typename... Keys>
     auto pfcount(Keys &&...keys) {
@@ -99,6 +102,7 @@ public:
      * @param func Callback function
      * @param keys Keys containing HyperLogLog structures
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/pfcount
      */
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -113,7 +117,8 @@ public:
      * @tparam Keys Variadic types for source key names
      * @param destination Destination key where the merged HyperLogLog will be stored
      * @param keys Source keys containing HyperLogLog structures to merge
-     * @return Awaitable that yields Reply<status>
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/pfmerge
      */
     template <typename... Keys>
     auto pfmerge(const std::string &destination, Keys &&...keys) {
@@ -133,6 +138,7 @@ public:
      * @param destination Destination key where the merged HyperLogLog will be stored
      * @param keys Source keys containing HyperLogLog structures to merge
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/pfmerge
      */
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>

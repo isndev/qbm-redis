@@ -47,6 +47,7 @@ public:
      * @param key Key where the geospatial data is stored
      * @param members Members to add (longitude, latitude, name triplets)
      * @return Awaitable that yields Reply<long long>
+     * @see https://redis.io/commands/geoadd
      */
     template <typename... Members>
     auto geoadd(const std::string &key, Members &&...members) {
@@ -66,6 +67,7 @@ public:
      * @param key Key where the geospatial data is stored
      * @param members Members to add (longitude, latitude, name triplets)
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/geoadd
      */
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -82,6 +84,7 @@ public:
      * @param member2 Second member name
      * @param unit Unit of distance (m, km, mi, ft)
      * @return Awaitable that yields Reply<std::optional<double>>
+     * @see https://redis.io/commands/geodist
      */
     auto geodist(const std::string &key, const std::string &member1,
                  const std::string &member2, GeoUnit unit = GeoUnit::M) {
@@ -102,6 +105,7 @@ public:
      * @param member2 Second member name
      * @param unit Unit of distance (m, km, mi, ft)
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/geodist
      */
     template <typename Func>
     Derived &
@@ -119,6 +123,7 @@ public:
      * @param key Key where the geospatial data is stored
      * @param members Member names to get Geohash strings for
      * @return Awaitable that yields Reply<std::vector<std::optional<std::string>>>
+     * @see https://redis.io/commands/geohash
      */
     template <typename... Members>
     auto geohash(const std::string &key, Members &&...members) {
@@ -138,6 +143,7 @@ public:
      * @param key Key where the geospatial data is stored
      * @param members Member names to get Geohash strings for
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/geohash
      */
     template <typename Func, typename... Members>
     std::enable_if_t<
@@ -155,6 +161,7 @@ public:
      * @param key Key where the geospatial data is stored
      * @param members Member names to get coordinates for
      * @return Awaitable that yields Reply<std::vector<std::optional<geo_pos>>>
+     * @see https://redis.io/commands/geopos
      */
     template <typename... Members>
     auto geopos(const std::string &key, Members &&...members) {
@@ -174,6 +181,7 @@ public:
      * @param key Key where the geospatial data is stored
      * @param members Member names to get coordinates for
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/geopos
      */
     template <typename Func, typename... Members>
     std::enable_if_t<
@@ -196,6 +204,7 @@ public:
      * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH,
      * COUNT, SORT)
      * @return Awaitable that yields Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/georadius
      */
     auto georadius(const std::string &key, double longitude, double latitude, double radius,
                    GeoUnit unit = GeoUnit::M, const std::vector<std::string> &options = {}) {
@@ -219,6 +228,7 @@ public:
      * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH,
      * COUNT, SORT)
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/georadius
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
@@ -242,6 +252,7 @@ public:
      * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH,
      * COUNT, SORT)
      * @return Awaitable that yields Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/georadiusbymember
      */
     auto georadiusbymember(const std::string &key, const std::string &member, double radius,
                           GeoUnit unit = GeoUnit::M, const std::vector<std::string> &options = {}) {
@@ -264,6 +275,7 @@ public:
      * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH,
      * COUNT, SORT)
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/georadiusbymember
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
@@ -286,6 +298,7 @@ public:
      * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH,
      * COUNT, SORT)
      * @return Awaitable that yields Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/geosearch
      */
     auto geosearch(const std::string &key, const std::string &member, double radius,
                    GeoUnit unit = GeoUnit::M, const std::vector<std::string> &options = {}) {
@@ -308,6 +321,7 @@ public:
      * @param options Optional parameters for the search (WITHCOORD, WITHDIST, WITHHASH,
      * COUNT, SORT)
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/geosearch
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,

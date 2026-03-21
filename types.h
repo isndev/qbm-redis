@@ -1,3 +1,7 @@
+/**
+ * @file types.h
+ * @brief Redis-specific types: enums, intervals, geo, stream, score, etc.
+ */
 /*
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
@@ -34,26 +38,35 @@
 
 namespace qb::redis {
 
-// Native reply pointer using standard deleter
+/** @brief Unique pointer to parser::Value for reply ownership */
 using reply_ptr = std::unique_ptr<parser::Value>;
 
 // ============================================================================
 // Enums
 // ============================================================================
 
+/** @brief Key existence mode for SET NX/XX options */
 enum class UpdateType { EXIST, NOT_EXIST, ALWAYS };
+/** @brief Insert position for list commands */
 enum class InsertPosition { BEFORE, AFTER };
+/** @brief List end (left/right) for LPUSH, RPOP, etc. */
 enum class ListPosition { LEFT, RIGHT };
+/** @brief Interval bound type for range queries */
 enum class BoundType { CLOSED, OPEN, LEFT_OPEN, RIGHT_OPEN };
+/** @brief Aggregation for sorted set ZUNION/ZINTER */
 enum class Aggregation { SUM, MIN, MAX };
+/** @brief Bitwise operation for BITOP */
 enum class BitOp { AND, OR, XOR, NOT };
+/** @brief Distance unit for GEO commands */
 enum class GeoUnit { M, KM, MI, FT };
+/** @brief XTRIM strategy (MAXLEN or MINID) */
 enum class XtrimStrategy { MAXLEN, MINID };
 
 // ============================================================================
 // Interval types
 // ============================================================================
 
+/** @brief Unbounded interval (-inf, +inf) for ZRANGEBYSCORE etc. */
 template <typename T>
 class UnboundedInterval;
 
@@ -161,6 +174,7 @@ using score_interval = BoundedInterval<double>;
 // Options structures
 // ============================================================================
 
+/** @brief LIMIT offset/count for range queries */
 struct LimitOptions {
     long long offset = 0;
     long long count = -1;
@@ -170,6 +184,7 @@ struct LimitOptions {
 // Data structures
 // ============================================================================
 
+/** @brief Geographic coordinates (longitude, latitude) */
 struct geo_pos {
     double longitude{};
     double latitude{};
@@ -177,11 +192,13 @@ struct geo_pos {
     bool operator==(const geo_pos &) const = default;
 };
 
+/** @brief GEO result: member name and distance */
 struct geo_distance {
     std::string member;
     double distance{};
 };
 
+/** @brief Redis stream entry ID (timestamp-sequence) */
 struct stream_id {
     long long timestamp{};
     long long sequence{};
@@ -199,6 +216,7 @@ struct stream_id {
     }
 };
 
+/** @brief Stream entry with ID and field-value map */
 struct stream_entry {
     stream_id id;
     qb::unordered_map<std::string, std::string> fields;
@@ -207,6 +225,7 @@ struct stream_entry {
 using stream_entry_list = std::vector<stream_entry>;
 using map_stream_entry_list = qb::unordered_map<std::string, stream_entry_list>;
 
+/** @brief Sorted set score value */
 struct score {
     double value{};
     
@@ -214,6 +233,7 @@ struct score {
     bool operator<(const score &other) const { return value < other.value; }
 };
 
+/** @brief Sorted set member with score */
 struct score_member {
     double score{};
     std::string member;
@@ -221,12 +241,14 @@ struct score_member {
     bool operator==(const score_member &other) const = default;
 };
 
+/** @brief FT.SEARCH result (key, fields, values) */
 struct search_result {
     std::string key;
     std::vector<std::string> fields;
     std::vector<std::string> values;
 };
 
+/** @brief CLUSTER NODES entry */
 struct cluster_node {
     std::string id;
     std::string ip;
@@ -240,6 +262,7 @@ struct cluster_node {
     std::vector<std::string> slots;
 };
 
+/** @brief INFO memory section parsed data */
 struct memory_info {
     size_t used_memory{};
     size_t used_memory_peak{};
@@ -273,6 +296,7 @@ struct pipeline_result {
     bool all_succeeded{true};
 };
 
+/** @brief Redis JSON value (variant of null, bool, number, string, array, object) */
 struct json_value {
     enum class Type { Null, Boolean, Number, String, Array, Object };
 
@@ -289,6 +313,7 @@ struct json_value {
     [[nodiscard]] bool is_object() const { return type == Type::Object; }
 };
 
+/** @brief Pub/Sub message (channel, payload) */
 struct message {
     std::string pattern;
     std::string channel;
@@ -296,13 +321,16 @@ struct message {
     reply_ptr raw;
 };
 
+/** @brief Pattern-matched Pub/Sub message (adds pattern field) */
 struct pmessage : public message {};
 
+/** @brief Subscription confirmation (channel, count) */
 struct subscription {
     std::optional<std::string> channel;
     long long num{};
 };
 
+/** @brief Redis status reply (e.g. "OK") */
 struct status {
 private:
     std::string _str;
@@ -323,12 +351,14 @@ public:
     [[nodiscard]] bool operator!=(const std::string &other) const { return _str != other; }
 };
 
+/** @brief SCAN result with cursor and items */
 template <typename Out = std::vector<std::string>>
 struct scan {
     std::size_t cursor;
     Out items;
 };
 
+/** @brief Redis error with message and raw reply */
 struct error {
     std::string what;
     reply_ptr raw;

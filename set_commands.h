@@ -238,6 +238,14 @@ public:
             std::forward<Func>(func), "SDIFF", keys);
     }
 
+    /**
+     * @brief Store the difference of sets in a destination key (coroutine awaitable)
+     *
+     * @param destination Destination key for the result
+     * @param keys Source keys where the sets are stored
+     * @return redis_awaiter yielding Reply<long long> (number of elements in result)
+     * @see https://redis.io/commands/sdiffstore
+     */
     auto sdiffstore(const std::string &destination, const std::vector<std::string> &keys) {
         return derived().template make_coro_command<long long>(
             [this, destination, keys](auto&& callback) {
@@ -297,6 +305,14 @@ public:
             std::forward<Func>(func), "SINTER", keys);
     }
 
+    /**
+     * @brief Returns the cardinality of the intersection of sets (coroutine awaitable)
+     *
+     * @param keys Keys where the sets are stored
+     * @param limit Optional maximum number of elements to count
+     * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/sintercard
+     */
     auto sintercard(const std::vector<std::string> &keys,
                     std::optional<long long>        limit = std::nullopt) {
         return derived().template make_coro_command<long long>(
@@ -333,6 +349,14 @@ public:
             std::forward<Func>(func), "SINTERCARD", keys.size(), keys, args);
     }
 
+    /**
+     * @brief Store the intersection of sets in a destination key (coroutine awaitable)
+     *
+     * @param destination Destination key for the result
+     * @param keys Source keys where the sets are stored
+     * @return redis_awaiter yielding Reply<long long> (number of elements in result)
+     * @see https://redis.io/commands/sinterstore
+     */
     auto sinterstore(const std::string &destination, const std::vector<std::string> &keys) {
         return derived().template make_coro_command<long long>(
             [this, destination, keys](auto&& callback) {
@@ -440,6 +464,13 @@ public:
             std::forward<Members>(members)...);
     }
 
+    /**
+     * @brief Returns all members of a set (coroutine awaitable)
+     *
+     * @param key Key where the set is stored
+     * @return redis_awaiter yielding Reply<qb::unordered_set<std::string>>
+     * @see https://redis.io/commands/smembers
+     */
     auto smembers(const std::string &key) {
         return derived().template make_coro_command<qb::unordered_set<std::string>>(
             [this, key](auto&& callback) {
@@ -468,6 +499,15 @@ public:
             std::forward<Func>(func), "SMEMBERS", key);
     }
 
+    /**
+     * @brief Moves a member from one set to another (coroutine awaitable)
+     *
+     * @param source Source key where the set is stored
+     * @param destination Destination key where the set is stored
+     * @param member Member to move
+     * @return redis_awaiter yielding Reply<bool> (true if member was moved)
+     * @see https://redis.io/commands/smove
+     */
     auto smove(const std::string &source, const std::string &destination,
                const std::string &member) {
         return derived().template make_coro_command<bool>(
@@ -495,10 +535,17 @@ public:
         if (source.empty() || destination.empty() || member.empty()) {
             return derived();
         }
-        return derived().template command<bool>(std::forward<Func>(func), "SMOVE",
+        return derived().template command<bool>(            std::forward<Func>(func), "SMOVE",
                                                 source, destination, member);
     }
 
+    /**
+     * @brief Removes and returns a random member from a set (coroutine awaitable)
+     *
+     * @param key Key where the set is stored
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
+     * @see https://redis.io/commands/spop
+     */
     auto spop(const std::string &key) {
         return derived().template make_coro_command<std::optional<std::string>>(
             [this, key](auto&& callback) {
@@ -527,6 +574,14 @@ public:
             std::forward<Func>(func), "SPOP", key);
     }
 
+    /**
+     * @brief Removes and returns multiple random members from a set (coroutine awaitable)
+     *
+     * @param key Key where the set is stored
+     * @param count Number of members to pop
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/spop
+     */
     auto spop(const std::string &key, long long count) {
         return derived().template make_coro_command<std::vector<std::string>>(
             [this, key, count](auto&& callback) {
@@ -630,6 +685,15 @@ public:
             std::forward<Func>(func), "SRANDMEMBER", key, count);
     }
 
+    /**
+     * @brief Removes members from a set (coroutine awaitable)
+     *
+     * @tparam Members Variadic types for members to remove
+     * @param key Key where the set is stored
+     * @param members Members to remove
+     * @return redis_awaiter yielding Reply<long long> (number of members removed)
+     * @see https://redis.io/commands/srem
+     */
     template <typename... Members>
     auto srem(const std::string &key, Members &&...members) {
         return derived().template make_coro_command<long long>(
@@ -662,6 +726,16 @@ public:
 
     // =============== Set Scanning Operations ===============
 
+    /**
+     * @brief Incrementally iterates over set members (coroutine awaitable)
+     *
+     * @param key Key where the set is stored
+     * @param cursor Cursor position to start iteration from (0 to start)
+     * @param pattern Glob pattern to filter members (default "*")
+     * @param count Hint for how many elements to return per call (default 10)
+     * @return redis_awaiter yielding Reply<scan<>>
+     * @see https://redis.io/commands/sscan
+     */
     auto sscan(const std::string &key, long long cursor, const std::string &pattern = "*",
                long long count = 10) {
         return derived().template make_coro_command<scan<>>(
@@ -720,6 +794,14 @@ public:
 
     // =============== Set Operations ===============
 
+    /**
+     * @brief Returns the union of multiple sets (coroutine awaitable)
+     *
+     * @param keys Keys where the sets are stored
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @note Time complexity: O(N) where N is the total number of elements in all sets
+     * @see https://redis.io/commands/sunion
+     */
     auto sunion(const std::vector<std::string> &keys) {
         return derived().template make_coro_command<std::vector<std::string>>(
             [this, keys](auto&& callback) {

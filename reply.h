@@ -1,3 +1,7 @@
+/**
+ * @file reply.h
+ * @brief Reply parsing, Reply<T> wrapper, and command serialization
+ */
 /*
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
@@ -44,6 +48,8 @@ namespace qb::redis {
 // ============================================================================
 // Native Reply type - direct use of parser::Value
 // ============================================================================
+
+/** @brief Alias for parser::Value - the native Redis reply type */
 using ReplyValue = parser::Value;
 
 // ============================================================================
@@ -183,9 +189,13 @@ private:
 // Reply parsing namespace
 // ============================================================================
 
+/**
+ * @namespace reply
+ * @brief Reply parsing utilities for converting parser::Value to C++ types
+ */
 namespace reply {
 
-// Parse tag for type dispatch
+/** @brief Tag type for parse() overload resolution */
 template <typename T>
 struct ParseTag {};
 
@@ -1021,6 +1031,13 @@ struct is_optional_like : std::false_type {};
 template <typename U>
 struct is_optional_like<std::optional<U>> : std::true_type {};
 
+/**
+ * @struct Reply
+ * @brief Typed wrapper for Redis command results
+ *
+ * Holds success flag, parsed result, raw parser::Value, and error message.
+ * @tparam T The parsed result type
+ */
 template <typename T>
 struct Reply {
     bool       _ok{};
@@ -1068,6 +1085,12 @@ struct Reply {
 // Reply handler interface - Modern C++23 with ownership semantics
 // ============================================================================
 
+/**
+ * @class IReply
+ * @brief Abstract interface for handling Redis reply callbacks
+ *
+ * Implementations receive ownership of the parsed reply via unique_ptr.
+ */
 class IReply {
 public:
     IReply()          = default;
@@ -1076,6 +1099,12 @@ public:
     virtual void operator()(std::unique_ptr<ReplyValue> reply) = 0;
 };
 
+/**
+ * @class TReply
+ * @brief Concrete reply handler that invokes a callback with Reply<T>
+ * @tparam Func Callback type (invocable with Reply<T>&&)
+ * @tparam T Expected result type for parsing
+ */
 template <typename Func, typename T>
 class TReply final : public IReply {
     Func func;

@@ -1,3 +1,7 @@
+/**
+ * @file redis.h
+ * @brief Main Redis client, protocol, connector, and consumer types
+ */
 /*
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
@@ -60,6 +64,7 @@ namespace qb::protocol {
  *
  * Uses the world-class native Redis Protocol Parser with full RESP2/RESP3 support.
  * Zero-copy parsing where possible, streaming-capable for async I/O.
+ * @tparam IO_ The underlying I/O connector type (CRTP)
  */
 template <typename IO_>
 class redis final : public qb::io::async::AProtocol<IO_> {
@@ -172,6 +177,13 @@ namespace qb::redis {
 // Retry Policy
 // ============================================================================
 
+/**
+ * @struct RetryPolicy
+ * @brief Configuration for connection retry behavior with exponential backoff
+ *
+ * Used by connect_with_retry() and enable_auto_reconnect() to control
+ * reconnection attempts when the Redis connection is lost.
+ */
 struct RetryPolicy {
     int max_attempts = -1;
     std::chrono::milliseconds initial_delay{100};
@@ -181,30 +193,37 @@ struct RetryPolicy {
     double connect_timeout = 3.0;
     std::function<void(int attempt, std::chrono::milliseconds next_delay)> on_retry;
 
+    /** @brief Set maximum number of retry attempts (-1 = unlimited) */
     RetryPolicy &with_max_attempts(int n) noexcept {
         max_attempts = n;
         return *this;
     }
+    /** @brief Set initial delay between retries */
     RetryPolicy &with_initial_delay(std::chrono::milliseconds d) noexcept {
         initial_delay = d;
         return *this;
     }
+    /** @brief Set maximum delay cap */
     RetryPolicy &with_max_delay(std::chrono::milliseconds d) noexcept {
         max_delay = d;
         return *this;
     }
+    /** @brief Set exponential backoff multiplier */
     RetryPolicy &with_multiplier(double m) noexcept {
         multiplier = m;
         return *this;
     }
+    /** @brief Enable/disable random jitter on delays */
     RetryPolicy &with_jitter(bool j) noexcept {
         jitter = j;
         return *this;
     }
+    /** @brief Set connection timeout in seconds */
     RetryPolicy &with_connect_timeout(double t) noexcept {
         connect_timeout = t;
         return *this;
     }
+    /** @brief Set callback invoked before each retry (attempt, next_delay) */
     RetryPolicy &with_on_retry(
         std::function<void(int, std::chrono::milliseconds)> cb) {
         on_retry = std::move(cb);
@@ -216,9 +235,21 @@ struct RetryPolicy {
 // Connector base class
 // ============================================================================
 
+/**
+ * @namespace detail
+ * @brief Internal implementation details for Redis client and consumers
+ */
 namespace detail {
 using namespace qb::io;
 
+/**
+ * @class connector
+ * @brief Base TCP connector for Redis clients and consumers
+ *
+ * Handles connection lifecycle, auto-reconnect, and protocol switching.
+ * @tparam QB_IO_ I/O transport type (e.g. qb::io::transport::tcp)
+ * @tparam Derived CRTP derived class (Redis or RedisConsumer)
+ */
 template <typename QB_IO_, typename Derived>
 class connector
     : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, QB_IO_, void> {
@@ -288,7 +319,10 @@ protected:
     explicit connector(qb::io::uri uri) : _uri{std::move(uri)} {}
 
 public:
-    // Connect awaiter
+    /**
+     * @struct connect_awaiter
+     * @brief Coroutine awaiter for async connection (co_await connect())
+     */
     struct connect_awaiter {
         connector& _client;
         double _timeout;
@@ -325,6 +359,7 @@ public:
         bool await_resume() const noexcept { return _connected; }
     };
 
+    /** @brief Start async connection (co_awaitable) */
     connect_awaiter connect() { return connect_awaiter{*this}; }
     connect_awaiter connect(qb::io::uri uri) {
         _uri = std::move(uri);
@@ -430,6 +465,14 @@ public:
 // Redis awaiter
 // ============================================================================
 
+/**
+ * @class redis_awaiter
+ * @brief Coroutine awaiter for Redis command results
+ *
+ * Yields Reply<T> when the command completes. Use with co_await.
+ * @tparam T Expected result type
+ * @tparam Operation Callback-based operation that invokes the continuation
+ */
 template <typename T, typename Operation>
 class redis_awaiter {
     Reply<T> result_;
@@ -458,6 +501,7 @@ public:
     [[nodiscard]] Reply<T> await_resume() { return std::move(result_); }
 };
 
+/** @brief Factory for redis_awaiter from a callback-based operation */
 template <typename T, typename Func>
 [[nodiscard]] auto make_redis_awaiter(Func &&operation) {
     return redis_awaiter<T, std::remove_cvref_t<Func>>{std::forward<Func>(operation)};
@@ -467,6 +511,14 @@ template <typename T, typename Func>
 // Main Redis client
 // ============================================================================
 
+/**
+ * @class Redis
+ * @brief Full-featured Redis client with all command groups
+ *
+ * Supports both callback-based and coroutine-based APIs.
+ * Inherits from all *_commands mixins (connection, server, key, string, etc.).
+ * @tparam QB_IO_ I/O transport type (e.g. qb::io::transport::tcp)
+ */
 template <typename QB_IO_>
 class Redis
     : public connector<QB_IO_, Redis<QB_IO_>>
@@ -741,6 +793,12 @@ public:
 // Callback Consumer
 // ============================================================================
 
+/**
+ * @class RedisCallbackConsumer
+ * @brief Pub/Sub consumer with callback-based message handling
+ *
+ * Set on_message(), on_error(), on_disconnected() before subscribing.
+ */
 template <typename QB_IO_>
 class RedisCallbackConsumer
     : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
@@ -870,9 +928,14 @@ public:
 // Type aliases
 // ============================================================================
 
+/** @brief Alias for the main Redis client */
 template <typename QB_IO_>
 using database = detail::Redis<QB_IO_>;
 
+/**
+ * @struct tcp
+ * @brief TCP transport type aliases for Redis client and consumers
+ */
 struct tcp {
     using client = detail::Redis<qb::io::transport::tcp>;
     

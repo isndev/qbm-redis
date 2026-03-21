@@ -100,6 +100,13 @@ public:
         return result;
     }
 
+    /**
+     * @brief Returns the number of entries in a stream (coroutine awaitable)
+     *
+     * @param key Key where the stream is stored
+     * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/xlen
+     */
     auto xlen(const std::string &key) {
         return derived().template make_coro_command<long long>(
             [this, key](auto&& callback) {
@@ -115,6 +122,7 @@ public:
      * @param func Callback function to be called with the result
      * @param key The key of the stream to get the length of
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/xlen
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -123,6 +131,15 @@ public:
                                                      key);
     }
 
+    /**
+     * @brief Deletes entries from a stream (coroutine awaitable)
+     *
+     * @tparam Ids Variadic types for entry IDs to delete
+     * @param key Key where the stream is stored
+     * @param ids Entry IDs to delete
+     * @return redis_awaiter yielding Reply<long long> (number of entries deleted)
+     * @see https://redis.io/commands/xdel
+     */
     template <typename... Ids>
     auto xdel(const std::string &key, Ids &&...ids) {
         return derived().template make_coro_command<long long>(
@@ -231,6 +248,15 @@ public:
                                                      "DESTROY", key, group);
     }
 
+    /**
+     * @brief Removes a consumer from a consumer group (coroutine awaitable)
+     *
+     * @param key Key where the stream is stored
+     * @param group Consumer group name
+     * @param consumer Consumer name to remove
+     * @return redis_awaiter yielding Reply<long long> (number of pending messages deleted)
+     * @see https://redis.io/commands/xgroup-delconsumer
+     */
     auto xgroup_delconsumer(const std::string &key, const std::string &group,
                             const std::string &consumer) {
         return derived().template make_coro_command<long long>(
@@ -249,6 +275,7 @@ public:
      * @param group The name of the consumer group
      * @param consumer The name of the consumer to delete
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/xgroup-delconsumer
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -258,6 +285,16 @@ public:
             std::forward<Func>(func), "XGROUP", "DELCONSUMER", key, group, consumer);
     }
 
+    /**
+     * @brief Acknowledges messages in a consumer group (coroutine awaitable)
+     *
+     * @tparam Ids Variadic types for message IDs to acknowledge
+     * @param key Key where the stream is stored
+     * @param group Consumer group name
+     * @param ids Message IDs to acknowledge
+     * @return redis_awaiter yielding Reply<long long> (number of messages acknowledged)
+     * @see https://redis.io/commands/xack
+     */
     template <typename... Ids>
     auto xack(const std::string &key, const std::string &group, Ids &&...ids) {
         return derived().template make_coro_command<long long>(
@@ -277,6 +314,7 @@ public:
      * @param group The name of the consumer group
      * @param ids Variadic list of message IDs to acknowledge
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/xack
      */
     template <typename Func, typename... Ids>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -285,6 +323,15 @@ public:
             std::forward<Func>(func), "XACK", key, group, std::forward<Ids>(ids)...);
     }
 
+    /**
+     * @brief Trims a stream to a maximum length (coroutine awaitable)
+     *
+     * @param key Key where the stream is stored
+     * @param maxlen Maximum number of entries to retain
+     * @param approximate If true, use approximate trimming for better performance
+     * @return redis_awaiter yielding Reply<long long> (number of entries deleted)
+     * @see https://redis.io/commands/xtrim
+     */
     auto xtrim(const std::string &key, long long maxlen, bool approximate = false) {
         return derived().template make_coro_command<long long>(
             [this, key, maxlen, approximate](auto&& callback) {
@@ -304,6 +351,7 @@ public:
      *                    use a probabilistic algorithm that may not be exact but is
      *                    more efficient
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/xtrim
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -514,9 +562,16 @@ public:
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
         return derived().template command<qb::json>(
-            std::forward<Func>(func), "XREAD", args, "STREAMS", keys, ids);
+            std::forward<Func>(func), "XREAD", args, "STREAMS", keys, ids        );
     }
 
+    /**
+     * @brief Returns information about a stream (coroutine awaitable)
+     *
+     * @param key Key where the stream is stored
+     * @return redis_awaiter yielding Reply<qb::json>
+     * @see https://redis.io/commands/xinfo-stream
+     */
     auto xinfo_stream(const std::string &key) {
         return derived().template make_coro_command<qb::json>(
             [this, key](auto&& callback) {
@@ -536,9 +591,16 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_stream(Func &&func, const std::string &key) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "STREAM", key);
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "STREAM", key        );
     }
 
+    /**
+     * @brief Returns information about consumer groups of a stream (coroutine awaitable)
+     *
+     * @param key Key where the stream is stored
+     * @return redis_awaiter yielding Reply<qb::json>
+     * @see https://redis.io/commands/xinfo-groups
+     */
     auto xinfo_groups(const std::string &key) {
         return derived().template make_coro_command<qb::json>(
             [this, key](auto&& callback) {
@@ -558,9 +620,17 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_groups(Func &&func, const std::string &key) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "GROUPS", key);
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "GROUPS", key        );
     }
 
+    /**
+     * @brief Returns information about consumers in a consumer group (coroutine awaitable)
+     *
+     * @param key Key where the stream is stored
+     * @param group Consumer group name
+     * @return redis_awaiter yielding Reply<qb::json>
+     * @see https://redis.io/commands/xinfo-consumers
+     */
     auto xinfo_consumers(const std::string &key, const std::string &group) {
         return derived().template make_coro_command<qb::json>(
             [this, key, group](auto&& callback) {
@@ -581,9 +651,15 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_consumers(Func &&func, const std::string &key, const std::string &group) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "CONSUMERS", key, group);
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "CONSUMERS", key, group        );
     }
 
+    /**
+     * @brief Returns help for XINFO subcommands (coroutine awaitable)
+     *
+     * @return redis_awaiter yielding Reply<qb::json>
+     * @see https://redis.io/commands/xinfo-help
+     */
     auto xinfo_help() {
         return derived().template make_coro_command<qb::json>(
             [this](auto&& callback) {
@@ -670,7 +746,13 @@ public:
     // =============== New Stream Commands (TODO_COMMANDS.md) ===============
 
     /**
-     * @brief Read a range of entries from a stream.
+     * @brief Read a range of entries from a stream (coroutine awaitable)
+     *
+     * @param key Stream key
+     * @param start Start ID ("-" for beginning)
+     * @param end End ID ("+" for end)
+     * @param count Optional maximum number of entries to return
+     * @return redis_awaiter yielding Reply<stream_entry_list>
      * @see https://redis.io/commands/xrange
      */
     auto xrange(const std::string &key, const std::string &start,
@@ -681,6 +763,19 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of xrange
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param key Stream key
+     * @param start Start ID
+     * @param end End ID
+     * @param count Optional maximum number of entries
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xrange
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_entry_list> &&>, Derived &>
     xrange(Func &&func, const std::string &key, const std::string &start,
@@ -695,7 +790,13 @@ public:
     }
 
     /**
-     * @brief Read a range of entries from a stream in reverse order.
+     * @brief Read a range of entries from a stream in reverse order (coroutine awaitable)
+     *
+     * @param key Stream key
+     * @param end End ID (higher bound, "+" for end)
+     * @param start Start ID (lower bound, "-" for beginning)
+     * @param count Optional maximum number of entries to return
+     * @return redis_awaiter yielding Reply<stream_entry_list>
      * @see https://redis.io/commands/xrevrange
      */
     auto xrevrange(const std::string &key, const std::string &end,
@@ -706,10 +807,23 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of xrevrange
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param key Stream key
+     * @param end End ID
+     * @param start Start ID
+     * @param count Optional maximum number of entries
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xrevrange
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_entry_list> &&>, Derived &>
     xrevrange(Func &&func, const std::string &key, const std::string &end,
-              const std::string &start, std::optional<long long> count = std::nullopt) {
+             const std::string &start, std::optional<long long> count = std::nullopt) {
         std::vector<std::string> opt;
         if (count) {
             opt.push_back("COUNT");
@@ -720,7 +834,15 @@ public:
     }
 
     /**
-     * @brief Claim pending messages for a consumer.
+     * @brief Claim pending messages for a consumer (coroutine awaitable)
+     *
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param consumer Consumer name claiming the messages
+     * @param min_idle_time Minimum idle time in milliseconds
+     * @param ids Message IDs to claim
+     * @param options Optional vector of options (e.g. "IDLE", "TIME", "RETRYCOUNT")
+     * @return redis_awaiter yielding Reply<stream_entry_list>
      * @see https://redis.io/commands/xclaim
      */
     auto xclaim(const std::string &key, const std::string &group,
@@ -734,6 +856,21 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of xclaim
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param consumer Consumer name
+     * @param min_idle_time Minimum idle time in milliseconds
+     * @param ids Message IDs to claim
+     * @param options Optional options vector
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xclaim
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_entry_list> &&>, Derived &>
     xclaim(Func &&func, const std::string &key, const std::string &group,

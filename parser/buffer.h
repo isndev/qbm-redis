@@ -1,3 +1,7 @@
+/**
+ * @file parser/buffer.h
+ * @brief InputBuffer and ViewBuffer for streaming RESP parsing
+ */
 /*
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
@@ -29,6 +33,14 @@ namespace qb::redis::parser {
 // ============================================================================
 // Circular buffer optimized for streaming RESP data
 // ============================================================================
+
+/**
+ * @class InputBuffer
+ * @brief Circular buffer for streaming RESP data ingestion
+ *
+ * Supports append, consume, peek, extract_line, extract_bytes.
+ * Handles wrapped data across buffer boundaries.
+ */
 class InputBuffer {
 public:
     static constexpr size_t DEFAULT_CAPACITY = 16 * 1024;  // 16KB
@@ -265,6 +277,14 @@ private:
 // ============================================================================
 // View buffer for parsing from external memory (zero-copy where possible)
 // ============================================================================
+
+/**
+ * @class ViewBuffer
+ * @brief Non-owning view over contiguous data for zero-copy parsing
+ *
+ * Tracks read position, supports extract_line_view, extract_bytes_view,
+ * skip_crlf. Does not copy data.
+ */
 class ViewBuffer {
 public:
     explicit ViewBuffer(std::span<const char> data) noexcept
