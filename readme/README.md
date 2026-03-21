@@ -12,6 +12,7 @@ Welcome to the detailed documentation for the `qbm-redis` module of the QB C++ A
 ## Core Concepts
 
 *   **[Connection](./connection.md):** `qb::redis::tcp::client`, URIs, `connect()`, `hello(3)` for RESP3, `reset()`, auto-reconnect
+*   **[Pipelining & `await()`](./pipeline_and_await.md):** Callback batching, `pending_reply_count()`, `tcp::pipeline`, event-loop drain semantics
 *   **[Command Execution](./commands_overview.md):** Coroutine vs callback, `qb::redis::Reply<T>`, `reply.ok()`, `reply.result()`, `reply.error()`
 *   **[Error Handling](./error_handling.md):** Commands return `Reply` with `ok()==false` on error; no exceptions for Redis command errors
 

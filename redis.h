@@ -517,6 +517,15 @@ template <typename T, typename Func>
  *
  * Supports both callback-based and coroutine-based APIs.
  * Inherits from all *_commands mixins (connection, server, key, string, etc.).
+ *
+ * @warning Not thread-safe. Use from a single I/O thread / strand (one concurrent
+ *          accessor at a time). The reply queue and outbound pipe are unsynchronized.
+ *
+ * @par Pipelining (callback API)
+ * Issue multiple command(callback, ...) calls without awaiting between them; each
+ * enqueues one handler and sends bytes in order. Drain with await() or your event
+ * loop. See also RedisPipeline for a named wrapper.
+ *
  * @tparam QB_IO_ I/O transport type (e.g. qb::io::transport::tcp)
  */
 template <typename QB_IO_>
@@ -579,6 +588,7 @@ private:
                 LOG_WARN("[qbm][redis] callback error: " << ex.what());
             }
         }
+        transaction_commands<Redis<QB_IO_>>::reset_transaction_state();
     }
 
 public:
@@ -589,8 +599,10 @@ public:
     template <typename Ret, typename Func, typename... Args>
         requires std::invocable<Func, Reply<Ret> &&>
     Redis &command(Func &&func, std::string const &name, Args &&...args) {
-        _command(name, std::forward<Args>(args)...);
+        // Register the reply handler before sending so a very fast/synchronous
+        // delivery cannot run before the handler is queued (pipeline-safe).
         _replies.push(std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)));
+        _command(name, std::forward<Args>(args)...);
         return *this;
     }
 
@@ -608,16 +620,82 @@ public:
             });
     }
 
+    /**
+     * @brief Drain all pending command replies on the current event loop.
+     *
+     * Runs @c qb::io::async::run(EVRUN_NOWAIT) until the internal reply queue is
+     * empty. This does **not** block the thread in the kernel; each iteration is a
+     * non-blocking poll. The **caller** still runs synchronously until every
+     * enqueued callback has been invoked (success, Redis error, or disconnect).
+     *
+     * @warning Call from the same thread / loop that drives Redis I/O. Do not
+     *          confuse with coroutine @c co_await — this is explicit draining for
+     *          the callback / pipeline API.
+     */
     Redis &await() {
         while (!_replies.empty())
             qb::io::async::run(EVRUN_NOWAIT);
         return *this;
     }
 
+    /** @brief Number of commands sent awaiting a Redis reply (for pipeline debugging). */
+    [[nodiscard]] std::size_t pending_reply_count() const noexcept {
+        return _replies.size();
+    }
+
     template <typename T, typename Func>
     [[nodiscard]] auto make_coro_command(Func &&operation) {
         return make_redis_awaiter<T>(std::forward<Func>(operation));
     }
+};
+
+// ============================================================================
+// Pipeline helper (callback API)
+// ============================================================================
+
+/**
+ * @class RedisPipeline
+ * @brief Optional helper for callback-style pipelining
+ *
+ * Pipelining is a property of the client: each `command(callback, ...)` (including
+ * mixin methods `set()`, `get()`, …) pushes one handler and sends one request in
+ * order; Redis returns replies in the same order. Drain with `await()` on the
+ * client or `flush()` here.
+ *
+ * This wrapper only chains the low-level `command<Ret>(callback, name, args...)`.
+ * For `set`/`get`/etc., use `client().set(...)` then `flush()`, or call `await()`
+ * on the client.
+ *
+ * @note `flush()` runs the event loop until all pending replies are delivered; it
+ *       is unrelated to the Redis command FLUSHDB/FLUSHALL.
+ * @tparam QB_IO_ Same transport as Redis<QB_IO_>
+ */
+template <typename QB_IO_>
+class RedisPipeline {
+    Redis<QB_IO_> &_client;
+
+public:
+    explicit RedisPipeline(Redis<QB_IO_> &client) noexcept
+        : _client(client) {}
+
+    [[nodiscard]] Redis<QB_IO_> &client() noexcept { return _client; }
+    [[nodiscard]] Redis<QB_IO_> const &client() const noexcept { return _client; }
+
+    /** @brief Same as `client().pending_reply_count()`. */
+    [[nodiscard]] std::size_t pending_reply_count() const noexcept {
+        return _client.pending_reply_count();
+    }
+
+    template <typename Ret, typename Func, typename... Args>
+        requires std::invocable<Func, Reply<Ret> &&>
+    RedisPipeline &command(Func &&func, std::string const &name, Args &&...args) {
+        _client.template command<Ret>(std::forward<Func>(func), name,
+                                      std::forward<Args>(args)...);
+        return *this;
+    }
+
+    /** @brief Drain pending replies (calls `client().await()`). */
+    Redis<QB_IO_> &flush() { return _client.await(); }
 };
 
 // ============================================================================
@@ -668,8 +746,8 @@ private:
     template <typename Ret, typename Func, typename... Args>
         requires std::invocable<Func, Reply<Ret> &&>
     Derived &command(Func &&func, std::string const &name, Args &&...args) {
-        _command(name, std::forward<Args>(args)...);
         _replies.push(std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)));
+        _command(name, std::forward<Args>(args)...);
         return derived();
     }
 
@@ -872,28 +950,48 @@ public:
  *     process(*msg);
  * }
  * @endcode
+ *
+ * The internal message queue defaults to DEFAULT_MSG_CAPACITY slots.
+ * Pass a larger capacity to the URI constructor if bursty pub/sub can
+ * outpace your receive loop. Optional on_message_dropped() reports drops
+ * when the buffer is full (otherwise a warning is logged).
  */
 template <typename QB_IO_>
 class RedisCoroConsumer
     : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>> {
     friend RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>>;
 
-    static constexpr size_t DEFAULT_MSG_CAPACITY = 1024;
+    /// Default buffered capacity for co_await receive() (tune for burst tolerance).
+    static constexpr size_t DEFAULT_MSG_CAPACITY = 8192;
+
+    using message_drop_callback = std::function<void(qb::redis::message &&)>;
 
     qb::io::async::channel<qb::redis::message> _msg_channel{DEFAULT_MSG_CAPACITY};
+    message_drop_callback _on_message_dropped;
 
-    void on(qb::redis::message &&msg) {
-        if (!_msg_channel.try_send(std::move(msg))) {
+    void enqueue_pubsub_message(qb::redis::message &&msg) {
+        if (_msg_channel.try_send(std::move(msg))) {
+            return;
+        }
+        if (_on_message_dropped) {
+            try {
+                _on_message_dropped(std::move(msg));
+            } catch (const std::exception &ex) {
+                LOG_WARN("[qbm][redis] coro consumer on_message_dropped error: " << ex.what());
+            }
+        } else {
             LOG_WARN("[qbm][redis] coro consumer: message dropped (buffer full)");
         }
+    }
+
+    void on(qb::redis::message &&msg) {
+        enqueue_pubsub_message(std::move(msg));
     }
 
     void on(qb::redis::pmessage &&msg) {
         // pmessage inherits from message; store as message (pattern is in base)
         qb::redis::message m = std::move(msg);
-        if (!_msg_channel.try_send(std::move(m))) {
-            LOG_WARN("[qbm][redis] coro consumer: message dropped (buffer full)");
-        }
+        enqueue_pubsub_message(std::move(m));
     }
 
     void on(qb::io::async::event::disconnected &&e) {
@@ -903,8 +1001,25 @@ class RedisCoroConsumer
 
 public:
     RedisCoroConsumer() = default;
-    explicit RedisCoroConsumer(qb::io::uri uri)
-        : RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>>(std::move(uri)) {}
+
+    explicit RedisCoroConsumer(qb::io::uri uri,
+                               size_t message_channel_capacity = DEFAULT_MSG_CAPACITY)
+        : RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>>(std::move(uri))
+        , _msg_channel(message_channel_capacity) {}
+
+    /**
+     * @brief Optional callback when the internal queue is full and a message is dropped.
+     * @return *this
+     */
+    RedisCoroConsumer &on_message_dropped(message_drop_callback cb) {
+        _on_message_dropped = std::move(cb);
+        return *this;
+    }
+
+    /** @brief Configured capacity of the internal pub/sub message queue. */
+    [[nodiscard]] size_t message_channel_capacity() const noexcept {
+        return _msg_channel.capacity();
+    }
 
     /**
      * @brief Receive the next pub/sub message (coroutine awaitable).
@@ -938,6 +1053,8 @@ using database = detail::Redis<QB_IO_>;
  */
 struct tcp {
     using client = detail::Redis<qb::io::transport::tcp>;
+    /** @brief Callback pipelining helper; see detail::RedisPipeline */
+    using pipeline = detail::RedisPipeline<qb::io::transport::tcp>;
     
     template <typename Derived>
     using consumer = detail::RedisConsumer<qb::io::transport::tcp, Derived>;
@@ -948,6 +1065,7 @@ struct tcp {
 #ifdef QB_HAS_SSL
     struct ssl {
         using client = detail::Redis<qb::io::transport::stcp>;
+        using pipeline = detail::RedisPipeline<qb::io::transport::stcp>;
         
         template <typename Derived>
         using consumer = detail::RedisConsumer<qb::io::transport::stcp, Derived>;

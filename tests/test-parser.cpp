@@ -1754,6 +1754,24 @@ TEST_F(BoundaryTest, ExactLineBoundaries) {
     }
 }
 
+TEST_F(BoundaryTest, BulkStringRespectsMaxBulkSize) {
+    config.max_bulk_size = 8;
+    std::string content(9, 'x');
+    std::string data = "$9\r\n" + content + "\r\n";
+    auto result = parse(data, config);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code(), ParseErrorCode::BUFFER_OVERFLOW);
+}
+
+TEST_F(BoundaryTest, BulkStringAtMaxBulkSizeOk) {
+    config.max_bulk_size = 8;
+    std::string content(8, 'y');
+    std::string data = "$8\r\n" + content + "\r\n";
+    auto result = parse(data, config);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ((*result).as_bulk_string().value.size(), 8U);
+}
+
 // ============================================================================
 // Main
 // ============================================================================

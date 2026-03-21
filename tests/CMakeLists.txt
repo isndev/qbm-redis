@@ -42,6 +42,7 @@ set(REDIS_TESTS
         json-parse
         reconnect
         parser
+        pipeline
         server-api
 )
 
@@ -53,6 +54,15 @@ foreach (TEST ${REDIS_TESTS})
         SOURCES test-${TEST}.cpp
     )
 endforeach ()
+
+# Integration tests share tcp://localhost:6379 and call FLUSHALL in the fixture.
+# Without a lock, parallel ctest (-j N) runs multiple binaries at once and they
+# destroy each other's data (false failures, occasional crashes).
+set(_qbm_redis_ctest_names "")
+foreach (TEST ${REDIS_TESTS})
+    list(APPEND _qbm_redis_ctest_names "qbm-redis-test-${TEST}")
+endforeach ()
+set_tests_properties(${_qbm_redis_ctest_names} PROPERTIES RESOURCE_LOCK qb_redis_integration)
 
 # Suppress nodiscard warnings for cleanup/setup co_await calls in tests
 foreach (TEST ${REDIS_TESTS})

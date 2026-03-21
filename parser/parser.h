@@ -486,14 +486,21 @@ private:
         }
     }
     
+    [[nodiscard]] bool bulk_payload_exceeds_limit(int64_t len) const noexcept {
+        if (len < 0) {
+            return false;
+        }
+        return static_cast<size_t>(len) > _config.max_bulk_size;
+    }
+
     // Parse bulk string: $N\r\n<data>\r\n
-    [[nodiscard]] static ParseResult<Value> parse_bulk_string(int64_t len, ViewBuffer& view) {
+    [[nodiscard]] ParseResult<Value> parse_bulk_string(int64_t len, ViewBuffer& view) {
         if (len < 0) {
             // Null bulk string in RESP2 mode
             return make_parse_result(Value(Null{}));
         }
-        
-        if (len > static_cast<int64_t>(512 * 1024 * 1024)) {
+
+        if (bulk_payload_exceeds_limit(len)) {
             return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Bulk string too large");
         }
         
@@ -510,11 +517,15 @@ private:
     }
     
     // Parse bulk error: !N\r\n<error>\r\n
-    [[nodiscard]] static ParseResult<Value> parse_bulk_error(int64_t len, ViewBuffer& view) {
+    [[nodiscard]] ParseResult<Value> parse_bulk_error(int64_t len, ViewBuffer& view) {
         if (len < 0) {
             return make_parse_error(ParseErrorCode::INVALID_LENGTH, "Negative bulk error length");
         }
-        
+
+        if (bulk_payload_exceeds_limit(len)) {
+            return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Bulk error payload too large");
+        }
+
         auto data_opt = view.extract_bytes(static_cast<size_t>(len));
         if (!data_opt) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
@@ -540,11 +551,15 @@ private:
     }
     
     // Parse verbatim string: =N\r\n<encoding>:<data>\r\n
-    [[nodiscard]] static ParseResult<Value> parse_verbatim_string(int64_t len, ViewBuffer& view) {
+    [[nodiscard]] ParseResult<Value> parse_verbatim_string(int64_t len, ViewBuffer& view) {
         if (len < 4) {  // Minimum: "xxx:" (3 chars encoding + colon + at least 1 char)
             return make_parse_error(ParseErrorCode::INVALID_VERBATIM_FORMAT, "Verbatim string too short");
         }
-        
+
+        if (bulk_payload_exceeds_limit(len)) {
+            return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Verbatim string too large");
+        }
+
         auto data_opt = view.extract_bytes(static_cast<size_t>(len));
         if (!data_opt) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
@@ -873,7 +888,11 @@ private:
         if (len < 0) {
             return make_parse_result(Value(Null{}));
         }
-        
+
+        if (bulk_payload_exceeds_limit(len)) {
+            return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Bulk string too large");
+        }
+
         auto data_opt = _buffer.extract_bytes(static_cast<size_t>(len));
         if (!data_opt) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
@@ -893,7 +912,11 @@ private:
         if (len < 0) {
             return make_parse_error(ParseErrorCode::INVALID_LENGTH, "Negative bulk error length");
         }
-        
+
+        if (bulk_payload_exceeds_limit(len)) {
+            return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Bulk error payload too large");
+        }
+
         auto data_opt = _buffer.extract_bytes(static_cast<size_t>(len));
         if (!data_opt) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
@@ -919,7 +942,11 @@ private:
         if (len < 4) {
             return make_parse_error(ParseErrorCode::INVALID_VERBATIM_FORMAT);
         }
-        
+
+        if (bulk_payload_exceeds_limit(len)) {
+            return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Verbatim string too large");
+        }
+
         auto data_opt = _buffer.extract_bytes(static_cast<size_t>(len));
         if (!data_opt) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);

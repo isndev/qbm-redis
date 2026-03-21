@@ -44,7 +44,8 @@ private:
     derived() {
         return static_cast<Derived &>(*this);
     }
-    bool exec_flag_ = false;
+    /// True after successful MULTI until EXEC or DISCARD completes (client-side hint only).
+    bool in_multi_ = false;
 
 public:
     /**
@@ -76,7 +77,7 @@ public:
     multi(Func &&func) {
         return derived().template command<status>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
-                exec_flag_ = reply.ok();
+                in_multi_ = reply.ok();
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
             "MULTI");
@@ -113,10 +114,10 @@ public:
     template <typename Result, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<Result>> &&>, Derived &>
     exec(Func &&func) {
-        exec_flag_ = false;
+        in_multi_ = false;
         return derived().template command<std::vector<Result>>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
-                exec_flag_ = false;
+                in_multi_ = false;
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
             "EXEC");
@@ -152,7 +153,7 @@ public:
     discard(Func &&func) {
         return derived().template command<status>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
-                exec_flag_ = false;
+                in_multi_ = false;
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
             "DISCARD");
@@ -276,7 +277,17 @@ public:
      */
     bool
     is_in_multi() const {
-        return exec_flag_;
+        return in_multi_;
+    }
+
+    /**
+     * @brief Clear client-side MULTI state after disconnect or protocol reset
+     *
+     * The server no longer has a transaction open; this avoids stale is_in_multi().
+     */
+    void
+    reset_transaction_state() noexcept {
+        in_multi_ = false;
     }
 };
 

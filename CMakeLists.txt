@@ -23,10 +23,9 @@ if(NOT QB_FOUND)
     return()
 endif()
 
-# Check if SSL support is available
+# TCP client builds without SSL; qb::redis::tcp::ssl::* requires QB_HAS_SSL
 if(NOT QB_HAS_SSL)
-    qb_status_message("Redis module requires SSL support - skipping")
-    return()
+    qb_status_message("Redis: building TCP-only (QB_HAS_SSL off — TLS aliases unavailable)")
 endif()
 
 # Register the Redis module using the new framework functions
