@@ -182,12 +182,17 @@ public:
      * @param func Callback function to handle the result
      * @param key Key to watch
      * @return Reference to the derived class
+     * @note Invokes callback with Reply ok()=false and error() set if key is empty
      * @see https://redis.io/commands/watch
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     watch(Func &&func, const std::string &key) {
         if (key.empty()) {
+            Reply<status> reply;
+            reply.ok() = false;
+            reply.error() = "Key cannot be empty";
+            func(std::move(reply));
             return derived();
         }
         return derived().template command<status>(std::forward<Func>(func), "WATCH",
@@ -216,12 +221,17 @@ public:
      * @param func Callback function to handle the result
      * @param keys Vector of keys to watch
      * @return Reference to the derived class
+     * @note Invokes callback with Reply ok()=false and error() set if keys is empty
      * @see https://redis.io/commands/watch
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     watch(Func &&func, const std::vector<std::string> &keys) {
         if (keys.empty()) {
+            Reply<status> reply;
+            reply.ok() = false;
+            reply.error() = "Key list cannot be empty";
+            func(std::move(reply));
             return derived();
         }
         return derived().template command<status>(std::forward<Func>(func), "WATCH",

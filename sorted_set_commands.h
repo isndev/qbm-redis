@@ -985,8 +985,10 @@ public:
     // =============== New Sorted Set Commands (TODO_COMMANDS.md) ===============
 
     /**
-     * @brief Return the difference between the first and successive sorted sets.
-     * @param keys Keys of sorted sets (first is subtracted from others).
+     * @brief Return the difference between the first and successive sorted sets (coroutine awaitable)
+     *
+     * @param keys Keys of sorted sets (first is subtracted from others)
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/zdiff
      */
     auto zdiff(const std::vector<std::string> &keys) {
@@ -997,7 +999,10 @@ public:
         );
     }
     /**
-     * @brief Return the difference between sorted sets with scores.
+     * @brief Return the difference between sorted sets with scores (coroutine awaitable)
+     *
+     * @param keys Keys of sorted sets (first is subtracted from others)
+     * @return redis_awaiter yielding Reply<std::vector<score_member>>
      * @see https://redis.io/commands/zdiff
      */
     auto zdiffWithScores(const std::vector<std::string> &keys) {
@@ -1007,6 +1012,15 @@ public:
             }
         );
     }
+    /**
+     * @brief Asynchronous version of zdiff
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param keys Keys of sorted sets
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/zdiff
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
                      Derived &>
@@ -1014,6 +1028,15 @@ public:
         return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func), "ZDIFF", keys.size(), keys);
     }
+    /**
+     * @brief Asynchronous version of zdiffWithScores
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param keys Keys of sorted sets
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/zdiff
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
                      Derived &>
@@ -1023,7 +1046,11 @@ public:
     }
 
     /**
-     * @brief Store the difference of sorted sets in destination.
+     * @brief Store the difference of sorted sets in destination (coroutine awaitable)
+     *
+     * @param destination Destination key for the result
+     * @param keys Keys of sorted sets (first is subtracted from others)
+     * @return redis_awaiter yielding Reply<long long> (number of elements in result)
      * @see https://redis.io/commands/zdiffstore
      */
     auto zdiffstore(const std::string &destination,
@@ -1034,6 +1061,16 @@ public:
             }
         );
     }
+    /**
+     * @brief Asynchronous version of zdiffstore
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param destination Destination key
+     * @param keys Keys of sorted sets
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/zdiffstore
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zdiffstore(Func &&func, const std::string &destination,
@@ -1043,7 +1080,12 @@ public:
     }
 
     /**
-     * @brief Intersect multiple sorted sets.
+     * @brief Intersect multiple sorted sets (coroutine awaitable)
+     *
+     * @param keys Keys of sorted sets
+     * @param weights Optional weights for each set
+     * @param type Aggregation type for scores (SUM, MIN, MAX)
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/zinter
      */
     auto zinter(const std::vector<std::string> &keys,
@@ -1056,7 +1098,12 @@ public:
         );
     }
     /**
-     * @brief Intersect multiple sorted sets with scores.
+     * @brief Intersect multiple sorted sets with scores (coroutine awaitable)
+     *
+     * @param keys Keys of sorted sets
+     * @param weights Optional weights for each set
+     * @param type Aggregation type for scores (SUM, MIN, MAX)
+     * @return redis_awaiter yielding Reply<std::vector<score_member>>
      * @see https://redis.io/commands/zinter
      */
     auto zinterWithScores(const std::vector<std::string> &keys,
@@ -1068,6 +1115,18 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of zinter
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param keys Keys of sorted sets
+     * @param weights Optional weights
+     * @param type Aggregation type
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/zinter
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
                      Derived &>
@@ -1084,6 +1143,18 @@ public:
         return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
     }
+
+    /**
+     * @brief Asynchronous version of zinterWithScores
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param keys Keys of sorted sets
+     * @param weights Optional weights
+     * @param type Aggregation type
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/zinter
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
                      Derived &>
@@ -1202,8 +1273,11 @@ public:
     }
 
     /**
-     * @brief Get random members from a sorted set (coroutine awaitable).
-     * @param count Number of members to return.
+     * @brief Get multiple random members from a sorted set (coroutine awaitable)
+     *
+     * @param key Key where the sorted set is stored
+     * @param count Number of random members to return
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/zrandmember
      */
     auto zrandmemberCount(const std::string &key, long long count) {
@@ -1214,7 +1288,11 @@ public:
         );
     }
     /**
-     * @brief Get random members with scores from a sorted set (coroutine awaitable).
+     * @brief Get random members with scores from a sorted set (coroutine awaitable)
+     *
+     * @param key Key where the sorted set is stored
+     * @param count Number of random members to return
+     * @return redis_awaiter yielding Reply<std::vector<score_member>>
      * @see https://redis.io/commands/zrandmember
      */
     auto zrandmemberWithScores(const std::string &key, long long count) {
@@ -1224,6 +1302,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of zrandmemberCount
+     * @see https://redis.io/commands/zrandmember
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
                      Derived &>
@@ -1231,6 +1314,11 @@ public:
         return derived().template command<std::vector<std::string>>(
             std::forward<Func>(func), "ZRANDMEMBER", key, count);
     }
+
+    /**
+     * @brief Asynchronous version of zrandmemberWithScores
+     * @see https://redis.io/commands/zrandmember
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
                      Derived &>

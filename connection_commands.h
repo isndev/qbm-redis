@@ -59,6 +59,12 @@ public:
 
     /**
      * @brief Asynchronous version of hello
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param version Protocol version (2 or 3)
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/hello
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
@@ -69,8 +75,10 @@ public:
 
     /**
      * @brief Authenticates the client to the Redis server (coroutine awaitable)
+     *
      * @param password Authentication password
      * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/auth
      */
     auto auth(const std::string &password) {
         return derived().template make_coro_command<status>(
@@ -82,10 +90,12 @@ public:
 
     /**
      * @brief Asynchronous version of auth
+     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param password Authentication password
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/auth
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -96,9 +106,11 @@ public:
 
     /**
      * @brief Authenticates the client with username and password (coroutine awaitable)
+     *
      * @param user Username for authentication
      * @param password Password for authentication
      * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/auth
      */
     auto auth(const std::string &user, const std::string &password) {
         return derived().template make_coro_command<status>(
@@ -110,11 +122,13 @@ public:
 
     /**
      * @brief Asynchronous version of auth with username and password
+     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param user Username for authentication
      * @param password Password for authentication
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/auth
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -125,8 +139,10 @@ public:
 
     /**
      * @brief Echoes the given message back (coroutine awaitable)
+     *
      * @param message Message to echo
      * @return redis_awaiter yielding Reply<std::string>
+     * @see https://redis.io/commands/echo
      */
     auto echo(const std::string &message) {
         return derived().template make_coro_command<std::string>(
@@ -138,10 +154,12 @@ public:
 
     /**
      * @brief Asynchronous version of echo
+     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param message Message to echo
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/echo
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
@@ -152,7 +170,9 @@ public:
 
     /**
      * @brief Tests if the connection is still alive (coroutine awaitable)
+     *
      * @return redis_awaiter yielding Reply<std::string>
+     * @see https://redis.io/commands/ping
      */
     auto ping() {
         return derived().template make_coro_command<std::string>(
@@ -164,9 +184,11 @@ public:
 
     /**
      * @brief Asynchronous version of ping
+     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/ping
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
@@ -176,8 +198,10 @@ public:
 
     /**
      * @brief Sends a custom message with PING (coroutine awaitable)
+     *
      * @param message Custom message to send
      * @return redis_awaiter yielding Reply<std::string>
+     * @see https://redis.io/commands/ping
      */
     auto ping(const std::string &message) {
         return derived().template make_coro_command<std::string>(
@@ -189,10 +213,12 @@ public:
 
     /**
      * @brief Asynchronous version of ping with custom message
+     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param message Custom message to send
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/ping
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
@@ -203,7 +229,9 @@ public:
 
     /**
      * @brief Closes the connection (coroutine awaitable)
+     *
      * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/quit
      */
     auto quit() {
         return derived().template make_coro_command<status>(
@@ -215,9 +243,11 @@ public:
 
     /**
      * @brief Asynchronous version of quit
+     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/quit
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -227,8 +257,10 @@ public:
 
     /**
      * @brief Selects the Redis logical database (coroutine awaitable)
+     *
      * @param index Database index
      * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/select
      */
     auto select(long long index) {
         return derived().template make_coro_command<status>(
@@ -240,10 +272,12 @@ public:
 
     /**
      * @brief Asynchronous version of select
+     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param index Database index
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/select
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -254,9 +288,11 @@ public:
 
     /**
      * @brief Swaps two Redis databases (coroutine awaitable)
+     *
      * @param index1 Index of the first database
      * @param index2 Index of the second database
      * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/swapdb
      */
     auto swapdb(long long index1, long long index2) {
         return derived().template make_coro_command<status>(
@@ -268,11 +304,13 @@ public:
 
     /**
      * @brief Asynchronous version of swapdb
+     *
      * @tparam Func Callback function type
      * @param func Callback function
      * @param index1 Index of the first database
      * @param index2 Index of the second database
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/swapdb
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -282,8 +320,11 @@ public:
     }
 
     /**
-     * @brief Reset the connection (coroutine awaitable).
+     * @brief Reset the connection (coroutine awaitable)
+     *
      * Resets the connection to a clean state, discarding any pending data.
+     *
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/reset
      */
     auto reset() {
@@ -293,6 +334,15 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of reset
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/reset
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     reset(Func &&func) {

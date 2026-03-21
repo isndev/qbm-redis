@@ -52,7 +52,7 @@ public:
      * @param channel Channel name to publish the message to
      * @param message Message content to publish
      * @return Awaitable that yields Reply<long long> with the number of clients that received the message
-     * @throws std::runtime_error if channel is empty
+     * @note Returns Reply with ok()=false and error() set if channel is empty
      * @see https://redis.io/commands/publish
      */
     auto publish(const std::string &channel, const std::string &message) {
@@ -74,12 +74,19 @@ public:
      * @param channel Channel name to publish the message to
      * @param message Message content to publish
      * @return Reference to the Redis handler for chaining
-     * @throws std::runtime_error if channel is empty
+     * @note Invokes callback with Reply ok()=false and error() set if channel is empty
      * @see https://redis.io/commands/publish
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     publish(Func &&func, const std::string &channel, const std::string &message) {
+        if (channel.empty()) {
+            Reply<long long> reply;
+            reply.ok() = false;
+            reply.error() = "Channel name cannot be empty";
+            func(std::move(reply));
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "PUBLISH",
                                                      channel, message);
     }

@@ -41,13 +41,14 @@ private:
 
 public:
     /**
-     * @brief Executes a Lua script on the Redis server
+     * @brief Executes a Lua script on the Redis server (coroutine awaitable)
      *
      * @tparam Ret Return type of the script execution
      * @param script Lua script to execute
      * @param keys Vector of key names that the script will access
      * @param args Vector of additional arguments to the script
-     * @return Result of the script execution, typed as Ret
+     * @return redis_awaiter yielding Reply<Ret>
+     * @see https://redis.io/commands/eval
      */
     template <typename Ret>
     auto
@@ -70,6 +71,7 @@ public:
      * @param keys Vector of key names that the script will access
      * @param args Vector of additional arguments to the script
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/eval
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
@@ -81,13 +83,14 @@ public:
     }
 
     /**
-     * @brief Executes a pre-loaded Lua script on the Redis server using its SHA1 hash
+     * @brief Executes a pre-loaded Lua script on the Redis server using its SHA1 hash (coroutine awaitable)
      *
      * @tparam Ret Return type of the script execution
      * @param script SHA1 hash of the script previously loaded with SCRIPT LOAD
      * @param keys Vector of key names that the script will access
      * @param args Vector of additional arguments to the script
-     * @return Result of the script execution, typed as Ret
+     * @return redis_awaiter yielding Reply<Ret>
+     * @see https://redis.io/commands/evalsha
      */
     template <typename Ret>
     auto
@@ -110,6 +113,7 @@ public:
      * @param keys Vector of key names that the script will access
      * @param args Vector of additional arguments to the script
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/evalsha
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
@@ -121,11 +125,12 @@ public:
     }
 
     /**
-     * @brief Checks if scripts exist in the script cache by their SHA1 hashes
+     * @brief Checks if scripts exist in the script cache by their SHA1 hashes (coroutine awaitable)
      *
      * @tparam Keys Variadic types for script SHA1 hashes
      * @param keys SHA1 hashes of scripts to check
-     * @return Vector of booleans indicating whether each script exists in the cache
+     * @return redis_awaiter yielding Reply<std::vector<bool>>
+     * @see https://redis.io/commands/script-exists
      */
     template <typename... Keys>
     auto
@@ -145,6 +150,7 @@ public:
      * @param func Callback function
      * @param keys SHA1 hashes of scripts to check
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/script-exists
      */
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<bool>> &&>, Derived &>
@@ -154,9 +160,10 @@ public:
     }
 
     /**
-     * @brief Removes all scripts from the script cache
+     * @brief Removes all scripts from the script cache (coroutine awaitable)
      *
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/script-flush
      */
     auto
     script_flush() {
@@ -173,6 +180,7 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/script-flush
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -182,9 +190,10 @@ public:
     }
 
     /**
-     * @brief Kills the currently executing Lua script
+     * @brief Kills the currently executing Lua script (coroutine awaitable)
      *
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/script-kill
      */
     auto
     script_kill() {
@@ -201,6 +210,7 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/script-kill
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -210,10 +220,11 @@ public:
     }
 
     /**
-     * @brief Loads a Lua script into the script cache
+     * @brief Loads a Lua script into the script cache (coroutine awaitable)
      *
      * @param script Lua script to load
-     * @return SHA1 hash of the loaded script
+     * @return redis_awaiter yielding Reply<std::string> (SHA1 hash of loaded script)
+     * @see https://redis.io/commands/script-load
      */
     auto
     script_load(std::string const &script) {
@@ -231,6 +242,7 @@ public:
      * @param func Callback function
      * @param script Lua script to load
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/script-load
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
@@ -240,7 +252,13 @@ public:
     }
 
     /**
-     * @brief Read-only variant of EVAL - script cannot perform writes.
+     * @brief Read-only variant of EVAL - script cannot perform writes (coroutine awaitable)
+     *
+     * @tparam Ret Return type of the script execution
+     * @param script Lua script to execute
+     * @param keys Vector of key names that the script will access
+     * @param args Vector of additional arguments to the script
+     * @return redis_awaiter yielding Reply<Ret>
      * @see https://redis.io/commands/eval_ro
      */
     template <typename Ret>
@@ -252,6 +270,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of evalRo
+     * @see https://redis.io/commands/eval_ro
+     */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     evalRo(Func &&func, const std::string &script,
@@ -262,7 +285,13 @@ public:
     }
 
     /**
-     * @brief Read-only variant of EVALSHA - script cannot perform writes.
+     * @brief Read-only variant of EVALSHA - script cannot perform writes (coroutine awaitable)
+     *
+     * @tparam Ret Return type of the script execution
+     * @param sha1 SHA1 hash of the script previously loaded with SCRIPT LOAD
+     * @param keys Vector of key names that the script will access
+     * @param args Vector of additional arguments to the script
+     * @return redis_awaiter yielding Reply<Ret>
      * @see https://redis.io/commands/evalsha_ro
      */
     template <typename Ret>
@@ -274,6 +303,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of evalshaRo
+     * @see https://redis.io/commands/evalsha_ro
+     */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     evalshaRo(Func &&func, const std::string &sha1,
@@ -284,7 +318,10 @@ public:
     }
 
     /**
-     * @brief Set the debug mode for Lua scripts (YES, SYNC, NO).
+     * @brief Set the debug mode for Lua scripts (coroutine awaitable)
+     *
+     * @param mode Debug mode: "YES", "SYNC", or "NO"
+     * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/script-debug
      */
     auto scriptDebug(const std::string &mode) {
@@ -294,6 +331,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of scriptDebug
+     * @see https://redis.io/commands/script-debug
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     scriptDebug(Func &&func, const std::string &mode) {

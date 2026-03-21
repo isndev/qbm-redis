@@ -288,10 +288,14 @@ public:
     }
 
     /**
-     * @brief Read-only variant of BITFIELD - only GET operations (coroutine awaitable).
-     * @param key The key storing the string value.
-     * @param operations Vector of GET operations (e.g. "i8", "0" for signed 8-bit at offset 0).
+     * @brief Read-only variant of BITFIELD - only GET operations (coroutine awaitable)
+     *
+     * Performs read-only bitfield operations. Only GET subcommands are allowed.
+     *
+     * @param key The key storing the string value
+     * @param operations Vector of GET operations (e.g. "i8", "0" for signed 8-bit at offset 0)
      * @return redis_awaiter yielding Reply<std::vector<std::optional<long long>>>
+     * @note Time complexity: O(1) for each operation
      * @see https://redis.io/commands/bitfield_ro
      */
     auto bitfieldRo(const std::string &key,
@@ -302,6 +306,17 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of bitfieldRo
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param key The key storing the string value
+     * @param operations Vector of GET operations
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/bitfield_ro
+     */
     template <typename Func>
     std::enable_if_t<
         std::is_invocable_v<Func, Reply<std::vector<std::optional<long long>>> &&>,

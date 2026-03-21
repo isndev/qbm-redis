@@ -328,10 +328,15 @@ public:
     }
 
     /**
-     * @brief Invoke a function (coroutine awaitable).
-     * @param name Function name (e.g. "mylib::myfunc").
-     * @param keys Key arguments.
-     * @param args Additional arguments.
+     * @brief Invoke a function (coroutine awaitable)
+     *
+     * Calls a Redis function previously loaded with FUNCTION LOAD.
+     *
+     * @tparam Ret Expected return type (e.g. std::string, long long, qb::json)
+     * @param name Function name (e.g. "mylib::myfunc")
+     * @param keys Key arguments passed to the function
+     * @param args Additional arguments passed to the function
+     * @return redis_awaiter yielding Reply<Ret>
      * @see https://redis.io/commands/fcall
      */
     template <typename Ret>
@@ -343,6 +348,19 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of fcall
+     *
+     * @tparam Ret Expected return type
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param name Function name
+     * @param keys Key arguments
+     * @param args Additional arguments
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/fcall
+     */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     fcall(Func &&func, const std::string &name,
@@ -353,7 +371,15 @@ public:
     }
 
     /**
-     * @brief Read-only variant of FCALL - function cannot perform writes.
+     * @brief Read-only variant of FCALL - function cannot perform writes (coroutine awaitable)
+     *
+     * Calls a Redis function in read-only mode. The function cannot perform any write operations.
+     *
+     * @tparam Ret Expected return type
+     * @param name Function name (e.g. "mylib::myfunc")
+     * @param keys Key arguments passed to the function
+     * @param args Additional arguments passed to the function
+     * @return redis_awaiter yielding Reply<Ret>
      * @see https://redis.io/commands/fcall_ro
      */
     template <typename Ret>
@@ -365,6 +391,19 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of fcallRo
+     *
+     * @tparam Ret Expected return type
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param name Function name
+     * @param keys Key arguments
+     * @param args Additional arguments
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/fcall_ro
+     */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     fcallRo(Func &&func, const std::string &name,

@@ -220,6 +220,7 @@ public:
      * @param key Key where the hash is stored
      * @param fields Fields to delete
      * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/hdel
      */
     template <typename... Fields>
     auto hdel(const std::string &key, Fields &&...fields) {
@@ -239,6 +240,7 @@ public:
      * @param key Key where the hash is stored
      * @param fields Fields to delete
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hdel
      */
     template <typename Func, typename... Fields>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -253,6 +255,7 @@ public:
      * @param key Key where the hash is stored
      * @param field Field to check
      * @return redis_awaiter yielding Reply<bool>
+     * @see https://redis.io/commands/hexists
      */
     auto hexists(const std::string &key, const std::string &field) {
         return derived().template make_coro_command<bool>(
@@ -270,6 +273,7 @@ public:
      * @param key Key where the hash is stored
      * @param field Field to check
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hexists
      */
     template <typename Func>
     Derived &
@@ -284,6 +288,7 @@ public:
      * @param key Key where the hash is stored
      * @param field Field to get
      * @return redis_awaiter yielding Reply<std::optional<std::string>>
+     * @see https://redis.io/commands/hget
      */
     auto hget(const std::string &key, const std::string &field) {
         return derived().template make_coro_command<std::optional<std::string>>(
@@ -301,6 +306,7 @@ public:
      * @param key Key where the hash is stored
      * @param field Field to get
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hget
      */
     template <typename Func>
     Derived &
@@ -314,6 +320,7 @@ public:
      *
      * @param key Key where the hash is stored
      * @return redis_awaiter yielding Reply<qb::unordered_map<std::string, std::string>>
+     * @see https://redis.io/commands/hgetall
      */
     auto hgetall(const std::string &key) {
         return derived().template make_coro_command<qb::unordered_map<std::string, std::string>>(
@@ -330,6 +337,7 @@ public:
      * @param func Callback function
      * @param key Key where the hash is stored
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hgetall
      */
     template <typename Func>
     Derived &
@@ -345,6 +353,7 @@ public:
      * @param field Field to increment
      * @param increment Increment amount
      * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/hincrby
      */
     auto hincrby(const std::string &key, const std::string &field, long long increment) {
         return derived().template make_coro_command<long long>(
@@ -363,6 +372,7 @@ public:
      * @param field Field to increment
      * @param increment Increment amount
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hincrby
      */
     template <typename Func>
     Derived &
@@ -379,6 +389,7 @@ public:
      * @param field Field to increment
      * @param increment Increment amount
      * @return redis_awaiter yielding Reply<double>
+     * @see https://redis.io/commands/hincrbyfloat
      */
     auto hincrbyfloat(const std::string &key, const std::string &field, double increment) {
         return derived().template make_coro_command<double>(
@@ -397,6 +408,7 @@ public:
      * @param field Field to increment
      * @param increment Increment amount
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hincrbyfloat
      */
     template <typename Func>
     Derived &
@@ -443,6 +455,7 @@ public:
      *
      * @param key Key where the hash is stored
      * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/hlen
      */
     auto hlen(const std::string &key) {
         return derived().template make_coro_command<long long>(
@@ -459,6 +472,7 @@ public:
      * @param func Callback function
      * @param key Key where the hash is stored
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hlen
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -474,6 +488,7 @@ public:
      * @param key Key where the hash is stored
      * @param fields Fields to get
      * @return redis_awaiter yielding Reply<std::vector<std::optional<std::string>>>
+     * @see https://redis.io/commands/hmget
      */
     template <typename... Fields>
     auto hmget(const std::string &key, Fields &&...fields) {
@@ -493,6 +508,7 @@ public:
      * @param key Key where the hash is stored
      * @param fields Fields to get
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hmget
      */
     template <typename Func, typename... Fields>
     std::enable_if_t<
@@ -510,6 +526,7 @@ public:
      * @param key Key where the hash is stored
      * @param field_values Field-value pairs to set
      * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/hset
      */
     template <typename... FieldValues>
     auto hmset(const std::string &key, FieldValues &&...field_values) {
@@ -529,6 +546,7 @@ public:
      * @param key Key where the hash is stored
      * @param field_values Field-value pairs to set
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hset
      */
     template <typename Func, typename... FieldValues>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -547,6 +565,7 @@ public:
      * @param pattern Pattern to filter fields
      * @param count Hint for how many field-value pairs to return per call
      * @return redis_awaiter yielding Reply<qb::redis::scan<Out>>
+     * @see https://redis.io/commands/hscan
      */
     template <typename Out = qb::unordered_map<std::string, std::string>>
     auto hscan(const std::string &key, long long cursor, const std::string &pattern = "*",
@@ -569,6 +588,7 @@ public:
      * @param pattern Pattern to filter fields
      * @param count Hint for how many field-value pairs to return per call
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hscan
      */
     template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>,
@@ -595,6 +615,7 @@ public:
      * @param key Key where the hash is stored
      * @param pattern Pattern to filter fields
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hscan
      */
     template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>,
@@ -611,6 +632,7 @@ public:
      * @param field Field to set
      * @param val Value to set
      * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/hset
      */
     auto hset(const std::string &key, const std::string &field, const std::string &val) {
         return derived().template make_coro_command<long long>(
@@ -629,6 +651,7 @@ public:
      * @param field Field to set
      * @param val Value to set
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hset
      */
     template <typename Func>
     Derived &
@@ -644,6 +667,7 @@ public:
      * @param key Key where the hash is stored
      * @param item Pair containing field name and value
      * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/hset
      */
     auto hset(const std::string &key, const std::pair<std::string, std::string> &item) {
         return hset(key, item.first, item.second);
@@ -657,6 +681,7 @@ public:
      * @param key Key where the hash is stored
      * @param item Pair containing field name and value
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hset
      */
     template <typename Func>
     Derived &
@@ -672,6 +697,7 @@ public:
      * @param field Field to set
      * @param val Value to set
      * @return redis_awaiter yielding Reply<bool>
+     * @see https://redis.io/commands/hsetnx
      */
     auto hsetnx(const std::string &key, const std::string &field, const std::string &val) {
         return derived().template make_coro_command<bool>(
@@ -690,6 +716,7 @@ public:
      * @param field Field to set
      * @param val Value to set
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hsetnx
      */
     template <typename Func>
     Derived &
@@ -705,6 +732,7 @@ public:
      * @param key Key where the hash is stored
      * @param item Pair containing field name and value
      * @return redis_awaiter yielding Reply<bool>
+     * @see https://redis.io/commands/hsetnx
      */
     auto hsetnx(const std::string &key, const std::pair<std::string, std::string> &item) {
         return hsetnx(key, item.first, item.second);
@@ -718,6 +746,7 @@ public:
      * @param key Key where the hash is stored
      * @param item Pair containing field name and value
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hsetnx
      */
     template <typename Func>
     Derived &
@@ -732,6 +761,7 @@ public:
      * @param key Key where the hash is stored
      * @param field Field to get length of
      * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/hstrlen
      */
     auto hstrlen(const std::string &key, const std::string &field) {
         return derived().template make_coro_command<long long>(
@@ -749,6 +779,7 @@ public:
      * @param key Key where the hash is stored
      * @param field Field to get length of
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hstrlen
      */
     template <typename Func>
     Derived &
@@ -762,6 +793,7 @@ public:
      *
      * @param key Key where the hash is stored
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/hvals
      */
     auto hvals(const std::string &key) {
         return derived().template make_coro_command<std::vector<std::string>>(
@@ -778,6 +810,7 @@ public:
      * @param func Callback function
      * @param key Key where the hash is stored
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hvals
      */
     template <typename Func>
     Derived &
@@ -793,6 +826,7 @@ public:
      * @param func Callback function to process all values from all hashes
      * @param keys Keys where the hashes are stored
      * @return Reference to the Redis handler for chaining
+     * @see https://redis.io/commands/hvals
      */
     template <typename Func>
     Derived &

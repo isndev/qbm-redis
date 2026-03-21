@@ -1,3 +1,7 @@
+/**
+ * @file parser/parser.h
+ * @brief RespParser - streaming RESP2/RESP3 parser
+ */
 /*
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
@@ -29,6 +33,8 @@ namespace qb::redis::parser {
 // ============================================================================
 // Parser configuration
 // ============================================================================
+
+/** @brief Parser limits and options */
 struct ParserConfig {
     ProtocolVersion protocol_version = ProtocolVersion::RESP3;
     size_t max_nesting_depth = 64;          // Max aggregate nesting
@@ -40,6 +46,8 @@ struct ParserConfig {
 // ============================================================================
 // Parser state
 // ============================================================================
+
+/** @brief Internal parser state machine states */
 enum class State {
     READY,              // Waiting for type byte
     PARSING_LENGTH,     // Parsing length line (for bulk/aggregate types)
@@ -53,6 +61,14 @@ enum class State {
 // ============================================================================
 // Main RESP parser - streaming capable
 // ============================================================================
+
+/**
+ * @class RespParser
+ * @brief Streaming RESP2/RESP3 parser for async I/O
+ *
+ * Feed data with feed(), parse complete values with parse() or parse_all().
+ * Supports zero-copy parsing from contiguous buffers.
+ */
 class RespParser {
 public:
     explicit RespParser(const ParserConfig& config = {})
@@ -1060,6 +1076,13 @@ inline ParseResult<Value> RespParser::parse_attribute_from_buffer(size_t count, 
 // ============================================================================
 // Simple non-streaming parser for complete data
 // ============================================================================
+
+/**
+ * @brief One-shot parse of complete RESP data
+ * @param data Complete RESP wire data
+ * @param config Parser configuration (optional)
+ * @return Parsed Value or ParseError
+ */
 [[nodiscard]] inline ParseResult<Value> parse(std::string_view data,
                                                const ParserConfig& config = {}) {
     RespParser parser(config);

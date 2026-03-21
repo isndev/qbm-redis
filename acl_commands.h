@@ -424,10 +424,14 @@ public:
     }
 
     /**
-     * @brief Simulate if a user can execute a command (coroutine awaitable).
-     * @param username User to check.
-     * @param command Command name.
-     * @param args Command arguments.
+     * @brief Simulate if a user can execute a command (coroutine awaitable)
+     *
+     * Returns whether the specified user would be allowed to run the given command.
+     *
+     * @param username User to check
+     * @param command Command name
+     * @param args Command arguments (default empty)
+     * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/acl-dryrun
      */
     auto acl_dryrun(const std::string &username, const std::string &command,
@@ -438,6 +442,18 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of acl_dryrun
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function to handle the result
+     * @param username User to check
+     * @param command Command name
+     * @param args Command arguments (default empty)
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/acl-dryrun
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     acl_dryrun(Func &&func, const std::string &username, const std::string &command,

@@ -134,6 +134,7 @@ public:
      * @param type Client type to kill
      * @param skipme Whether to skip killing the current client
      * @return status object with the result
+     * @see https://redis.io/commands/client-kill
      */
     auto client_kill(const std::string &addr = "", long long id = 0,
                      const std::string &type = "", bool skipme = true) {
@@ -154,6 +155,7 @@ public:
      * @param type Client type to kill
      * @param skipme Whether to skip killing the current client
      * @return Reference to the derived class
+     * @see https://redis.io/commands/client-kill
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -181,9 +183,10 @@ public:
     }
 
     /**
-     * @brief Returns the client ID for the current connection
+     * @brief Returns the client ID for the current connection (coroutine awaitable)
      *
-     * @return Client ID (long long)
+     * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/client-id
      */
     auto client_id() {
         return derived().template make_coro_command<long long>(
@@ -192,6 +195,11 @@ public:
             }
         );
     }
+
+    /**
+     * @brief Asynchronous version of client_id
+     * @see https://redis.io/commands/client-id
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     client_id(Func &&func) {
@@ -200,9 +208,10 @@ public:
     }
 
     /**
-     * @brief Gets the current client name
+     * @brief Gets the current client name (coroutine awaitable)
      *
-     * @return Optional client name
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
+     * @see https://redis.io/commands/client-getname
      */
     auto client_getname() {
         return derived().template make_coro_command<std::optional<std::string>>(
@@ -214,6 +223,7 @@ public:
 
     /**
      * @brief Asynchronous version of client_getname
+     * @see https://redis.io/commands/client-getname
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
@@ -224,10 +234,11 @@ public:
     }
 
     /**
-     * @brief Sets the current client name
+     * @brief Sets the current client name (coroutine awaitable)
      *
      * @param name New client name
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-setname
      */
     auto client_setname(const std::string &name) {
         return derived().template make_coro_command<status>(
@@ -239,6 +250,7 @@ public:
 
     /**
      * @brief Asynchronous version of client_setname
+     * @see https://redis.io/commands/client-setname
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -248,11 +260,12 @@ public:
     }
 
     /**
-     * @brief Stops processing commands from clients for specified milliseconds
+     * @brief Stops processing commands from clients for specified milliseconds (coroutine awaitable)
      *
      * @param timeout Time in milliseconds to block commands
      * @param mode Type of commands to block (WRITE or ALL)
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-pause
      */
     auto client_pause(long long timeout, const std::string &mode = "ALL") {
         return derived().template make_coro_command<status>(
@@ -270,6 +283,7 @@ public:
      * @param timeout Time in milliseconds to block commands
      * @param mode Type of commands to block (WRITE or ALL)
      * @return Reference to the derived class
+     * @see https://redis.io/commands/client-pause
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -279,10 +293,11 @@ public:
     }
 
     /**
-     * @brief Enables or disables client tracking
+     * @brief Enables or disables client tracking (coroutine awaitable)
      *
      * @param enabled Whether to enable tracking
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-tracking
      */
     auto client_tracking(bool enabled = true) {
         return derived().template make_coro_command<status>(
@@ -294,6 +309,7 @@ public:
 
     /**
      * @brief Asynchronous version of client_tracking
+     * @see https://redis.io/commands/client-tracking
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -303,11 +319,12 @@ public:
     }
 
     /**
-     * @brief Unblocks a client by ID
+     * @brief Unblocks a client by ID (coroutine awaitable)
      *
      * @param client_id ID of client to unblock
      * @param error Whether to unblock with an error (default: false)
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-unblock
      */
     auto client_unblock(long long client_id, bool error = false) {
         return derived().template make_coro_command<status>(
@@ -325,6 +342,7 @@ public:
      * @param client_id ID of client to unblock
      * @param error Whether to unblock with an error (default: false)
      * @return Reference to the derived class
+     * @see https://redis.io/commands/client-unblock
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -340,10 +358,10 @@ public:
     // =============== Configuration Commands ===============
 
     /**
-     * @brief Gets a configuration parameter
+     * @brief Gets a configuration parameter (coroutine awaitable)
      *
      * @param parameter Parameter name
-     * @return Vector of parameter-value pairs
+     * @return redis_awaiter yielding Reply<std::vector<std::pair<std::string, std::string>>>
      * @see https://redis.io/commands/config-get
      */
     auto config_get(const std::string &parameter) {
@@ -387,11 +405,12 @@ public:
     }
 
     /**
-     * @brief Sets a configuration parameter
+     * @brief Sets a configuration parameter (coroutine awaitable)
      *
      * @param parameter Parameter name
      * @param value Parameter value
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/config-set
      */
     auto config_set(const std::string &parameter, const std::string &value) {
         return derived().template make_coro_command<status>(
@@ -403,6 +422,7 @@ public:
 
     /**
      * @brief Asynchronous version of config_set
+     * @see https://redis.io/commands/config-set
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -412,9 +432,10 @@ public:
     }
 
     /**
-     * @brief Resets server statistics
+     * @brief Resets server statistics (coroutine awaitable)
      *
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/config-resetstat
      */
     auto config_resetstat() {
         return derived().template make_coro_command<status>(
@@ -426,6 +447,7 @@ public:
 
     /**
      * @brief Asynchronous version of config_resetstat
+     * @see https://redis.io/commands/config-resetstat
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -435,9 +457,10 @@ public:
     }
 
     /**
-     * @brief Rewrites the configuration file
+     * @brief Rewrites the configuration file (coroutine awaitable)
      *
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/config-rewrite
      */
     auto config_rewrite() {
         return derived().template make_coro_command<status>(
@@ -449,6 +472,7 @@ public:
 
     /**
      * @brief Asynchronous version of config_rewrite
+     * @see https://redis.io/commands/config-rewrite
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -510,9 +534,10 @@ public:
     }
 
     /**
-     * @brief Get the number of commands in the command list
+     * @brief Get the number of commands in the command list (coroutine awaitable)
      *
-     * @return The number of commands
+     * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/command-count
      */
     auto command_count() {
         return derived().template make_coro_command<long long>(
@@ -528,6 +553,7 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @return Reference to the derived class
+     * @see https://redis.io/commands/command-count
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -537,11 +563,12 @@ public:
     }
 
     /**
-     * @brief Gets the keys from a command
+     * @brief Gets the keys from a command (coroutine awaitable)
      *
      * @param command Command to get keys from
      * @param args Command arguments
-     * @return Vector of key names
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/command-getkeys
      */
     auto command_getkeys(const std::string &command,
                          const std::vector<std::string> &args) {
@@ -554,6 +581,7 @@ public:
 
     /**
      * @brief Asynchronous version of command_getkeys
+     * @see https://redis.io/commands/command-getkeys
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
@@ -691,9 +719,10 @@ public:
     }
 
     /**
-     * @brief Forces a segfault (for testing)
+     * @brief Forces a segfault (for testing) (coroutine awaitable)
      *
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/debug-segfault
      */
     auto debug_segfault() {
         return derived().template make_coro_command<status>(
@@ -705,6 +734,7 @@ public:
 
     /**
      * @brief Asynchronous version of debug_segfault
+     * @see https://redis.io/commands/debug-segfault
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -714,10 +744,11 @@ public:
     }
 
     /**
-     * @brief Sleeps for a specified time (for testing)
+     * @brief Sleeps for a specified time (for testing) (coroutine awaitable)
      *
      * @param delay Delay in seconds
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/debug-sleep
      */
     auto debug_sleep(double delay) {
         return derived().template make_coro_command<status>(
@@ -729,6 +760,7 @@ public:
 
     /**
      * @brief Asynchronous version of debug_sleep
+     * @see https://redis.io/commands/debug-sleep
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -768,9 +800,10 @@ public:
     }
 
     /**
-     * @brief Gets help about memory commands
+     * @brief Gets help about memory commands (coroutine awaitable)
      *
-     * @return Help text
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/memory-help
      */
     auto memory_help() {
         return derived().template make_coro_command<std::vector<std::string>>(
@@ -782,6 +815,7 @@ public:
 
     /**
      * @brief Asynchronous version of memory_help
+     * @see https://redis.io/commands/memory-help
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
@@ -792,9 +826,10 @@ public:
     }
 
     /**
-     * @brief Gets malloc statistics
+     * @brief Gets malloc statistics (coroutine awaitable)
      *
-     * @return Malloc statistics
+     * @return redis_awaiter yielding Reply<std::string>
+     * @see https://redis.io/commands/memory-malloc-stats
      */
     auto memory_malloc_stats() {
         return derived().template make_coro_command<std::string>(
@@ -806,6 +841,7 @@ public:
 
     /**
      * @brief Asynchronous version of memory_malloc_stats
+     * @see https://redis.io/commands/memory-malloc-stats
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
@@ -815,9 +851,10 @@ public:
     }
 
     /**
-     * @brief Purges memory
+     * @brief Purges memory (coroutine awaitable)
      *
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/memory-purge
      */
     auto memory_purge() {
         return derived().template make_coro_command<status>(
@@ -829,6 +866,7 @@ public:
 
     /**
      * @brief Asynchronous version of memory_purge
+     * @see https://redis.io/commands/memory-purge
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -838,11 +876,12 @@ public:
     }
 
     /**
-     * @brief Gets memory usage of a key
+     * @brief Gets memory usage of a key (coroutine awaitable)
      *
      * @param key Key to check
      * @param samples Number of samples for sampling
-     * @return Memory usage in bytes
+     * @return redis_awaiter yielding Reply<long long> (memory in bytes)
+     * @see https://redis.io/commands/memory-usage
      */
     auto memory_usage(const std::string &key, long long samples = 0) {
         return derived().template make_coro_command<long long>(
@@ -854,6 +893,7 @@ public:
 
     /**
      * @brief Asynchronous version of memory_usage
+     * @see https://redis.io/commands/memory-usage
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -923,7 +963,8 @@ public:
      * and save the dataset to disk before shutting down.
      *
      * @param save_option "SAVE" to save before shutdown, "NOSAVE" to not save
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/shutdown
      */
     auto shutdown(const std::string &save_option = "") {
         return derived().template make_coro_command<status>(
@@ -940,6 +981,7 @@ public:
      * @param func Callback function to handle the result
      * @param save_option "SAVE" to save before shutdown, "NOSAVE" to not save
      * @return Reference to the derived class
+     * @see https://redis.io/commands/shutdown
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -992,6 +1034,7 @@ public:
      * @brief Gets the length of the slowlog
      *
      * @return Number of entries in the slowlog
+     * @see https://redis.io/commands/slowlog
      */
     auto slowlog_len() {
         return derived().template make_coro_command<long long>(
@@ -1003,6 +1046,7 @@ public:
 
     /**
      * @brief Asynchronous version of slowlog_len
+     * @see https://redis.io/commands/slowlog
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
@@ -1015,6 +1059,7 @@ public:
      * @brief Resets the slowlog
      *
      * @return status object with the result
+     * @see https://redis.io/commands/slowlog
      */
     auto slowlog_reset() {
         return derived().template make_coro_command<status>(
@@ -1026,6 +1071,7 @@ public:
 
     /**
      * @brief Asynchronous version of slowlog_reset
+     * @see https://redis.io/commands/slowlog
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -1068,7 +1114,8 @@ public:
      *
      * @param replication_id Replication ID
      * @param offset Replication offset
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/psync
      */
     auto psync(const std::string &replication_id, long long offset) {
         return derived().template make_coro_command<status>(
@@ -1080,6 +1127,7 @@ public:
 
     /**
      * @brief Asynchronous version of psync
+     * @see https://redis.io/commands/psync
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -1097,6 +1145,7 @@ public:
      * The Redis server will create a new AOF file while still serving clients.
      *
      * @return status object with the result
+     * @see https://redis.io/commands/bgrewriteaof
      */
     auto bgrewriteaof() {
         return derived().template make_coro_command<status>(
@@ -1112,6 +1161,7 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @return Reference to the derived class
+     * @see https://redis.io/commands/bgrewriteaof
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -1127,7 +1177,8 @@ public:
      * Redis dataset to disk.
      *
      * @param schedule Whether to schedule the save operation
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/bgsave
      */
     auto bgsave(bool schedule = false) {
         return derived().template make_coro_command<status>(
@@ -1144,6 +1195,7 @@ public:
      * @param func Callback function to handle the result
      * @param schedule Whether to schedule the save operation
      * @return Reference to the derived class
+     * @see https://redis.io/commands/bgsave
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -1161,7 +1213,8 @@ public:
      * This command initiates a synchronous save operation to persist the current
      * Redis dataset to disk, blocking the server until the operation completes.
      *
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/save
      */
     auto save() {
         return derived().template make_coro_command<status>(
@@ -1177,6 +1230,7 @@ public:
      * @tparam Func Callback function type
      * @param func Callback function to handle the result
      * @return Reference to the derived class
+     * @see https://redis.io/commands/save
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -1252,7 +1306,8 @@ public:
      * currently selected one.
      *
      * @param async Whether to perform the operation asynchronously on the server side
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/flushall
      */
     auto flushall(bool async = false) {
         return derived().template make_coro_command<status>(
@@ -1269,6 +1324,7 @@ public:
      * @param func Callback function to handle the result
      * @param async Whether to perform the operation asynchronously on the server side
      * @return Reference to the derived class
+     * @see https://redis.io/commands/flushall
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -1286,7 +1342,8 @@ public:
      * This command removes all keys from the currently selected database.
      *
      * @param async Whether to perform the operation asynchronously on the server side
-     * @return status object with the result
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/flushdb
      */
     auto flushdb(bool async = false) {
         return derived().template make_coro_command<status>(
@@ -1303,6 +1360,7 @@ public:
      * @param func Callback function to handle the result
      * @param async Whether to perform the operation asynchronously on the server side
      * @return Reference to the derived class
+     * @see https://redis.io/commands/flushdb
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
