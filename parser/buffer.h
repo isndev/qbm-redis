@@ -85,14 +85,14 @@ public:
     // Append data to buffer
     bool append(std::span<const char> data) {
         if (data.empty()) return true;
-        
+
         if (data.size() > available()) {
             // Try to make room or grow
             if (!ensure_space(data.size())) {
                 return false;
             }
         }
-        
+
         // Write data using memcpy for efficiency
         const size_t cap   = _buffer.size();
         const size_t space = cap - _write_pos;  // bytes until physical end
@@ -101,7 +101,13 @@ public:
             // Fits without wrapping
             std::memcpy(_buffer.data() + _write_pos, data.data(), data.size());
             _write_pos += data.size();
-            if (_write_pos == cap) _write_pos = 0;
+            // IMPORTANT: do NOT wrap `_write_pos` to 0 when it reaches `cap`.
+            // A ring buffer where `_write_pos == _read_pos` is indistinguishable
+            // from an empty one, so wrapping here makes a buffer that is
+            // exactly full look empty to `size()` / `empty()` / `readable_span()`.
+            // `ensure_space()` now reserves an extra sentinel slot so
+            // `_write_pos < cap` after every successful append; we only wrap
+            // below (split branch) when the data legitimately crosses the end.
         } else {
             // Split across the end of the physical buffer
             std::memcpy(_buffer.data() + _write_pos, data.data(), space);
@@ -241,30 +247,34 @@ public:
 private:
     bool ensure_space(size_t needed) {
         size_t current_available = available();
-        
+
         if (current_available >= needed) {
             return true;
         }
-        
+
         // Compact first
         compact();
-        
+
         if (available() >= needed) {
             return true;
         }
-        
-        // Need to grow
+
+        // Need to grow. We reserve one extra sentinel byte so the ring invariant
+        // `_write_pos != _read_pos when non-empty` can be preserved by append()
+        // without wrapping `_write_pos` to zero — which would otherwise make a
+        // completely full buffer indistinguishable from an empty one and
+        // silently drop every subsequent byte.
         size_t new_capacity = _buffer.size();
-        size_t required = size() + needed;
-        
+        size_t required = size() + needed + 1;
+
         while (new_capacity < required && new_capacity < MAX_CAPACITY) {
             new_capacity *= 2;
         }
-        
+
         if (new_capacity < required) {
             return false;  // Exceeds max capacity
         }
-        
+
         _buffer.resize(new_capacity);
         return true;
     }

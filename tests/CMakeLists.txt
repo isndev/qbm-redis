@@ -15,8 +15,6 @@
 #         limitations under the License.
 #
 
-include(CTest)
-
 # Define test files and their corresponding test names
 set(REDIS_TESTS
         connection-commands

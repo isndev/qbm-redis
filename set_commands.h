@@ -19,6 +19,7 @@
 #define QBM_REDIS_SET_COMMANDS_H
 
 #include "reply.h"
+#include <qb/system/container/unordered_set.h> // for qb::unordered_set (previously picked up transitively via listener.h)
 
 namespace qb::redis {
 
