@@ -78,9 +78,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_CLIENT_MANAGEMENT) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== FAILOVER, LATENCY, EXTENDED CLIENT COMMANDS ===============
@@ -162,9 +160,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_FAILOVER_LATENCY_CLIENT_EXT) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== CONFIGURATION COMMANDS ===============
@@ -203,9 +199,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_CONFIGURATION) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== COMMAND INFORMATION COMMANDS ===============
@@ -305,9 +299,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_COMMAND_INFORMATION) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== DEBUG COMMANDS ===============
@@ -341,9 +333,7 @@ TEST_P(ServerProtocolModesTest, DISABLED_CORO_SERVER_DEBUG_COMMANDS) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== MEMORY MANAGEMENT COMMANDS ===============
@@ -398,9 +388,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_MEMORY_MANAGEMENT) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== SLOWLOG COMMANDS ===============
@@ -449,9 +437,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_SLOWLOG) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== SYNC COMMANDS ===============
@@ -474,9 +460,7 @@ TEST_P(ServerProtocolModesTest, DISABLED_CORO_SERVER_SYNC_COMMANDS) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== PERSISTENCE COMMANDS ===============
@@ -533,9 +517,7 @@ TEST_P(ServerProtocolModesTest, DISABLED_CORO_SERVER_PERSISTENCE) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== DATABASE COMMANDS ===============
@@ -588,9 +570,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_DATABASE) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== SERVER INFORMATION COMMANDS ===============
@@ -654,9 +634,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_INFORMATION) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== ROLE COMMANDS ===============
@@ -677,9 +655,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_ROLE) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== LATENCY COMMANDS ===============
@@ -723,9 +699,7 @@ TEST_P(ServerProtocolModesTest, DISABLED_CORO_SERVER_LATENCY_COMMANDS) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // =============== SHUTDOWN/SLAVE COMMANDS (DISABLED - Dangerous) ===============
