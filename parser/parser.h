@@ -55,7 +55,8 @@ enum class State {
     PARSING_BULK,       // Parsing bulk data
     PARSING_AGGREGATE,  // Parsing aggregate elements
     COMPLETE,           // Have complete value
-    ERROR               // Error state
+    /** Parser hit a fatal error (not `ERROR` — Windows headers define that macro). */
+    FAULT
 };
 
 // ============================================================================
@@ -88,9 +89,9 @@ public:
     [[nodiscard]] State state() const noexcept { return _state; }
     [[nodiscard]] bool is_ready() const noexcept { return _state == State::READY; }
     [[nodiscard]] bool is_complete() const noexcept { return _state == State::COMPLETE; }
-    [[nodiscard]] bool has_error() const noexcept { return _state == State::ERROR; }
+    [[nodiscard]] bool has_error() const noexcept { return _state == State::FAULT; }
     [[nodiscard]] bool is_parsing() const noexcept {
-        return _state != State::READY && _state != State::COMPLETE && _state != State::ERROR;
+        return _state != State::READY && _state != State::COMPLETE && _state != State::FAULT;
     }
     
     // Feed data to parser (string_view version)

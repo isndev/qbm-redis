@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include <parser/parser.h>
 #include <parser/serializer.h>
+#include <chrono>
 #include <string>
 #include <vector>
 
