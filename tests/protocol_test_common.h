@@ -76,27 +76,22 @@ protected:
 #define CO_IGNORE(expr) (void)(expr)
 
 /**
- * @brief Pump the event loop with EVRUN_ONCE until `completed` becomes true or a
- *        watchdog deadline expires. Replaces the unsafe `while (!completed) run(EVRUN_NOWAIT)`
- *        pattern that:
- *          1. Spins at 100% CPU (busy wait).
- *          2. Never produces a diagnostic when a coroutine hangs (test freezes forever).
+ * @brief Pump the event loop until `completed` or a watchdog deadline expires.
+ * Replaces the unsafe `while (!completed) run(EVRUN_NOWAIT)` pattern (busy spin, no
+ * diagnostic on hang).
  *
- * Using EVRUN_ONCE makes the thread sleep until at least one event fires, which is
- * both cheaper and guarantees forward progress whenever libev has any work to do.
- * The scheduled `callback` flips `timed_out` if the test takes too long so the
- * caller can emit a proper GoogleTest failure instead of hanging.
+ * Uses `EVRUN_NOWAIT` for throughput. The watchdog is `scoped_callback`: destroying
+ * it at function exit stops the timer. Do **not** use `async::callback` here — it
+ * self-deletes only after fire, so a lambda capturing `&timed_out` would run after
+ * `timed_out` went out of scope when the test finishes early → segfault near timeout.
  *
  * @param completed   Flag set to true by the coroutine body on success.
  * @param timeout_sec Deadline applied to the overall test body.
  */
 inline void run_coro_test_until(const bool& completed, double timeout_sec = 30.0) {
     bool timed_out = false;
-    qb::io::async::callback([&timed_out]() noexcept { timed_out = true; }, timeout_sec);
-    // EVRUN_NOWAIT (polling) is kept for throughput: it lets a test body that
-    // issues dozens of awaits in quick succession avoid per-iteration syscall
-    // overhead. The watchdog callback above guarantees that a hung coroutine
-    // can no longer wedge the suite forever.
+    auto watchdog = qb::io::async::scoped_callback([&timed_out]() noexcept { timed_out = true; }, timeout_sec);
+    (void)watchdog;
     while (!completed && !timed_out) {
         qb::io::async::run(EVRUN_NOWAIT);
     }
