@@ -76,9 +76,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_MULTI_EXEC) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // Test DISCARD with coroutines
@@ -114,9 +112,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_DISCARD) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // Test WATCH/UNWATCH with coroutines
@@ -162,9 +158,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // Test WATCH with multiple keys using coroutines
@@ -216,9 +210,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // Test successful transaction after WATCH with no modifications
@@ -265,9 +257,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_SUCCESS) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // Test WATCH with empty key returns failed Reply (validation)
@@ -284,9 +274,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_EMPTY_KEY) 
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // Test WATCH with empty key list returns failed Reply (validation)
@@ -303,9 +291,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_EMPTY_KEYS)
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 // Test UNWATCH followed by transaction
@@ -356,9 +342,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_UNWATCH_THEN_EXEC
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) {
-        qb::io::async::run(EVRUN_NOWAIT);
-    }
+    run_coro_test_until(completed);
 }
 
 TEST_P(TransactionProtocolModesTest, MULTI_EXEC) {
@@ -380,7 +364,7 @@ TEST_P(TransactionProtocolModesTest, MULTI_EXEC) {
         }
         done = true;
     }());
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    run_coro_test_until(done);
 }
 
 // Main function to run the tests

@@ -623,18 +623,24 @@ public:
     /**
      * @brief Drain all pending command replies on the current event loop.
      *
-     * Runs @c qb::io::async::run(EVRUN_NOWAIT) until the internal reply queue is
-     * empty. This does **not** block the thread in the kernel; each iteration is a
-     * non-blocking poll. The **caller** still runs synchronously until every
-     * enqueued callback has been invoked (success, Redis error, or disconnect).
+     * Runs @c qb::io::async::listener::current.run(EVRUN_NOWAIT) until the internal
+     * reply queue is empty. This does **not** block the thread in the kernel; each
+     * iteration is a non-blocking poll. The **caller** still runs synchronously until
+     * every enqueued callback has been invoked (success, Redis error, or disconnect).
      *
      * @warning Call from the same thread / loop that drives Redis I/O. Do not
      *          confuse with coroutine @c co_await — this is explicit draining for
      *          the callback / pipeline API.
+     *
+     * @note Uses @c listener::current.run(EVRUN_NOWAIT), not @c async::run().
+     *          Coroutine bodies may call @c await() (e.g. a second client in a
+     *          test); @c async::run rejects that context to forbid nested blocking
+     *          pumps, but a non-blocking loop here only needs libev + same semantics
+     *          as before the guard existed.
      */
     Redis &await() {
         while (!_replies.empty())
-            qb::io::async::run(EVRUN_NOWAIT);
+            qb::io::async::listener::current.run(EVRUN_NOWAIT);
         return *this;
     }
 
@@ -857,7 +863,7 @@ public:
 
     Derived &await() {
         while (!_replies.empty())
-            qb::io::async::run(EVRUN_NOWAIT);
+            qb::io::async::listener::current.run(EVRUN_NOWAIT);
         return derived();
     }
 
