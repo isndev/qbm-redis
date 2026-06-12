@@ -134,6 +134,16 @@ public:
             auto parsed = _parser.parse_all();
             for (auto &v : parsed)
                 _pending_messages.push_back(std::move(v));
+
+            // A fatal protocol error faults the parser: tear the connection down
+            // instead of looping forever on a corrupt byte the parser cannot
+            // advance past.
+            if (qb__unlikely(_parser.has_error())) {
+                this->not_ok();
+                _pending_messages.clear();
+                _fed_bytes = 0;
+                return 0;
+            }
         }
 
         // Return the number of bytes currently in _io.in() so the framework
@@ -578,6 +588,14 @@ private:
     }
 
     void on(typename redis_protocol::message msg) {
+        // RESP3 PUSH frames (client-side-caching invalidations, server pushes)
+        // are out-of-band: they must NOT pop a command-reply handler, or the
+        // reply/command FIFO desynchronizes permanently. The plain client does
+        // not consume pushes, so discard them. (RedisConsumer overrides this to
+        // route pub/sub messages.)
+        if (msg.reply && reply::is_push(*msg.reply)) {
+            return;
+        }
         if (_replies.empty()) {
             LOG_WARN("[qbm][redis] Received unsolicited reply with no pending command, discarding");
             return;
@@ -590,9 +608,14 @@ private:
 
     void on(qb::io::async::event::disconnected &&) {
         LOG_WARN("[qbm][redis] disconnected by remote");
-        while (!_replies.empty()) {
-            auto handler = std::move(_replies.front());
-            _replies.pop();
+        // Swap the queue out before failing: a failing callback may legitimately
+        // re-issue a command (e.g. trigger a reconnect + retry), and that brand
+        // new command must NOT be failed by this same drain loop.
+        std::queue<std::unique_ptr<IReply>> pending;
+        std::swap(pending, _replies);
+        while (!pending.empty()) {
+            auto handler = std::move(pending.front());
+            pending.pop();
             try {
                 (*handler)(nullptr);
             } catch (const std::exception &ex) {

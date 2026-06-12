@@ -149,7 +149,13 @@ public:
             auto result = parse_value(view, 0);
 
             if (!result.has_value()) {
-                // Incomplete or protocol error – do NOT consume any bytes.
+                // INCOMPLETE_DATA: keep the bytes and retry when more arrive.
+                // Any other code is a fatal protocol error — fault the parser so
+                // the driver tears the connection down instead of re-parsing the
+                // same corrupt byte forever (a silent permanent stall).
+                if (result.error().code() != ParseErrorCode::INCOMPLETE_DATA) {
+                    _state = State::FAULT;
+                }
                 break;
             }
 
@@ -460,9 +466,16 @@ private:
                 std::format("Invalid length: {}", length_str));
         }
         
-        // Handle null aggregate types (count = -1)
-        if (len < 0) {
+        // Only a length of exactly -1 denotes a null value (RESP2 $-1 / *-1 and
+        // the RESP3 null aggregate forms). Any other negative length is a
+        // protocol error, not a silent null — otherwise corrupt input like
+        // "%-7\r\n" would be swallowed as a valid reply.
+        if (len == -1) {
             return make_parse_result(Value(Null{}));
+        }
+        if (len < 0) {
+            return make_parse_error(ParseErrorCode::INVALID_LENGTH,
+                std::format("Negative length {} is not a valid null marker", len));
         }
 
         switch (type) {
@@ -858,9 +871,16 @@ private:
     }
     
     [[nodiscard]] ParseResult<Value> parse_bulk_or_aggregate_from_buffer(char type, int64_t len) {
-        // Handle null aggregate types (count = -1)
-        if (len < 0) {
+        // Only a length of exactly -1 denotes a null value (RESP2 $-1 / *-1 and
+        // the RESP3 null aggregate forms). Any other negative length is a
+        // protocol error, not a silent null — otherwise corrupt input like
+        // "%-7\r\n" would be swallowed as a valid reply.
+        if (len == -1) {
             return make_parse_result(Value(Null{}));
+        }
+        if (len < 0) {
+            return make_parse_error(ParseErrorCode::INVALID_LENGTH,
+                std::format("Negative length {} is not a valid null marker", len));
         }
 
         switch (type) {
