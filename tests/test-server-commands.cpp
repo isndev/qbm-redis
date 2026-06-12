@@ -67,6 +67,13 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_CLIENT_MANAGEMENT) {
         auto pause_reply = co_await redis.client_pause(100, "WRITE");
         EXPECT_TRUE(pause_reply.ok());
 
+        // Immediately lift the pause. On Redis 8.x a CLIENT PAUSE holds every
+        // subsequent command on this connection until the timeout elapses (and
+        // in practice keeps the connection parked), which would otherwise wedge
+        // the fixture's TearDown flushall(). Restore normal processing now.
+        auto unpause_reply = co_await redis.client_unpause();
+        EXPECT_TRUE(unpause_reply.ok());
+
         // Test client_tracking ON
         auto tracking_on_reply = co_await redis.client_tracking(true);
         EXPECT_TRUE(tracking_on_reply.ok());
