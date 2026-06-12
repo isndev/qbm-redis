@@ -1774,6 +1774,54 @@ TEST_F(BoundaryTest, BulkStringAtMaxBulkSizeOk) {
 }
 
 // ============================================================================
+// Hardening: null-length strictness + fatal-error detection
+// ============================================================================
+
+// Only a length of exactly -1 is the null marker. Any other negative length is
+// a protocol error, not a silently-accepted null.
+TEST(ParserHardening, OnlyMinusOneIsNull) {
+    ParserConfig config; config.protocol_version = ProtocolVersion::RESP3;
+
+    EXPECT_TRUE(parse("$-1\r\n", config).has_value());   // RESP2 null bulk
+    EXPECT_TRUE((*parse("$-1\r\n", config)).is_null());
+    EXPECT_TRUE(parse("*-1\r\n", config).has_value());   // RESP2 null array
+    EXPECT_TRUE((*parse("*-1\r\n", config)).is_null());
+
+    // Negative lengths other than -1 must be rejected.
+    EXPECT_FALSE(parse("$-5\r\n", config).has_value());
+    EXPECT_FALSE(parse("*-3\r\n", config).has_value());
+    EXPECT_FALSE(parse("%-2\r\n", config).has_value());
+    EXPECT_FALSE(parse("~-4\r\n", config).has_value());
+}
+
+// parse_all must fault (not silently stall) on a corrupt top-level byte, so the
+// driver can tear the connection down instead of re-parsing it forever.
+TEST(ParserHardening, ParseAllFaultsOnCorruptByte) {
+    RespParser parser;
+    // '@' is not a valid RESP type prefix.
+    EXPECT_TRUE(parser.feed("@garbage\r\n"));
+    auto values = parser.parse_all();
+    EXPECT_TRUE(values.empty());
+    EXPECT_TRUE(parser.has_error());
+    // A faulted parser refuses further input so the connection is closed.
+    EXPECT_FALSE(parser.feed("+OK\r\n"));
+}
+
+// A valid complete frame still parses, and an incomplete frame is retained
+// (no fault) for the next feed.
+TEST(ParserHardening, ParseAllRetainsIncomplete) {
+    RespParser parser;
+    EXPECT_TRUE(parser.feed("$5\r\nhel"));  // incomplete bulk
+    auto v1 = parser.parse_all();
+    EXPECT_TRUE(v1.empty());
+    EXPECT_FALSE(parser.has_error());        // incomplete != fatal
+    EXPECT_TRUE(parser.feed("lo\r\n"));      // completes it
+    auto v2 = parser.parse_all();
+    ASSERT_EQ(v2.size(), 1U);
+    EXPECT_EQ(v2[0].as_bulk_string().value, "hello");
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
