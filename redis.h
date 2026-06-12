@@ -270,6 +270,7 @@ private:
     std::optional<RetryPolicy> _reconnect_policy;
     bool _is_reconnecting = false;
     bool _connected_flag = false;
+    bool _verify_peer = true; /**< Verify server TLS cert for rediss:// (stcp transport). */
     std::shared_ptr<bool> _alive{std::make_shared<bool>(true)};
 
     void start_async() {
@@ -353,7 +354,8 @@ public:
                         ::qb::io::async::coro_scheduler().schedule_resume(_handle);
                     }
                 },
-                _timeout);
+                _timeout,
+                _client._verify_peer);
         }
 
         bool await_resume() const noexcept { return _connected; }
@@ -428,7 +430,8 @@ public:
                     func(false);
                 }
             },
-            timeout);
+            timeout,
+            _verify_peer);
     }
 
     template <std::invocable<bool> Func>
@@ -437,6 +440,14 @@ public:
     }
 
     [[nodiscard]] qb::io::uri const &uri() const noexcept { return _uri; }
+
+    /**
+     * @brief Enable/disable TLS server certificate verification for rediss://.
+     * @param value `true` (default) verifies chain + hostname; `false` disables it
+     *              (trusted/self-signed endpoints only). Set before connect().
+     */
+    void set_verify_peer(bool value) noexcept { _verify_peer = value; }
+    [[nodiscard]] bool verify_peer() const noexcept { return _verify_peer; }
 
     bool setup_connection(qb::io::uri uri, typename QB_IO_::transport_io_type &&raw_io) {
         if (_connected_flag) return false;
