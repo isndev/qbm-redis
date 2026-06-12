@@ -390,6 +390,12 @@ public:
     qb::io::async::task<bool> connect_with_retry(RetryPolicy policy = RetryPolicy{}) {
         static thread_local std::mt19937 rng_{std::random_device{}()};
 
+        // Capture the liveness flag by value BEFORE any suspension: when this
+        // runs from the auto-reconnect task, the client may be destroyed while
+        // we sleep between attempts. After each co_await we must re-check it
+        // before touching *this again (the next connect_awaiter{*this}).
+        auto alive = _alive;
+
         auto delay = policy.initial_delay;
         int attempt = 0;
 
@@ -398,6 +404,7 @@ public:
 
             if (co_await connect_awaiter{*this, policy.connect_timeout})
                 co_return true;
+            if (!*alive) co_return false; // *this may have been destroyed
 
             if (policy.max_attempts > 0 && attempt >= policy.max_attempts)
                 break;
@@ -415,6 +422,7 @@ public:
             }
 
             co_await qb::io::async::sleep(sleep_ms);
+            if (!*alive) co_return false; // destroyed during the backoff sleep
 
             const auto next_ms = static_cast<long long>(
                 static_cast<double>(delay.count()) * policy.multiplier);
