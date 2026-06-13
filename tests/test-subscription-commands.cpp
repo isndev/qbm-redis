@@ -419,6 +419,107 @@ TEST_P(SubscriptionProtocolModesTest, CORO_UNSUBSCRIBE_ALL_CHANNELS) {
     while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 }
 
+// Pipelined multi-channel subscribe: the N confirmations of one command must
+// not steal the handler of the next pipelined command. Two subscribe commands
+// are issued back-to-back WITHOUT draining the loop in between; each handler
+// must resolve exactly once, on its own command's final confirmation.
+TEST_P(SubscriptionProtocolModesTest, PIPELINED_MULTI_CHANNEL_NO_DESYNC) {
+    qb::redis::tcp::cb_consumer c{REDIS_URI_PROTOCOL, [](auto&&) {}};
+    ASSERT_TRUE(qb::io::async::run_sync(c.connect()));
+
+    int         n1 = 0, n2 = 0;
+    bool        ok1 = false, ok2 = false;
+    long long   num1 = 0, num2 = 0;
+    std::string ch1_last, ch2_last;
+
+    auto a  = protocol_key("pda");
+    auto b  = protocol_key("pdb");
+    auto cc = protocol_key("pdc");
+    auto d  = protocol_key("pdd");
+
+    bool completed = false;
+    auto task = [&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CONSUMER(c, completed);
+        c.subscribe(
+            [&](auto&& r) {
+                ++n1;
+                ok1 = r.ok();
+                if (r.ok()) {
+                    num1 = r.result().num;
+                    if (r.result().channel) ch1_last = *r.result().channel;
+                }
+            },
+            std::vector<std::string>{a, b, cc});
+        c.subscribe(
+            [&](auto&& r) {
+                ++n2;
+                ok2 = r.ok();
+                if (r.ok()) {
+                    num2 = r.result().num;
+                    if (r.result().channel) ch2_last = *r.result().channel;
+                }
+            },
+            std::vector<std::string>{d});
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+
+    c.await(); // drain all 4 confirmations
+    EXPECT_EQ(c.pending_reply_count(), 0u);
+
+    EXPECT_EQ(n1, 1);
+    EXPECT_EQ(n2, 1);
+    EXPECT_TRUE(ok1);
+    EXPECT_TRUE(ok2);
+    EXPECT_EQ(ch1_last, cc); // resolved on its own last channel, not channel b
+    EXPECT_EQ(ch2_last, d);
+    EXPECT_EQ(num1, 3); // 3 channels active when the first command resolves
+    EXPECT_EQ(num2, 4); // 4 when the second resolves
+}
+
+// Pipelined subscribe(N) then unsubscribe-all: the unsubscribe-all handler must
+// expect exactly the predicted number of confirmations (3 here), so it resolves
+// on the final "num == 0" frame rather than on a stray subscribe confirmation.
+TEST_P(SubscriptionProtocolModesTest, PIPELINED_SUBSCRIBE_THEN_UNSUBSCRIBE_ALL) {
+    qb::redis::tcp::cb_consumer c{REDIS_URI_PROTOCOL, [](auto&&) {}};
+    ASSERT_TRUE(qb::io::async::run_sync(c.connect()));
+
+    int       n_sub = 0, n_unsub = 0;
+    bool      ok_sub = false, ok_unsub = false;
+    long long num_unsub = -1;
+
+    auto a  = protocol_key("pua");
+    auto b  = protocol_key("pub");
+    auto cc = protocol_key("puc");
+
+    bool completed = false;
+    auto task = [&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CONSUMER(c, completed);
+        c.subscribe([&](auto&& r) { ++n_sub; ok_sub = r.ok(); },
+                    std::vector<std::string>{a, b, cc});
+        c.unsubscribe(
+            [&](auto&& r) {
+                ++n_unsub;
+                ok_unsub = r.ok();
+                if (r.ok()) num_unsub = r.result().num;
+            },
+            std::string{""}); // unsubscribe from all channels
+        completed = true;
+    };
+    qb::io::async::coro_scheduler().spawn(task());
+    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+
+    c.await();
+    EXPECT_EQ(c.pending_reply_count(), 0u);
+
+    EXPECT_EQ(n_sub, 1);
+    EXPECT_EQ(n_unsub, 1);
+    EXPECT_TRUE(ok_sub);
+    EXPECT_TRUE(ok_unsub);
+    EXPECT_EQ(num_unsub, 0); // all channels gone after unsubscribe-all
+}
+
 // =============== MULTI-PATTERN SUBSCRIPTION TESTS ===============
 
 TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MULTI_PATTERN) {

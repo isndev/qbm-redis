@@ -27,6 +27,7 @@
 #include <utility>
 #include <random>
 #include <functional>
+#include <qb/system/container/unordered_set.h>
 #include <qb/io/async.h>
 #include <qb/io/async/tcp/connector.h>
 
@@ -783,7 +784,29 @@ private:
         return it != str_to_enum.end() ? it->second : MsgType::UNKNOWN;
     }
 
-    std::queue<std::unique_ptr<IReply>> _replies;
+    /**
+     * @struct PendingReply
+     * @brief One pending command-reply slot plus its confirmation accounting.
+     *
+     * A single SUBSCRIBE/UNSUBSCRIBE/PSUBSCRIBE/PUNSUBSCRIBE command with N
+     * channels makes Redis emit N separate confirmation frames, but the caller
+     * registered exactly one handler. `remaining` counts how many confirmations
+     * must still arrive before the handler resolves; intermediate confirmations
+     * are absorbed without popping, so the reply/command FIFO never desyncs.
+     * Regular commands (HELLO, AUTH, …) use `remaining == 1`.
+     */
+    struct PendingReply {
+        std::unique_ptr<IReply> handler;
+        int remaining;
+    };
+
+    std::queue<PendingReply> _replies;
+
+    /// Predicted active subscriptions, advanced synchronously at send time so the
+    /// expected confirmation count of "unsubscribe-all" (UNSUBSCRIBE/PUNSUBSCRIBE
+    /// with no argument) is exact even when pipelined behind pending subscribes.
+    qb::unordered_flat_set<std::string> _pred_channels;
+    qb::unordered_flat_set<std::string> _pred_patterns;
 
     template <typename... Args>
     void _command(Args &&...args) {
@@ -794,8 +817,62 @@ private:
     template <typename Ret, typename Func, typename... Args>
         requires std::invocable<Func, Reply<Ret> &&>
     Derived &command(Func &&func, std::string const &name, Args &&...args) {
-        _replies.push(std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)));
+        _replies.push(PendingReply{
+            std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), 1});
         _command(name, std::forward<Args>(args)...);
+        return derived();
+    }
+
+    /**
+     * @brief Compute the number of confirmation frames Redis will emit and
+     *        advance the predicted-subscription state accordingly.
+     *
+     * SUBSCRIBE/PSUBSCRIBE acknowledge once per channel argument (even repeats),
+     * so the count is the argument count. UNSUBSCRIBE/PUNSUBSCRIBE with explicit
+     * names acknowledge once per name; with no name they acknowledge once per
+     * currently-subscribed channel/pattern (or once when none are subscribed).
+     */
+    int predict_confirmations(bool is_unsub, bool is_pattern,
+                              const std::vector<std::string> &names) {
+        auto &set = is_pattern ? _pred_patterns : _pred_channels;
+        if (!is_unsub) {
+            for (auto const &n : names)
+                set.insert(n);
+            return static_cast<int>(names.size());
+        }
+        if (names.empty()) {
+            const int n = std::max<int>(1, static_cast<int>(set.size()));
+            set.clear();
+            return n;
+        }
+        for (auto const &n : names)
+            set.erase(n);
+        return static_cast<int>(names.size());
+    }
+
+    /**
+     * @brief Issue a (P)SUBSCRIBE/(P)UNSUBSCRIBE and register a single handler
+     *        that resolves only after all of its confirmation frames arrive.
+     *
+     * @param func       Reply<subscription> callback.
+     * @param cmd        Redis command verb ("SUBSCRIBE", "PUNSUBSCRIBE", …).
+     * @param is_unsub   True for (P)UNSUBSCRIBE.
+     * @param is_pattern True for the pattern variants (P*).
+     * @param names      Channel/pattern arguments (empty ⇒ unsubscribe-all).
+     */
+    template <typename Func>
+        requires std::invocable<Func, Reply<qb::redis::subscription> &&>
+    Derived &pubsub_command(Func &&func, const char *cmd, bool is_unsub,
+                            bool is_pattern, const std::vector<std::string> &names) {
+        const int expected = predict_confirmations(is_unsub, is_pattern, names);
+        _replies.push(PendingReply{
+            std::make_unique<TReply<Func, qb::redis::subscription>>(
+                std::forward<Func>(func)),
+            expected});
+        if (names.empty())
+            _command(cmd);
+        else
+            _command(cmd, names);
         return derived();
     }
 
@@ -817,7 +894,7 @@ private:
             // Regular command reply (HELLO map, etc.) - not pub/sub
             if (!reply::is_array_or_push(raw)) {
                 if (!_replies.empty()) {
-                    auto handler = std::move(_replies.front());
+                    auto handler = std::move(_replies.front().handler);
                     _replies.pop();
                     try {
                         (*handler)(std::move(msg.reply));
@@ -847,15 +924,33 @@ private:
                 case MsgType::SUBSCRIBE:
                 case MsgType::UNSUBSCRIBE:
                 case MsgType::PSUBSCRIBE:
-                case MsgType::PUNSUBSCRIBE:
-                    // Subscription confirmations (not pub/sub messages) are command replies.
-                    // Fall through to match with the pending handler in _replies.
+                case MsgType::PUNSUBSCRIBE: {
+                    // A subscription confirmation. One (P)SUBSCRIBE/(P)UNSUBSCRIBE
+                    // over N channels yields N confirmations but only one handler:
+                    // absorb the intermediate confirmations and resolve on the last
+                    // so the reply/command FIFO stays aligned.
+                    if (_replies.empty())
+                        throw ProtoError("Subscription confirmation with no pending command");
+                    auto &front = _replies.front();
+                    if (front.remaining > 1) {
+                        --front.remaining;
+                        return; // keep the handler for the remaining confirmations
+                    }
+                    auto handler = std::move(front.handler);
+                    _replies.pop();
+                    try {
+                        (*handler)(std::move(msg.reply));
+                    } catch (const std::exception &e) {
+                        LOG_WARN("[qbm][redis] consumer error: " << e.what());
+                    }
+                    return;
+                }
                 default:
                     break;
             }
 
             if (!_replies.empty()) {
-                auto handler = std::move(_replies.front());
+                auto handler = std::move(_replies.front().handler);
                 _replies.pop();
                 try {
                     (*handler)(std::move(msg.reply));
@@ -867,7 +962,7 @@ private:
             }
         } catch (std::exception &e) {
             if (!_replies.empty()) {
-                auto handler = std::move(_replies.front());
+                auto handler = std::move(_replies.front().handler);
                 _replies.pop();
                 try {
                     (*handler)(nullptr);  // Completes awaitable with error
@@ -879,8 +974,11 @@ private:
 
     void on(qb::io::async::event::disconnected &&e) {
         LOG_WARN("[qbm][redis] consumer disconnected");
+        // Predicted subscription state is meaningless across a reconnect.
+        _pred_channels.clear();
+        _pred_patterns.clear();
         while (!_replies.empty()) {
-            auto handler = std::move(_replies.front());
+            auto handler = std::move(_replies.front().handler);
             _replies.pop();
             try {
                 (*handler)(nullptr);
@@ -907,6 +1005,11 @@ public:
         while (!_replies.empty())
             qb::io::async::listener::current.run(EVRUN_NOWAIT);
         return derived();
+    }
+
+    /** @brief Number of subscription/command replies still awaited (debugging). */
+    [[nodiscard]] std::size_t pending_reply_count() const noexcept {
+        return _replies.size();
     }
 
     template <typename T, typename Func>

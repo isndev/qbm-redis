@@ -88,8 +88,9 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().template command<qb::redis::subscription>(
-            std::forward<Func>(func), "SUBSCRIBE", channel);
+        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE",
+                                        false, false,
+                                        std::vector<std::string>{channel});
     }
 
     /**
@@ -129,8 +130,8 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().template command<qb::redis::subscription>(
-            std::forward<Func>(func), "SUBSCRIBE", channels);
+        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE",
+                                        false, false, channels);
     }
 
     /**
@@ -167,11 +168,12 @@ public:
                      Derived &>
     unsubscribe(Func &&func, const std::string &channel = "") {
         if (channel.empty()) {
-            return derived().template command<qb::redis::subscription>(
-                std::forward<Func>(func), "UNSUBSCRIBE");
+            return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE",
+                                            true, false, std::vector<std::string>{});
         }
-        return derived().template command<qb::redis::subscription>(
-            std::forward<Func>(func), "UNSUBSCRIBE", channel);
+        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE",
+                                        true, false,
+                                        std::vector<std::string>{channel});
     }
 
     /**
@@ -202,12 +204,8 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
                      Derived &>
     unsubscribe(Func &&func, const std::vector<std::string> &channels) {
-        if (channels.empty()) {
-            return derived().template command<qb::redis::subscription>(
-                std::forward<Func>(func), "UNSUBSCRIBE");
-        }
-        return derived().template command<qb::redis::subscription>(
-            std::forward<Func>(func), "UNSUBSCRIBE", channels);
+        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE",
+                                        true, false, channels);
     }
 
     // =============== Pattern Subscription Commands ===============
@@ -253,8 +251,9 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().template command<qb::redis::subscription>(
-            std::forward<Func>(func), "PSUBSCRIBE", pattern);
+        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE",
+                                        false, true,
+                                        std::vector<std::string>{pattern});
     }
 
     /**
@@ -292,8 +291,8 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().template command<qb::redis::subscription>(
-            std::forward<Func>(func), "PSUBSCRIBE", patterns);
+        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE",
+                                        false, true, patterns);
     }
 
     /**
@@ -330,11 +329,12 @@ public:
                      Derived &>
     punsubscribe(Func &&func, const std::string &pattern = "") {
         if (pattern.empty()) {
-            return derived().template command<qb::redis::subscription>(
-                std::forward<Func>(func), "PUNSUBSCRIBE");
+            return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE",
+                                            true, true, std::vector<std::string>{});
         }
-        return derived().template command<qb::redis::subscription>(
-            std::forward<Func>(func), "PUNSUBSCRIBE", pattern);
+        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE",
+                                        true, true,
+                                        std::vector<std::string>{pattern});
     }
 
     /**
@@ -365,12 +365,8 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
                      Derived &>
     punsubscribe(Func &&func, const std::vector<std::string> &patterns) {
-        if (patterns.empty()) {
-            return derived().template command<qb::redis::subscription>(
-                std::forward<Func>(func), "PUNSUBSCRIBE");
-        }
-        return derived().template command<qb::redis::subscription>(
-            std::forward<Func>(func), "PUNSUBSCRIBE", patterns);
+        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE",
+                                        true, true, patterns);
     }
 };
 
