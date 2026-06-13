@@ -1097,6 +1097,10 @@ public:
     virtual ~IReply() = default;
     // Takes ownership of the reply via unique_ptr
     virtual void operator()(std::unique_ptr<ReplyValue> reply) = 0;
+    // Fail the pending command with an explicit reason (timeout, deadline, …).
+    // Default routes through the disconnect path; concrete handlers override
+    // to surface the domain-specific message instead of "disconnected".
+    virtual void fail(const std::string &reason) { (void) reason; operator()(nullptr); }
 };
 
 /**
@@ -1114,6 +1118,10 @@ public:
         : func(std::forward<Func>(func)) {}
     
     ~TReply() override = default;
+
+    void fail(const std::string &reason) final {
+        func(Reply<T>{false, {}, nullptr, reason});
+    }
 
     void operator()(std::unique_ptr<ReplyValue> raw) final {
         if (raw == nullptr) {
