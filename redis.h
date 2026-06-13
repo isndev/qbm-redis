@@ -373,11 +373,19 @@ public:
         void await_suspend(std::coroutine_handle<> h) {
             _handle = h;
             auto valid = _valid;
+            // Capture the CLIENT's liveness too, not just the awaiter's. The
+            // auto-reconnect task runs detached: it owns this awaiter on its coroutine
+            // frame, so the connector can be destroyed while this connect is in flight
+            // with the awaiter still alive (_valid stays true). Touching _client then
+            // would be a use-after-free. If the client is gone we skip setup_connection
+            // and still resume — connect_with_retry's own `!*alive` check then makes the
+            // detached task exit cleanly instead of leaking.
+            auto client_alive = _client.connector_alive();
             ::qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
                 _client._uri,
-                [this, valid](auto &&raw_io) {
+                [this, valid, client_alive](auto &&raw_io) {
                     if (!*valid) return;
-                    if (raw_io.is_open()) {
+                    if (*client_alive && raw_io.is_open()) {
                         _connected = _client.setup_connection(_client._uri, std::move(raw_io));
                     }
                     _ready = true;
