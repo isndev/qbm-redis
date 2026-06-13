@@ -330,6 +330,17 @@ protected:
 
     explicit connector(qb::io::uri uri) : _uri{std::move(uri)} {}
 
+    /**
+     * @brief Liveness token shared with deferred work (timers, watchers).
+     *
+     * Captured by value before any suspension so a callback that fires after
+     * the client has been destroyed can detect it and no-op instead of
+     * touching freed memory. Set to `false` by ~connector().
+     */
+    [[nodiscard]] std::shared_ptr<bool> connector_alive() const noexcept {
+        return _alive;
+    }
+
 public:
     /**
      * @struct connect_awaiter
@@ -588,7 +599,119 @@ public:
     using server_commands<Redis<QB_IO_>>::command;
 
 private:
-    std::queue<std::unique_ptr<IReply>> _replies;
+    /**
+     * @struct PendingReply
+     * @brief One in-flight command awaiting its positional RESP reply.
+     *
+     * `blocking` marks commands that park server-side with their own timeout
+     * (BLPOP, WAIT, …); the client-side command deadline is suspended while any
+     * such command is in flight so it is never spuriously dropped.
+     */
+    struct PendingReply {
+        std::unique_ptr<IReply> handler;
+        bool blocking;
+    };
+
+    std::queue<PendingReply> _replies;
+
+    // ---- Optional command deadline (opt-in via set_command_timeout) --------
+    //
+    // Implemented as a detached watcher coroutine that co_await sleeps for one
+    // window then trips iff no reply landed meanwhile. A coroutine resumes in
+    // the listener's coroutine-drain phase — after `_loop.run()`, outside libev
+    // event dispatch — so the disconnect it issues on a stall is processed
+    // through the normal deferred-dispose path. A generation token cancels a
+    // still-sleeping watcher (its wake-up becomes a no-op) and a progress
+    // counter distinguishes "no reply at all" from "replies flowing", so a
+    // busy pipeline is never tripped.
+    /// 0 disables the deadline (default — preserves park-forever semantics off).
+    double _command_timeout{0.0};
+    /// Count of in-flight blocking commands; >0 suspends the deadline.
+    int _inflight_blocking{0};
+    /// True while a deadline watcher coroutine is live (avoids piling them up).
+    bool _deadline_armed{false};
+    /// Bumped to cancel/supersede a sleeping watcher without touching it.
+    std::size_t _deadline_gen{0};
+    /// Incremented on every reply; lets a woken watcher detect forward progress.
+    std::size_t _reply_progress{0};
+    /// Set when the deadline tripped, so on(disconnected) fails pending commands
+    /// with a "command timed out" reason instead of the generic "disconnected".
+    bool _deadline_tripped{false};
+
+    /**
+     * @brief Commands that legitimately block server-side (own timeout).
+     *
+     * The client deadline must not fire while one is pending, so they are
+     * excluded from deadline accounting. XREAD/XREADGROUP block only with the
+     * BLOCK option; treating them as blocking is conservative (less protection,
+     * never a false drop).
+     */
+    [[nodiscard]] static bool is_blocking_command(std::string_view name) noexcept {
+        static const qb::unordered_flat_set<std::string_view> blocking{
+            "BLPOP", "BRPOP", "BLMOVE", "BLMPOP", "BRPOPLPUSH",
+            "BZPOPMIN", "BZPOPMAX", "BZMPOP",
+            "WAIT", "WAITAOF", "XREAD", "XREADGROUP"};
+        return blocking.find(name) != blocking.end();
+    }
+
+    /** @brief Arm the deadline watcher if one is warranted and not already live. */
+    void arm_deadline() {
+        if (_deadline_armed)
+            return;
+        if (_command_timeout <= 0.0 || _replies.empty() || _inflight_blocking > 0)
+            return;
+        _deadline_armed = true;
+        qb::io::async::coro_scheduler().spawn(
+            deadline_watch(++_deadline_gen, this->connector_alive()));
+    }
+
+    /**
+     * @brief Detached watcher: sleeps one window, then trips iff no reply landed.
+     *
+     * Member coroutine with value parameters — both are copied into the frame,
+     * and `alive` guards every touch of `*this` after the suspension. Exits
+     * quietly when cancelled (generation bump), disabled, idle, or while a
+     * blocking command holds the connection; re-arms while replies keep flowing.
+     */
+    qb::io::async::task<void> deadline_watch(std::size_t gen,
+                                             std::shared_ptr<bool> alive) {
+        const std::size_t snapshot = _reply_progress;
+        co_await qb::io::async::sleep(std::chrono::milliseconds(
+            static_cast<long long>(_command_timeout * 1000.0)));
+        if (!*alive || gen != _deadline_gen)
+            co_return; // client destroyed, or cancelled/superseded
+        _deadline_armed = false;
+        if (_command_timeout <= 0.0 || _replies.empty() || _inflight_blocking > 0)
+            co_return; // nothing in flight to time out
+        if (_reply_progress != snapshot) {
+            arm_deadline(); // replies are flowing — re-arm rather than trip
+            co_return;
+        }
+        on_command_deadline();
+    }
+
+    /** @brief Cancel a pending deadline watcher (its wake-up becomes a no-op). */
+    void cancel_deadline() {
+        ++_deadline_gen;
+        _deadline_armed = false;
+    }
+
+    /**
+     * @brief Deadline elapsed with no reply: the connection is unhealthy.
+     *
+     * A FIFO pipelined protocol cannot time out a single mid-queue command
+     * without desynchronizing every later reply, so the correct action is to
+     * drop the connection (auto-reconnect takes over if enabled). disconnect()
+     * defers the teardown to the io watcher's own callback, where
+     * on(disconnected) fails every pending command with the timeout reason —
+     * we deliberately do NOT resolve awaiters here.
+     */
+    void on_command_deadline() {
+        LOG_WARN("[qbm][redis] command timeout (" << _command_timeout
+                 << "s) exceeded with no reply; dropping connection");
+        _deadline_tripped = true;
+        this->disconnect();
+    }
 
     template <typename... Args>
     void _command(Args &&...args) {
@@ -609,24 +732,39 @@ private:
             LOG_WARN("[qbm][redis] Received unsolicited reply with no pending command, discarding");
             return;
         }
-        auto handler = std::move(_replies.front());
+        auto entry = std::move(_replies.front());
         _replies.pop();
+        if (entry.blocking && _inflight_blocking > 0)
+            --_inflight_blocking;
+        // Record forward progress so a pending deadline watcher re-arms instead
+        // of tripping, and arm a fresh one if more commands are still in flight.
+        ++_reply_progress;
+        arm_deadline();
         // Transfer ownership of reply to handler
-        (*handler)(std::move(msg.reply));
+        (*entry.handler)(std::move(msg.reply));
     }
 
     void on(qb::io::async::event::disconnected &&) {
         LOG_WARN("[qbm][redis] disconnected by remote");
+        _inflight_blocking = 0;
+        cancel_deadline();
+        // If the command deadline tripped, report it as a timeout rather than a
+        // plain disconnect so callers can distinguish a slow/dead peer.
+        const bool timed_out = _deadline_tripped;
+        _deadline_tripped = false;
         // Swap the queue out before failing: a failing callback may legitimately
         // re-issue a command (e.g. trigger a reconnect + retry), and that brand
         // new command must NOT be failed by this same drain loop.
-        std::queue<std::unique_ptr<IReply>> pending;
+        std::queue<PendingReply> pending;
         std::swap(pending, _replies);
         while (!pending.empty()) {
-            auto handler = std::move(pending.front());
+            auto entry = std::move(pending.front());
             pending.pop();
             try {
-                (*handler)(nullptr);
+                if (timed_out)
+                    entry.handler->fail("command timed out");
+                else
+                    (*entry.handler)(nullptr);
             } catch (const std::exception &ex) {
                 LOG_WARN("[qbm][redis] callback error: " << ex.what());
             }
@@ -644,8 +782,13 @@ public:
     Redis &command(Func &&func, std::string const &name, Args &&...args) {
         // Register the reply handler before sending so a very fast/synchronous
         // delivery cannot run before the handler is queued (pipeline-safe).
-        _replies.push(std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)));
+        const bool blocking = is_blocking_command(name);
+        _replies.push(PendingReply{
+            std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), blocking});
+        if (blocking)
+            ++_inflight_blocking;
         _command(name, std::forward<Args>(args)...);
+        arm_deadline();
         return *this;
     }
 
@@ -690,6 +833,32 @@ public:
     /** @brief Number of commands sent awaiting a Redis reply (for pipeline debugging). */
     [[nodiscard]] std::size_t pending_reply_count() const noexcept {
         return _replies.size();
+    }
+
+    /**
+     * @brief Set an optional per-connection command deadline (seconds).
+     *
+     * When >0, if no reply arrives for any in-flight, non-blocking command
+     * within this window, the connection is dropped and every pending command
+     * fails with "command timed out" (auto-reconnect resumes if enabled). This
+     * is a connection-health watchdog, not a per-command timer: a FIFO
+     * pipelined protocol cannot fail one mid-queue command without
+     * desynchronizing later replies. Blocking commands (BLPOP, WAIT, XREAD, …)
+     * suspend the deadline so their server-side timeout governs instead.
+     *
+     * @param seconds Deadline in seconds; `0` (default) disables it.
+     */
+    void set_command_timeout(double seconds) noexcept {
+        _command_timeout = seconds > 0.0 ? seconds : 0.0;
+        if (_command_timeout <= 0.0)
+            cancel_deadline();
+        else
+            arm_deadline();
+    }
+
+    /** @brief Current command deadline in seconds (0 = disabled). */
+    [[nodiscard]] double command_timeout() const noexcept {
+        return _command_timeout;
     }
 
     template <typename T, typename Func>
