@@ -1821,6 +1821,45 @@ TEST(ParserHardening, ParseAllRetainsIncomplete) {
     EXPECT_EQ(v2[0].as_bulk_string().value, "hello");
 }
 
+// A bulk/fixed-length payload whose CRLF terminator is corrupted must FAULT,
+// not stall: the two bytes after the payload are present but wrong, so no
+// amount of further data can ever make them a valid "\r\n". parse_all() must
+// fault the parser so the driver drops the connection instead of looping.
+TEST(ParserHardening, CorruptBulkTerminatorFaults) {
+    RespParser parser;
+    // $3\r\nabc<XX> — 3-byte payload "abc" followed by "XX" instead of CRLF.
+    EXPECT_TRUE(parser.feed("$3\r\nabcXX"));
+    auto values = parser.parse_all();
+    EXPECT_TRUE(values.empty());
+    EXPECT_TRUE(parser.has_error());
+    EXPECT_FALSE(parser.feed("more\r\n")); // faulted parser refuses input
+}
+
+// In contrast, a bulk payload with the terminator not yet arrived is merely
+// incomplete and is retried once the real CRLF is fed (no fault).
+TEST(ParserHardening, PartialBulkTerminatorRetained) {
+    RespParser parser;
+    EXPECT_TRUE(parser.feed("$3\r\nabc")); // payload complete, CRLF missing
+    auto v1 = parser.parse_all();
+    EXPECT_TRUE(v1.empty());
+    EXPECT_FALSE(parser.has_error()); // incomplete, not fatal
+    EXPECT_TRUE(parser.feed("\r\n"));
+    auto v2 = parser.parse_all();
+    ASSERT_EQ(v2.size(), 1U);
+    EXPECT_EQ(v2[0].as_bulk_string().value, "abc");
+}
+
+// A single-byte type (boolean) with a corrupt terminator likewise faults.
+TEST(ParserHardening, CorruptBooleanTerminatorFaults) {
+    ParserConfig config;
+    config.protocol_version = ProtocolVersion::RESP3;
+    RespParser parser(config);
+    EXPECT_TRUE(parser.feed("#tXX")); // '#t' then "XX" instead of CRLF
+    auto values = parser.parse_all();
+    EXPECT_TRUE(values.empty());
+    EXPECT_TRUE(parser.has_error());
+}
+
 // ============================================================================
 // Main
 // ============================================================================
