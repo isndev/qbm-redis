@@ -113,6 +113,27 @@ TEST_F(PipelineCallbackTest, CallbacksRunInSendOrder) {
     EXPECT_EQ(order[2], 3);
 }
 
+// A reply callback that throws a non-std exception must not cross the noexcept
+// onMessage() boundary (which would std::terminate the whole process). The
+// dispatcher's per-handler catch only covers std::exception; the onMessage backstop
+// catches the rest. Before the fix this test aborts the binary; after it, the throw
+// is swallowed and the connection keeps working.
+TEST_F(PipelineCallbackTest, NonStdExceptionInCallbackDoesNotTerminate) {
+    bool first_ran = false;
+    redis.ping([&](qb::redis::Reply<std::string> &&) {
+        first_ran = true;
+        throw 42; // non-std-exception type — bypasses every catch(const std::exception&)
+    });
+    redis.await(); // dispatches the reply; the throw must be contained, not terminate
+    EXPECT_TRUE(first_ran);
+
+    // The process survived and the connection is still usable.
+    bool second_ok = false;
+    redis.ping([&](qb::redis::Reply<std::string> &&r) { second_ok = r.ok(); });
+    redis.await();
+    EXPECT_TRUE(second_ok);
+}
+
 TEST_F(PipelineCallbackTest, DeepPipelineIncrSequence) {
     const std::string key = unique_prefix() + "ctr";
     std::vector<long long> values;

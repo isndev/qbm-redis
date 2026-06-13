@@ -166,7 +166,16 @@ public:
                 std::move(_pending_messages.front())
             );
             _pending_messages.pop_front();
-            this->_io.on(message{std::move(reply_ptr)});
+            // noexcept boundary: an exception escaping here would std::terminate. The
+            // per-handler dispatch already catches std::exception gracefully; this is a
+            // backstop for anything it misses (e.g. a user callback that throws a
+            // non-std type) so one bad reply cannot crash the process, and the remaining
+            // pending replies still dispatch.
+            try {
+                this->_io.on(message{std::move(reply_ptr)});
+            } catch (...) {
+                LOG_WARN("[qbm][redis] message handler threw a non-std exception; reply dropped");
+            }
         }
 
         // Reclaim memory from the parser's internal buffer.
@@ -773,6 +782,10 @@ private:
                     (*entry.handler)(nullptr);
             } catch (const std::exception &ex) {
                 LOG_WARN("[qbm][redis] callback error: " << ex.what());
+            } catch (...) {
+                // on(disconnected) runs from dispose() under the libev C callback — a
+                // non-std exception escaping here would terminate the process.
+                LOG_WARN("[qbm][redis] callback threw a non-std exception");
             }
         }
         transaction_commands<Redis<QB_IO_>>::reset_transaction_state();
@@ -1159,6 +1172,10 @@ private:
                 (*handler)(nullptr);
             } catch (const std::exception &ex) {
                 LOG_WARN("[qbm][redis] consumer callback error: " << ex.what());
+            } catch (...) {
+                // Runs from dispose() under the libev C callback: a non-std exception
+                // escaping here would terminate the process.
+                LOG_WARN("[qbm][redis] consumer callback threw a non-std exception");
             }
         }
         if constexpr (has_method_on<Derived, void, qb::io::async::event::disconnected>::value)
