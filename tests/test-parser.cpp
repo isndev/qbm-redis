@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include <parser/parser.h>
 #include <parser/serializer.h>
+#include "../reply.h"
 #include <chrono>
 #include <string>
 #include <vector>
@@ -1858,6 +1859,36 @@ TEST(ParserHardening, CorruptBooleanTerminatorFaults) {
     auto values = parser.parse_all();
     EXPECT_TRUE(values.empty());
     EXPECT_TRUE(parser.has_error());
+}
+
+// SCAN cursors are unsigned 64-bit. A cursor with the high bit set (here
+// 18446744073709551615 = UINT64_MAX, i.e. > INT64_MAX) must parse to its exact
+// unsigned value instead of throwing out_of_range as std::stoll did.
+TEST(ScanCursor, HighBitCursorParsesUnsigned) {
+    RespParser parser;
+    // *2\r\n  $20\r\n<UINT64_MAX>\r\n  *1\r\n$3\r\nfoo\r\n
+    ASSERT_TRUE(parser.feed(
+        "*2\r\n$20\r\n18446744073709551615\r\n*1\r\n$3\r\nfoo\r\n"));
+    auto values = parser.parse_all();
+    ASSERT_EQ(values.size(), 1U);
+
+    auto sc = qb::redis::reply::parse<qb::redis::scan<>>(values[0]);
+    EXPECT_EQ(sc.cursor,
+              static_cast<std::size_t>(18446744073709551615ULL));
+    ASSERT_EQ(sc.items.size(), 1U);
+    EXPECT_EQ(sc.items[0], "foo");
+}
+
+// A non-numeric cursor is a protocol error (still rejected, just not via an
+// out_of_range thrown by stoll).
+TEST(ScanCursor, NonNumericCursorRejected) {
+    RespParser parser;
+    ASSERT_TRUE(parser.feed("*2\r\n$3\r\nxyz\r\n*0\r\n"));
+    auto values = parser.parse_all();
+    ASSERT_EQ(values.size(), 1U);
+    EXPECT_THROW(
+        (void) qb::redis::reply::parse<qb::redis::scan<>>(values[0]),
+        qb::redis::ProtoError);
 }
 
 // ============================================================================

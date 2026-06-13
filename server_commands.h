@@ -18,6 +18,7 @@
 #ifndef QBM_REDIS_SERVER_COMMANDS_H
 #define QBM_REDIS_SERVER_COMMANDS_H
 #include <sstream>
+#include <charconv>
 #include <string>
 #include <vector>
 #include <map>
@@ -1427,8 +1428,20 @@ public:
                     Reply<std::pair<long long, long long>> r;
                     r.ok() = raw.ok();
                     if (raw.ok() && raw.result().size() >= 2) {
-                        r.result() = {std::stoll(raw.result()[0]),
-                                      std::stoll(raw.result()[1])};
+                        // Use from_chars, not stoll: a malformed/proxied TIME
+                        // reply must not throw out of the reply handler (which
+                        // would propagate into the libev callback and terminate).
+                        long long sec = 0, usec = 0;
+                        const auto &s0 = raw.result()[0];
+                        const auto &s1 = raw.result()[1];
+                        const auto e0 = std::from_chars(s0.data(), s0.data() + s0.size(), sec);
+                        const auto e1 = std::from_chars(s1.data(), s1.data() + s1.size(), usec);
+                        if (e0.ec == std::errc{} && e1.ec == std::errc{}) {
+                            r.result() = {sec, usec};
+                        } else {
+                            r.ok()    = false;
+                            r.error() = "Malformed TIME reply";
+                        }
                     }
                     cb(std::move(r));
                 });

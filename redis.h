@@ -740,8 +740,14 @@ private:
         // of tripping, and arm a fresh one if more commands are still in flight.
         ++_reply_progress;
         arm_deadline();
-        // Transfer ownership of reply to handler
-        (*entry.handler)(std::move(msg.reply));
+        // Transfer ownership of reply to handler. Guard against a throwing
+        // transform/user callback: this runs inside the libev read dispatch, so
+        // an escaping exception would cross a noexcept boundary and terminate.
+        try {
+            (*entry.handler)(std::move(msg.reply));
+        } catch (const std::exception &ex) {
+            LOG_WARN("[qbm][redis] reply handler error: " << ex.what());
+        }
     }
 
     void on(qb::io::async::event::disconnected &&) {
