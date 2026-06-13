@@ -346,7 +346,7 @@ TEST_P(FunctionProtocolModesTest, FUNCTION_LIST_JSON) {
             // FUNCTION not available on older Redis
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

@@ -363,7 +363,7 @@ TEST_P(AclProtocolModesTest, ACL_WHOAMI_STRING) {
             // ACL not available on older Redis
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -378,7 +378,7 @@ TEST_P(AclProtocolModesTest, ACL_LIST_JSON) {
             // ACL not available on older Redis
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

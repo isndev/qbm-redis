@@ -234,7 +234,7 @@ TEST_P(ConnectionProtocolModesTest, PING) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), "PONG");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -246,7 +246,7 @@ TEST_P(ConnectionProtocolModesTest, PING_WITH_MESSAGE) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), "hello");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -258,7 +258,7 @@ TEST_P(ConnectionProtocolModesTest, ECHO) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), "hello");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -277,7 +277,7 @@ TEST_P(ConnectionProtocolModesTest, HELLO_RESP3_MAP) {
             }
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -293,7 +293,7 @@ TEST_P(ConnectionProtocolModesTest, SELECT) {
         if (r2.ok()) EXPECT_TRUE(r2.result().ok());
         (void)co_await redis.select(0);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -305,7 +305,7 @@ TEST_P(ConnectionProtocolModesTest, ERROR_REPLY) {
         EXPECT_FALSE(r.ok()) << "Expected error for invalid command";
         if (!r.ok()) EXPECT_FALSE(r.error().empty());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -318,7 +318,7 @@ TEST_P(ConnectionProtocolModesTest, SWAPDB) {
         if (r.ok()) EXPECT_TRUE(r.result().ok());
         (void)co_await redis.swapdb(0, 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

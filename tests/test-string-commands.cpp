@@ -648,7 +648,7 @@ TEST_P(StringProtocolModesTest, SET_GET) {
         EXPECT_TRUE(r.result().has_value());
         if (r.result()) EXPECT_EQ(*r.result(), "val");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -660,7 +660,7 @@ TEST_P(StringProtocolModesTest, GET_MISSING_KEY) {
         EXPECT_TRUE(r.ok()) << r.error();
         EXPECT_FALSE(r.result().has_value());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -682,7 +682,7 @@ TEST_P(StringProtocolModesTest, MSET_MGET) {
             if (v[1]) EXPECT_EQ(*v[1], "b");
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -696,7 +696,7 @@ TEST_P(StringProtocolModesTest, APPEND) {
         EXPECT_TRUE(r.ok()) << r.error();
         EXPECT_EQ(r.result(), 11);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -713,7 +713,7 @@ TEST_P(StringProtocolModesTest, INCR_DECR) {
         EXPECT_TRUE(r2.ok()) << r2.error();
         EXPECT_EQ(r2.result(), 10);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -727,7 +727,7 @@ TEST_P(StringProtocolModesTest, INCRBYFLOAT_DOUBLE) {
         EXPECT_TRUE(r.ok()) << r.error();
         EXPECT_DOUBLE_EQ(r.result(), 2.0);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -741,7 +741,7 @@ TEST_P(StringProtocolModesTest, STRLEN_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 5);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -754,7 +754,7 @@ TEST_P(StringProtocolModesTest, SETEX_STATUS) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_TRUE(r.result().ok());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -768,7 +768,7 @@ TEST_P(StringProtocolModesTest, GETRANGE_STRING) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), "hel");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -782,7 +782,7 @@ TEST_P(StringProtocolModesTest, SUBSTR_STRING) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), "Hello");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -796,7 +796,7 @@ TEST_P(StringProtocolModesTest, DECR_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 9);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

@@ -309,7 +309,7 @@ TEST_P(GeoProtocolModesTest, GEOADD_GEOPOS) {
             EXPECT_NEAR(pos_r.result()[0]->latitude, 38.11, 0.01);
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -326,7 +326,7 @@ TEST_P(GeoProtocolModesTest, GEOHASH_STRING) {
             EXPECT_TRUE(first.has_value() && !first->empty());
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -340,7 +340,7 @@ TEST_P(GeoProtocolModesTest, GEODIST_DOUBLE) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok() && r.result()) EXPECT_GT(*r.result(), 0.0);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

@@ -817,7 +817,7 @@ TEST_P(ListProtocolModesTest, LPUSH_LRANGE) {
         EXPECT_TRUE(range_r.ok()) << range_r.error();
         if (range_r.ok()) EXPECT_EQ(range_r.result(), (std::vector<std::string>{"c", "b", "a"}));
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -834,7 +834,7 @@ TEST_P(ListProtocolModesTest, RPUSH_LLEN_LINDEX) {
         EXPECT_TRUE(idx_r.ok()) << idx_r.error();
         if (idx_r.ok() && idx_r.result()) EXPECT_EQ(*idx_r.result(), "y");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -851,7 +851,7 @@ TEST_P(ListProtocolModesTest, LPOP_OPTIONAL) {
         EXPECT_TRUE(empty_r.ok());
         EXPECT_FALSE(empty_r.result().has_value());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -868,7 +868,7 @@ TEST_P(ListProtocolModesTest, RPOP_OPTIONAL) {
         EXPECT_TRUE(empty_r.ok());
         EXPECT_FALSE(empty_r.result().has_value());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -882,7 +882,7 @@ TEST_P(ListProtocolModesTest, LREM_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -906,7 +906,7 @@ TEST_P(ListProtocolModesTest, LMPOP_LMOVE) {
         auto dst_r = co_await redis.lrange(k3, 0, -1);
         EXPECT_TRUE(dst_r.ok() && dst_r.result().size() == 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

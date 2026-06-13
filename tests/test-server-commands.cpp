@@ -729,7 +729,7 @@ TEST_P(ServerProtocolModesTest, DBSIZE) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_GE(r.result(), 0);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -744,7 +744,7 @@ TEST_P(ServerProtocolModesTest, TIME) {
             EXPECT_GE(r.result().second, 0);
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -756,7 +756,7 @@ TEST_P(ServerProtocolModesTest, CLIENT_ID_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_GE(r.result(), 0);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -768,7 +768,7 @@ TEST_P(ServerProtocolModesTest, INFO_JSON) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_TRUE(r.result().is_object() || r.result().is_string());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -783,7 +783,7 @@ TEST_P(ServerProtocolModesTest, FLUSHDB_FLUSHALL) {
         EXPECT_TRUE(r2.ok()) << r2.error();
         if (r2.ok()) EXPECT_TRUE(r2.result().ok());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
