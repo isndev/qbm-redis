@@ -21,7 +21,9 @@
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include <chrono>
 #include <string>
+#include <thread>
 #include "../redis.h"
 
 #if defined(_WIN32)
@@ -54,9 +56,25 @@ protected:
 
     void SetUp() override {
         qb::io::async::init();
-        if (!qb::io::async::run_sync(redis.connect()) ||
-            !qb::io::async::run_sync(redis.flushall()).ok()) {
-            throw std::runtime_error("Unable to connect to Redis or flushall failed");
+        // A previous test can leave the single-threaded Redis server transiently busy —
+        // e.g. the EVAL busy-loop in CORO_DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT keeps
+        // running server-side after its client disconnected, so the server is frozen (no
+        // accept, no replies) until it finishes and returns -BUSY in between. A single
+        // connect+flushall then fails (or worse, hangs) spuriously. Retry for a bounded
+        // window with a command deadline so each attempt fails fast instead of hanging,
+        // and wait for the server to free up before giving up.
+        const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        for (;;) {
+            redis.set_command_timeout(1.0); // a flushall to a frozen server fails fast
+            const bool connected = qb::io::async::run_sync(redis.connect());
+            const bool flushed = connected && qb::io::async::run_sync(redis.flushall()).ok();
+            redis.set_command_timeout(0.0); // restore the no-deadline default for the test body
+            if (flushed)
+                return;
+            if (std::chrono::steady_clock::now() >= give_up)
+                throw std::runtime_error("Unable to connect to Redis or flushall failed");
+            redis.disconnect(); // reset so the next connect() starts clean
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
         }
     }
 
