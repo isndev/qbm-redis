@@ -24,8 +24,6 @@
 
 #include "types.h"
 #include "buffer.h"
-#include <stack>
-#include <functional>
 #include <expected>
 
 namespace qb::redis::parser {
@@ -80,9 +78,6 @@ public:
         _state = State::READY;
         _current_depth = 0;
         _buffer.reset();
-        _parse_stack = {};
-        _pending_value.reset();
-        _temp_data.clear();
     }
     
     // Get current state
@@ -113,20 +108,16 @@ public:
     //   - value if complete value parsed
     //   - ParseError with INCOMPLETE_DATA if need more data
     //   - ParseError with other code if parse error
+    //
+    // compact() first guarantees the buffered bytes are contiguous, so the
+    // non-destructive view pass covers every case: on INCOMPLETE_DATA nothing
+    // is consumed and the same bytes are retried once more data is fed.
     [[nodiscard]] ParseResult<Value> parse() {
         if (has_error()) {
             return make_parse_error(ParseErrorCode::PROTOCOL_ERROR, "Parser in error state");
         }
-        
-        // Fast path: try parse from view
-        auto view_result = try_parse_from_view();
-        if (view_result.has_value() || 
-            (view_result.error().code() != ParseErrorCode::INCOMPLETE_DATA)) {
-            return view_result;
-        }
-        
-        // Need more data or must use buffer
-        return try_parse_from_buffer();
+        compact();
+        return try_parse_from_view();
     }
     
     // Parse all complete values from the internal buffer.
@@ -203,72 +194,51 @@ public:
     }
 
 private:
-    // Try to parse directly from buffer view (zero-copy path)
+    // Parse one value from the (contiguous, compacted) buffer without
+    // destroying any bytes on failure. The previous "buffered" fallback path
+    // (extract_line/extract_bytes directly off the InputBuffer) consumed bytes
+    // before knowing whether the value was complete, silently corrupting the
+    // stream on INCOMPLETE_DATA; compact() + this view pass replaces it.
     [[nodiscard]] ParseResult<Value> try_parse_from_view() {
-        // Get contiguous readable data
         auto span1 = _buffer.readable_span();
         if (span1.empty()) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
         }
-        
-        // Try to parse from first span
+
         ViewBuffer view(span1);
         auto result = parse_value(view, 0);
-        
+
         if (result.has_value()) {
-            // Success - consume bytes from main buffer
-            size_t consumed = view.position();
-            _buffer.consume(consumed);
-            return result;
+            // Success - consume exactly the bytes the view walked over.
+            _buffer.consume(view.position());
         }
-        
-        if (result.error().code() == ParseErrorCode::INCOMPLETE_DATA) {
-            // Check if we need to look at second span (wrapped data)
-            auto span2 = _buffer.readable_span_second();
-            if (!span2.empty()) {
-                // Need to handle wrapped data - fall back to buffered parse
-                return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
-            }
-        }
-        
         return result;
     }
-    
-    // Try to parse from internal buffer (copy path for wrapped data)
-    [[nodiscard]] ParseResult<Value> try_parse_from_buffer() {
-        // Extract a line to determine type
-        auto line = _buffer.extract_line();
-        if (!line) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
+
+    /**
+     * @brief Strictly consume the CRLF terminator that must follow fixed-length
+     *        payloads (`$`, `!`, `=`) and single-byte types (`_`, `#`).
+     *
+     * Distinguishes the two failure modes that a bare `skip_crlf()` conflates:
+     * fewer than two bytes available is INCOMPLETE_DATA (retry later), while
+     * two available bytes that are not "\r\n" is a fatal PROTOCOL_ERROR —
+     * treating it as incomplete would stall the connection forever waiting for
+     * bytes that can never make the terminator valid.
+     */
+    [[nodiscard]] static std::optional<ParseError> expect_crlf(ViewBuffer& view) {
+        const auto c0 = view.peek(0);
+        const auto c1 = view.peek(1);
+        if (!c0 || !c1) {
+            return ParseError(ParseErrorCode::INCOMPLETE_DATA);
         }
-        
-        if (line->empty()) {
-            return make_parse_error(ParseErrorCode::INVALID_TYPE, "Empty line");
+        if (*c0 != '\r' || *c1 != '\n') {
+            return ParseError(ParseErrorCode::PROTOCOL_ERROR,
+                              "Expected CRLF terminator");
         }
-        
-        char type = (*line)[0];
-        std::string_view payload(line->data() + 1, line->size() - 1);
-        
-        return parse_by_type(type, payload);
+        view.consume(2);
+        return std::nullopt;
     }
-    
-    [[nodiscard]] std::optional<std::string> extract_line_from_buffer() const {
-        // Non-destructive extraction
-        auto crlf = _buffer.find_crlf();
-        if (!crlf) return std::nullopt;
-        
-        std::string result;
-        result.reserve(*crlf);
-        
-        for (size_t i = 0; i < *crlf; ++i) {
-            auto c = _buffer.peek(i);
-            if (!c) break;
-            result.push_back(*c);
-        }
-        
-        return result;
-    }
-    
+
     // Parse value from view buffer
     [[nodiscard]] ParseResult<Value> parse_value(ViewBuffer& view, size_t depth) {
         if (depth > _config.max_nesting_depth) {
@@ -327,8 +297,8 @@ private:
     
     // Parse null: _\r\n
     [[nodiscard]] static ParseResult<Value> parse_null(ViewBuffer& view) {
-        if (!view.skip_crlf()) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
+        if (auto err = expect_crlf(view)) {
+            return std::unexpected(std::move(*err));
         }
         return make_parse_result(Value(Null{}));
     }
@@ -351,11 +321,11 @@ private:
         }
         
         view.consume(1);
-        
-        if (!view.skip_crlf()) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
+
+        if (auto err = expect_crlf(view)) {
+            return std::unexpected(std::move(*err));
         }
-        
+
         return make_parse_result(Value(Boolean{value}));
     }
     
@@ -522,11 +492,11 @@ private:
         if (!data_opt) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
         }
-        
-        if (!view.skip_crlf()) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
+
+        if (auto err = expect_crlf(view)) {
+            return std::unexpected(std::move(*err));
         }
-        
+
         return make_parse_result(Value(BulkString{std::string(*data_opt)}));
     }
     
@@ -544,11 +514,11 @@ private:
         if (!data_opt) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
         }
-        
-        if (!view.skip_crlf()) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
+
+        if (auto err = expect_crlf(view)) {
+            return std::unexpected(std::move(*err));
         }
-        
+
         // Parse prefix and message
         auto space_pos = data_opt->find(' ');
         std::string prefix;
@@ -578,11 +548,11 @@ private:
         if (!data_opt) {
             return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
         }
-        
-        if (!view.skip_crlf()) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
+
+        if (auto err = expect_crlf(view)) {
+            return std::unexpected(std::move(*err));
         }
-        
+
         // Find colon separator
         auto colon_pos = data_opt->find(':');
         if (colon_pos != 3) {
@@ -781,345 +751,12 @@ private:
         return true;
     }
     
-    // Parse by type from buffered line
-    [[nodiscard]] ParseResult<Value> parse_by_type(char type, std::string_view payload) {
-        switch (type) {
-            case type_id::SIMPLE_STRING:
-                return make_parse_result(Value(SimpleString{std::string(payload)}));
-            case type_id::SIMPLE_ERROR:
-                return parse_simple_error_string(payload);
-            case type_id::INTEGER: {
-                int64_t val = 0;
-                if (!parse_integer(payload, val)) {
-                    return make_parse_error(ParseErrorCode::INVALID_INTEGER);
-                }
-                return make_parse_result(Value(Integer{val}));
-            }
-            case type_id::NULL_:
-                return make_parse_result(Value(Null{}));
-            case type_id::BOOLEAN: {
-                if (payload == "t") return make_parse_result(Value(Boolean{true}));
-                if (payload == "f") return make_parse_result(Value(Boolean{false}));
-                return make_parse_error(ParseErrorCode::INVALID_BOOLEAN);
-            }
-            case type_id::DOUBLE: {
-                double val = 0.0;
-                if (!parse_double(payload, val)) {
-                    return make_parse_error(ParseErrorCode::INVALID_DOUBLE);
-                }
-                return make_parse_result(Value(Double{val}));
-            }
-            case type_id::BIG_NUMBER:
-                return parse_big_number_string(payload);
-            case type_id::BULK_STRING:
-            case type_id::BULK_ERROR:
-            case type_id::VERBATIM_STRING:
-            case type_id::ARRAY:
-            case type_id::MAP:
-            case type_id::ATTRIBUTE:
-            case type_id::SET:
-            case type_id::PUSH: {
-                // These need more data from buffer
-                int64_t len = 0;
-                if (!parse_integer(payload, len)) {
-                    return make_parse_error(ParseErrorCode::INVALID_LENGTH);
-                }
-                return parse_bulk_or_aggregate_from_buffer(type, len);
-            }
-            default:
-                return make_parse_error(ParseErrorCode::INVALID_TYPE);
-        }
-    }
-    
-    [[nodiscard]] ParseResult<Value> parse_simple_error_string(std::string_view str) {
-        auto space_pos = str.find(' ');
-        std::string prefix;
-        std::string message;
-        
-        if (space_pos == std::string_view::npos) {
-            prefix = std::string(str);
-        } else {
-            prefix = std::string(str.substr(0, space_pos));
-            message = std::string(str.substr(space_pos + 1));
-        }
-        
-        return make_parse_result(Value(SimpleError{prefix, message}));
-    }
-    
-    [[nodiscard]] ParseResult<Value> parse_big_number_string(std::string_view str) {
-        if (str.empty()) {
-            return make_parse_error(ParseErrorCode::INVALID_BIG_NUMBER);
-        }
-        
-        bool negative = false;
-        size_t start = 0;
-        
-        if (str[0] == '-') {
-            negative = true;
-            start = 1;
-        } else if (str[0] == '+') {
-            start = 1;
-        }
-        
-        for (size_t i = start; i < str.size(); ++i) {
-            if (!std::isdigit(static_cast<unsigned char>(str[i]))) {
-                return make_parse_error(ParseErrorCode::INVALID_BIG_NUMBER);
-            }
-        }
-        
-        return make_parse_result(Value(BigNumber{std::string(str), negative}));
-    }
-    
-    [[nodiscard]] ParseResult<Value> parse_bulk_or_aggregate_from_buffer(char type, int64_t len) {
-        // Only a length of exactly -1 denotes a null value (RESP2 $-1 / *-1 and
-        // the RESP3 null aggregate forms). Any other negative length is a
-        // protocol error, not a silent null — otherwise corrupt input like
-        // "%-7\r\n" would be swallowed as a valid reply.
-        if (len == -1) {
-            return make_parse_result(Value(Null{}));
-        }
-        if (len < 0) {
-            return make_parse_error(ParseErrorCode::INVALID_LENGTH,
-                std::format("Negative length {} is not a valid null marker", len));
-        }
-
-        switch (type) {
-            case type_id::BULK_STRING:
-                return parse_bulk_string_from_buffer(len);
-            case type_id::BULK_ERROR:
-                return parse_bulk_error_from_buffer(len);
-            case type_id::VERBATIM_STRING:
-                return parse_verbatim_string_from_buffer(len);
-            case type_id::ARRAY:
-                return parse_array_from_buffer(static_cast<size_t>(len), 0);
-            case type_id::SET:
-                return parse_set_from_buffer(static_cast<size_t>(len), 0);
-            case type_id::PUSH:
-                return parse_push_from_buffer(static_cast<size_t>(len), 0);
-            case type_id::MAP:
-                return parse_map_from_buffer(static_cast<size_t>(len), 0);
-            case type_id::ATTRIBUTE:
-                return parse_attribute_from_buffer(static_cast<size_t>(len), 0);
-            default:
-                return make_parse_error(ParseErrorCode::INVALID_TYPE);
-        }
-    }
-    
-    [[nodiscard]] ParseResult<Value> parse_bulk_string_from_buffer(int64_t len) {
-        if (len < 0) {
-            return make_parse_result(Value(Null{}));
-        }
-
-        if (bulk_payload_exceeds_limit(len)) {
-            return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Bulk string too large");
-        }
-
-        auto data_opt = _buffer.extract_bytes(static_cast<size_t>(len));
-        if (!data_opt) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
-        }
-        
-        // Skip CRLF
-        auto crlf_check = _buffer.peek(0);
-        if (!crlf_check || *crlf_check != '\r') {
-            return make_parse_error(ParseErrorCode::PROTOCOL_ERROR, "Expected CRLF after bulk data");
-        }
-        _buffer.consume(2);
-        
-        return make_parse_result(Value(BulkString{std::move(*data_opt)}));
-    }
-    
-    [[nodiscard]] ParseResult<Value> parse_bulk_error_from_buffer(int64_t len) {
-        if (len < 0) {
-            return make_parse_error(ParseErrorCode::INVALID_LENGTH, "Negative bulk error length");
-        }
-
-        if (bulk_payload_exceeds_limit(len)) {
-            return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Bulk error payload too large");
-        }
-
-        auto data_opt = _buffer.extract_bytes(static_cast<size_t>(len));
-        if (!data_opt) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
-        }
-        
-        _buffer.consume(2);  // Skip CRLF
-        
-        auto space_pos = data_opt->find(' ');
-        std::string prefix;
-        std::string message;
-        
-        if (space_pos == std::string::npos) {
-            prefix = std::move(*data_opt);
-        } else {
-            prefix = data_opt->substr(0, space_pos);
-            message = data_opt->substr(space_pos + 1);
-        }
-        
-        return make_parse_result(Value(BulkError{prefix, message}));
-    }
-    
-    [[nodiscard]] ParseResult<Value> parse_verbatim_string_from_buffer(int64_t len) {
-        if (len < 4) {
-            return make_parse_error(ParseErrorCode::INVALID_VERBATIM_FORMAT);
-        }
-
-        if (bulk_payload_exceeds_limit(len)) {
-            return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Verbatim string too large");
-        }
-
-        auto data_opt = _buffer.extract_bytes(static_cast<size_t>(len));
-        if (!data_opt) {
-            return make_parse_error(ParseErrorCode::INCOMPLETE_DATA);
-        }
-        
-        _buffer.consume(2);  // Skip CRLF
-        
-        auto colon_pos = data_opt->find(':');
-        if (colon_pos != 3) {
-            return make_parse_error(ParseErrorCode::INVALID_VERBATIM_FORMAT);
-        }
-        
-        VerbatimString result;
-        std::memcpy(result.encoding, data_opt->data(), 3);
-        result.value = data_opt->substr(4);
-        
-        return make_parse_result(Value(std::move(result)));
-    }
-    
-    [[nodiscard]] ParseResult<Value> parse_array_from_buffer(size_t count, size_t depth);
-    [[nodiscard]] ParseResult<Value> parse_set_from_buffer(size_t count, size_t depth);
-    [[nodiscard]] ParseResult<Value> parse_push_from_buffer(size_t count, size_t depth);
-    [[nodiscard]] ParseResult<Value> parse_map_from_buffer(size_t count, size_t depth);
-    [[nodiscard]] ParseResult<Value> parse_attribute_from_buffer(size_t count, size_t depth);
-    
     // Member variables
     ParserConfig _config;
     State _state;
     size_t _current_depth;
     InputBuffer _buffer;
-    
-    struct ParseFrame {
-        char type;
-        size_t remaining;
-        Value partial;
-    };
-    std::stack<ParseFrame> _parse_stack;
-    
-    std::optional<Value> _pending_value;
-    std::vector<char> _temp_data;
 };
-
-// Implementation of recursive parsing functions
-inline ParseResult<Value> RespParser::parse_array_from_buffer(size_t count, size_t depth) {
-    if (depth > _config.max_nesting_depth) {
-        return make_parse_error(ParseErrorCode::NESTING_TOO_DEEP);
-    }
-    
-    Array result;
-    result.elements.reserve(count);
-    
-    for (size_t i = 0; i < count; ++i) {
-        auto elem = try_parse_from_buffer();
-        if (!elem.has_value()) {
-            return elem;
-        }
-        result.elements.push_back(std::make_unique<Value>(std::move(*elem)));
-    }
-    
-    return make_parse_result(Value(std::move(result)));
-}
-
-inline ParseResult<Value> RespParser::parse_set_from_buffer(size_t count, size_t depth) {
-    if (depth > _config.max_nesting_depth) {
-        return make_parse_error(ParseErrorCode::NESTING_TOO_DEEP);
-    }
-    
-    Set result;
-    result.elements.reserve(count);
-    
-    for (size_t i = 0; i < count; ++i) {
-        auto elem = try_parse_from_buffer();
-        if (!elem.has_value()) {
-            return elem;
-        }
-        result.elements.push_back(std::make_unique<Value>(std::move(*elem)));
-    }
-    
-    return make_parse_result(Value(std::move(result)));
-}
-
-inline ParseResult<Value> RespParser::parse_push_from_buffer(size_t count, size_t depth) {
-    if (depth > _config.max_nesting_depth) {
-        return make_parse_error(ParseErrorCode::NESTING_TOO_DEEP);
-    }
-    
-    Push result;
-    result.elements.reserve(count);
-    
-    for (size_t i = 0; i < count; ++i) {
-        auto elem = try_parse_from_buffer();
-        if (!elem.has_value()) {
-            return elem;
-        }
-        result.elements.push_back(std::make_unique<Value>(std::move(*elem)));
-    }
-    
-    return make_parse_result(Value(std::move(result)));
-}
-
-inline ParseResult<Value> RespParser::parse_map_from_buffer(size_t count, size_t depth) {
-    if (depth > _config.max_nesting_depth) {
-        return make_parse_error(ParseErrorCode::NESTING_TOO_DEEP);
-    }
-    
-    Map result;
-    result.entries.reserve(count);
-    
-    for (size_t i = 0; i < count; ++i) {
-        auto key = try_parse_from_buffer();
-        if (!key.has_value()) {
-            return key;
-        }
-        
-        auto val = try_parse_from_buffer();
-        if (!val.has_value()) {
-            return val;
-        }
-        
-        result.entries.emplace_back(std::make_unique<Value>(std::move(*key)), std::make_unique<Value>(std::move(*val)));
-    }
-    
-    return make_parse_result(Value(std::move(result)));
-}
-
-inline ParseResult<Value> RespParser::parse_attribute_from_buffer(size_t count, size_t depth) {
-    if (depth > _config.max_nesting_depth) {
-        return make_parse_error(ParseErrorCode::NESTING_TOO_DEEP);
-    }
-
-    Attribute result;
-    result.data.entries.reserve(count);
-
-    for (size_t i = 0; i < count; ++i) {
-        auto key = try_parse_from_buffer();
-        if (!key.has_value()) return key;
-
-        auto val = try_parse_from_buffer();
-        if (!val.has_value()) return val;
-
-        result.data.entries.emplace_back(
-            std::make_unique<Value>(std::move(*key)),
-            std::make_unique<Value>(std::move(*val)));
-    }
-
-    // Parse the actual reply that follows the attribute metadata
-    auto actual = try_parse_from_buffer();
-    if (!actual.has_value()) return actual;
-    result.value = std::make_unique<Value>(std::move(*actual));
-
-    return make_parse_result(Value(std::move(result)));
-}
 
 // ============================================================================
 // Simple non-streaming parser for complete data
