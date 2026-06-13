@@ -50,6 +50,38 @@ run_until(Pred &&pred, std::chrono::milliseconds timeout = 5000ms) {
     return true;
 }
 
+// Destroying the client while an auto-reconnect connect is in flight must not
+// use-after-free the connector. The reconnect task is spawned (detached), so it
+// outlives the client; its connect_awaiter completion lambda touches the client and
+// must check the client's liveness (connector_alive()), not just the awaiter's own
+// validity flag (which stays true on the still-alive reconnect coroutine frame).
+// Reconnect targets a non-routable host (192.0.2.1, SYN dropped) so the connect stays
+// in flight across the destroy; we then pump past the timeout so the completion lambda
+// fires against the freed client. With the fix it detects the dead client and exits
+// cleanly; before the fix this is a use-after-free (caught by AddressSanitizer).
+TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
+    qb::io::async::init();
+    auto client = std::make_unique<qb::redis::tcp::client>(qb::io::uri{"tcp://localhost:6379"});
+    ASSERT_TRUE(qb::io::async::run_sync(client->connect()));
+
+    client->set_uri(qb::io::uri{"tcp://192.0.2.1:6379"}); // non-routable: connect hangs
+    client->enable_auto_reconnect(qb::redis::RetryPolicy{}
+                                      .with_max_attempts(3)
+                                      .with_initial_delay(50ms)
+                                      .with_connect_timeout(2.0)
+                                      .with_jitter(false));
+    client->disconnect();
+
+    ASSERT_TRUE(run_until([&] { return client->is_reconnecting(); }, 2000ms));
+
+    client.reset(); // destroy mid-reconnect; the detached task is on the hung connect
+
+    const auto deadline = std::chrono::steady_clock::now() + 3000ms;
+    while (std::chrono::steady_clock::now() < deadline)
+        qb::io::async::run(EVRUN_NOWAIT);
+    SUCCEED();
+}
+
 // ============================================================================
 // 1. AUTO-RECONNECT — success after manual disconnect
 //    Connect → enable auto-reconnect → disconnect() → verify reconnect fires
