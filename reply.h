@@ -329,9 +329,12 @@ template <typename T>
         if (sv == "inf"  || sv == "+inf") return  std::numeric_limits<double>::infinity();
         if (sv == "-inf")                 return -std::numeric_limits<double>::infinity();
         // Use std::from_chars: locale-independent, no exception overhead.
+        // Require the WHOLE string to be consumed (ptr == end): otherwise a reply like
+        // "1.5junk" would silently yield 1.5 instead of being rejected. This matches the
+        // SCAN-cursor parse and the RESP parser's own parse_double.
         double value{};
         const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), value);
-        if (ec == std::errc{}) return value;
+        if (ec == std::errc{} && ptr == sv.data() + sv.size()) return value;
     }
     throw ProtoError("not a double reply");
 }

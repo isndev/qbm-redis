@@ -1891,6 +1891,27 @@ TEST(ScanCursor, NonNumericCursorRejected) {
         qb::redis::ProtoError);
 }
 
+// parse<double> from a string reply must consume the WHOLE string. A trailing
+// garbage suffix (e.g. ZSCORE returning "1.5junk") used to be silently truncated to
+// 1.5 because only from_chars' errc was checked, not ptr == end. It now matches the
+// SCAN-cursor parse and the RESP parser's own parse_double.
+TEST(ReplyParseDouble, RejectsTrailingGarbage) {
+    auto value_of = [](const char *resp) {
+        RespParser parser;
+        EXPECT_TRUE(parser.feed(resp));
+        auto values = parser.parse_all();
+        EXPECT_EQ(values.size(), 1U);
+        return std::move(values[0]);
+    };
+    // Whole-string doubles still parse.
+    EXPECT_DOUBLE_EQ(qb::redis::reply::parse<double>(value_of("$3\r\n1.5\r\n")), 1.5);
+    // Trailing garbage is now rejected (was silently truncated to 1.5 / 3).
+    EXPECT_THROW((void) qb::redis::reply::parse<double>(value_of("$7\r\n1.5junk\r\n")),
+                 qb::redis::ProtoError);
+    EXPECT_THROW((void) qb::redis::reply::parse<double>(value_of("$2\r\n3x\r\n")),
+                 qb::redis::ProtoError);
+}
+
 // ============================================================================
 // Main
 // ============================================================================
