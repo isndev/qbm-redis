@@ -526,7 +526,7 @@ template <typename T>
 // ============================================================================
 
 template <typename Output>
-[[nodiscard]] long long parse_scan_reply(const ReplyValue &reply, Output output) {
+[[nodiscard]] std::size_t parse_scan_reply(const ReplyValue &reply, Output output) {
     if (!is_array(reply)) {
         throw ProtoError("Invalid scan reply");
     }
@@ -534,13 +534,20 @@ template <typename Output>
     if (arr.size() < 2) {
         throw ProtoError("Invalid scan reply");
     }
-    
+
+    // SCAN cursors are unsigned 64-bit: reverse-binary bucket indices that can
+    // legitimately have the high bit set. std::stoll would throw out_of_range
+    // on any cursor > INT64_MAX, spuriously failing the scan; parse the full
+    // unsigned range with from_chars (no exceptions, no locale).
     auto cursor_str = parse<std::string>(*arr[0]);
-    long long new_cursor = 0;
-    try {
-        new_cursor = std::stoll(cursor_str);
-    } catch (const std::exception &) {
-        throw ProtoError("Invalid cursor");
+    unsigned long long new_cursor = 0;
+    {
+        const char *b = cursor_str.data();
+        const char *e = b + cursor_str.size();
+        auto [ptr, ec] = std::from_chars(b, e, new_cursor);
+        if (ec != std::errc{} || ptr != e) {
+            throw ProtoError("Invalid cursor");
+        }
     }
     
     if (is_array(*arr[1])) {
