@@ -655,7 +655,7 @@ TEST_P(KeyProtocolModesTest, EXISTS_DEL) {
         EXPECT_TRUE(exists2_r.ok()) << exists2_r.error();
         if (exists2_r.ok()) EXPECT_EQ(exists2_r.result(), 0);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -673,7 +673,7 @@ TEST_P(KeyProtocolModesTest, SETEX_TTL_TYPE) {
         EXPECT_TRUE(type_r.ok()) << type_r.error();
         if (type_r.ok()) EXPECT_EQ(type_r.result(), "string");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -691,7 +691,7 @@ TEST_P(KeyProtocolModesTest, EXPIRE_RENAME) {
         auto get_r = co_await redis.get(std::string(k) + ":renamed");
         if (get_r.ok() && get_r.result()) EXPECT_EQ(*get_r.result(), "x");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -703,7 +703,7 @@ TEST_P(KeyProtocolModesTest, SCAN) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_GE(r.result().items.size(), 0u);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -720,7 +720,7 @@ TEST_P(KeyProtocolModesTest, RANDOMKEY_OPTIONAL) {
         EXPECT_TRUE(r.ok()) << r.error();
         EXPECT_TRUE(r.result().has_value());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -734,7 +734,7 @@ TEST_P(KeyProtocolModesTest, PTTL_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_GT(r.result(), 0);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -750,7 +750,7 @@ TEST_P(KeyProtocolModesTest, COPY_EXPIRETIME) {
         auto et_r = co_await redis.expiretime(k);
         EXPECT_TRUE(et_r.ok()) << et_r.error();
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -764,7 +764,7 @@ TEST_P(KeyProtocolModesTest, PERSIST_BOOLEAN) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_TRUE(r.result());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

@@ -505,7 +505,7 @@ TEST_P(ClusterProtocolModesTest, CLUSTER_INFO_JSON) {
             // CLUSTER not available on older Redis
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -522,6 +522,6 @@ TEST_P(ClusterProtocolModesTest, CLUSTER_NODES_SLOTS) {
             // CLUSTER not available on standalone Redis
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }

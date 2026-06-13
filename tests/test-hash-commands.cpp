@@ -390,7 +390,7 @@ TEST_P(HashProtocolModesTest, HSET_HGET) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok() && r.result()) EXPECT_EQ(*r.result(), "value");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -410,7 +410,7 @@ TEST_P(HashProtocolModesTest, HGETALL_MAP) {
             EXPECT_EQ(m.at("b"), "2");
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -434,7 +434,7 @@ TEST_P(HashProtocolModesTest, HMGET_HEXISTS) {
         EXPECT_TRUE(hexists_r.ok()) << hexists_r.error();
         if (hexists_r.ok()) EXPECT_TRUE(hexists_r.result());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -448,7 +448,7 @@ TEST_P(HashProtocolModesTest, HINCRBY_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 8);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -463,7 +463,7 @@ TEST_P(HashProtocolModesTest, HDEL_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

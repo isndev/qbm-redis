@@ -671,7 +671,7 @@ TEST_P(SortedSetProtocolModesTest, ZADD_ZRANGE) {
             EXPECT_EQ(sm[2].member, "c");
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -688,7 +688,7 @@ TEST_P(SortedSetProtocolModesTest, ZSCORE_ZINCRBY_DOUBLE) {
         EXPECT_TRUE(incr_r.ok()) << incr_r.error();
         if (incr_r.ok()) EXPECT_DOUBLE_EQ(incr_r.result(), 1.5);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -705,7 +705,7 @@ TEST_P(SortedSetProtocolModesTest, ZRANK_ZCARD) {
         EXPECT_TRUE(card_r.ok()) << card_r.error();
         if (card_r.ok()) EXPECT_EQ(card_r.result(), 3);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -724,7 +724,7 @@ TEST_P(SortedSetProtocolModesTest, ZDIFF_ZMSCORE) {
         EXPECT_TRUE(mscore_r.ok()) << mscore_r.error();
         if (mscore_r.ok()) EXPECT_EQ(mscore_r.result().size(), 2u);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -738,7 +738,7 @@ TEST_P(SortedSetProtocolModesTest, ZREM_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

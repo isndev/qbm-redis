@@ -363,7 +363,7 @@ TEST_P(TransactionProtocolModesTest, MULTI_EXEC) {
             EXPECT_EQ(results[1], "OK");
         }
         done = true;
-    }());
+    });
     run_coro_test_until(done);
 }
 

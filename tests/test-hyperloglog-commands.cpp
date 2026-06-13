@@ -143,7 +143,7 @@ TEST_P(HyperLogLogProtocolModesTest, PFADD_PFCOUNT) {
         EXPECT_TRUE(count_r.ok()) << count_r.error();
         if (count_r.ok()) EXPECT_EQ(count_r.result(), 3);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -160,7 +160,7 @@ TEST_P(HyperLogLogProtocolModesTest, PFMERGE_STATUS) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_TRUE(r.result().ok());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

@@ -282,6 +282,6 @@ TEST_P(PublishProtocolModesTest, PUBLISH_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_GE(r.result(), 0);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }

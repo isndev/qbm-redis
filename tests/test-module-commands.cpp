@@ -177,7 +177,7 @@ TEST_P(ModuleProtocolModesTest, MODULE_LIST_JSON) {
             // MODULE not available on older Redis
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

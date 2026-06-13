@@ -98,7 +98,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_AUTO_RECONNECT_AFTER_MANUAL_DISCONNECT) 
             auto h = co_await client.hello(3);
             hello_ok   = h.ok();
             hello_done = true;
-        }());
+        });
         ASSERT_TRUE(run_until([&] { return hello_done; }, 2000ms))
             << "HELLO 3 after reconnect did not complete";
         ASSERT_TRUE(hello_ok) << "HELLO 3 failed after reconnect";
@@ -111,7 +111,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_AUTO_RECONNECT_AFTER_MANUAL_DISCONNECT) 
         auto r = co_await client.ping();
         ping_ok   = r.ok();
         ping_done = true;
-    }());
+    });
     ASSERT_TRUE(run_until([&] { return ping_done; }, 2000ms));
     EXPECT_TRUE(ping_ok);
 }
@@ -260,8 +260,138 @@ TEST_P(ReconnectProtocolModesTest, RECONNECT_THEN_PING) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), "PONG");
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
+}
+
+// ============================================================================
+// 7. DISCONNECT WHILE A SLOW COMMAND IS IN FLIGHT — the pending command must
+//    fail gracefully ("disconnected"), no crash, no desync, clean teardown.
+//    (EVAL busy-loops server-side so the reply arrives well after disconnect.)
+// ============================================================================
+TEST_P(ReconnectProtocolModesTest, CORO_DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT) {
+    qb::redis::tcp::client client{qb::io::uri{REDIS_URI}};
+
+    bool ready = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        ready = co_await client.connect();
+        if (ready && GetParam() == ProtocolMode::RESP3) {
+            auto h = co_await client.hello(3);
+            if (!h.ok()) ready = false;
+        }
+    });
+    ASSERT_TRUE(run_until([&] { return ready; }));
+
+    bool done = false, ok = true;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        // Finite counter loop: redis.call('TIME') is frozen during script
+        // execution, so a time-based loop would never advance.
+        static const char *kBusy =
+            "local i = 0 while i < 80000000 do i = i + 1 end return 1";
+        auto r = co_await client.command<long long>("EVAL", kBusy, "0");
+        ok   = r.ok();
+        done = true;
+    });
+    run_until([] { return false; }, 50ms); // let the EVAL get sent
+    client.disconnect();
+    ASSERT_TRUE(run_until([&] { return done; }, 3000ms));
+    EXPECT_FALSE(ok); // failed with "disconnected", not stuck, not crashed
+
+    // Let the server finish its busy script before the next test connects.
+    run_until([] { return false; }, 1200ms);
+}
+
+// ============================================================================
+// 8. COMMAND TIMEOUT — a non-blocking command with no reply within the
+//    deadline drops the connection and fails the pending command with
+//    "command timed out"; auto-reconnect then restores the connection.
+// ============================================================================
+TEST_P(ReconnectProtocolModesTest, CORO_COMMAND_TIMEOUT_DROPS_CONNECTION) {
+    qb::redis::tcp::client client{qb::io::uri{REDIS_URI}};
+
+    bool ready = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        ready = co_await client.connect();
+        if (ready && GetParam() == ProtocolMode::RESP3) {
+            auto h = co_await client.hello(3);
+            if (!h.ok()) ready = false;
+        }
+    });
+    ASSERT_TRUE(run_until([&] { return ready; }));
+
+    client.set_command_timeout(0.3); // 300 ms deadline
+    client.enable_auto_reconnect(
+        qb::redis::RetryPolicy{}
+            .with_initial_delay(50ms)
+            .with_max_delay(200ms)
+            .with_connect_timeout(2.0)
+            .with_jitter(false));
+
+    bool        done = false;
+    bool        ok   = true;
+    std::string err;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        // EVAL busy-loops server-side: no reply arrives before the 300ms
+        // client deadline, so the connection must be dropped. EVAL is not a
+        // blocking command, so the deadline applies.
+        static const char *kBusy =
+            "local i = 0 while i < 80000000 do i = i + 1 end return 1";
+        auto r = co_await client.command<long long>("EVAL", kBusy, "0");
+        ok   = r.ok();
+        err  = r.error();
+        done = true;
+    });
+    ASSERT_TRUE(run_until([&] { return done; }, 3000ms));
+
+    EXPECT_FALSE(ok) << "command should have timed out";
+    EXPECT_NE(err.find("timed out"), std::string::npos) << "got: " << err;
+
+    // The deadline dropped the connection; auto-reconnect brings it back.
+    EXPECT_TRUE(run_until([&] { return client.is_connected(); }, 5000ms))
+        << "client should auto-reconnect after a command timeout";
+
+    // Let the server finish its busy script before the next test connects.
+    run_until([] { return false; }, 1200ms);
+}
+
+// ============================================================================
+// 9. COMMAND TIMEOUT — blocking commands (BLPOP, …) are exempt: their
+//    server-side timeout governs, so a short client deadline must NOT drop
+//    them prematurely.
+// ============================================================================
+TEST_P(ReconnectProtocolModesTest, CORO_COMMAND_TIMEOUT_EXEMPTS_BLOCKING) {
+    qb::redis::tcp::client client{qb::io::uri{REDIS_URI}};
+
+    bool ready = false;
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+        ready = co_await client.connect();
+        if (ready && GetParam() == ProtocolMode::RESP3) {
+            auto h = co_await client.hello(3);
+            if (!h.ok()) ready = false;
+        }
+    });
+    ASSERT_TRUE(run_until([&] { return ready; }));
+
+    client.set_command_timeout(0.3); // shorter than the 1s BLPOP below
+
+    bool done = false, ok = false, has_value = true, still_connected = false;
+    qb::io::async::coro_scheduler().spawn([&, this]() -> qb::io::async::task<void> {
+        auto key = std::string("qbm_to_blpop_") +
+                   (GetParam() == ProtocolMode::RESP3 ? "r3" : "r2");
+        co_await client.del(std::vector<std::string>{key});
+        // BLPOP on an empty key with a 1s server timeout: must outlive the
+        // 300ms client deadline and return nil rather than being dropped.
+        auto r          = co_await client.blpop(std::vector<std::string>{key}, 1);
+        ok              = r.ok();
+        has_value       = r.result().has_value();
+        still_connected = client.is_connected();
+        done            = true;
+    });
+    ASSERT_TRUE(run_until([&] { return done; }, 4000ms));
+
+    EXPECT_TRUE(ok) << "blocking command must not be timed out by the client";
+    EXPECT_FALSE(has_value); // BLPOP returned nil (server-side timeout)
+    EXPECT_TRUE(still_connected);
 }
 
 // ============================================================================

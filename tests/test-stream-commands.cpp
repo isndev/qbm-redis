@@ -458,7 +458,7 @@ TEST_P(StreamProtocolModesTest, XADD_XLEN) {
         EXPECT_TRUE(len_r.ok()) << len_r.error();
         if (len_r.ok()) EXPECT_EQ(len_r.result(), 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -473,7 +473,7 @@ TEST_P(StreamProtocolModesTest, XREAD_JSON) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_TRUE(r.result().is_object() || r.result().is_array());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -491,7 +491,7 @@ TEST_P(StreamProtocolModesTest, XRANGE_XREVRANGE) {
         EXPECT_TRUE(rev_r.ok()) << rev_r.error();
         if (rev_r.ok()) EXPECT_GE(rev_r.result().size(), 1u);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -508,7 +508,7 @@ TEST_P(StreamProtocolModesTest, XDEL_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

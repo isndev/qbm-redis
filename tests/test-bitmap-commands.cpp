@@ -279,7 +279,7 @@ TEST_P(BitmapProtocolModesTest, SETBIT_GETBIT) {
         EXPECT_TRUE(get_r.ok()) << get_r.error();
         if (get_r.ok()) EXPECT_EQ(get_r.result(), 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -292,7 +292,7 @@ TEST_P(BitmapProtocolModesTest, BITFIELD_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_FALSE(r.result().empty());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -308,7 +308,7 @@ TEST_P(BitmapProtocolModesTest, BITFIELD_RO) {
             EXPECT_EQ(r.result()[0].value(), 100);
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -324,7 +324,7 @@ TEST_P(BitmapProtocolModesTest, BITCOUNT_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 3);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

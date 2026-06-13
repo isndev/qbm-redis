@@ -433,7 +433,7 @@ TEST_P(SetProtocolModesTest, SADD_SMEMBERS) {
         EXPECT_TRUE(members_r.ok()) << members_r.error();
         if (members_r.ok()) EXPECT_EQ(members_r.result().size(), 3u);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -450,7 +450,7 @@ TEST_P(SetProtocolModesTest, SISMEMBER_BOOLEAN) {
         EXPECT_TRUE(r2.ok());
         if (r2.ok()) EXPECT_FALSE(r2.result());
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -466,7 +466,7 @@ TEST_P(SetProtocolModesTest, SINTER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result().size(), 2u);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -480,7 +480,7 @@ TEST_P(SetProtocolModesTest, SREM_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 1);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -494,7 +494,7 @@ TEST_P(SetProtocolModesTest, SCARD_INTEGER) {
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) EXPECT_EQ(r.result(), 3);
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 

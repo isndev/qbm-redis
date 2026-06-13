@@ -209,7 +209,7 @@ TEST_P(JsonParseProtocolModesTest, EVAL_JSON_OBJECT) {
             EXPECT_EQ(j["c"], true);
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
@@ -227,7 +227,7 @@ TEST_P(JsonParseProtocolModesTest, EVAL_JSON_STRING) {
             EXPECT_EQ(j["x"], 42);
         }
         done = true;
-    }());
+    });
     while (!done) qb::io::async::run(EVRUN_NOWAIT);
 }
 
