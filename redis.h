@@ -994,6 +994,11 @@ private:
     struct PendingReply {
         std::unique_ptr<IReply> handler;
         int remaining;
+        /// True for (P)SUBSCRIBE/(P)UNSUBSCRIBE handlers. Lets the dispatcher tell a
+        /// subscription-confirmation handler apart from a regular command handler so a
+        /// server that emits more confirmations than predicted cannot pop and
+        /// cross-resolve an unrelated command at the head of the FIFO.
+        bool is_subscription = false;
     };
 
     std::queue<PendingReply> _replies;
@@ -1064,7 +1069,8 @@ private:
         _replies.push(PendingReply{
             std::make_unique<TReply<Func, qb::redis::subscription>>(
                 std::forward<Func>(func)),
-            expected});
+            expected,
+            /*is_subscription=*/true});
         if (names.empty())
             _command(cmd);
         else
@@ -1141,6 +1147,16 @@ private:
                     if (_replies.empty())
                         throw ProtoError("Subscription confirmation with no pending command");
                     auto &front = _replies.front();
+                    if (!front.is_subscription) {
+                        // A confirmation frame arrived but the head of the FIFO is a
+                        // regular command — the server emitted more confirmations than we
+                        // predicted. Drop this stray confirmation instead of popping and
+                        // cross-resolving the unrelated command (which would silently
+                        // desync the reply/command FIFO for the connection's lifetime).
+                        LOG_WARN("[qbm][redis] dropping unexpected subscription confirmation "
+                                 "(FIFO head is a regular command)");
+                        return;
+                    }
                     if (front.remaining > 1) {
                         --front.remaining;
                         return; // keep the handler for the remaining confirmations
