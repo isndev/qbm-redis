@@ -21,6 +21,12 @@
 #include "../redis.h"
 #include "protocol_test_common.h"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <string>
+#include <sys/socket.h>
+#include <unistd.h>
+
 #define REDIS_URI      {"tcp://localhost:6379"}
 #define BAD_REDIS_URI  {"tcp://localhost:19999"}
 
@@ -52,19 +58,40 @@ run_until(Pred &&pred, std::chrono::milliseconds timeout = 5000ms) {
 
 // Destroying the client while an auto-reconnect connect is in flight must not
 // use-after-free the connector. The reconnect task is spawned (detached), so it
-// outlives the client; its connect_awaiter completion lambda touches the client and
-// must check the client's liveness (connector_alive()), not just the awaiter's own
-// validity flag (which stays true on the still-alive reconnect coroutine frame).
-// Reconnect targets a non-routable host (192.0.2.1, SYN dropped) so the connect stays
-// in flight across the destroy; we then pump past the timeout so the completion lambda
-// fires against the freed client. With the fix it detects the dead client and exits
-// cleanly; before the fix this is a use-after-free (caught by AddressSanitizer).
+// outlives the client; its connect_awaiter completion lambda touches the client
+// (`_client.setup_connection(_client._uri, ...)`) and must check the client's liveness
+// (connector_alive()), not just the awaiter's own validity flag (which stays true on
+// the still-alive reconnect coroutine frame).
+//
+// The UAF is only reachable when the connect SUCCEEDS (raw_io is open) while the client
+// is dead — a failed/timed-out connect never touches _client. So we reconnect to a
+// local listening socket that never accept()s: the kernel still completes the TCP
+// handshake, so the connect succeeds and the completion lambda reaches setup_connection.
+// We destroy the client after the reconnect starts but before the connect completes,
+// then pump so the lambda fires against the freed client. With the fix it detects the
+// dead client and exits cleanly; before the fix AddressSanitizer reports
+// heap-use-after-free in setup_connection.
 TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
     qb::io::async::init();
+
+    // Listening socket on an ephemeral loopback port; never accept() — the kernel
+    // completes the 3-way handshake from its backlog, so a connect to it succeeds.
+    const int lfd = ::socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_GE(lfd, 0);
+    sockaddr_in addr{};
+    addr.sin_family      = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port        = 0;
+    ASSERT_EQ(::bind(lfd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)), 0);
+    ASSERT_EQ(::listen(lfd, 16), 0);
+    socklen_t alen = sizeof(addr);
+    ASSERT_EQ(::getsockname(lfd, reinterpret_cast<sockaddr *>(&addr), &alen), 0);
+    const int port = ntohs(addr.sin_port);
+
     auto client = std::make_unique<qb::redis::tcp::client>(qb::io::uri{"tcp://localhost:6379"});
     ASSERT_TRUE(qb::io::async::run_sync(client->connect()));
 
-    client->set_uri(qb::io::uri{"tcp://192.0.2.1:6379"}); // non-routable: connect hangs
+    client->set_uri(qb::io::uri{"tcp://127.0.0.1:" + std::to_string(port)});
     client->enable_auto_reconnect(qb::redis::RetryPolicy{}
                                       .with_max_attempts(3)
                                       .with_initial_delay(50ms)
@@ -72,13 +99,17 @@ TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
                                       .with_jitter(false));
     client->disconnect();
 
+    // Reconnect started: the connect to the listener is registered and in flight (its
+    // completion lambda runs on a later loop iteration, not this one).
     ASSERT_TRUE(run_until([&] { return client->is_reconnecting(); }, 2000ms));
 
-    client.reset(); // destroy mid-reconnect; the detached task is on the hung connect
+    client.reset(); // destroy while the (about-to-succeed) connect is in flight
 
-    const auto deadline = std::chrono::steady_clock::now() + 3000ms;
-    while (std::chrono::steady_clock::now() < deadline)
+    // Pump so the connect completes and the lambda fires against the freed client.
+    for (int i = 0; i < 500; ++i)
         qb::io::async::run(EVRUN_NOWAIT);
+
+    ::close(lfd);
     SUCCEED();
 }
 
