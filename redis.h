@@ -1112,10 +1112,23 @@ private:
 
             switch (type) {
                 case MsgType::MESSAGE:
-                    derived().on(parse<qb::redis::message>(raw));
+                    // Deliver out-of-band, contained in its own try/catch like every
+                    // other handler dispatch below. A throwing user message callback (or
+                    // a malformed MESSAGE frame) must NOT propagate to the outer catch,
+                    // which would fail an unrelated pending command and desync the FIFO —
+                    // a pub/sub message has no pending reply of its own.
+                    try {
+                        derived().on(parse<qb::redis::message>(raw));
+                    } catch (const std::exception &e) {
+                        LOG_WARN("[qbm][redis] message handler error: " << e.what());
+                    }
                     return;
                 case MsgType::PMESSAGE:
-                    derived().on(parse<qb::redis::pmessage>(raw));
+                    try {
+                        derived().on(parse<qb::redis::pmessage>(raw));
+                    } catch (const std::exception &e) {
+                        LOG_WARN("[qbm][redis] message handler error: " << e.what());
+                    }
                     return;
                 case MsgType::SUBSCRIBE:
                 case MsgType::UNSUBSCRIBE:
