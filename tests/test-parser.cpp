@@ -1912,6 +1912,26 @@ TEST(ReplyParseDouble, RejectsTrailingGarbage) {
                  qb::redis::ProtoError);
 }
 
+// ViewBuffer length bounds must be overflow-safe: a server-sized length near
+// SIZE_MAX must be rejected, not wrap past the `_position + n > size` guard into an
+// out-of-bounds span/view. The wrap only happens when _position > 0, so consume first.
+TEST(ViewBufferBounds, HugeLengthDoesNotOverflow) {
+    const char data[] = "hello";
+    ViewBuffer vb(std::span<const char>(data, 5));
+    vb.consume(3); // _position = 3, 2 bytes ("lo") remain
+    const size_t huge = static_cast<size_t>(-1); // _position(3) + huge wraps past SIZE_MAX
+
+    EXPECT_TRUE(vb.get(huge).empty());
+    EXPECT_FALSE(vb.extract_bytes_view(huge).has_value());
+    EXPECT_FALSE(vb.peek(huge).has_value());
+
+    // Valid bounds still resolve against the 2 remaining bytes.
+    EXPECT_EQ(vb.get(2).size(), 2u);
+    ASSERT_TRUE(vb.peek(0).has_value());
+    EXPECT_EQ(*vb.peek(0), 'l');
+    EXPECT_FALSE(vb.peek(2).has_value()); // only 2 remain
+}
+
 // ============================================================================
 // Main
 // ============================================================================

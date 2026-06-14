@@ -332,11 +332,14 @@ public:
         _position = std::min(_position + bytes, _data.size());
     }
     
-    // Peek at current byte
+    // Peek at current byte.
+    // Bounds checks are written as `offset >= remaining` rather than
+    // `_position + offset >= size` so a huge offset cannot overflow size_t and wrap
+    // past the guard into an out-of-bounds index. `_position <= _data.size()` always
+    // holds (consume() clamps, reset() zeroes), so `size - _position` never underflows.
     [[nodiscard]] std::optional<char> peek(size_t offset = 0) const noexcept {
-        size_t pos = _position + offset;
-        if (pos >= _data.size()) return std::nullopt;
-        return _data[pos];
+        if (offset >= _data.size() - _position) return std::nullopt;
+        return _data[_position + offset];
     }
     
     // Get current span
@@ -344,9 +347,9 @@ public:
         return _data.subspan(_position);
     }
     
-    // Get span of N bytes
+    // Get span of N bytes (overflow-safe bound: see peek()).
     [[nodiscard]] std::span<const char> get(size_t n) const noexcept {
-        if (_position + n > _data.size()) {
+        if (n > _data.size() - _position) {
             return {};
         }
         return _data.subspan(_position, n);
@@ -380,10 +383,10 @@ public:
         return std::string(*view);
     }
     
-    // Extract N bytes as view
+    // Extract N bytes as view (overflow-safe bound: see peek()).
     [[nodiscard]] std::optional<std::string_view> extract_bytes_view(size_t n) {
-        if (_position + n > _data.size()) return std::nullopt;
-        
+        if (n > _data.size() - _position) return std::nullopt;
+
         auto result = _data.subspan(_position, n);
         consume(n);
         return std::string_view(result.data(), result.size());
