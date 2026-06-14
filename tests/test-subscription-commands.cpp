@@ -114,6 +114,49 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_CHANNEL) {
     while (!completed) qb::io::async::run(EVRUN_NOWAIT);
 }
 
+// A throwing pub/sub message callback must be CONTAINED in the MESSAGE/PMESSAGE
+// delivery (its own try/catch), never escalate to the dispatcher's outer catch —
+// which would fail an unrelated pending command and desync the reply/command FIFO.
+// This confirms the consumer survives a throwing message callback and keeps serving
+// commands. (A precise pending-command-corruption fail-before needs message/reply
+// interleaving the harness cannot deterministically force; the fix is the same
+// containment the other three handler-dispatch paths already use.)
+TEST_P(SubscriptionProtocolModesTest, ThrowingMessageCallbackDoesNotBreakConsumer) {
+    qb::redis::tcp::cb_consumer thrower{REDIS_URI_PROTOCOL,
+                                        [](auto &&) { throw std::runtime_error("boom in message cb"); }};
+    ASSERT_TRUE(qb::io::async::run_sync(thrower.connect()));
+
+    auto ch = protocol_key("throwsub");
+    bool done = false;
+    auto sub = [&]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_CONSUMER(thrower, done);
+        EXPECT_TRUE((co_await thrower.subscribe(ch)).ok());
+        done = true;
+    };
+    qb::io::async::coro_scheduler().spawn(sub());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+
+    done = false;
+    auto pub = [&]() -> qb::io::async::task<void> {
+        EXPECT_TRUE((co_await publisher.publish(ch, TEST_MESSAGE)).ok());
+        co_await qb::io::async::sleep(std::chrono::milliseconds(100)); // let the cb fire (and throw)
+        done = true;
+    };
+    qb::io::async::coro_scheduler().spawn(pub());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+
+    // The consumer must still be healthy: a follow-up command resolves correctly.
+    done = false;
+    bool unsub_ok = false;
+    auto fin = [&]() -> qb::io::async::task<void> {
+        unsub_ok = (co_await thrower.unsubscribe(ch)).ok();
+        done = true;
+    };
+    qb::io::async::coro_scheduler().spawn(fin());
+    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    EXPECT_TRUE(unsub_ok);
+}
+
 // =============== CORO CONSUMER (receive() API) TESTS ===============
 
 TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_RECEIVE) {
