@@ -65,10 +65,10 @@ protected:
         // and wait for the server to free up before giving up.
         const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(20);
         for (;;) {
-            redis.set_command_timeout(1.0); // a flushall to a frozen server fails fast
+            redis.set_command_timeout(std::chrono::seconds(1)); // a flushall to a frozen server fails fast
             const bool connected = qb::io::async::run_sync(redis.connect());
             const bool flushed = connected && qb::io::async::run_sync(redis.flushall()).ok();
-            redis.set_command_timeout(0.0); // restore the no-deadline default for the test body
+            redis.set_command_timeout(qb::duration::zero()); // restore the no-deadline default for the test body
             if (flushed)
                 return;
             if (std::chrono::steady_clock::now() >= give_up)
@@ -106,16 +106,16 @@ protected:
  * @param completed   Flag set to true by the coroutine body on success.
  * @param timeout_sec Deadline applied to the overall test body.
  */
-inline void run_coro_test_until(const bool& completed, double timeout_sec = 30.0) {
+inline void run_coro_test_until(const bool& completed, qb::duration timeout = std::chrono::seconds(30)) {
     bool timed_out = false;
-    auto watchdog = qb::io::async::scoped_callback([&timed_out]() noexcept { timed_out = true; }, timeout_sec);
+    auto watchdog = qb::io::async::scoped_callback([&timed_out]() noexcept { timed_out = true; }, timeout);
     (void)watchdog;
     while (!completed && !timed_out) {
         qb::io::async::run(EVRUN_NOWAIT);
     }
     if (!completed) {
         ADD_FAILURE() << "Redis coroutine test exceeded "
-                      << timeout_sec << "s watchdog — likely a hung await.";
+                      << qb::detail::to_ev_seconds(timeout) << "s watchdog — likely a hung await.";
     }
 }
 

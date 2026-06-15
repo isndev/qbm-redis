@@ -332,7 +332,7 @@ TEST_P(ServerProtocolModesTest, DISABLED_CORO_SERVER_DEBUG_COMMANDS) {
 
         // Test debug_sleep (with a very short delay)
         try {
-            auto sleep_reply = co_await redis.debug_sleep(0.01);
+            auto sleep_reply = co_await redis.debug_sleep(std::chrono::milliseconds(10));
             EXPECT_TRUE(sleep_reply.ok());
         } catch (const std::exception &e) {
             std::cerr << "debug_sleep failed: " << e.what() << std::endl;

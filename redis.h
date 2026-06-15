@@ -206,12 +206,12 @@ namespace qb::redis {
  */
 struct RetryPolicy {
     int max_attempts = -1;
-    std::chrono::milliseconds initial_delay{100};
-    std::chrono::milliseconds max_delay{30'000};
+    qb::duration initial_delay{std::chrono::milliseconds(100)};
+    qb::duration max_delay{std::chrono::seconds(30)};
     double multiplier = 2.0;
     bool jitter = true;
-    double connect_timeout = 3.0;
-    std::function<void(int attempt, std::chrono::milliseconds next_delay)> on_retry;
+    qb::duration connect_timeout = std::chrono::seconds(3);
+    std::function<void(int attempt, qb::duration next_delay)> on_retry;
 
     /** @brief Set maximum number of retry attempts (-1 = unlimited) */
     RetryPolicy &with_max_attempts(int n) noexcept {
@@ -219,12 +219,12 @@ struct RetryPolicy {
         return *this;
     }
     /** @brief Set initial delay between retries */
-    RetryPolicy &with_initial_delay(std::chrono::milliseconds d) noexcept {
+    RetryPolicy &with_initial_delay(qb::duration d) noexcept {
         initial_delay = d;
         return *this;
     }
     /** @brief Set maximum delay cap */
-    RetryPolicy &with_max_delay(std::chrono::milliseconds d) noexcept {
+    RetryPolicy &with_max_delay(qb::duration d) noexcept {
         max_delay = d;
         return *this;
     }
@@ -238,14 +238,14 @@ struct RetryPolicy {
         jitter = j;
         return *this;
     }
-    /** @brief Set connection timeout in seconds */
-    RetryPolicy &with_connect_timeout(double t) noexcept {
+    /** @brief Set connection timeout */
+    RetryPolicy &with_connect_timeout(qb::duration t) noexcept {
         connect_timeout = t;
         return *this;
     }
     /** @brief Set callback invoked before each retry (attempt, next_delay) */
     RetryPolicy &with_on_retry(
-        std::function<void(int, std::chrono::milliseconds)> cb) {
+        std::function<void(int, qb::duration)> cb) {
         on_retry = std::move(cb);
         return *this;
     }
@@ -357,13 +357,13 @@ public:
      */
     struct connect_awaiter {
         connector& _client;
-        double _timeout;
+        qb::duration _timeout;
         bool _connected = false;
         std::coroutine_handle<> _handle;
         bool _ready = false;
         std::shared_ptr<bool> _valid{std::make_shared<bool>(true)};
 
-        explicit connect_awaiter(connector &client, double timeout = 3.0)
+        explicit connect_awaiter(connector &client, qb::duration timeout = std::chrono::seconds(3))
             : _client(client), _timeout(timeout) {}
 
         ~connect_awaiter() { if (_valid) *_valid = false; }
@@ -406,12 +406,12 @@ public:
         _uri = std::move(uri);
         return connect_awaiter{*this};
     }
-    connect_awaiter connect(double timeout_sec) {
-        return connect_awaiter{*this, timeout_sec};
+    connect_awaiter connect(qb::duration timeout) {
+        return connect_awaiter{*this, timeout};
     }
-    connect_awaiter connect(qb::io::uri uri, double timeout_sec) {
+    connect_awaiter connect(qb::io::uri uri, qb::duration timeout) {
         _uri = std::move(uri);
-        return connect_awaiter{*this, timeout_sec};
+        return connect_awaiter{*this, timeout};
     }
 
     void set_uri(qb::io::uri uri) noexcept { _uri = std::move(uri); }
@@ -438,24 +438,28 @@ public:
             if (policy.max_attempts > 0 && attempt >= policy.max_attempts)
                 break;
 
-            auto sleep_ms = delay;
-            if (policy.jitter && delay.count() > 0) {
-                const long long quarter = delay.count() / 4;
+            // Backoff math is done in integer milliseconds (jitter + exponential
+            // growth), then assigned back into the qb::duration delay variables.
+            const auto delay_ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(delay).count();
+            qb::duration sleep_delay = delay;
+            if (policy.jitter && delay_ms > 0) {
+                const long long quarter = delay_ms / 4;
                 std::uniform_int_distribution<long long> dist{-quarter, quarter};
-                sleep_ms = std::max(std::chrono::milliseconds{1},
-                                    std::chrono::milliseconds{delay.count() + dist(rng_)});
+                sleep_delay = std::max(qb::duration{std::chrono::milliseconds{1}},
+                                       qb::duration{std::chrono::milliseconds{delay_ms + dist(rng_)}});
             }
 
             if (policy.on_retry) {
-                policy.on_retry(attempt, sleep_ms);
+                policy.on_retry(attempt, sleep_delay);
             }
 
-            co_await qb::io::async::sleep(sleep_ms);
+            co_await qb::io::async::sleep(sleep_delay);
             if (!*alive) co_return false; // destroyed during the backoff sleep
 
             const auto next_ms = static_cast<long long>(
-                static_cast<double>(delay.count()) * policy.multiplier);
-            delay = std::min(std::chrono::milliseconds{next_ms}, policy.max_delay);
+                static_cast<double>(delay_ms) * policy.multiplier);
+            delay = std::min(qb::duration{std::chrono::milliseconds{next_ms}}, policy.max_delay);
         }
 
         co_return false;
@@ -467,7 +471,7 @@ public:
     }
 
     template <std::invocable<bool> Func>
-    void connect(Func &&func, qb::io::uri uri, double timeout = 3) {
+    void connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3)) {
         qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
             uri,
             [this, uri, func = std::forward<Func>(func)](auto &&raw_io) {
@@ -482,7 +486,7 @@ public:
     }
 
     template <std::invocable<bool> Func>
-    void connect(Func &&func, double timeout = 3) {
+    void connect(Func &&func, qb::duration timeout = std::chrono::seconds(3)) {
         connect(std::forward<Func>(func), _uri, timeout);
     }
 
@@ -642,7 +646,7 @@ private:
     // counter distinguishes "no reply at all" from "replies flowing", so a
     // busy pipeline is never tripped.
     /// 0 disables the deadline (default — preserves park-forever semantics off).
-    double _command_timeout{0.0};
+    qb::duration _command_timeout{};
     /// Count of in-flight blocking commands; >0 suspends the deadline.
     int _inflight_blocking{0};
     /// True while a deadline watcher coroutine is live (avoids piling them up).
@@ -675,7 +679,7 @@ private:
     void arm_deadline() {
         if (_deadline_armed)
             return;
-        if (_command_timeout <= 0.0 || _replies.empty() || _inflight_blocking > 0)
+        if (_command_timeout <= qb::duration::zero() || _replies.empty() || _inflight_blocking > 0)
             return;
         _deadline_armed = true;
         qb::io::async::coro_scheduler().spawn(
@@ -693,12 +697,11 @@ private:
     qb::io::async::task<void> deadline_watch(std::size_t gen,
                                              std::shared_ptr<bool> alive) {
         const std::size_t snapshot = _reply_progress;
-        co_await qb::io::async::sleep(std::chrono::milliseconds(
-            static_cast<long long>(_command_timeout * 1000.0)));
+        co_await qb::io::async::sleep(_command_timeout);
         if (!*alive || gen != _deadline_gen)
             co_return; // client destroyed, or cancelled/superseded
         _deadline_armed = false;
-        if (_command_timeout <= 0.0 || _replies.empty() || _inflight_blocking > 0)
+        if (_command_timeout <= qb::duration::zero() || _replies.empty() || _inflight_blocking > 0)
             co_return; // nothing in flight to time out
         if (_reply_progress != snapshot) {
             arm_deadline(); // replies are flowing — re-arm rather than trip
@@ -724,7 +727,8 @@ private:
      * we deliberately do NOT resolve awaiters here.
      */
     void on_command_deadline() {
-        LOG_WARN("[qbm][redis] command timeout (" << _command_timeout
+        LOG_WARN("[qbm][redis] command timeout ("
+                 << qb::detail::to_ev_seconds(_command_timeout)
                  << "s) exceeded with no reply; dropping connection");
         _deadline_tripped = true;
         this->disconnect();
@@ -873,18 +877,18 @@ public:
      * desynchronizing later replies. Blocking commands (BLPOP, WAIT, XREAD, …)
      * suspend the deadline so their server-side timeout governs instead.
      *
-     * @param seconds Deadline in seconds; `0` (default) disables it.
+     * @param timeout Command deadline as a `qb::duration`; zero (default) disables it.
      */
-    void set_command_timeout(double seconds) noexcept {
-        _command_timeout = seconds > 0.0 ? seconds : 0.0;
-        if (_command_timeout <= 0.0)
+    void set_command_timeout(qb::duration timeout) noexcept {
+        _command_timeout = timeout > qb::duration::zero() ? timeout : qb::duration::zero();
+        if (_command_timeout <= qb::duration::zero())
             cancel_deadline();
         else
             arm_deadline();
     }
 
-    /** @brief Current command deadline in seconds (0 = disabled). */
-    [[nodiscard]] double command_timeout() const noexcept {
+    /** @brief Current command deadline (`qb::duration::zero()` = disabled). */
+    [[nodiscard]] qb::duration command_timeout() const noexcept {
         return _command_timeout;
     }
 

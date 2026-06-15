@@ -95,7 +95,7 @@ TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
     client->enable_auto_reconnect(qb::redis::RetryPolicy{}
                                       .with_max_attempts(3)
                                       .with_initial_delay(50ms)
-                                      .with_connect_timeout(2.0)
+                                      .with_connect_timeout(2s)
                                       .with_jitter(false));
     client->disconnect();
 
@@ -139,7 +139,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_AUTO_RECONNECT_AFTER_MANUAL_DISCONNECT) 
         qb::redis::RetryPolicy{}
             .with_initial_delay(50ms)
             .with_max_delay(200ms)
-            .with_connect_timeout(2.0)
+            .with_connect_timeout(2s)
             .with_jitter(false));
 
     // ── force a disconnect ──────────────────────────────────────────────────
@@ -205,7 +205,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_AUTO_RECONNECT_EXHAUSTS_ATTEMPTS) {
         qb::redis::RetryPolicy{}
             .with_max_attempts(2)
             .with_initial_delay(50ms)
-            .with_connect_timeout(0.3)
+            .with_connect_timeout(300ms)
             .with_jitter(false)
             .with_on_retry([&](int n, auto /*wait*/) { retry_count = n; }));
 
@@ -303,7 +303,7 @@ TEST_P(ReconnectProtocolModesTest, RECONNECT_THEN_PING) {
             qb::redis::RetryPolicy{}
                 .with_initial_delay(50ms)
                 .with_max_delay(200ms)
-                .with_connect_timeout(2.0)
+                .with_connect_timeout(2s)
                 .with_jitter(false));
         redis.disconnect();
         for (int i = 0; i < 100 && (redis.is_reconnecting() || !redis.is_connected()); ++i) {
@@ -381,12 +381,12 @@ TEST_P(ReconnectProtocolModesTest, CORO_COMMAND_TIMEOUT_DROPS_CONNECTION) {
     });
     ASSERT_TRUE(run_until([&] { return ready; }));
 
-    client.set_command_timeout(0.3); // 300 ms deadline
+    client.set_command_timeout(300ms); // 300 ms deadline
     client.enable_auto_reconnect(
         qb::redis::RetryPolicy{}
             .with_initial_delay(50ms)
             .with_max_delay(200ms)
-            .with_connect_timeout(2.0)
+            .with_connect_timeout(2s)
             .with_jitter(false));
 
     bool        done = false;
@@ -434,7 +434,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_COMMAND_TIMEOUT_EXEMPTS_BLOCKING) {
     });
     ASSERT_TRUE(run_until([&] { return ready; }));
 
-    client.set_command_timeout(0.3); // shorter than the 1s BLPOP below
+    client.set_command_timeout(300ms); // shorter than the 1s BLPOP below
 
     bool done = false, ok = false, has_value = true, still_connected = false;
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {

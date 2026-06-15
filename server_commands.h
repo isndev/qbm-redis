@@ -747,11 +747,11 @@ public:
     /**
      * @brief Sleeps for a specified time (for testing) (coroutine awaitable)
      *
-     * @param delay Delay in seconds
+     * @param delay Delay as a qb::duration
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/debug-sleep
      */
-    auto debug_sleep(double delay) {
+    auto debug_sleep(qb::duration delay) {
         return derived().template make_coro_command<status>(
             [this, delay](auto&& callback) {
                 this->debug_sleep(std::move(callback), delay);
@@ -765,9 +765,9 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    debug_sleep(Func &&func, double delay) {
+    debug_sleep(Func &&func, qb::duration delay) {
         return derived().template command<status>(std::forward<Func>(func), "DEBUG",
-                                                  "SLEEP", delay);
+                                                  "SLEEP", qb::detail::to_ev_seconds(delay));
     }
 
     // =============== Memory Commands ===============

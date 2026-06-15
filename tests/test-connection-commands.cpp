@@ -24,6 +24,7 @@
 
 using namespace qb::io;
 using namespace std::chrono;
+using namespace std::chrono_literals;
 
 // ============================================================================
 // Fixture: all tests run in both RESP2 and RESP3
@@ -337,7 +338,7 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_IMMEDIATE_SUCCESS) {
             qb::redis::RetryPolicy{}
                 .with_max_attempts(5)
                 .with_initial_delay(std::chrono::milliseconds{10})
-                .with_connect_timeout(2.0));
+                .with_connect_timeout(2s));
         completed = true;
     };
 
@@ -363,7 +364,7 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_EXHAUSTED) {
                 .with_initial_delay(std::chrono::milliseconds{20})
                 .with_max_delay(std::chrono::milliseconds{50})
                 .with_jitter(false)       // deterministic timing
-                .with_connect_timeout(0.5));
+                .with_connect_timeout(500ms));
         completed = true;
     };
 
@@ -387,8 +388,8 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_OBSERVER) {
                 .with_max_attempts(3)
                 .with_initial_delay(std::chrono::milliseconds{10})
                 .with_jitter(false)
-                .with_connect_timeout(0.2)
-                .with_on_retry([&](int /*attempt*/, std::chrono::milliseconds /*wait*/) {
+                .with_connect_timeout(200ms)
+                .with_on_retry([&](int /*attempt*/, qb::duration /*wait*/) {
                     ++retry_count;
                 }));
         completed = true;
@@ -433,7 +434,7 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_CUSTOM_TIMEOUT) {
     bool connected = false;
 
     auto test_task = [&]() -> qb::io::async::task<void> {
-        connected = co_await client.connect(1.0);  // 1 second timeout
+        connected = co_await client.connect(1s);  // 1 second timeout
         completed = true;
     };
 
