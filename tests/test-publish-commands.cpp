@@ -62,7 +62,7 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_BASIC) {
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
     bool completed = false;
-    auto sub_task = [this, &completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
+    auto sub_task = [&completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
         auto reply = co_await consumer_with_cb.subscribe(ch);
         if (!reply.ok() || !reply.result().channel.has_value() || *reply.result().channel != ch) {
@@ -113,7 +113,7 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_PATTERN) {
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
     bool completed = false;
-    auto sub_task = [this, &completed, &consumer_with_cb, pat]() -> qb::io::async::task<void> {
+    auto sub_task = [&completed, &consumer_with_cb, pat]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
         auto reply = co_await consumer_with_cb.psubscribe(pat);
         if (!reply.ok() || !reply.result().channel.has_value()) {
@@ -169,7 +169,7 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_MULTIPLE_SUBSCRIBERS) {
     ASSERT_TRUE(qb::io::async::run_sync(consumer2.connect()));
 
     bool completed = false;
-    auto sub_task = [this, &completed, &consumer1, &consumer2, ch]() -> qb::io::async::task<void> {
+    auto sub_task = [&completed, &consumer1, &consumer2, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer1, completed);
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer2, completed);
         auto r1 = co_await consumer1.subscribe(ch);
@@ -236,7 +236,7 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_EMPTY_MESSAGE) {
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
     bool completed = false;
-    auto sub_task = [this, &completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
+    auto sub_task = [&completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
         auto reply = co_await consumer_with_cb.subscribe(ch);
         if (!reply.ok() || !reply.result().channel.has_value()) {

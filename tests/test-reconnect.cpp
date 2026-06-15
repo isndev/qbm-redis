@@ -123,7 +123,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_AUTO_RECONNECT_AFTER_MANUAL_DISCONNECT) 
 
     // ── initial connection ──────────────────────────────────────────────────
     bool initially_connected = false;
-    auto setup = [this, &client, &initially_connected]() -> qb::io::async::task<void> {
+    auto setup = [&client, &initially_connected]() -> qb::io::async::task<void> {
         initially_connected = co_await client.connect();
         if (initially_connected && GetParam() == ProtocolMode::RESP3) {
             auto h = co_await client.hello(3);
@@ -187,7 +187,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_AUTO_RECONNECT_EXHAUSTS_ATTEMPTS) {
     qb::redis::tcp::client client{qb::io::uri{REDIS_URI}};
 
     bool initially_connected = false;
-    auto setup = [this, &client, &initially_connected]() -> qb::io::async::task<void> {
+    auto setup = [&client, &initially_connected]() -> qb::io::async::task<void> {
         initially_connected = co_await client.connect();
         if (initially_connected && GetParam() == ProtocolMode::RESP3) {
             auto h = co_await client.hello(3);
@@ -199,7 +199,6 @@ TEST_P(ReconnectProtocolModesTest, CORO_AUTO_RECONNECT_EXHAUSTS_ATTEMPTS) {
 
     // Switch the URI to a bad address so the reconnect will fail,
     // then enable auto-reconnect with only 2 attempts
-    bool reconnect_done = false;
     int  retry_count    = 0;
 
     client.enable_auto_reconnect(
@@ -232,7 +231,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_AUTO_RECONNECT_CAN_BE_DISABLED) {
     qb::redis::tcp::client client{qb::io::uri{REDIS_URI}};
 
     bool initially_connected = false;
-    auto setup = [this, &client, &initially_connected]() -> qb::io::async::task<void> {
+    auto setup = [&client, &initially_connected]() -> qb::io::async::task<void> {
         initially_connected = co_await client.connect();
         if (initially_connected && GetParam() == ProtocolMode::RESP3) {
             auto h = co_await client.hello(3);
@@ -270,7 +269,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_COMMANDS_FAIL_GRACEFULLY_ON_DISCONNECT) 
     qb::redis::tcp::client client{qb::io::uri{REDIS_URI}};
 
     bool initially_connected = false;
-    auto setup = [this, &client, &initially_connected]() -> qb::io::async::task<void> {
+    auto setup = [&client, &initially_connected]() -> qb::io::async::task<void> {
         initially_connected = co_await client.connect();
         if (initially_connected && GetParam() == ProtocolMode::RESP3) {
             auto h = co_await client.hello(3);
@@ -438,10 +437,10 @@ TEST_P(ReconnectProtocolModesTest, CORO_COMMAND_TIMEOUT_EXEMPTS_BLOCKING) {
     client.set_command_timeout(0.3); // shorter than the 1s BLPOP below
 
     bool done = false, ok = false, has_value = true, still_connected = false;
-    qb::io::async::coro_scheduler().spawn([&, this]() -> qb::io::async::task<void> {
+    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         auto key = std::string("qbm_to_blpop_") +
                    (GetParam() == ProtocolMode::RESP3 ? "r3" : "r2");
-        co_await client.del(std::vector<std::string>{key});
+        [[maybe_unused]] auto _del = co_await client.del(std::vector<std::string>{key});
         // BLPOP on an empty key with a 1s server timeout: must outlive the
         // 300ms client deadline and return nil rather than being dropped.
         auto r          = co_await client.blpop(std::vector<std::string>{key}, 1);
