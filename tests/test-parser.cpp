@@ -29,12 +29,12 @@ using namespace qb::redis::parser;
 // Helper functions
 // ============================================================================
 
-static std::string make_bulk_string(std::string_view content) {
+[[maybe_unused]] static std::string make_bulk_string(std::string_view content) {
     return std::string("$") + std::to_string(content.size()) + "\r\n" + 
            std::string(content) + "\r\n";
 }
 
-static std::string make_array(std::initializer_list<std::string> elements) {
+[[maybe_unused]] static std::string make_array(std::initializer_list<std::string> elements) {
     std::string result = "*" + std::to_string(elements.size()) + "\r\n";
     for (const auto& elem : elements) {
         result += elem;
@@ -1150,8 +1150,7 @@ TEST_F(ArrayEdgeCasesTest, Array_DeepNesting) {
     
     auto result = parse(data, config);
     ASSERT_TRUE(result.has_value());
-    const auto& value = *result;
-    
+
     const Value* current = &*result;
     int depth = 0;
     while (current->is_array() && !current->as_array().elements.empty()) {

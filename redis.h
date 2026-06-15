@@ -273,8 +273,8 @@ using namespace qb::io;
 template <typename QB_IO_, typename Derived>
 class connector
     : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, QB_IO_, void> {
-    friend class has_method_on<connector<QB_IO_, Derived>, void,
-                               qb::io::async::event::disconnected>;
+    friend struct has_method_on<connector<QB_IO_, Derived>, void,
+                                qb::io::async::event::disconnected>;
     friend class qb::io::async::io<connector<QB_IO_, Derived>>;
     friend class qb::protocol::redis<connector<QB_IO_, Derived>>;
     
@@ -1260,9 +1260,9 @@ public:
 template <typename QB_IO_>
 class RedisCallbackConsumer
     : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
-    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::redis::error>;
-    friend class has_method_on<RedisCallbackConsumer<QB_IO_>, void,
-                               qb::io::async::event::disconnected>;
+    friend struct has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::redis::error>;
+    friend struct has_method_on<RedisCallbackConsumer<QB_IO_>, void,
+                                qb::io::async::event::disconnected>;
     friend RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>;
     
     using cb_msg_t = std::function<void(qb::redis::message &&)>;

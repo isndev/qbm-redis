@@ -167,7 +167,7 @@ struct SimpleString {
 // Simple error: -ERR message\r\n
 struct SimpleError {
     std::string prefix;   // ERR, WRONGTYPE, etc.
-    std::string message;
+    std::string message{};
     
     [[nodiscard]] std::string full_message() const {
         if (prefix.empty()) return message;
