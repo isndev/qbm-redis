@@ -40,12 +40,12 @@ qb_register_module(
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}
     DEFINES
-        QBM_REDIS_VERSION=1.0.0
+        QBM_REDIS_VERSION="1.0.0"
         QBM_REDIS_USE_NATIVE_PARSER=1
 )
 
-# Parser headers are header-only and included in the module
-target_include_directories(qbm-redis PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# Note: the include directory is already added PUBLIC via the INCLUDES argument of
+# qb_register_module above; no separate target_include_directories() needed.
 
 # Add tests if enabled
 if(QB_BUILD_TESTS)
