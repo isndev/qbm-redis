@@ -30,14 +30,20 @@
 #include <memory>
 #include <unordered_map>
 #include <optional>
-#include <expected>
 #include <span>
 #include <charconv>
 #include <system_error>
-#include <format>
 #include <cstring>
 #include <utility>
 #include <type_traits>
+#include <qb/utility/compat.h>
+
+namespace qb::redis {
+
+using qb::expected;
+using qb::unexpected;
+
+}
 
 namespace qb::redis::parser {
 
@@ -105,11 +111,11 @@ private:
 
 /** @brief Result type for parse operations (value or ParseError) */
 template<typename T>
-using ParseResult = std::expected<T, ParseError>;
+using ParseResult = expected<T, ParseError>;
 
 // Helper to create parse errors
-[[nodiscard]] inline std::unexpected<ParseError> make_parse_error(ParseErrorCode code, std::string_view message = {}) {
-    return std::unexpected<ParseError>(ParseError(code, message));
+[[nodiscard]] inline unexpected<ParseError> make_parse_error(ParseErrorCode code, std::string_view message = {}) {
+    return unexpected<ParseError>(ParseError(code, message));
 }
 
 // Forward declare Value for make_parse_result

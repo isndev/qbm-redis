@@ -24,7 +24,6 @@
 
 #include "types.h"
 #include "buffer.h"
-#include <expected>
 
 namespace qb::redis::parser {
 
@@ -254,13 +253,13 @@ private:
         
         if (!is_valid_type_prefix(type)) {
             return make_parse_error(ParseErrorCode::INVALID_TYPE, 
-                std::format("Invalid type prefix: {}", type));
+                qb::format_message("Invalid type prefix: ", type));
         }
         
         // Check RESP3 types in RESP2 mode
         if (_config.protocol_version == ProtocolVersion::RESP2 && is_resp3_type(type)) {
             return make_parse_error(ParseErrorCode::INVALID_TYPE,
-                std::format("RESP3 type not allowed in RESP2 mode: {}", type));
+                qb::format_message("RESP3 type not allowed in RESP2 mode: ", type));
         }
         
         view.consume(1);  // Consume type byte
@@ -298,7 +297,7 @@ private:
     // Parse null: _\r\n
     [[nodiscard]] static ParseResult<Value> parse_null(ViewBuffer& view) {
         if (auto err = expect_crlf(view)) {
-            return std::unexpected(std::move(*err));
+            return unexpected(std::move(*err));
         }
         return make_parse_result(Value(Null{}));
     }
@@ -317,13 +316,13 @@ private:
             value = false;
         } else {
             return make_parse_error(ParseErrorCode::INVALID_BOOLEAN,
-                std::format("Invalid boolean value: {}", *val_opt));
+                qb::format_message("Invalid boolean value: ", *val_opt));
         }
         
         view.consume(1);
 
         if (auto err = expect_crlf(view)) {
-            return std::unexpected(std::move(*err));
+            return unexpected(std::move(*err));
         }
 
         return make_parse_result(Value(Boolean{value}));
@@ -371,7 +370,7 @@ private:
         int64_t value = 0;
         if (!parse_integer(*line_opt, value)) {
             return make_parse_error(ParseErrorCode::INVALID_INTEGER,
-                std::format("Invalid integer: {}", *line_opt));
+                qb::format_message("Invalid integer: ", *line_opt));
         }
         
         return make_parse_result(Value(Integer{value}));
@@ -387,7 +386,7 @@ private:
         double value = 0.0;
         if (!parse_double(*line_opt, value)) {
             return make_parse_error(ParseErrorCode::INVALID_DOUBLE,
-                std::format("Invalid double: {}", *line_opt));
+                qb::format_message("Invalid double: ", *line_opt));
         }
         
         return make_parse_result(Value(Double{value}));
@@ -433,7 +432,7 @@ private:
         int64_t len = 0;
         if (!parse_integer(length_str, len)) {
             return make_parse_error(ParseErrorCode::INVALID_LENGTH,
-                std::format("Invalid length: {}", length_str));
+                qb::format_message("Invalid length: ", length_str));
         }
         
         // Only a length of exactly -1 denotes a null value (RESP2 $-1 / *-1 and
@@ -445,7 +444,7 @@ private:
         }
         if (len < 0) {
             return make_parse_error(ParseErrorCode::INVALID_LENGTH,
-                std::format("Negative length {} is not a valid null marker", len));
+                qb::format_message("Negative length is not a valid null marker: ", len));
         }
 
         switch (type) {
@@ -494,7 +493,7 @@ private:
         }
 
         if (auto err = expect_crlf(view)) {
-            return std::unexpected(std::move(*err));
+            return unexpected(std::move(*err));
         }
 
         return make_parse_result(Value(BulkString{std::string(*data_opt)}));
@@ -516,7 +515,7 @@ private:
         }
 
         if (auto err = expect_crlf(view)) {
-            return std::unexpected(std::move(*err));
+            return unexpected(std::move(*err));
         }
 
         // Parse prefix and message
@@ -550,7 +549,7 @@ private:
         }
 
         if (auto err = expect_crlf(view)) {
-            return std::unexpected(std::move(*err));
+            return unexpected(std::move(*err));
         }
 
         // Find colon separator

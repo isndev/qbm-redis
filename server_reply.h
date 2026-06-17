@@ -22,7 +22,6 @@
 #ifndef QBM_REDIS_SERVER_REPLY_H
 #define QBM_REDIS_SERVER_REPLY_H
 
-#include <expected>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -67,7 +66,7 @@ struct ServerReply<void> {
 };
 
 // ============================================================================
-// Value Extractors - Modern C++23 approach
+// Value Extractors - Modern C++20/23 approach
 // ============================================================================
 
 /**
@@ -158,26 +157,26 @@ public:
 // ============================================================================
 
 // Extract string from reply
-[[nodiscard]] inline std::expected<std::string, std::string> extract_string(
+[[nodiscard]] inline expected<std::string, std::string> extract_string(
     const parser::Value& value) {
-    if (value.is_null()) return std::unexpected("null value");
-    if (!value.is_string()) return std::unexpected("not a string");
+    if (value.is_null()) return unexpected("null value");
+    if (!value.is_string()) return unexpected("not a string");
     return std::string(value.as_string_view());
 }
 
 // Extract integer from reply
-[[nodiscard]] inline std::expected<int64_t, std::string> extract_integer(
+[[nodiscard]] inline expected<int64_t, std::string> extract_integer(
     const parser::Value& value) {
-    if (value.is_null()) return std::unexpected("null value");
-    if (!value.is_integer()) return std::unexpected("not an integer");
+    if (value.is_null()) return unexpected("null value");
+    if (!value.is_integer()) return unexpected("not an integer");
     return value.as_integer().value;
 }
 
 // Extract array of strings
-[[nodiscard]] inline std::expected<std::vector<std::string>, std::string> extract_string_array(
+[[nodiscard]] inline expected<std::vector<std::string>, std::string> extract_string_array(
     const parser::Value& value) {
-    if (value.is_null()) return std::expected<std::vector<std::string>, std::string>{};
-    if (!value.is_array()) return std::unexpected("not an array");
+    if (value.is_null()) return expected<std::vector<std::string>, std::string>{};
+    if (!value.is_array()) return unexpected("not an array");
     
     std::vector<std::string> result;
     const auto& arr = value.as_array();
@@ -185,7 +184,7 @@ public:
     
     for (const auto& elem : arr) {
         if (!elem || !elem->is_string()) {
-            return std::unexpected("array contains non-string");
+            return unexpected("array contains non-string");
         }
         result.emplace_back(elem->as_string_view());
     }
@@ -194,10 +193,10 @@ public:
 }
 
 // Extract map of string to string
-[[nodiscard]] inline std::expected<qb::unordered_map<std::string, std::string>, std::string> 
+[[nodiscard]] inline expected<qb::unordered_map<std::string, std::string>, std::string>
     extract_string_map(const parser::Value& value) {
     if (value.is_null()) return qb::unordered_map<std::string, std::string>{};
-    if (!value.is_map()) return std::unexpected("not a map");
+    if (!value.is_map()) return unexpected("not a map");
     
     qb::unordered_map<std::string, std::string> result;
     const auto& map = value.as_map();
@@ -205,10 +204,10 @@ public:
     
     for (const auto& entry : map) {
         if (!entry.first || !entry.first->is_string()) {
-            return std::unexpected("map key is not a string");
+            return unexpected("map key is not a string");
         }
         if (!entry.second || !entry.second->is_string()) {
-            return std::unexpected("map value is not a string");
+            return unexpected("map value is not a string");
         }
         result.emplace(
             std::string(entry.first->as_string_view()),
@@ -225,17 +224,17 @@ public:
 
 /**
  * @class AsyncResult
- * @brief Coroutine-friendly result wrapper using std::expected
+ * @brief Coroutine-friendly result wrapper using expected
  * @tparam T The value type on success
  */
 template <typename T>
 class AsyncResult {
-    std::expected<T, std::string> _result;
+    expected<T, std::string> _result;
     
 public:
     AsyncResult() = default;
     explicit AsyncResult(T&& v) : _result(std::move(v)) {}
-    explicit AsyncResult(std::string&& e) : _result(std::unexpected(std::move(e))) {}
+    explicit AsyncResult(std::string&& e) : _result(unexpected(std::move(e))) {}
     
     [[nodiscard]] bool is_ok() const noexcept { return _result.has_value(); }
     [[nodiscard]] bool has_error() const noexcept { return !_result.has_value(); }
@@ -272,14 +271,14 @@ public:
 // Stream ID helpers
 // ============================================================================
 
-[[nodiscard]] inline std::expected<stream_id, std::string> extract_stream_id(
+[[nodiscard]] inline expected<stream_id, std::string> extract_stream_id(
     const parser::Value& value) {
-    if (!value.is_string()) return std::unexpected("stream id must be a string");
+    if (!value.is_string()) return unexpected("stream id must be a string");
     
     auto sv = value.as_string_view();
     auto pos = sv.find('-');
     if (pos == std::string_view::npos) {
-        return std::unexpected("invalid stream id format");
+        return unexpected("invalid stream id format");
     }
     
     try {
@@ -288,7 +287,7 @@ public:
         id.sequence = std::stoll(std::string(sv.substr(pos + 1)));
         return id;
     } catch (const std::exception&) {
-        return std::unexpected("invalid stream id values");
+        return unexpected("invalid stream id values");
     }
 }
 
@@ -296,30 +295,30 @@ public:
 // Score member helpers (for sorted sets)
 // ============================================================================
 
-[[nodiscard]] inline std::expected<score_member, std::string> extract_score_member(
+[[nodiscard]] inline expected<score_member, std::string> extract_score_member(
     const parser::Array& arr, size_t index) {
     if (index + 1 >= arr.size()) {
-        return std::unexpected("not enough elements for score-member pair");
+        return unexpected("not enough elements for score-member pair");
     }
     
     score_member sm;
     
     // Member (string)
     if (!arr[index] || !arr[index]->is_string()) {
-        return std::unexpected("member must be a string");
+        return unexpected("member must be a string");
     }
     sm.member = std::string(arr[index]->as_string_view());
     
     // Score (double or integer)
     if (!arr[index + 1]) {
-        return std::unexpected("score is null");
+        return unexpected("score is null");
     }
     if (arr[index + 1]->is_double()) {
         sm.score = arr[index + 1]->as_double().value;
     } else if (arr[index + 1]->is_integer()) {
         sm.score = static_cast<double>(arr[index + 1]->as_integer().value);
     } else {
-        return std::unexpected("score must be a number");
+        return unexpected("score must be a number");
     }
     
     return sm;

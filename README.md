@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Redis-6%2B-red.svg" alt="Redis"/>
-  <img src="https://img.shields.io/badge/C%2B%2B-23-blue.svg" alt="C++23"/>
+  <img src="https://img.shields.io/badge/C%2B%2B-20%2F23-blue.svg" alt="C++20/23"/>
   <img src="https://img.shields.io/badge/Cross--Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg" alt="Cross Platform"/>
   <img src="https://img.shields.io/badge/Arch-x86__64%20%7C%20ARM64-lightgrey.svg" alt="Architecture"/>
   <img src="https://img.shields.io/badge/SSL-TLS-green.svg" alt="SSL/TLS"/>
@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/License-Apache%202.0-green.svg" alt="License"/>
 </p>
 
-`qbm-redis` delivers comprehensive Redis capabilities to the QB Actor Framework. It provides a **coroutine-first** API with full C++23 support, native RESP2/RESP3 protocol parsing (zero external Redis dependencies), and callback fallback for legacy code. Built on QB's non-blocking I/O, it enables high-performance Redis interactions without blocking the event loop.
+`qbm-redis` delivers comprehensive Redis capabilities to the QB Actor Framework. It provides a **coroutine-first** API on the C++20 baseline, supports optional C++23 validation, uses native RESP2/RESP3 protocol parsing (zero external Redis dependencies), and keeps callback fallback support. Built on QB's non-blocking I/O, it enables high-performance Redis interactions without blocking the event loop.
 
 **There is no simpler or more complete Redis client in C++ today** — zero external dependencies, full protocol support, and a single, elegant API.
 
@@ -285,7 +285,7 @@ redis.disconnect();  // Triggers background reconnect
 |---------|-----------|--------------------------|
 | **Dependencies** | Zero — no hiredis, no libuv | hiredis, redis-plus-plus, etc. |
 | **Protocol** | Native RESP2/RESP3 parser | Often RESP2 only |
-| **Async model** | C++23 coroutines + callbacks | Callbacks or threads |
+| **Async model** | C++20 coroutines + callbacks | Callbacks or threads |
 | **API style** | `co_await redis.get("k")` | Verbose or sync-only |
 | **Pub/Sub** | `cb_consumer` / `co_consumer` | Manual or limited |
 | **Completeness** | 200+ commands, all groups | Partial coverage |
@@ -296,11 +296,11 @@ redis.disconnect();  // Triggers background reconnect
 ## Build Requirements
 
 - **QB Framework** with `qb-io` (async I/O)
-- **C++23** compiler
+- **C++20/23** compiler
 - **CMake 3.14+**
 - **OpenSSL** (for SSL/TLS; `QB_IO_WITH_SSL=ON`)
 
-**No hiredis** — uses native C++23 Redis protocol parser.
+**No hiredis** — uses native C++20/23 Redis protocol parser.
 
 ## Documentation
 

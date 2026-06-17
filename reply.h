@@ -200,7 +200,7 @@ template <typename T>
 struct ParseTag {};
 
 // ============================================================================
-// Type checking - native C++23 implementations
+// Type checking - native C++20/23 implementations
 // ============================================================================
 
 [[nodiscard]] inline bool is_string(const ReplyValue &reply) noexcept {
@@ -1092,7 +1092,7 @@ struct Reply {
 };
 
 // ============================================================================
-// Reply handler interface - Modern C++23 with ownership semantics
+// Reply handler interface - Modern C++20/23 with ownership semantics
 // ============================================================================
 
 /**
