@@ -223,11 +223,10 @@ TEST_F(PipelineCallbackTest, CoroutineAfterCallbackAwait) {
     bool completed = false;
     const std::string key = unique_prefix() + "mixcoro";
 
-    auto task = [this, &completed, key]() -> qb::io::async::task<void> {
-        redis.set(
-            [](qb::redis::Reply<qb::redis::status> &&r) { EXPECT_TRUE(r.ok()); }, key, "z");
-        redis.await();
+    redis.set([](qb::redis::Reply<qb::redis::status> &&r) { EXPECT_TRUE(r.ok()); }, key, "z");
+    redis.await();
 
+    auto task = [this, &completed, key]() -> qb::io::async::task<void> {
         auto g = co_await redis.get(key);
         EXPECT_TRUE(g.ok());
         if (!g.ok() || !g.result().has_value()) {
@@ -329,26 +328,6 @@ TEST_P(PipelineProtocolModesTest, CallbackPipelineSetGetAfterNegotiation) {
     bool completed = false;
     auto task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
-        const std::string key = protocol_key("pl_setget");
-        std::atomic<int> n{0};
-
-        redis.set(
-            [&n](qb::redis::Reply<qb::redis::status> &&r) {
-                EXPECT_TRUE(r.ok());
-                ++n;
-            },
-            key, "42");
-        redis.get(
-            [&n](qb::redis::Reply<std::optional<std::string>> &&r) {
-                EXPECT_TRUE(r.ok());
-                ASSERT_TRUE(r.result().has_value());
-                EXPECT_EQ(*r.result(), "42");
-                ++n;
-            },
-            key);
-        redis.await();
-        EXPECT_EQ(n.load(), 2);
-        EXPECT_EQ(redis.pending_reply_count(), 0u);
         completed = true;
     };
 
@@ -356,38 +335,38 @@ TEST_P(PipelineProtocolModesTest, CallbackPipelineSetGetAfterNegotiation) {
     while (!completed) {
         qb::io::async::run(EVRUN_NOWAIT);
     }
+
+    const std::string key = protocol_key("pl_setget");
+    std::atomic<int> n{0};
+
+    redis.set(
+        [&n](qb::redis::Reply<qb::redis::status> &&r) {
+            EXPECT_TRUE(r.ok());
+            ++n;
+        },
+        key, "42");
+    redis.get(
+        [&n](qb::redis::Reply<std::optional<std::string>> &&r) {
+            EXPECT_TRUE(r.ok());
+            ASSERT_TRUE(r.result().has_value());
+            EXPECT_EQ(*r.result(), "42");
+            ++n;
+        },
+        key);
+    redis.await();
+    EXPECT_EQ(n.load(), 2);
+    EXPECT_EQ(redis.pending_reply_count(), 0u);
 }
 
 TEST_P(PipelineProtocolModesTest, CoroutineThenCallbackPipelineInSameConnection) {
     bool completed = false;
-    auto task = [this, &completed]() -> qb::io::async::task<void> {
+    bool ping_ok = false;
+    auto task = [this, &completed, &ping_ok]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
-        const std::string key = protocol_key("pl_coro_cb");
 
         auto p = co_await redis.ping();
         EXPECT_TRUE(p.ok());
-        if (!p.ok()) {
-            completed = true;
-            co_return;
-        }
-
-        std::atomic<int> cb{0};
-        redis.set(
-            [&cb](qb::redis::Reply<qb::redis::status> &&r) {
-                EXPECT_TRUE(r.ok());
-                ++cb;
-            },
-            key, "v");
-        redis.del(
-            [&cb](qb::redis::Reply<long long> &&r) {
-                EXPECT_TRUE(r.ok());
-                EXPECT_EQ(r.result(), 1);
-                ++cb;
-            },
-            key);
-        redis.await();
-        EXPECT_EQ(cb.load(), 2);
-
+        ping_ok = p.ok();
         completed = true;
     };
 
@@ -395,4 +374,24 @@ TEST_P(PipelineProtocolModesTest, CoroutineThenCallbackPipelineInSameConnection)
     while (!completed) {
         qb::io::async::run(EVRUN_NOWAIT);
     }
+
+    ASSERT_TRUE(ping_ok);
+
+    const std::string key = protocol_key("pl_coro_cb");
+    std::atomic<int> cb{0};
+    redis.set(
+        [&cb](qb::redis::Reply<qb::redis::status> &&r) {
+            EXPECT_TRUE(r.ok());
+            ++cb;
+        },
+        key, "v");
+    redis.del(
+        [&cb](qb::redis::Reply<long long> &&r) {
+            EXPECT_TRUE(r.ok());
+            EXPECT_EQ(r.result(), 1);
+            ++cb;
+        },
+        key);
+    redis.await();
+    EXPECT_EQ(cb.load(), 2);
 }

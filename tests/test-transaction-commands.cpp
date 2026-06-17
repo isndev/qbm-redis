@@ -129,10 +129,8 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
         // Modify the key in another client
         qb::redis::tcp::client other_client{REDIS_URI_PROTOCOL};
         co_await other_client.connect();
-        bool set_ok = true;
-        other_client.set([&set_ok](auto &&r) { set_ok = r.ok(); }, key, "modified");
-        other_client.await();
-        EXPECT_TRUE(set_ok);
+        auto set_reply = co_await other_client.set(key, "modified");
+        EXPECT_TRUE(set_reply.ok());
 
         // Start a transaction
         auto multi_reply = co_await redis.multi();
@@ -180,10 +178,8 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
         // Modify one of the keys in another client
         qb::redis::tcp::client other_client{REDIS_URI_PROTOCOL};
         co_await other_client.connect();
-        bool set_ok = true;
-        other_client.set([&set_ok](auto &&r) { set_ok = r.ok(); }, key1, "modified1");
-        other_client.await();
-        EXPECT_TRUE(set_ok);
+        auto set_reply = co_await other_client.set(key1, "modified1");
+        EXPECT_TRUE(set_reply.ok());
 
         // Start a transaction
         auto multi_reply = co_await redis.multi();
@@ -315,10 +311,8 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_UNWATCH_THEN_EXEC
         // Modify the key in another client - should not affect transaction since we unwatched
         qb::redis::tcp::client other_client{REDIS_URI_PROTOCOL};
         co_await other_client.connect();
-        bool set_ok = true;
-        other_client.set([&set_ok](auto &&r) { set_ok = r.ok(); }, key, "modified");
-        other_client.await();
-        EXPECT_TRUE(set_ok);
+        auto set_reply = co_await other_client.set(key, "modified");
+        EXPECT_TRUE(set_reply.ok());
 
         // Start a transaction
         auto multi_reply = co_await redis.multi();
