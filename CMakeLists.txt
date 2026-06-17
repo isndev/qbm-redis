@@ -29,7 +29,7 @@ if(NOT QB_HAS_SSL)
 endif()
 
 # Register the Redis module using the new framework functions
-# Note: Uses the new C++23 native parser instead of hiredis
+# Note: Uses the native parser instead of hiredis.
 qb_register_module(
     NAME redis
     VERSION 1.0.0

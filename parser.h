@@ -22,7 +22,7 @@
  * @file parser.h
  * @brief Main include file for the QB Redis Protocol Parser
  * 
- * This is a world-class C++23 implementation of the Redis protocol (RESP2/RESP3).
+ * This is a world-class C++20/23 implementation of the Redis protocol (RESP2/RESP3).
  * It provides zero-copy parsing where possible, full RESP3 support, and seamless
  * integration with the QB actor framework.
  * 
@@ -35,7 +35,7 @@
  *   Verbatim String, Map, Attribute, Set, Push)
  * - Streaming parser for async I/O
  * - Zero-copy parsing from contiguous buffers
- * - Modern C++23 features (std::expected, std::variant, std::span)
+ * - Modern C++ features (qb::expected, std::variant, std::span)
  * - Full hiredis API compatibility for drop-in replacement
  * 
  * Usage:

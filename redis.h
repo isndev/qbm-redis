@@ -31,7 +31,7 @@
 #include <qb/io/async.h>
 #include <qb/io/async/tcp/connector.h>
 
-// Native Redis Protocol Parser (C++23)
+// Native Redis Protocol Parser (C++20/23)
 #include "parser.h"
 #include "reply.h"
 
@@ -61,7 +61,7 @@ namespace qb::protocol {
 
 /**
  * @class redis
- * @brief Native C++23 Redis protocol implementation
+ * @brief Native C++20/23 Redis protocol implementation
  *
  * Uses the world-class native Redis Protocol Parser with full RESP2/RESP3 support.
  * Zero-copy parsing where possible, streaming-capable for async I/O.

@@ -1,6 +1,6 @@
 # QB Redis Protocol Parser
 
-A world-class C++23 implementation of the Redis protocol (RESP2/RESP3).
+A world-class C++20/23 implementation of the Redis protocol (RESP2/RESP3).
 
 ## Features
 
@@ -8,7 +8,7 @@ A world-class C++23 implementation of the Redis protocol (RESP2/RESP3).
 - **Complete RESP3 Support**: Null, Boolean, Double, Big Number, Bulk Error, Verbatim String, Map, Attribute, Set, Push
 - **Streaming Parser**: Incremental parsing for async I/O
 - **Zero-Copy Parsing**: Direct parsing from buffers where possible
-- **Modern C++23**: Uses `std::expected`, `std::variant`, `std::span`
+- **Modern C++20/23**: Uses `qb::expected`, `std::variant`, `std::span`
 - **Header-Only Core**: Types and parser are header-only for easy integration
 - **High Performance**: Optimized for high-throughput scenarios
 
@@ -23,7 +23,7 @@ A world-class C++23 implementation of the Redis protocol (RESP2/RESP3).
 │  │ (ring buffer)│    │ (streaming)  │    │ (variant)    │   │
 │  └──────────────┘    └──────────────┘    └──────────────┘   │
 ├─────────────────────────────────────────────────────────────┤
-│  C++23: std::expected, std::variant, std::span             │
+│  C++20/23: qb::expected, std::variant, std::span             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -166,7 +166,7 @@ auto reply = parser.try_get_message();
 
 - **Current**: 1.0.0
 - **License**: Apache 2.0
-- **Requires**: C++23
+- **Requires**: C++20 by default; C++23 supported
 
 ## References
 

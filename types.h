@@ -33,7 +33,7 @@
 #include <variant>
 #include <chrono>
 
-// Native C++23 parser (must be outside namespace)
+// Native C++20/23 parser (must be outside namespace)
 #include "parser.h"
 
 namespace qb::redis {
