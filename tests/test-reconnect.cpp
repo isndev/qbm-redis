@@ -381,7 +381,7 @@ TEST_P(ReconnectProtocolModesTest, CORO_COMMAND_TIMEOUT_DROPS_CONNECTION) {
     });
     ASSERT_TRUE(run_until([&] { return ready; }));
 
-    client.set_command_timeout(300ms); // 300 ms deadline
+    client.set_command_timeout(50ms); // short deadline; the server-side EVAL must not win the race
     client.enable_auto_reconnect(
         qb::redis::RetryPolicy{}
             .with_initial_delay(50ms)
@@ -393,8 +393,8 @@ TEST_P(ReconnectProtocolModesTest, CORO_COMMAND_TIMEOUT_DROPS_CONNECTION) {
     bool        ok   = true;
     std::string err;
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
-        // EVAL busy-loops server-side: no reply arrives before the 300ms
-        // client deadline, so the connection must be dropped. EVAL is not a
+        // EVAL busy-loops server-side: no reply arrives before the client
+        // deadline, so the connection must be dropped. EVAL is not a
         // blocking command, so the deadline applies.
         static const char *kBusy =
             "local i = 0 while i < 80000000 do i = i + 1 end return 1";

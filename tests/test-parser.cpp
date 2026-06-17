@@ -25,6 +25,15 @@
 
 using namespace qb::redis::parser;
 
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || \
+    defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#define QB_TEST_UNDER_SANITIZER 1
+#endif
+
 // ============================================================================
 // Helper functions
 // ============================================================================
@@ -911,6 +920,9 @@ TEST_F(PerformanceTest, ParseManySmallMessages) {
 }
 
 TEST_F(PerformanceTest, ParseLargeBulkString) {
+#if defined(QB_TEST_UNDER_SANITIZER)
+    GTEST_SKIP() << "large-buffer timing threshold is not meaningful under sanitizer instrumentation";
+#endif
     std::string large_content(10 * 1024 * 1024, 'x');  // 10MB
     std::string data = "$" + std::to_string(large_content.size()) + "\r\n" + 
                        large_content + "\r\n";
