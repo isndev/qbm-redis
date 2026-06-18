@@ -58,7 +58,7 @@ Redis string commands keep **native** time units by design — this is a documen
 
 - `setex` takes **seconds** (`SETEX`). The `std::chrono::seconds` overload forwards `.count()` to the `long long` form.
 - `psetex` takes **milliseconds** (`PSETEX`). The `std::chrono::milliseconds` overload forwards `.count()`.
-- `set(..., long long ttl, ...)` and `set(..., std::chrono::milliseconds, ...)` send **`PX`** (milliseconds); the `std::chrono::seconds` overload also routes through the millisecond form (`seconds → ms` cast). There is no second-granularity `set` TTL overload.
+- `set(..., long long ttl, ...)` and `set(..., std::chrono::milliseconds, ...)` send **`PX`** (milliseconds). There is no `std::chrono::seconds` overload of `set` (and no second-granularity `set` TTL on the wire): a `std::chrono::seconds` argument is *implicitly converted* to the `std::chrono::milliseconds` overload (`seconds → ms`), so it too sends `PX`.
 - `getex` is **asymmetric**: `getex(key, long long)` emits **`EX`** (seconds), while `getex(key, std::chrono::milliseconds)` emits **`PX`** (milliseconds). So `getex(key, 5)` sets a 5-second TTL but `getex(key, 5ms)` sets a 5-millisecond TTL — the two overloads do not share a unit. Always pass a `std::chrono` literal to make the intent unambiguous.
 
 The connection and command **timeouts** (`set_command_timeout`, connect timeout) and the `RetryPolicy` delays are `qb::duration` — that is the framework time model and is separate from these on-the-wire command arguments. Do not substitute `qb::duration` for the TTL arguments here. (The retired tokens `qb::Timestamp`, `qb::Duration`, `qb::TimePoint`, `to_timestamp(`, and `to_time_point(` no longer exist — never use them.)
@@ -82,10 +82,12 @@ auto set(const std::string &key, const std::string &val, long long ttl_ms,
 auto set(const std::string &key, const std::string &val,
          const std::chrono::milliseconds &ttl,
          UpdateType type = UpdateType::ALWAYS);                          // -> Reply<status>  (PX)
-auto set(const std::string &key, const std::string &val,
-         const std::chrono::seconds &ttl,
-         UpdateType type = UpdateType::ALWAYS);                          // -> Reply<status>  (PX, seconds cast to ms)
 ```
+
+There is no `std::chrono::seconds` overload of `set`. Passing a `std::chrono::seconds`
+argument (e.g. `set(key, val, std::chrono::seconds{30})`) compiles only because it
+implicitly converts to the `std::chrono::milliseconds` parameter above, so it still
+sends `PX` (`30s` → `PX 30000`). For seconds-granularity TTL on the wire, use `setex`.
 
 - `UpdateType::NOT_EXIST` → `NX` (set only if the key is absent); `UpdateType::EXIST` → `XX` (set only if the key exists); `UpdateType::ALWAYS` (default) sends no flag. When the `NX`/`XX` condition fails, the server replies nil and `reply.ok()` is `false`.
 
@@ -398,7 +400,7 @@ auto r = co_await redis.lcs("a", "b");
 ## Pitfalls
 
 - **`getex` unit asymmetry.** `getex(key, 5)` is `EX 5` (5 seconds); `getex(key, 5ms)` is `PX 5` (5 milliseconds). Prefer the `std::chrono` overload so the unit is visible at the call site.
-- **`set` TTL is always `PX`.** Every TTL-bearing `set` overload serializes milliseconds; the `std::chrono::seconds` overload is converted to milliseconds before sending. Use `setex` when you specifically want `SETEX`/seconds-granularity semantics on the wire.
+- **`set` TTL is always `PX`.** Every TTL-bearing `set` overload serializes milliseconds. There is no `std::chrono::seconds` overload of `set`; a `std::chrono::seconds` argument is implicitly converted to the `std::chrono::milliseconds` overload before sending (so `set(key, val, 30s)` still sends `PX 30000`). Use `setex` when you specifically want `SETEX`/seconds-granularity semantics on the wire.
 - **Conditional `set` "failure" is not an error.** When `NX`/`XX` is not satisfied, the server returns nil and `reply.ok()` is `false` — that is the documented signal that nothing was written, not an exception or a connection error. The same applies to `setnx`/`msetnx`, which report it as `result() == false`.
 - **Optional payloads need two checks.** For `get`, `getset`, `getdel`, and `getex`, check `reply.ok()` (no protocol/connection error) and then `reply.result().has_value()` (key present) before dereferencing.
 - **`status` truthiness is exact.** `qb::redis::status` is `true` only for `"OK"`. Use `.ok()`; do not compare against arbitrary strings.
