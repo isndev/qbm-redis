@@ -333,7 +333,7 @@ if (r.result().has_value()) {
 
 `LPOS key element [RANK rank] [COUNT count] [MAXLEN maxlen]` — find the index/indices of `element`. There is a single overload that always returns a vector of positions (`list_commands.h:921` always sends `COUNT`, defaulting to `0` = all matches when `count` is `std::nullopt`); for a single-position lookup, read `result().front()` after checking the vector is non-empty.
 
-The optional arguments are, in order, `rank`, `count`, then `maxlen` — note this differs from the wire order shown above, where `COUNT` precedes `RANK` in the command name.
+The optional arguments are, in order, `rank`, `count`, then `maxlen`, matching the wire order `[RANK] [COUNT] [MAXLEN]` shown above. `COUNT` is always emitted (defaulting to `0` = all matches when `count` is `std::nullopt`); `RANK` and `MAXLEN` are emitted only when supplied (`list_commands.h:927-936`).
 
 ```cpp
 // Coroutine

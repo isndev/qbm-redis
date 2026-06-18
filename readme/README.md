@@ -57,7 +57,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
 - **Connect.** `qb::redis::tcp::client redis;` then `co_await redis.connect(uri)` (or the callback form). The client negotiates RESP3 with `hello(3)` by default (`connection_commands.h:52`). Auto-reconnect and `RetryPolicy` cover transient failures, but in-flight commands and subscriptions are not replayed across a reconnect.
 - **Run a command.** `Reply<T> r = co_await redis.get("key");` suspends without blocking the event loop. The callback form is `redis.get([](qb::redis::Reply<std::optional<std::string>>&& r){ ... }, "key");`.
 - **Check the result.** `Reply<T>` carries a status and a typed value: `r.ok()`, `r.result()`, `r.error()`. Redis command errors are reported as `ok() == false`; they are not thrown.
-- **Pipeline.** Issue several callback-form commands without awaiting between them; each enqueues one handler and replies return in FIFO order. Drain with `await()` / `flush()` (`redis.h:840`). `pending_reply_count()` reports the queue depth.
+- **Pipeline.** Issue several callback-form commands without awaiting between them; each enqueues one handler and replies return in FIFO order. Drain with the client's `await()` (`redis.h:858`), or `flush()` on the `tcp::pipeline` wrapper (`redis.h:947`, which itself calls `client().await()`). `pending_reply_count()` reports the queue depth.
 - **Generic escape hatch.** For a command without a typed wrapper, call `command<T>` with the verb and arguments:
 
   ```cpp
