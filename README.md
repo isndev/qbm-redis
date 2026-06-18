@@ -31,7 +31,7 @@ The module depends on `qb::core` at the build level (`qb_register_module(... DEP
 
 | Area | What you get |
 |:-----|:-------------|
-| **Connection** | Async connect from a URI (`tcp://[user:pass@]host:port[/db]`, `rediss://…` for TLS); `connect()`, `connect(uri)`, optional `qb::duration` connect timeout (default 3s); `hello(version)` to negotiate RESP2/RESP3; `select`, `swapdb`, `reset`, `quit`. |
+| **Connection** | Async connect from a URI (`tcp://host:port` or `redis://host:port` plaintext, `rediss://…` for TLS, `unix:///path`); `connect()`, `connect(uri)`, optional `qb::duration` connect timeout (default 3s); `hello(version)` to negotiate RESP2/RESP3; `select`, `swapdb`, `reset`, `quit`. The URI carries only the endpoint — credentials and DB are not parsed from it; issue `auth()`/`select()` after connect (see connection.md). |
 | **TLS** | Available when the framework is built with `QB_HAS_SSL` (OpenSSL). Use the `qb::redis::tcp::ssl::*` aliases; `set_verify_peer(false)` disables chain + hostname verification for trusted/self-signed endpoints (set before `connect()`). Without SSL, the TCP aliases still build. |
 | **Full command surface** | String, key, list, hash, set, sorted-set, bitmap, HyperLogLog, geo, stream, scripting, function, pub/sub, transaction, server, cluster, ACL, and module command groups — each a CRTP mixin on the client. |
 | **Two async styles** | Every command has a coroutine overload (`co_await redis.get(key)` yields `Reply<T>`) and a callback overload (`redis.get(cb, key)` where `cb` takes `Reply<T>&&`). Same method name, no `_async` suffix. |

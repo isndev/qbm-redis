@@ -116,7 +116,7 @@ You own the spelling and ordering of these tokens. The same vector reaches `geos
 
 ## Command reference
 
-All signatures below are the public methods of `geo_commands<Derived>`. The callback overloads are SFINAE-gated on `std::is_invocable_v<Func, Reply<T>&&>` for that command's `T`; a handler with the wrong `Reply<T>` signature drops out of overload resolution, so the call fails to compile (no viable overload) rather than mismatching at runtime.
+All signatures below are the public methods of `geo_commands<Derived>`. Every callback overload **except `geodist`** is SFINAE-gated on `std::is_invocable_v<Func, Reply<T>&&>` for that command's `T`; a handler with the wrong `Reply<T>` signature drops out of overload resolution, so the call fails to compile (no viable overload) rather than mismatching at runtime. `geodist`'s callback overload (geo_commands.h:110-112) is the lone exception: it returns a plain `Derived&` with no `std::enable_if` guard, so a wrong-typed handler still binds the overload and the type error surfaces deeper (inside `command<std::optional<double>>`) rather than as a clean "no viable overload".
 
 ### `geoadd` — add points
 
@@ -314,7 +314,7 @@ redis.georadius(
     key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM);
 ```
 
-The handler parameter must be exactly `Reply<T>&&` for that command's `T` (here `std::vector<std::string>`); a mismatched signature removes the callback overload from consideration and the call will not compile.
+The handler parameter must be exactly `Reply<T>&&` for that command's `T` (here `std::vector<std::string>`); for every gated overload a mismatched signature removes the callback overload from consideration and the call will not compile. The one exception is `geodist`, whose callback overload is not SFINAE-gated (see the Command reference note above): a wrong-typed handler still binds it and the error appears deeper rather than as "no viable overload".
 
 ---
 
