@@ -206,7 +206,9 @@ public:
     /**
      * @brief Pop the first element(s) of the list (coroutine awaitable).
      * @param key Key where the list is stored.
-     * @param count Number of elements to pop (optional).
+     * @param count Number of elements to pop (required). The single-element
+     *              overload (no count argument) returns std::optional<std::string>;
+     *              this count overload returns std::vector<std::string>.
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/lpop
      */
@@ -222,7 +224,9 @@ public:
      * @brief Pop the first element(s) of the list asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
-     * @param count Number of elements to pop (optional).
+     * @param count Number of elements to pop (required). The single-element
+     *              overload (no count argument) returns std::optional<std::string>;
+     *              this count overload returns std::vector<std::string>.
      * @return Reference to the derived class.
      * @see https://redis.io/commands/lpop
      */
@@ -266,7 +270,9 @@ public:
     /**
      * @brief Pop the last element(s) of the list (coroutine awaitable).
      * @param key Key where the list is stored.
-     * @param count Number of elements to pop (optional).
+     * @param count Number of elements to pop (required). The single-element
+     *              overload (no count argument) returns std::optional<std::string>;
+     *              this count overload returns std::vector<std::string>.
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/rpop
      */
@@ -282,7 +288,9 @@ public:
      * @brief Pop the last element(s) of the list asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
-     * @param count Number of elements to pop (optional).
+     * @param count Number of elements to pop (required). The single-element
+     *              overload (no count argument) returns std::optional<std::string>;
+     *              this count overload returns std::vector<std::string>.
      * @return Reference to the derived class.
      * @see https://redis.io/commands/rpop
      */
@@ -775,7 +783,9 @@ public:
      * @param keys List of keys to check.
      * @param position Where to pop from (LEFT or RIGHT).
      * @param timeout Timeout in seconds. 0 means block forever.
-     * @param count Number of elements to pop (optional).
+     * @param count Number of elements to pop (required). The single-element
+     *              overload (no count argument) returns std::optional<std::string>;
+     *              this count overload returns std::vector<std::string>.
      * @see https://redis.io/commands/blmpop
      */
     auto blmpop(const std::vector<std::string> &keys, ListPosition position,
