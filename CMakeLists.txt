@@ -32,7 +32,7 @@ endif()
 # Note: Uses the native parser instead of hiredis.
 qb_register_module(
     NAME redis
-    VERSION 1.0.0
+    VERSION 2.0.0
     DEPENDS qb-core
     SOURCES
         redis.cpp
@@ -40,7 +40,7 @@ qb_register_module(
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}
     DEFINES
-        QBM_REDIS_VERSION="1.0.0"
+        QBM_REDIS_VERSION="2.0.0"
         QBM_REDIS_USE_NATIVE_PARSER=1
 )
 

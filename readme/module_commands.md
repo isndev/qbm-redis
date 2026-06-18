@@ -42,7 +42,7 @@ This command group carries **no time arguments** — none of its parameters are 
 
 ### Where these methods come from
 
-`module_commands<Derived>` is a header-only CRTP mixin (`module_commands.h:34`). It is one of the bases of `qb::redis::detail::Redis<QB_IO_>` (`redis.h:613`), so `qb::redis::tcp::client`, `qb::redis::tcp::ssl::client`, and the pub/sub consumers all expose these four methods directly. Each method forwards to the inherited command machinery:
+`module_commands<Derived>` is a header-only CRTP mixin (`module_commands.h:34`). It is one of the bases of `qb::redis::detail::Redis<QB_IO_>` (`redis.h:613`), so `qb::redis::tcp::client` and `qb::redis::tcp::ssl::client` expose these four methods directly. The pub/sub consumers (`tcp::cb_consumer` / `tcp::co_consumer`) do **not** — they inherit only `connection_commands` and `subscription_commands`. Each method forwards to the inherited command machinery:
 
 - the coroutine overload calls `derived().make_coro_command<T>(...)`, returning a `redis_awaiter<T>` that resolves to `Reply<T>`;
 - the callback overload calls `derived().command<T>(func, "MODULE", "SUBCMD", args...)` and returns `Derived &`.
