@@ -1,84 +1,331 @@
-# `qbm-redis`: Scripting Commands
+# Scripting commands
 
-This document covers Redis commands for executing Lua scripts on the server.
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23 supported)
 
-**API:** All commands support **coroutine** (`co_await redis.cmd(...)`) and **callback** (`redis.cmd(callback, ...)`).
+Reference for the server-side Lua scripting command group — `EVAL`, `EVALSHA`, their read-only variants `EVAL_RO`/`EVALSHA_RO`, and the `SCRIPT LOAD`/`EXISTS`/`FLUSH`/`KILL`/`DEBUG` cache-management subcommands — which run a Lua program atomically inside the Redis server.
 
-Reference: [Redis Scripting Commands](https://redis.io/commands/?group=scripting)
+**Prerequisites:** [../README.md](../README.md) (install, `qb_load_modules`, `qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) (the `Reply<T>` model, coroutine vs. callback forms) — **See also:** [function_commands.md](./function_commands.md) (the newer `FUNCTION`/`FCALL` API), [transaction_commands.md](./transaction_commands.md) (`MULTI`/`EXEC` as the alternative atomic primitive), [error_handling.md](./error_handling.md)
 
-## Key Concepts
+---
 
-*   **Atomic Execution:** Scripts run atomically on the Redis server.
-*   **Reduced Network Latency:** Complex operations can be performed server-side, reducing round trips.
-*   **Caching:** Scripts can be loaded into Redis and executed by their SHA1 hash (`EVALSHA`), saving bandwidth.
+## Summary
 
-## Reply Types
+A Lua script runs to completion on the server with no other command interleaved, so the whole script is one atomic unit — the scripting equivalent of a `MULTI`/`EXEC` block, but with control flow. Inside the script you read the `KEYS[]` and `ARGV[]` tables and call back into Redis with `redis.call(...)`. The client ships the script either by value (`EVAL`) or by the SHA1 of a previously cached body (`EVALSHA`), and decodes whatever the script returns into a `Reply<Ret>` of a type *you* choose.
 
-*   The reply type for `EVAL` and `EVALSHA` depends entirely on what the Lua script returns. The client uses `qb::redis::Reply<qb::redis::json_value>` to represent this potentially complex return type. `qb::redis::json_value` is a `std::variant` capable of holding various types (string, number, boolean, array, map, null) mirroring JSON types.
-*   `SCRIPT EXISTS`: `Reply<std::vector<bool>>`.
-*   `SCRIPT LOAD`: `Reply<std::string>` (returns the SHA1 hash).
-*   `SCRIPT FLUSH`, `SCRIPT KILL`: `qb::redis::status`.
+The `scripting_commands<Derived>` mixin is one of the command groups inherited by `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). Every command is exposed in two forms, both fully asynchronous:
 
-## Commands
+- a **coroutine** form (`auto`-returning) that yields a `Reply<T>` you `co_await`;
+- a **callback** form that takes your handler first and returns `Derived&` for chaining.
 
-### `EVAL script numkeys key [key ...] arg [arg ...]`
-
-Executes a Lua script server-side.
-
-*   **Sync:** `Reply<json_value> eval(const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {})`
-*   **Async:** `void eval_async(const std::string &script, Callback<json_value> cb, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {})`
-*   **Note:** `numkeys` is calculated automatically from the `keys` vector size.
+There is no blocking variant — this module has never shipped "Sync" signatures. None of these commands carry a `qb::duration`: a Lua script takes no client-side timeout argument, and any time arithmetic happens inside the script in whatever unit you write. The `qb::duration` / native-unit boundary documented for `EXPIRE` in [commands_overview.md](./commands_overview.md) does **not** apply here.
 
 ```cpp
-// Sync EVAL
-std::string script = "return {KEYS[1], ARGV[1], tonumber(ARGV[2])}";
-auto reply = redis.eval(script, {"mykey"}, {"hello", "123"});
+#include <redis/redis.h>
+#include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 
-if (reply) {
-    qb::redis::json_value result = reply.value();
-    // result will likely be an array variant containing other json_value variants
-    // Use std::get or std::visit to access underlying data.
-    if (std::holds_alternative<qb::redis::json_array>(result.data)) {
-        const auto& arr = std::get<qb::redis::json_array>(result.data);
-        // ... process array elements ...
-    }
-} else {
-    // Handle script error
+// <!-- src: qbm/redis/tests/test-scripting-commands.cpp:44-54 -->
+qb::io::async::task<void> eval_demo(qb::redis::tcp::client &redis) {
+    std::string              script = "return redis.call('SET', KEYS[1], ARGV[1])";
+    std::vector<std::string> keys   = {"mykey"};
+    std::vector<std::string> args   = {"test_value"};
+
+    // You name the decode type. SET replies with the status "OK", decoded as std::string.
+    auto reply = co_await redis.eval<std::string>(script, keys, args);   // Reply<std::string>
+    if (reply)                                                           // Reply<T> is contextually bool (== ok())
+        qb::io::cout() << "eval -> " << reply.result() << std::endl;     // "OK"
 }
 ```
 
-### `EVALSHA sha1 numkeys key [key ...] arg [arg ...]`
+---
 
-Executes a script previously loaded into the script cache using its SHA1 hash.
+## Concepts
 
-*   **Sync:** `Reply<json_value> evalsha(const std::string &sha1, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {})`
-*   **Async:** `void evalsha_async(const std::string &sha1, Callback<json_value> cb, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {})`
+### You choose the decode type `Ret`
 
-### `SCRIPT EXISTS script [script ...]`
+Unlike most commands in this module, `EVAL`/`EVALSHA` have no fixed reply shape — a script can return a status, an integer, a boolean, a bulk string, or a (possibly nested) array. The four eval methods are therefore templated on a return type `Ret` that **you must supply explicitly** as a template argument, and the library decodes the RESP reply into `Reply<Ret>` with the same `parse<Ret>` machinery used elsewhere:
 
-Checks the existence of scripts in the script cache.
+```cpp
+// <!-- src: qbm/redis/tests/test-scripting-commands.cpp:278-289 -->
+auto n   = co_await redis.eval<long long>("return 42");                     // Reply<long long>      -> 42
+auto b   = co_await redis.eval<bool>("return true");                        // Reply<bool>           -> true
+auto arr = co_await redis.eval<std::vector<long long>>("return {1, 2, 3}"); // Reply<std::vector<long long>>
+```
 
-*   **Sync:** `Reply<std::vector<bool>> script_exists(const std::vector<std::string> &sha1s)`
-*   **Async:** `void script_exists_async(const std::vector<std::string> &sha1s, Callback<std::vector<bool>> cb)`
+Pick a `Ret` that matches what the script actually returns. If the script returns a richer shape than `Ret` can hold, the parse fails and the `Reply` carries an error (see [error_handling.md](./error_handling.md)); it does not throw across the coroutine boundary. For genuinely dynamic, schema-less return values, decode into `qb::redis::json_value` (a variant over string/number/boolean/array/map/null) and inspect it with `std::visit` or `std::holds_alternative`.
 
-### `SCRIPT FLUSH [ASYNC|SYNC]`
+### `numkeys` is computed for you — never pass it
 
-Removes all scripts from the script cache.
+The wire form of `EVAL` is `EVAL <script> <numkeys> <key...> <arg...>`. This module fills in `<numkeys>` automatically from `keys.size()`. You pass the `keys` and `args` vectors separately and the library emits the count between them. If you migrate code from a raw client and *also* pass a `numkeys` argument, the command is malformed. The same auto-`numkeys` rule applies to `evalsha`, `evalRo`, and `evalshaRo`.
 
-*   **Sync:** `status script_flush()`
-*   **Async:** `void script_flush_async(Callback<status> cb)`
-*   **Note:** `ASYNC`/`SYNC` modifier not directly exposed.
+<!-- src: qbm/redis/scripting_commands.h:81-82 (keys.size()) -->
 
-### `SCRIPT KILL`
+### `EVAL` versus `EVALSHA`, and the script cache
 
-Kills the currently executing Lua script (if it hasn't performed write operations).
+`EVAL` ships the full Lua body on every call. `EVALSHA` ships only the script's 40-character SHA1 — the server keeps a cache of bodies it has seen, so resending the hash saves bandwidth on a hot script. The usual pattern is: `script_load` once to prime the cache and get the SHA1, then `evalsha` from then on. If the cache was flushed (or you target a fresh server) `EVALSHA` fails with a `NOSCRIPT` error, at which point you fall back to `EVAL` once to re-prime it.
 
-*   **Sync:** `status script_kill()`
-*   **Async:** `void script_kill_async(Callback<status> cb)`
+### Read-only variants route to replicas
 
-### `SCRIPT LOAD script`
+`evalRo`/`evalshaRo` map to `EVAL_RO`/`EVALSHA_RO`. The server guarantees these scripts perform no writes — any `redis.call` to a writing command fails — which makes them safe to dispatch to a read replica. Use them whenever the script only reads, both as a correctness guard and to let the cluster load-balance reads.
 
-Loads the given Lua script into the script cache without executing it. Returns the SHA1 hash.
+### Cache-management subcommands
 
-*   **Sync:** `Reply<std::string> script_load(std::string const &script)`
-*   **Async:** `void script_load_async(std::string const &script, Callback<std::string> cb)` 
+`script_load`, `script_exists`, `script_flush`, and `script_kill` wrap the `SCRIPT` subcommands. `script_load` returns the SHA1 as a `std::string`; `script_exists` returns one `bool` per SHA1 you ask about (in order); `script_flush` and `script_kill` return a `qb::redis::status`. `script_kill` stops a long-running script, but only if that script has not yet issued a write — once it has written, the server will not kill it (you would lose atomicity) and you must `SHUTDOWN NOSAVE` instead.
+
+---
+
+## Command reference
+
+All signatures below are the public methods of `scripting_commands<Derived>` (header `qbm/redis/scripting_commands.h`). The callback overloads are SFINAE-gated on `std::is_invocable_v<Func, Reply<T>&&>` for that command's `T`; a handler with the wrong `Reply<T>` signature drops out of overload resolution, so a mismatch fails to compile rather than misbehaving at runtime. The callback handler is invoked with an rvalue `Reply<T>&&`.
+
+### `eval` — run a Lua script by body
+
+```cpp
+// coroutine: yields Reply<Ret>
+template <typename Ret>
+auto eval(const std::string &script,
+          const std::vector<std::string> &keys = {},
+          const std::vector<std::string> &args = {});
+
+// callback: returns Derived& for chaining
+template <typename Ret, typename Func>
+Derived &eval(Func &&func, const std::string &script,
+              const std::vector<std::string> &keys = {},
+              const std::vector<std::string> &args = {});
+```
+
+<!-- src: qbm/redis/scripting_commands.h:53-83 -->
+
+Runs `script` server-side. `keys` become the Lua `KEYS[]` table (and supply `numkeys`); `args` become `ARGV[]`. Decode type `Ret` is required.
+
+```cpp
+// coroutine — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:67-78 -->
+std::string script =
+    "redis.call('SET', KEYS[1], ARGV[1]);"
+    "redis.call('SET', KEYS[2], ARGV[2]);"
+    "return 'OK'";
+std::vector<std::string> keys = {"key1", "key2"};
+std::vector<std::string> args = {"value1", "value2"};
+
+auto reply = co_await redis.eval<std::string>(script, keys, args);   // Reply<std::string> -> "OK"
+```
+
+```cpp
+// callback
+redis.eval<long long>(
+    [](qb::redis::Reply<long long> &&reply) {
+        if (reply)
+            handle(reply.result());
+    },
+    "return #KEYS", std::vector<std::string>{"a", "b"});
+```
+
+### `evalsha` — run a cached script by SHA1
+
+```cpp
+// coroutine: yields Reply<Ret>
+template <typename Ret>
+auto evalsha(const std::string &script,
+             const std::vector<std::string> &keys = {},
+             const std::vector<std::string> &args = {});
+
+// callback: returns Derived&
+template <typename Ret, typename Func>
+Derived &evalsha(Func &&func, const std::string &script,
+                 const std::vector<std::string> &keys = {},
+                 const std::vector<std::string> &args = {});
+```
+
+<!-- src: qbm/redis/scripting_commands.h:95-125 -->
+
+Identical to `eval` except the first argument is the script's SHA1 (the value returned by `script_load`), not the body. Fails with `NOSCRIPT` if the hash is not cached.
+
+```cpp
+// coroutine — load once, then evalsha — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:97-107 -->
+std::string script = "return redis.call('SET', KEYS[1], ARGV[1])";
+
+auto load = co_await redis.script_load(script);   // Reply<std::string> (SHA1)
+std::string sha = load.result();
+
+auto reply = co_await redis.evalsha<std::string>(
+    sha, {"mykey"}, {"test_value"});              // Reply<std::string> -> "OK"
+```
+
+### `evalRo` — read-only `EVAL`
+
+```cpp
+// coroutine: yields Reply<Ret>
+template <typename Ret>
+auto evalRo(const std::string &script,
+            const std::vector<std::string> &keys = {},
+            const std::vector<std::string> &args = {});
+
+// callback: returns Derived&
+template <typename Ret, typename Func>
+Derived &evalRo(Func &&func, const std::string &script,
+                const std::vector<std::string> &keys = {},
+                const std::vector<std::string> &args = {});
+```
+
+<!-- src: qbm/redis/scripting_commands.h:264-285 -->
+
+Same contract as `eval`, mapped to `EVAL_RO`. The server rejects any write the script attempts, so this is safe to route to a replica.
+
+```cpp
+// coroutine — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:194-201 -->
+std::string script = "return redis.call('GET', KEYS[1])";
+
+auto reply = co_await redis.evalRo<std::string>(script, {"mykey"});  // Reply<std::string>
+```
+
+### `evalshaRo` — read-only `EVALSHA`
+
+```cpp
+// coroutine: yields Reply<Ret>
+template <typename Ret>
+auto evalshaRo(const std::string &sha1,
+               const std::vector<std::string> &keys = {},
+               const std::vector<std::string> &args = {});
+
+// callback: returns Derived&
+template <typename Ret, typename Func>
+Derived &evalshaRo(Func &&func, const std::string &sha1,
+                   const std::vector<std::string> &keys = {},
+                   const std::vector<std::string> &args = {});
+```
+
+<!-- src: qbm/redis/scripting_commands.h:297-318 -->
+
+`EVALSHA_RO`: the read-only variant addressed by SHA1.
+
+```cpp
+// coroutine — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:214-219 -->
+auto load = co_await redis.script_load("return redis.call('GET', KEYS[1])");
+auto reply = co_await redis.evalshaRo<std::string>(load.result(), {"mykey"}); // Reply<std::string>
+```
+
+### `script_load` — cache a script body, get its SHA1
+
+```cpp
+// coroutine: yields Reply<std::string> (the SHA1)
+auto script_load(std::string const &script);
+
+// callback: returns Derived&
+template <typename Func>
+Derived &script_load(Func &&func, std::string const &script);
+```
+
+<!-- src: qbm/redis/scripting_commands.h:229-252 -->
+
+Loads `script` into the cache **without** executing it and returns its SHA1, ready for `evalsha`/`evalshaRo`.
+
+```cpp
+auto load = co_await redis.script_load("return 1");   // Reply<std::string> -> 40-char hex SHA1
+std::string sha = load.result();
+```
+
+### `script_exists` — test which SHA1s are cached
+
+```cpp
+// coroutine: yields Reply<std::vector<bool>>
+template <typename... Keys>
+auto script_exists(Keys &&...keys);
+
+// callback: returns Derived&
+template <typename Func, typename... Keys>
+Derived &script_exists(Func &&func, Keys &&...keys);
+```
+
+<!-- src: qbm/redis/scripting_commands.h:135-160 -->
+
+Takes one or more SHA1 hashes (variadic) and returns a `bool` per hash, in the order asked, indicating whether each is currently cached.
+
+```cpp
+// coroutine — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:129-136 -->
+auto exists = co_await redis.script_exists(sha);          // Reply<std::vector<bool>>, size 1
+bool cached = exists.result()[0];
+
+auto miss = co_await redis.script_exists("invalid_sha");  // Reply<std::vector<bool>> -> {false}
+```
+
+### `script_flush` — empty the script cache
+
+```cpp
+// coroutine: yields Reply<status>
+auto script_flush();
+
+// callback: returns Derived&
+template <typename Func>
+Derived &script_flush(Func &&func);
+```
+
+<!-- src: qbm/redis/scripting_commands.h:168-190 -->
+
+Removes every cached script. After a flush, outstanding `EVALSHA` calls fail with `NOSCRIPT` until you reload. The `ASYNC`/`SYNC` modifier is not exposed by this overload.
+
+```cpp
+// coroutine — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:158 -->
+auto flush = co_await redis.script_flush();   // Reply<status>
+```
+
+### `script_kill` — stop a running script
+
+```cpp
+// coroutine: yields Reply<status>
+auto script_kill();
+
+// callback: returns Derived&
+template <typename Func>
+Derived &script_kill(Func &&func);
+```
+
+<!-- src: qbm/redis/scripting_commands.h:198-220 -->
+
+Kills the script currently executing, **provided it has not yet performed a write**. If it has, the server refuses (atomicity would be broken) and you must restart the node. With no script running, the call returns a `NOTBUSY` error.
+
+```cpp
+// coroutine — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:177 -->
+auto kill = co_await redis.script_kill();   // Reply<status>; NOTBUSY error when nothing is running
+```
+
+### `scriptDebug` — toggle the Lua debugger
+
+```cpp
+// coroutine: yields Reply<status>
+auto scriptDebug(const std::string &mode);
+
+// callback: returns Derived&
+template <typename Func>
+Derived &scriptDebug(Func &&func, const std::string &mode);
+```
+
+<!-- src: qbm/redis/scripting_commands.h:327-344 -->
+
+Sets the script-debugging mode on the connection. `mode` is a free-form `std::string`; the only meaningful values are `"YES"` (start a synchronous-blocking debug session on the next `EVAL`), `"SYNC"` (debug but keep changes), and `"NO"` (disable). The module does **not** validate the string — anything else is passed straight through and surfaces only as a Redis-side error.
+
+```cpp
+// coroutine — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:233 -->
+auto reply = co_await redis.scriptDebug("NO");   // Reply<status>
+```
+
+---
+
+## Pitfalls
+
+- **Do not pass `numkeys`.** The library derives it from `keys.size()` for `eval`, `evalsha`, `evalRo`, and `evalshaRo`. Passing it yourself produces a malformed command. <!-- src: qbm/redis/scripting_commands.h:82 -->
+- **`Ret` is mandatory and must match.** The eval methods cannot deduce the return type; supply it as `eval<Ret>(...)`. If the script returns a shape that `Ret` cannot represent, you get a parse error on the `Reply`, not a thrown exception. When the shape is dynamic, decode into `qb::redis::json_value`.
+- **`EVALSHA` is not self-healing.** A flushed cache or a fresh server makes it fail with `NOSCRIPT`. Production code should catch that error and fall back to `eval` (which re-primes the cache) once.
+- **`script_kill` cannot stop a writing script.** It works only before the script's first write. Past that point your only recovery is restarting the node, so keep scripts short and bounded.
+- **`scriptDebug` mode is unvalidated.** Only `YES`/`SYNC`/`NO` are valid; a typo reaches the server verbatim and fails there, not at the call site. <!-- src: qbm/redis/scripting_commands.h:327 -->
+- **Key ownership in a cluster.** Every key a script touches must be declared in `keys` *and* hash to the same slot, or the cluster rejects the command. This is a Redis Cluster rule, not a client check.
+- **No reconnect replay.** If the connection drops, in-flight scripts are not re-sent and the cache state on a replacement node may differ; treat `EVALSHA` after a reconnect as potentially `NOSCRIPT`. See [connection.md](./connection.md).
+
+---
+
+## See also
+
+- [function_commands.md](./function_commands.md) — `FUNCTION LOAD`/`FCALL`, the newer, named, persistent alternative to ad-hoc `EVAL` scripts.
+- [transaction_commands.md](./transaction_commands.md) — `MULTI`/`EXEC`, the other way to get atomic multi-command execution.
+- [commands_overview.md](./commands_overview.md) — the `Reply<T>` model, `status`, the coroutine/callback duality, and the `qb::duration` vs. native-unit boundary.
+- [error_handling.md](./error_handling.md) — how `NOSCRIPT`, `NOTBUSY`, and parse failures surface on a `Reply`.
+- [Redis scripting command reference](https://redis.io/commands/?group=scripting).
