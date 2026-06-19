@@ -17,7 +17,7 @@ Reference for the `qb::redis::publish_commands` group: a single command, `PUBLIS
 ```cpp
 #include <redis/redis.h>            // umbrella header; pulls in publish_commands.h
 
-qb::redis::tcp::client redis{"tcp://127.0.0.1:6379"};
+qb::redis::tcp::client redis{qb::io::uri{"tcp://127.0.0.1:6379"}};
 // co_await redis.connect();        // see connection.md
 ```
 
@@ -141,10 +141,10 @@ using namespace qb::redis;
 std::atomic<int> received{0};
 
 // Consumer: the constructor takes the per-message callback.
-tcp::cb_consumer consumer{"tcp://127.0.0.1:6379",
+tcp::cb_consumer consumer{qb::io::uri{"tcp://127.0.0.1:6379"},
                           [&](auto &&msg) { ++received; (void) msg; }};
 
-tcp::client publisher{"tcp://127.0.0.1:6379"};
+tcp::client publisher{qb::io::uri{"tcp://127.0.0.1:6379"}};
 
 qb::io::async::task<void> demo() {
     co_await consumer.connect();

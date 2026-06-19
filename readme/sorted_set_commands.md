@@ -96,7 +96,7 @@ Used by `zunionstore`, `zinterstore`, `zinter`, and `zinterWithScores` to combin
 
 ### Time-unit boundary — blocking timeouts are **seconds**, not `qb::duration`
 
-The blocking commands (`bzpopmax`, `bzpopmin`, `bzmpop`) take their timeout in **seconds**. The primitive overloads take a raw `long long timeout` (where `0` means *block forever*); each blocking pop is supplemented by a `std::chrono::seconds` convenience overload that simply forwards `timeout.count()`. This is the documented native-units boundary for this group — **do not** pass `qb::duration` here.
+The blocking commands (`bzpopmax`, `bzpopmin`, `bzmpop`) take their timeout in **seconds**. The primitive overloads take a raw `long long timeout` (where `0` means *block forever*). `bzpopmax` and `bzpopmin` each add a `std::chrono::seconds` convenience overload that simply forwards `timeout.count()`; `bzmpop` has **no** chrono overload — pass its timeout as a raw `long long` count of seconds. This is the documented native-units boundary for this group — **do not** pass `qb::duration` here.
 
 ```cpp
 redis.bzpopmax(keys, 5);                          // 5 seconds
@@ -106,7 +106,7 @@ redis.bzpopmax(keys, 0);                          // block forever
 
 Scores and increments stay native (`double`); ranks, counts, and cardinalities are integers (`long long`). Connect and command deadlines remain `qb::duration` at the client level — see [connection.md](./connection.md).
 
-<!-- src: qbm/redis/sorted_set_commands.h:138, 167-170, 199, 228-231, 1358 -->
+<!-- src: qbm/redis/sorted_set_commands.h:138, 167-188 (bzpopmax chrono overload), 199, 228-249 (bzpopmin chrono overload), 1358-1384 (bzmpop, raw long long only) -->
 
 ---
 
@@ -699,7 +699,7 @@ redis.zscan([](qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, d
 - **Empty-input no-ops never fire your callback.** `zmpop`, `bzmpop`, and `zscan` return `derived()` without issuing a command (and without invoking your callback) when `keys`/`key` is empty. Do not assume your callback always runs.
 - **Auto-iterating `zscan` swallows callback exceptions.** An exception thrown from your callback inside the no-cursor `zscan` scanner is caught and logged (`LOG_WARN`), never propagated. Don't rely on it surfacing.
 - **camelCase outliers.** `zdiffWithScores`, `zinterWithScores`, `zrandmemberCount`, and `zrandmemberWithScores` break the snake_case convention — easy to miss when grepping. Their plain siblings (`zdiff`, `zinter`, `zrandmember`) are snake_case.
-- **Blocking timeouts are seconds.** `bzpopmin`/`bzpopmax`/`bzmpop` take a `long long`/`std::chrono::seconds` timeout where `0` means *block forever* — never a `qb::duration`. Passing a small `qb::duration` count would be interpreted as a small number of seconds.
+- **Blocking timeouts are seconds.** `bzpopmin`/`bzpopmax` take a `long long` or `std::chrono::seconds` timeout; `bzmpop` takes only a `long long` (seconds). `0` means *block forever* — never a `qb::duration`. Passing a small `qb::duration` count would be interpreted as a small number of seconds.
 - **Retired time tokens.** `qb::Timestamp`, `qb::Duration`, `qb::TimePoint`, `to_timestamp(`, and `to_time_point(` are removed from the framework; they never applied to this group and must not appear in new code. Use `std::chrono` units (seconds for blocking pops) and `qb::duration` only for client-level connect/command deadlines.
 
 ---
