@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,12 +60,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/subscribe
      */
-    auto subscribe(const std::string &channel) {
+    auto
+    subscribe(const std::string &channel) {
         return derived().template make_coro_command<qb::redis::subscription>(
-            [this, channel](auto&& callback) {
-                this->subscribe(std::move(callback), channel);
-            }
-        );
+            [this, channel](auto &&callback) { this->subscribe(std::move(callback), channel); });
     }
 
     /**
@@ -78,19 +76,16 @@ public:
      * @see https://redis.io/commands/subscribe
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     subscribe(Func &&func, const std::string &channel) {
         if (channel.empty()) {
             Reply<qb::redis::subscription> reply;
-            reply.ok() = false;
+            reply.ok()    = false;
             reply.error() = "Channel name cannot be empty";
             func(std::move(reply));
             return derived();
         }
-        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE",
-                                        false, false,
-                                        std::vector<std::string>{channel});
+        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE", false, false, std::vector<std::string>{channel});
     }
 
     /**
@@ -102,12 +97,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/subscribe
      */
-    auto subscribe(const std::vector<std::string> &channels) {
+    auto
+    subscribe(const std::vector<std::string> &channels) {
         return derived().template make_coro_command<qb::redis::subscription>(
-            [this, channels](auto&& callback) {
-                this->subscribe(std::move(callback), channels);
-            }
-        );
+            [this, channels](auto &&callback) { this->subscribe(std::move(callback), channels); });
     }
 
     /**
@@ -120,18 +113,16 @@ public:
      * @see https://redis.io/commands/subscribe
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     subscribe(Func &&func, const std::vector<std::string> &channels) {
         if (channels.empty()) {
             Reply<qb::redis::subscription> reply;
-            reply.ok() = false;
+            reply.ok()    = false;
             reply.error() = "Channel list cannot be empty";
             func(std::move(reply));
             return derived();
         }
-        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE",
-                                        false, false, channels);
+        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE", false, false, channels);
     }
 
     /**
@@ -145,12 +136,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/unsubscribe
      */
-    auto unsubscribe(const std::string &channel = "") {
+    auto
+    unsubscribe(const std::string &channel = "") {
         return derived().template make_coro_command<qb::redis::subscription>(
-            [this, channel](auto&& callback) {
-                this->unsubscribe(std::move(callback), channel);
-            }
-        );
+            [this, channel](auto &&callback) { this->unsubscribe(std::move(callback), channel); });
     }
 
     /**
@@ -164,16 +153,12 @@ public:
      * @see https://redis.io/commands/unsubscribe
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     unsubscribe(Func &&func, const std::string &channel = "") {
         if (channel.empty()) {
-            return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE",
-                                            true, false, std::vector<std::string>{});
+            return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, false, std::vector<std::string>{});
         }
-        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE",
-                                        true, false,
-                                        std::vector<std::string>{channel});
+        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, false, std::vector<std::string>{channel});
     }
 
     /**
@@ -183,12 +168,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/unsubscribe
      */
-    auto unsubscribe(const std::vector<std::string> &channels) {
+    auto
+    unsubscribe(const std::vector<std::string> &channels) {
         return derived().template make_coro_command<qb::redis::subscription>(
-            [this, channels](auto&& callback) {
-                this->unsubscribe(std::move(callback), channels);
-            }
-        );
+            [this, channels](auto &&callback) { this->unsubscribe(std::move(callback), channels); });
     }
 
     /**
@@ -201,11 +184,9 @@ public:
      * @see https://redis.io/commands/unsubscribe
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     unsubscribe(Func &&func, const std::vector<std::string> &channels) {
-        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE",
-                                        true, false, channels);
+        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, false, channels);
     }
 
     // =============== Pattern Subscription Commands ===============
@@ -223,12 +204,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/psubscribe
      */
-    auto psubscribe(const std::string &pattern) {
+    auto
+    psubscribe(const std::string &pattern) {
         return derived().template make_coro_command<qb::redis::subscription>(
-            [this, pattern](auto&& callback) {
-                this->psubscribe(std::move(callback), pattern);
-            }
-        );
+            [this, pattern](auto &&callback) { this->psubscribe(std::move(callback), pattern); });
     }
 
     /**
@@ -241,19 +220,16 @@ public:
      * @see https://redis.io/commands/psubscribe
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     psubscribe(Func &&func, const std::string &pattern) {
         if (pattern.empty()) {
             Reply<qb::redis::subscription> reply;
-            reply.ok() = false;
+            reply.ok()    = false;
             reply.error() = "Pattern cannot be empty";
             func(std::move(reply));
             return derived();
         }
-        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE",
-                                        false, true,
-                                        std::vector<std::string>{pattern});
+        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE", false, true, std::vector<std::string>{pattern});
     }
 
     /**
@@ -263,12 +239,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/psubscribe
      */
-    auto psubscribe(const std::vector<std::string> &patterns) {
+    auto
+    psubscribe(const std::vector<std::string> &patterns) {
         return derived().template make_coro_command<qb::redis::subscription>(
-            [this, patterns](auto&& callback) {
-                this->psubscribe(std::move(callback), patterns);
-            }
-        );
+            [this, patterns](auto &&callback) { this->psubscribe(std::move(callback), patterns); });
     }
 
     /**
@@ -281,18 +255,16 @@ public:
      * @see https://redis.io/commands/psubscribe
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     psubscribe(Func &&func, const std::vector<std::string> &patterns) {
         if (patterns.empty()) {
             Reply<qb::redis::subscription> reply;
-            reply.ok() = false;
+            reply.ok()    = false;
             reply.error() = "Pattern list cannot be empty";
             func(std::move(reply));
             return derived();
         }
-        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE",
-                                        false, true, patterns);
+        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE", false, true, patterns);
     }
 
     /**
@@ -306,12 +278,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/punsubscribe
      */
-    auto punsubscribe(const std::string &pattern = "") {
+    auto
+    punsubscribe(const std::string &pattern = "") {
         return derived().template make_coro_command<qb::redis::subscription>(
-            [this, pattern](auto&& callback) {
-                this->punsubscribe(std::move(callback), pattern);
-            }
-        );
+            [this, pattern](auto &&callback) { this->punsubscribe(std::move(callback), pattern); });
     }
 
     /**
@@ -325,16 +295,12 @@ public:
      * @see https://redis.io/commands/punsubscribe
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     punsubscribe(Func &&func, const std::string &pattern = "") {
         if (pattern.empty()) {
-            return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE",
-                                            true, true, std::vector<std::string>{});
+            return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, true, std::vector<std::string>{});
         }
-        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE",
-                                        true, true,
-                                        std::vector<std::string>{pattern});
+        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, true, std::vector<std::string>{pattern});
     }
 
     /**
@@ -344,12 +310,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::redis::subscription>
      * @see https://redis.io/commands/punsubscribe
      */
-    auto punsubscribe(const std::vector<std::string> &patterns) {
+    auto
+    punsubscribe(const std::vector<std::string> &patterns) {
         return derived().template make_coro_command<qb::redis::subscription>(
-            [this, patterns](auto&& callback) {
-                this->punsubscribe(std::move(callback), patterns);
-            }
-        );
+            [this, patterns](auto &&callback) { this->punsubscribe(std::move(callback), patterns); });
     }
 
     /**
@@ -362,11 +326,9 @@ public:
      * @see https://redis.io/commands/punsubscribe
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     punsubscribe(Func &&func, const std::vector<std::string> &patterns) {
-        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE",
-                                        true, true, patterns);
+        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, true, patterns);
     }
 };
 

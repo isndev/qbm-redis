@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,23 +39,22 @@ INSTANTIATE_PROTOCOL_MODES(JsonParseProtocolModesTest);
 // (e.g. qb::json::exception from accessing a wrong-type result) does NOT
 // cause _completed to stay false and hang the event loop forever.
 // ============================================================================
-#define RUN_CORO_TEST(body)                                                   \
-    do {                                                                      \
-        bool _completed = false;                                              \
-        auto _task      = [this, &_completed]()                              \
-                              -> qb::io::async::task<void> {                 \
-            try {                                                             \
-                body                                                          \
-            } catch (const std::exception &_ex) {                           \
-                ADD_FAILURE() << "Unexpected exception: " << _ex.what();     \
-            } catch (...) {                                                   \
-                ADD_FAILURE() << "Unexpected unknown exception";              \
-            }                                                                 \
-            _completed = true;                                                \
-        };                                                                    \
-        qb::io::async::coro_scheduler().spawn(_task());                      \
-        while (!_completed)                                                   \
-            qb::io::async::run(EVRUN_NOWAIT);                                \
+#define RUN_CORO_TEST(body)                                                    \
+    do {                                                                       \
+        bool _completed = false;                                               \
+        auto _task      = [this, &_completed]() -> qb::io::async::task<void> { \
+            try {                                                              \
+                body                                                           \
+            } catch (const std::exception &_ex) {                              \
+                ADD_FAILURE() << "Unexpected exception: " << _ex.what();       \
+            } catch (...) {                                                    \
+                ADD_FAILURE() << "Unexpected unknown exception";               \
+            }                                                                  \
+            _completed = true;                                                 \
+        };                                                                     \
+        qb::io::async::coro_scheduler().spawn(_task());                        \
+        while (!_completed)                                                    \
+            qb::io::async::run(EVRUN_NOWAIT);                                  \
     } while (false)
 
 // ============================================================================
@@ -73,8 +72,7 @@ TEST_P(JsonParseProtocolModesTest, CORO_JSON_PARSE_STRING) {
         EXPECT_TRUE(set_reply.ok());
 
         // eval returns the raw JSON string; our parser auto-detects {…} and parses it
-        auto eval_reply = co_await redis.eval<qb::json>(
-            "return redis.call('GET', KEYS[1])", {key});
+        auto eval_reply = co_await redis.eval<qb::json>("return redis.call('GET', KEYS[1])", {key});
         EXPECT_TRUE(eval_reply.ok());
 
         const auto &result = eval_reply.result();
@@ -95,8 +93,7 @@ TEST_P(JsonParseProtocolModesTest, CORO_JSON_PARSE_INTEGER) {
         EXPECT_TRUE(set_reply.ok());
 
         // tonumber returns a Lua number, which Redis encodes as REDIS_REPLY_INTEGER
-        auto eval_reply = co_await redis.eval<qb::json>(
-            "return tonumber(redis.call('GET', KEYS[1]))", {key});
+        auto eval_reply = co_await redis.eval<qb::json>("return tonumber(redis.call('GET', KEYS[1]))", {key});
         EXPECT_TRUE(eval_reply.ok());
 
         const auto &result = eval_reply.result();
@@ -111,10 +108,9 @@ TEST_P(JsonParseProtocolModesTest, CORO_JSON_PARSE_ARRAY) {
         PROTOCOL_ENSURE_RESP3_VAR(_completed);
         const std::string key = protocol_key("array");
 
-        (void)co_await redis.lpush(key, "item1", "item2", "item3");
+        (void) co_await redis.lpush(key, "item1", "item2", "item3");
 
-        auto eval_reply = co_await redis.eval<qb::json>(
-            "return redis.call('LRANGE', KEYS[1], 0, -1)", {key});
+        auto eval_reply = co_await redis.eval<qb::json>("return redis.call('LRANGE', KEYS[1], 0, -1)", {key});
         EXPECT_TRUE(eval_reply.ok());
 
         const auto &result = eval_reply.result();
@@ -132,9 +128,9 @@ TEST_P(JsonParseProtocolModesTest, CORO_JSON_PARSE_HASH) {
         PROTOCOL_ENSURE_RESP3_VAR(_completed);
         const std::string key = protocol_key("hash");
 
-        (void)co_await redis.hset(key, "name", "Alice");
-        (void)co_await redis.hset(key, "age", "25");
-        (void)co_await redis.hset(key, "city", "London");
+        (void) co_await redis.hset(key, "name", "Alice");
+        (void) co_await redis.hset(key, "age", "25");
+        (void) co_await redis.hset(key, "city", "London");
 
         // HGETALL returns flat [k, v, k, v, …] — use cjson to get a proper object
         const std::string script = R"(
@@ -150,7 +146,7 @@ TEST_P(JsonParseProtocolModesTest, CORO_JSON_PARSE_HASH) {
         const auto &result = eval_reply.result();
         EXPECT_TRUE(result.is_object());
         EXPECT_EQ(result["name"], "Alice");
-        EXPECT_EQ(result["age"], "25");  // stored as string
+        EXPECT_EQ(result["age"], "25"); // stored as string
         EXPECT_EQ(result["city"], "London");
     });
 }
@@ -199,10 +195,10 @@ TEST_P(JsonParseProtocolModesTest, EVAL_JSON_OBJECT) {
         const std::string script = R"(
             return cjson.encode({a = 1, b = "two", c = true})
         )";
-        auto r = co_await redis.eval<qb::json>(script);
+        auto              r      = co_await redis.eval<qb::json>(script);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) {
-            const auto& j = r.result();
+            const auto &j = r.result();
             EXPECT_TRUE(j.is_object());
             EXPECT_EQ(j["a"], 1);
             EXPECT_EQ(j["b"], "two");
@@ -210,7 +206,8 @@ TEST_P(JsonParseProtocolModesTest, EVAL_JSON_OBJECT) {
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(JsonParseProtocolModesTest, EVAL_JSON_STRING) {
@@ -218,17 +215,18 @@ TEST_P(JsonParseProtocolModesTest, EVAL_JSON_STRING) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("json_str");
-        (void)co_await redis.set(k, R"({"x":42})");
+        (void) co_await redis.set(k, R"({"x":42})");
         auto r = co_await redis.eval<qb::json>("return redis.call('GET', KEYS[1])", {k});
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) {
-            const auto& j = r.result();
+            const auto &j = r.result();
             EXPECT_TRUE(j.is_object());
             EXPECT_EQ(j["x"], 42);
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 int

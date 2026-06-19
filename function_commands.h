@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,12 +49,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/function-list
      */
-    auto function_list(const std::optional<std::string> &library = std::nullopt) {
+    auto
+    function_list(const std::optional<std::string> &library = std::nullopt) {
         return derived().template make_coro_command<qb::json>(
-            [this, library](auto&& callback) mutable {
-                this->function_list(std::move(callback), library);
-            }
-        );
+            [this, library](auto &&callback) mutable { this->function_list(std::move(callback), library); });
     }
 
     /**
@@ -69,18 +67,16 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     function_list(Func &&func, const std::optional<std::string> &library = std::nullopt) {
         if (library) {
-            return derived().template command<qb::json>(std::forward<Func>(func), 
-                                                       "FUNCTION", "LIST", "LIBRARYNAME", *library);
+            return derived().template command<qb::json>(std::forward<Func>(func), "FUNCTION", "LIST", "LIBRARYNAME", *library);
         } else {
-            return derived().template command<qb::json>(std::forward<Func>(func), 
-                                                       "FUNCTION", "LIST");
+            return derived().template command<qb::json>(std::forward<Func>(func), "FUNCTION", "LIST");
         }
     }
 
     /**
      * @brief Load a library into the function library (coroutine awaitable)
      *
-     * Loads a library into the functions library. The code must contain a Lua script 
+     * Loads a library into the functions library. The code must contain a Lua script
      * that defines a table containing at least one function.
      *
      * @param code Lua code for the library
@@ -89,12 +85,11 @@ public:
      * @see https://redis.io/commands/function-load
      */
     template <typename... Args>
-    auto function_load(const std::string &code, Args&&... options) {
-        return derived().template make_coro_command<status>(
-            [this, code, ...options = std::forward<Args>(options)](auto&& callback) mutable {
-                this->function_load(std::move(callback), code, std::forward<Args>(options)...);
-            }
-        );
+    auto
+    function_load(const std::string &code, Args &&...options) {
+        return derived().template make_coro_command<status>([this, code, ... options = std::forward<Args>(options)](auto &&callback) mutable {
+            this->function_load(std::move(callback), code, std::forward<Args>(options)...);
+        });
     }
 
     /**
@@ -108,9 +103,8 @@ public:
      */
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    function_load(Func &&func, const std::string &code, Args&&... options) {
-        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "LOAD", 
-                                                 std::forward<Args>(options)..., code);
+    function_load(Func &&func, const std::string &code, Args &&...options) {
+        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "LOAD", std::forward<Args>(options)..., code);
     }
 
     /**
@@ -122,12 +116,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-delete
      */
-    auto function_delete(const std::string &library) {
+    auto
+    function_delete(const std::string &library) {
         return derived().template make_coro_command<status>(
-            [this, library](auto&& callback) {
-                this->function_delete(std::move(callback), library);
-            }
-        );
+            [this, library](auto &&callback) { this->function_delete(std::move(callback), library); });
     }
 
     /**
@@ -153,12 +145,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-flush
      */
-    auto function_flush(const std::string &mode = "SYNC") {
-        return derived().template make_coro_command<status>(
-            [this, mode](auto&& callback) {
-                this->function_flush(std::move(callback), mode);
-            }
-        );
+    auto
+    function_flush(const std::string &mode = "SYNC") {
+        return derived().template make_coro_command<status>([this, mode](auto &&callback) { this->function_flush(std::move(callback), mode); });
     }
 
     /**
@@ -178,18 +167,15 @@ public:
     /**
      * @brief Kill a function that is currently executing (coroutine awaitable)
      *
-     * Kills a function that is currently executing. Works only on scripts that 
+     * Kills a function that is currently executing. Works only on scripts that
      * are currently running.
      *
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-kill
      */
-    auto function_kill() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->function_kill(std::move(callback));
-            }
-        );
+    auto
+    function_kill() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->function_kill(std::move(callback)); });
     }
 
     /**
@@ -213,12 +199,9 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/function-stats
      */
-    auto function_stats() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->function_stats(std::move(callback));
-            }
-        );
+    auto
+    function_stats() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->function_stats(std::move(callback)); });
     }
 
     /**
@@ -243,12 +226,9 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/function-dump
      */
-    auto function_dump() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->function_dump(std::move(callback));
-            }
-        );
+    auto
+    function_dump() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->function_dump(std::move(callback)); });
     }
 
     /**
@@ -275,12 +255,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/function-restore
      */
-    auto function_restore(const std::string &payload, const std::string &policy = "APPEND") {
+    auto
+    function_restore(const std::string &payload, const std::string &policy = "APPEND") {
         return derived().template make_coro_command<status>(
-            [this, payload, policy](auto&& callback) {
-                this->function_restore(std::move(callback), payload, policy);
-            }
-        );
+            [this, payload, policy](auto &&callback) { this->function_restore(std::move(callback), payload, policy); });
     }
 
     /**
@@ -306,12 +284,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/function-help
      */
-    auto function_help() {
+    auto
+    function_help() {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this](auto&& callback) {
-                this->function_help(std::move(callback));
-            }
-        );
+            [this](auto &&callback) { this->function_help(std::move(callback)); });
     }
 
     /**
@@ -340,13 +316,10 @@ public:
      * @see https://redis.io/commands/fcall
      */
     template <typename Ret>
-    auto fcall(const std::string &name, const std::vector<std::string> &keys = {},
-               const std::vector<std::string> &args = {}) {
+    auto
+    fcall(const std::string &name, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
         return derived().template make_coro_command<Ret>(
-            [this, name, keys, args](auto&& callback) mutable {
-                this->template fcall<Ret>(std::move(callback), name, keys, args);
-            }
-        );
+            [this, name, keys, args](auto &&callback) mutable { this->template fcall<Ret>(std::move(callback), name, keys, args); });
     }
 
     /**
@@ -363,11 +336,8 @@ public:
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
-    fcall(Func &&func, const std::string &name,
-          const std::vector<std::string> &keys = {},
-          const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "FCALL",
-                                              name, keys.size(), keys, args);
+    fcall(Func &&func, const std::string &name, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "FCALL", name, keys.size(), keys, args);
     }
 
     /**
@@ -383,13 +353,10 @@ public:
      * @see https://redis.io/commands/fcall_ro
      */
     template <typename Ret>
-    auto fcallRo(const std::string &name, const std::vector<std::string> &keys = {},
-                 const std::vector<std::string> &args = {}) {
+    auto
+    fcallRo(const std::string &name, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
         return derived().template make_coro_command<Ret>(
-            [this, name, keys, args](auto&& callback) mutable {
-                this->template fcallRo<Ret>(std::move(callback), name, keys, args);
-            }
-        );
+            [this, name, keys, args](auto &&callback) mutable { this->template fcallRo<Ret>(std::move(callback), name, keys, args); });
     }
 
     /**
@@ -406,11 +373,8 @@ public:
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
-    fcallRo(Func &&func, const std::string &name,
-            const std::vector<std::string> &keys = {},
-            const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "FCALL_RO",
-                                              name, keys.size(), keys, args);
+    fcallRo(Func &&func, const std::string &name, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "FCALL_RO", name, keys.size(), keys, args);
     }
 };
 

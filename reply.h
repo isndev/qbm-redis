@@ -4,7 +4,7 @@
  */
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,22 +23,22 @@
 #define QBM_REDIS_REPLY_H
 
 #include <cassert>
-#include <string>
-#include <string_view>
-#include <optional>
-#include <memory>
-#include <utility>
-#include <vector>
+#include <charconv>
 #include <chrono>
 #include <concepts>
-#include <set>
-#include <unordered_set>
-#include <charconv>
 #include <limits>
-#include <qb/utility/type_traits.h>
+#include <memory>
+#include <optional>
+#include <qb/json.h>
 #include <qb/system/allocator/pipe.h>
 #include <qb/system/container/unordered_map.h>
-#include <qb/json.h>
+#include <qb/utility/type_traits.h>
+#include <set>
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 // Include types first (which includes parser)
 #include "types.h"
@@ -72,9 +72,9 @@ public:
 
     Error(const Error &)            = default;
     Error &operator=(const Error &) = default;
-    Error(Error &&)            = default;
-    Error &operator=(Error &&) = default;
-    ~Error() override = default;
+    Error(Error &&)                 = default;
+    Error &operator=(Error &&)      = default;
+    ~Error() override               = default;
 
     [[nodiscard]] const char *
     what() const noexcept override {
@@ -96,9 +96,9 @@ public:
 
     ProtoError(const ProtoError &)            = default;
     ProtoError &operator=(const ProtoError &) = default;
-    ProtoError(ProtoError &&)            = default;
-    ProtoError &operator=(ProtoError &&) = default;
-    ~ProtoError() override = default;
+    ProtoError(ProtoError &&)                 = default;
+    ProtoError &operator=(ProtoError &&)      = default;
+    ~ProtoError() override                    = default;
 };
 
 /**
@@ -176,13 +176,12 @@ public:
 
     ReplyParseError(const ReplyParseError &)            = default;
     ReplyParseError &operator=(const ReplyParseError &) = default;
-    ReplyParseError(ReplyParseError &&)            = default;
-    ReplyParseError &operator=(ReplyParseError &&) = default;
-    ~ReplyParseError() override = default;
+    ReplyParseError(ReplyParseError &&)                 = default;
+    ReplyParseError &operator=(ReplyParseError &&)      = default;
+    ~ReplyParseError() override                         = default;
 
 private:
-    [[nodiscard]] static std::string _err_info(const std::string &type,
-                                               const ReplyValue &reply);
+    [[nodiscard]] static std::string _err_info(const std::string &type, const ReplyValue &reply);
 };
 
 // ============================================================================
@@ -203,53 +202,65 @@ struct ParseTag {};
 // Type checking - native C++20/23 implementations
 // ============================================================================
 
-[[nodiscard]] inline bool is_string(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_string(const ReplyValue &reply) noexcept {
     // is_string() on Value already covers SimpleString, BulkString, VerbatimString
     return reply.is_string();
 }
 
-[[nodiscard]] inline bool is_error(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_error(const ReplyValue &reply) noexcept {
     return reply.is_simple_error() || reply.is_error();
 }
 
-[[nodiscard]] inline bool is_integer(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_integer(const ReplyValue &reply) noexcept {
     return reply.is_integer();
 }
 
-[[nodiscard]] inline bool is_nil(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_nil(const ReplyValue &reply) noexcept {
     return reply.is_null();
 }
 
-[[nodiscard]] inline bool is_array(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_array(const ReplyValue &reply) noexcept {
     return reply.is_array();
 }
 
-[[nodiscard]] inline bool is_double(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_double(const ReplyValue &reply) noexcept {
     return reply.is_double();
 }
 
-[[nodiscard]] inline bool is_bool(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_bool(const ReplyValue &reply) noexcept {
     return reply.is_boolean();
 }
 
-[[nodiscard]] inline bool is_map(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_map(const ReplyValue &reply) noexcept {
     return reply.is_map();
 }
 
-[[nodiscard]] inline bool is_set(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_set(const ReplyValue &reply) noexcept {
     return reply.is_set();
 }
 
-[[nodiscard]] inline bool is_push(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_push(const ReplyValue &reply) noexcept {
     return reply.is_push();
 }
 
 /** Array or Push - pub/sub uses Array in RESP2, Push in RESP3 */
-[[nodiscard]] inline bool is_array_or_push(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_array_or_push(const ReplyValue &reply) noexcept {
     return reply.is_array() || reply.is_push();
 }
 
-[[nodiscard]] inline const parser::Value *get_pubsub_element(const ReplyValue &reply, size_t i) {
+[[nodiscard]] inline const parser::Value *
+get_pubsub_element(const ReplyValue &reply, size_t i) {
     if (reply.is_array()) {
         const auto &arr = reply.as_array();
         return (i < arr.size()) ? arr[i] : nullptr;
@@ -261,17 +272,22 @@ struct ParseTag {};
     return nullptr;
 }
 
-[[nodiscard]] inline size_t get_pubsub_size(const ReplyValue &reply) {
-    if (reply.is_array()) return reply.as_array().size();
-    if (reply.is_push()) return reply.as_push().size();
+[[nodiscard]] inline size_t
+get_pubsub_size(const ReplyValue &reply) {
+    if (reply.is_array())
+        return reply.as_array().size();
+    if (reply.is_push())
+        return reply.as_push().size();
     return 0;
 }
 
-[[nodiscard]] inline bool is_bignum(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_bignum(const ReplyValue &reply) noexcept {
     return reply.is_big_number();
 }
 
-[[nodiscard]] inline bool is_status(const ReplyValue &reply) noexcept {
+[[nodiscard]] inline bool
+is_status(const ReplyValue &reply) noexcept {
     // A Redis "status" reply is specifically the simple string type (+OK\r\n)
     return reply.is_simple_string();
 }
@@ -281,7 +297,8 @@ struct ParseTag {};
 // ============================================================================
 
 template <typename T>
-[[nodiscard]] inline T parse(const ReplyValue &reply) {
+[[nodiscard]] inline T
+parse(const ReplyValue &reply) {
     return parse(ParseTag<T>{}, reply);
 }
 
@@ -289,14 +306,16 @@ template <typename T>
 // Primitive type parsers
 // ============================================================================
 
-[[nodiscard]] inline std::string_view parse(ParseTag<std::string_view>, const ReplyValue &reply) {
+[[nodiscard]] inline std::string_view
+parse(ParseTag<std::string_view>, const ReplyValue &reply) {
     if (!is_string(reply) && !is_status(reply)) {
         throw ReplyParseError("STRING or STATUS", reply);
     }
     return reply.as_string_view();
 }
 
-[[nodiscard]] inline std::string parse(ParseTag<std::string>, const ReplyValue &reply) {
+[[nodiscard]] inline std::string
+parse(ParseTag<std::string>, const ReplyValue &reply) {
     if (is_integer(reply)) {
         return std::to_string(reply.as_integer().value);
     }
@@ -309,14 +328,16 @@ template <typename T>
     return std::string(sv);
 }
 
-[[nodiscard]] inline long long parse(ParseTag<long long>, const ReplyValue &reply) {
+[[nodiscard]] inline long long
+parse(ParseTag<long long>, const ReplyValue &reply) {
     if (!is_integer(reply)) {
         throw ReplyParseError("INTEGER", reply);
     }
     return reply.as_integer().value;
 }
 
-[[nodiscard]] inline double parse(ParseTag<double>, const ReplyValue &reply) {
+[[nodiscard]] inline double
+parse(ParseTag<double>, const ReplyValue &reply) {
     if (is_double(reply)) {
         return reply.as_double().value;
     }
@@ -326,20 +347,24 @@ template <typename T>
     if (is_string(reply) || is_status(reply)) {
         const auto sv = reply.as_string_view();
         // Redis can return "inf" / "+inf" / "-inf" for sorted-set scores.
-        if (sv == "inf"  || sv == "+inf") return  std::numeric_limits<double>::infinity();
-        if (sv == "-inf")                 return -std::numeric_limits<double>::infinity();
+        if (sv == "inf" || sv == "+inf")
+            return std::numeric_limits<double>::infinity();
+        if (sv == "-inf")
+            return -std::numeric_limits<double>::infinity();
         // Use std::from_chars: locale-independent, no exception overhead.
         // Require the WHOLE string to be consumed (ptr == end): otherwise a reply like
         // "1.5junk" would silently yield 1.5 instead of being rejected. This matches the
         // SCAN-cursor parse and the RESP parser's own parse_double.
         double value{};
         const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), value);
-        if (ec == std::errc{} && ptr == sv.data() + sv.size()) return value;
+        if (ec == std::errc{} && ptr == sv.data() + sv.size())
+            return value;
     }
     throw ProtoError("not a double reply");
 }
 
-[[nodiscard]] inline bool parse(ParseTag<bool>, const ReplyValue &reply) {
+[[nodiscard]] inline bool
+parse(ParseTag<bool>, const ReplyValue &reply) {
     if (is_nil(reply)) {
         return false;
     }
@@ -353,7 +378,8 @@ template <typename T>
     throw ProtoError("BOOL or INTEGER required");
 }
 
-[[nodiscard]] inline qb::redis::status parse(ParseTag<qb::redis::status>, const ReplyValue &reply) {
+[[nodiscard]] inline qb::redis::status
+parse(ParseTag<qb::redis::status>, const ReplyValue &reply) {
     if (is_nil(reply)) {
         return qb::redis::status{};
     }
@@ -370,33 +396,34 @@ template <typename T>
 // Complex type parsers
 // ============================================================================
 
-[[nodiscard]] qb::redis::message parse(ParseTag<qb::redis::message>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::pmessage parse(ParseTag<qb::redis::pmessage>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::subscription parse(ParseTag<qb::redis::subscription>, const ReplyValue &reply);
-[[nodiscard]] std::vector<char> parse(ParseTag<std::vector<char>>, const ReplyValue &reply);
-[[nodiscard]] std::chrono::milliseconds parse(ParseTag<std::chrono::milliseconds>, const ReplyValue &reply);
-[[nodiscard]] std::chrono::seconds parse(ParseTag<std::chrono::seconds>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::geo_pos parse(ParseTag<qb::redis::geo_pos>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::stream_id parse(ParseTag<qb::redis::stream_id>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::stream_entry parse(ParseTag<qb::redis::stream_entry>, const ReplyValue &reply);
-[[nodiscard]] stream_entry_list parse(ParseTag<stream_entry_list>, const ReplyValue &reply);
-[[nodiscard]] map_stream_entry_list parse(ParseTag<map_stream_entry_list>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::score parse(ParseTag<qb::redis::score>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::score_member parse(ParseTag<qb::redis::score_member>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::message                   parse(ParseTag<qb::redis::message>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::pmessage                  parse(ParseTag<qb::redis::pmessage>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::subscription              parse(ParseTag<qb::redis::subscription>, const ReplyValue &reply);
+[[nodiscard]] std::vector<char>                    parse(ParseTag<std::vector<char>>, const ReplyValue &reply);
+[[nodiscard]] std::chrono::milliseconds            parse(ParseTag<std::chrono::milliseconds>, const ReplyValue &reply);
+[[nodiscard]] std::chrono::seconds                 parse(ParseTag<std::chrono::seconds>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::geo_pos                   parse(ParseTag<qb::redis::geo_pos>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::stream_id                 parse(ParseTag<qb::redis::stream_id>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::stream_entry              parse(ParseTag<qb::redis::stream_entry>, const ReplyValue &reply);
+[[nodiscard]] stream_entry_list                    parse(ParseTag<stream_entry_list>, const ReplyValue &reply);
+[[nodiscard]] map_stream_entry_list                parse(ParseTag<map_stream_entry_list>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::score                     parse(ParseTag<qb::redis::score>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::score_member              parse(ParseTag<qb::redis::score_member>, const ReplyValue &reply);
 [[nodiscard]] std::vector<qb::redis::score_member> parse(ParseTag<std::vector<qb::redis::score_member>>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::search_result parse(ParseTag<qb::redis::search_result>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::cluster_node parse(ParseTag<qb::redis::cluster_node>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::memory_info parse(ParseTag<qb::redis::memory_info>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::pipeline_result parse(ParseTag<qb::redis::pipeline_result>, const ReplyValue &reply);
-[[nodiscard]] qb::redis::json_value parse(ParseTag<qb::redis::json_value>, const ReplyValue &reply);
-[[nodiscard]] qb::json             parse(ParseTag<qb::json>,             const ReplyValue &reply);
+[[nodiscard]] qb::redis::search_result             parse(ParseTag<qb::redis::search_result>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::cluster_node              parse(ParseTag<qb::redis::cluster_node>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::memory_info               parse(ParseTag<qb::redis::memory_info>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::pipeline_result           parse(ParseTag<qb::redis::pipeline_result>, const ReplyValue &reply);
+[[nodiscard]] qb::redis::json_value                parse(ParseTag<qb::redis::json_value>, const ReplyValue &reply);
+[[nodiscard]] qb::json                             parse(ParseTag<qb::json>, const ReplyValue &reply);
 
 // ============================================================================
 // Generic container parsers
 // ============================================================================
 
 template <typename T>
-[[nodiscard]] std::optional<T> parse(ParseTag<std::optional<T>>, const ReplyValue &reply) {
+[[nodiscard]] std::optional<T>
+parse(ParseTag<std::optional<T>>, const ReplyValue &reply) {
     if (is_nil(reply)) {
         return std::nullopt;
     }
@@ -404,42 +431,41 @@ template <typename T>
 }
 
 template <typename T, typename U>
-[[nodiscard]] std::pair<T, U> parse(ParseTag<std::pair<T, U>>, const ReplyValue &reply) {
+[[nodiscard]] std::pair<T, U>
+parse(ParseTag<std::pair<T, U>>, const ReplyValue &reply) {
     if (!is_array(reply)) {
         throw ReplyParseError("ARRAY", reply);
     }
-    
+
     const auto &arr = reply.as_array();
     if (arr.size() < 2) {
         throw ProtoError("PAIR needs 2 elements");
     }
-    
-    return std::make_pair(
-        parse<std::remove_cvref_t<T>>(*arr[0]),
-        parse<std::remove_cvref_t<U>>(*arr[1])
-    );
+
+    return std::make_pair(parse<std::remove_cvref_t<T>>(*arr[0]), parse<std::remove_cvref_t<U>>(*arr[1]));
 }
 
 template <typename... Args>
-[[nodiscard]] std::tuple<Args...> parse(ParseTag<std::tuple<Args...>>, const ReplyValue &reply) {
+[[nodiscard]] std::tuple<Args...>
+parse(ParseTag<std::tuple<Args...>>, const ReplyValue &reply) {
     constexpr auto size = sizeof...(Args);
     static_assert(size > 0, "Empty tuple not supported");
-    
+
     if (!is_array(reply)) {
         throw ReplyParseError("ARRAY", reply);
     }
-    
+
     const auto &arr = reply.as_array();
     if (arr.size() < size) {
         throw ProtoError("Tuple size mismatch");
     }
-    
+
     return parse_tuple<Args...>(arr, std::make_index_sequence<size>{});
 }
 
 template <typename... Args, size_t... Is>
-[[nodiscard]] std::tuple<Args...> parse_tuple(const parser::Array &arr,
-                                               std::index_sequence<Is...>) {
+[[nodiscard]] std::tuple<Args...>
+parse_tuple(const parser::Array &arr, std::index_sequence<Is...>) {
     return std::make_tuple(parse<Args>(*arr[Is])...);
 }
 
@@ -448,12 +474,13 @@ template <typename... Args, size_t... Is>
 // ============================================================================
 
 template <typename T>
-    requires is_sequence_container<T>::value
-[[nodiscard]] T parse(ParseTag<T>, const ReplyValue &reply) {
+requires is_sequence_container<T>::value
+[[nodiscard]] T
+parse(ParseTag<T>, const ReplyValue &reply) {
     if (!is_array(reply) && !is_set(reply)) {
         throw ReplyParseError("ARRAY or SET", reply);
     }
-    
+
     T container;
     if (is_array(reply)) {
         for (const auto &elem : reply.as_array()) {
@@ -472,12 +499,13 @@ template <typename T>
 // ============================================================================
 
 template <typename T>
-    requires is_associative_container<T>::value && requires { typename T::mapped_type; }
-[[nodiscard]] T parse(ParseTag<T>, const ReplyValue &reply) {
+requires is_associative_container<T>::value && requires { typename T::mapped_type; }
+[[nodiscard]] T
+parse(ParseTag<T>, const ReplyValue &reply) {
     if (!is_array(reply) && !is_map(reply)) {
         throw ReplyParseError("ARRAY or MAP", reply);
     }
-    
+
     T container;
     if (is_map(reply)) {
         // Map type - direct key-value pairs
@@ -503,12 +531,13 @@ template <typename T>
 // ============================================================================
 
 template <typename T>
-    requires is_associative_container<T>::value && (!requires { typename T::mapped_type; })
-[[nodiscard]] T parse(ParseTag<T>, const ReplyValue &reply) {
+requires is_associative_container<T>::value && (!requires { typename T::mapped_type; })
+[[nodiscard]] T
+parse(ParseTag<T>, const ReplyValue &reply) {
     if (!is_array(reply) && !is_set(reply)) {
         throw ReplyParseError("ARRAY or SET", reply);
     }
-    
+
     T container;
     if (is_set(reply)) {
         // Set type from RESP3 set
@@ -529,11 +558,12 @@ template <typename T>
 // ============================================================================
 
 template <typename Output>
-[[nodiscard]] std::size_t parse_scan_reply(const ReplyValue &reply, Output output) {
+[[nodiscard]] std::size_t
+parse_scan_reply(const ReplyValue &reply, Output output) {
     if (!is_array(reply)) {
         throw ProtoError("Invalid scan reply");
     }
-    const auto& arr = reply.as_array();
+    const auto &arr = reply.as_array();
     if (arr.size() < 2) {
         throw ProtoError("Invalid scan reply");
     }
@@ -542,30 +572,27 @@ template <typename Output>
     // legitimately have the high bit set. std::stoll would throw out_of_range
     // on any cursor > INT64_MAX, spuriously failing the scan; parse the full
     // unsigned range with from_chars (no exceptions, no locale).
-    auto cursor_str = parse<std::string>(*arr[0]);
+    auto               cursor_str = parse<std::string>(*arr[0]);
     unsigned long long new_cursor = 0;
     {
-        const char *b = cursor_str.data();
-        const char *e = b + cursor_str.size();
+        const char *b  = cursor_str.data();
+        const char *e  = b + cursor_str.size();
         auto [ptr, ec] = std::from_chars(b, e, new_cursor);
         if (ec != std::errc{} || ptr != e) {
             throw ProtoError("Invalid cursor");
         }
     }
-    
+
     if (is_array(*arr[1])) {
         const auto &inner = arr[1]->as_array();
         if constexpr (is_map_iterator<Output>::value) {
             // Map-type output: Redis sends a flat [key, val, key, val, ...] array.
             // Consume two elements at a time and build std::pair objects.
             using PairType = typename iterator_type<Output>::type;
-            using K = std::remove_cvref_t<typename PairType::first_type>;
-            using V = std::remove_cvref_t<typename PairType::second_type>;
+            using K        = std::remove_cvref_t<typename PairType::first_type>;
+            using V        = std::remove_cvref_t<typename PairType::second_type>;
             for (size_t i = 0; i + 1 < inner.size(); i += 2) {
-                *output = std::make_pair(
-                    parse<K>(*inner[i]),
-                    parse<V>(*inner[i + 1])
-                );
+                *output = std::make_pair(parse<K>(*inner[i]), parse<V>(*inner[i + 1]));
                 ++output;
             }
         } else {
@@ -580,7 +607,8 @@ template <typename Output>
 }
 
 template <typename Out>
-[[nodiscard]] scan<Out> parse(ParseTag<scan<Out>>, const ReplyValue &reply) {
+[[nodiscard]] scan<Out>
+parse(ParseTag<scan<Out>>, const ReplyValue &reply) {
     scan<Out> sc;
     if constexpr (is_mappish<Out>::value) {
         sc.cursor = parse_scan_reply(reply, std::inserter(sc.items, sc.items.end()));
@@ -594,23 +622,39 @@ template <typename Out>
 // Type to string conversion
 // ============================================================================
 
-[[nodiscard]] inline std::string type_to_string(const parser::Value& value) {
+[[nodiscard]] inline std::string
+type_to_string(const parser::Value &value) {
     using namespace parser;
-    if (value.is_simple_string()) return "SIMPLE_STRING";
-    if (value.is_simple_error()) return "SIMPLE_ERROR";
-    if (value.is_bulk_string()) return "BULK_STRING";
-    if (value.is_error()) return "BULK_ERROR";
-    if (value.is_integer()) return "INTEGER";
-    if (value.is_double()) return "DOUBLE";
-    if (value.is_boolean()) return "BOOLEAN";
-    if (value.is_null()) return "NULL";
-    if (value.is_array()) return "ARRAY";
-    if (value.is_map()) return "MAP";
-    if (value.is_set()) return "SET";
-    if (value.is_push()) return "PUSH";
-    if (value.is_attribute()) return "ATTRIBUTE";
-    if (value.is_string()) return "VERBATIM_STRING";
-    if (value.is_big_number()) return "BIG_NUMBER";
+    if (value.is_simple_string())
+        return "SIMPLE_STRING";
+    if (value.is_simple_error())
+        return "SIMPLE_ERROR";
+    if (value.is_bulk_string())
+        return "BULK_STRING";
+    if (value.is_error())
+        return "BULK_ERROR";
+    if (value.is_integer())
+        return "INTEGER";
+    if (value.is_double())
+        return "DOUBLE";
+    if (value.is_boolean())
+        return "BOOLEAN";
+    if (value.is_null())
+        return "NULL";
+    if (value.is_array())
+        return "ARRAY";
+    if (value.is_map())
+        return "MAP";
+    if (value.is_set())
+        return "SET";
+    if (value.is_push())
+        return "PUSH";
+    if (value.is_attribute())
+        return "ATTRIBUTE";
+    if (value.is_string())
+        return "VERBATIM_STRING";
+    if (value.is_big_number())
+        return "BIG_NUMBER";
     return "UNKNOWN";
 }
 
@@ -618,7 +662,8 @@ template <typename Out>
 // Status extraction
 // ============================================================================
 
-[[nodiscard]] inline status to_status(const ReplyValue &reply) {
+[[nodiscard]] inline status
+to_status(const ReplyValue &reply) {
     if (!is_status(reply)) {
         throw ReplyParseError("STATUS", reply);
     }
@@ -629,7 +674,8 @@ template <typename Out>
 // Set reply parser (returns true for "OK")
 // ============================================================================
 
-[[nodiscard]] inline bool parse_set_reply(const ReplyValue &reply) {
+[[nodiscard]] inline bool
+parse_set_reply(const ReplyValue &reply) {
     if (is_string(reply) || is_status(reply)) {
         auto sv = reply.as_string_view();
         return sv == "OK";
@@ -645,31 +691,30 @@ template <typename Out>
 [[nodiscard]] inline bool is_flat_array(const ReplyValue &reply);
 
 template <typename Output>
-void to_flat_array(const ReplyValue &reply, Output output) {
+void
+to_flat_array(const ReplyValue &reply, Output output) {
     const auto &arr = reply.as_array();
     if (arr.size() % 2 != 0) {
         throw ProtoError("Flat array needs even number of elements");
     }
-    
-    using Pair = typename iterator_type<Output>::type;
-    using FirstType = std::remove_cvref_t<typename Pair::first_type>;
+
+    using Pair       = typename iterator_type<Output>::type;
+    using FirstType  = std::remove_cvref_t<typename Pair::first_type>;
     using SecondType = std::remove_cvref_t<typename Pair::second_type>;
-    
+
     for (size_t i = 0; i < arr.size(); i += 2) {
-        *output = std::make_pair(
-            parse<FirstType>(*arr[i]),
-            parse<SecondType>(*arr[i + 1])
-        );
+        *output = std::make_pair(parse<FirstType>(*arr[i]), parse<SecondType>(*arr[i + 1]));
         ++output;
     }
 }
 
 template <typename Output>
-void to_array(const ReplyValue &reply, Output output) {
+void
+to_array(const ReplyValue &reply, Output output) {
     if (!is_array(reply) && !is_map(reply) && !is_set(reply)) {
         throw ReplyParseError("ARRAY, MAP, or SET", reply);
     }
-    
+
     if (is_map(reply) || (is_array(reply) && is_flat_array(reply))) {
         to_flat_array(reply, output);
     } else {
@@ -680,8 +725,9 @@ void to_array(const ReplyValue &reply, Output output) {
     }
 }
 
-[[nodiscard]] inline bool is_flat_array(const ReplyValue &reply) {
-    const auto& arr = reply.as_array();
+[[nodiscard]] inline bool
+is_flat_array(const ReplyValue &reply) {
+    const auto &arr = reply.as_array();
     if (!is_array(reply) || arr.empty()) {
         return false;
     }
@@ -697,7 +743,8 @@ void to_array(const ReplyValue &reply, Output output) {
 // ============================================================================
 
 template <typename T>
-[[nodiscard]] inline T parse(const ReplyValue &reply) {
+[[nodiscard]] inline T
+parse(const ReplyValue &reply) {
     return reply::parse<T>(reply);
 }
 
@@ -707,53 +754,65 @@ template <typename T>
 
 // Count elements for Redis protocol
 template <size_t N>
-[[nodiscard]] constexpr std::size_t redis_count(const char (&)[N]) noexcept {
+[[nodiscard]] constexpr std::size_t
+redis_count(const char (&)[N]) noexcept {
     return 1;
 }
 
-[[nodiscard]] constexpr std::size_t redis_count(const char *) noexcept {
+[[nodiscard]] constexpr std::size_t
+redis_count(const char *) noexcept {
     return 1;
 }
 
-[[nodiscard]] constexpr std::size_t redis_count(std::string_view) noexcept {
+[[nodiscard]] constexpr std::size_t
+redis_count(std::string_view) noexcept {
     return 1;
 }
 
-[[nodiscard]] constexpr std::size_t redis_count(std::string const &) noexcept {
+[[nodiscard]] constexpr std::size_t
+redis_count(std::string const &) noexcept {
     return 1;
 }
 
 template <typename T>
-    requires std::is_arithmetic_v<T>
-[[nodiscard]] constexpr std::size_t redis_count(T const &) noexcept {
+requires std::is_arithmetic_v<T>
+[[nodiscard]] constexpr std::size_t
+redis_count(T const &) noexcept {
     return 1;
 }
 
 template <typename... Args>
-[[nodiscard]] constexpr std::size_t redis_count(std::tuple<Args...> const &) noexcept {
+[[nodiscard]] constexpr std::size_t
+redis_count(std::tuple<Args...> const &) noexcept {
     return sizeof...(Args);
 }
 
 template <typename... Args>
-[[nodiscard]] constexpr std::size_t redis_count(std::pair<Args...> const &) noexcept {
+[[nodiscard]] constexpr std::size_t
+redis_count(std::pair<Args...> const &) noexcept {
     return sizeof...(Args);
 }
 
 template <typename T>
-[[nodiscard]] std::size_t redis_count(std::optional<T> const &opt) {
+[[nodiscard]] std::size_t
+redis_count(std::optional<T> const &opt) {
     return opt ? redis_count(opt.value()) : 0;
 }
 
 template <typename T>
-    requires qb::is_container<T>::value
-[[nodiscard]] std::size_t redis_count(T const &cnt) {
+requires qb::is_container<T>::value
+[[nodiscard]] std::size_t
+redis_count(T const &cnt) {
     return cnt.empty() ? 0 : redis_count(*cnt.begin()) * cnt.size();
 }
 
-[[nodiscard]] inline std::size_t redis_count(qb::json const &json) {
-    if (json.is_null()) return 1;
-    if (json.is_boolean() || json.is_number() || json.is_string()) return 1;
-    
+[[nodiscard]] inline std::size_t
+redis_count(qb::json const &json) {
+    if (json.is_null())
+        return 1;
+    if (json.is_boolean() || json.is_number() || json.is_string())
+        return 1;
+
     if (json.is_array()) {
         std::size_t count = 0;
         for (const auto &item : json) {
@@ -761,16 +820,16 @@ template <typename T>
         }
         return count;
     }
-    
+
     if (json.is_object()) {
         std::size_t count = 0;
         for (auto it = json.begin(); it != json.end(); ++it) {
-            count += 1;  // Key
+            count += 1; // Key
             count += redis_count(it.value());
         }
         return count;
     }
-    
+
     return 0;
 }
 
@@ -778,14 +837,16 @@ template <typename T>
 // Security
 // ============================================================================
 
-constexpr std::size_t REDIS_MAX_STRING_SIZE = 512 * 1024 * 1024;  // 512MB
+constexpr std::size_t REDIS_MAX_STRING_SIZE = 512 * 1024 * 1024; // 512MB
 
 class SecurityError : public Error {
 public:
-    explicit SecurityError(const std::string &msg) : Error(msg) {}
+    explicit SecurityError(const std::string &msg)
+        : Error(msg) {}
 };
 
-[[nodiscard]] inline bool is_valid_redis_string_size(const std::string &s) {
+[[nodiscard]] inline bool
+is_valid_redis_string_size(const std::string &s) {
     return s.size() <= REDIS_MAX_STRING_SIZE;
 }
 
@@ -794,24 +855,28 @@ public:
 // ============================================================================
 
 template <size_t N>
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
-    pipe << '$' << (N-1) << "\r\n" << str << "\r\n";
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
+    pipe << '$' << (N - 1) << "\r\n" << str << "\r\n";
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, const char* str) {
-    if (!str) str = "";
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, const char *str) {
+    if (!str)
+        str = "";
     size_t len = std::strlen(str);
-    
+
     if (len > REDIS_MAX_STRING_SIZE) {
         throw SecurityError("String too large");
     }
-    
+
     pipe << '$' << len << "\r\n" << str << "\r\n";
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, std::string_view sv) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::string_view sv) {
     if (sv.size() > REDIS_MAX_STRING_SIZE) {
         throw SecurityError("String too large");
     }
@@ -819,18 +884,21 @@ inline bool to_redis_string(qb::allocator::pipe<char> &pipe, std::string_view sv
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, std::string const &val) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::string const &val) {
     return to_redis_string(pipe, std::string_view{val});
 }
 
 template <typename T>
-    requires std::is_arithmetic_v<T>
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, T const &val) {
+requires std::is_arithmetic_v<T>
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, T const &val) {
     return to_redis_string(pipe, std::to_string(val));
 }
 
 template <typename T>
-bool to_redis_string(qb::allocator::pipe<char> &pipe, std::optional<T> const &opt) {
+bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::optional<T> const &opt) {
     if (opt) {
         to_redis_string(pipe, opt.value());
     }
@@ -838,25 +906,29 @@ bool to_redis_string(qb::allocator::pipe<char> &pipe, std::optional<T> const &op
 }
 
 template <typename Tuple, std::size_t... N>
-bool put_tuple(qb::allocator::pipe<char> &pipe, Tuple const &t, std::index_sequence<N...>) {
+bool
+put_tuple(qb::allocator::pipe<char> &pipe, Tuple const &t, std::index_sequence<N...>) {
     return (to_redis_string(pipe, std::get<N>(t)) && ...);
 }
 
 template <typename... Args>
-bool to_redis_string(qb::allocator::pipe<char> &pipe, std::tuple<Args...> const &t) {
+bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::tuple<Args...> const &t) {
     return put_tuple(pipe, t, std::index_sequence_for<Args...>{});
 }
 
 template <typename... Args>
-bool to_redis_string(qb::allocator::pipe<char> &pipe, std::pair<Args...> const &p) {
+bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::pair<Args...> const &p) {
     to_redis_string(pipe, p.first);
     to_redis_string(pipe, p.second);
     return true;
 }
 
 template <typename T>
-    requires qb::is_container<T>::value
-bool to_redis_string(qb::allocator::pipe<char> &pipe, T const &cnt) {
+requires qb::is_container<T>::value
+bool
+to_redis_string(qb::allocator::pipe<char> &pipe, T const &cnt) {
     if constexpr (is_map_iterator<decltype(cnt.begin())>::value) {
         for (const auto &[k, v] : cnt) {
             to_redis_string(pipe, k);
@@ -870,42 +942,50 @@ bool to_redis_string(qb::allocator::pipe<char> &pipe, T const &cnt) {
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, std::vector<char> const &val) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::vector<char> const &val) {
     pipe << '$' << val.size() << "\r\n";
     pipe.write(val.data(), val.size());
     pipe << "\r\n";
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, std::chrono::milliseconds const &val) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::chrono::milliseconds const &val) {
     return to_redis_string(pipe, std::to_string(val.count()));
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, std::chrono::seconds const &val) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, std::chrono::seconds const &val) {
     return to_redis_string(pipe, std::to_string(val.count()));
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::geo_pos const &pos) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::geo_pos const &pos) {
     to_redis_string(pipe, pos.longitude);
     to_redis_string(pipe, pos.latitude);
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::stream_id const &id) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::stream_id const &id) {
     return to_redis_string(pipe, id.to_string());
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::score const &score) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::score const &score) {
     return to_redis_string(pipe, score.value);
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::score_member const &sm) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::score_member const &sm) {
     to_redis_string(pipe, sm.score);
     to_redis_string(pipe, sm.member);
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::search_result const &sr) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::search_result const &sr) {
     to_redis_string(pipe, sr.key);
     for (const auto &field : sr.fields) {
         to_redis_string(pipe, field);
@@ -916,14 +996,16 @@ inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::search_r
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::cluster_node const &node) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::cluster_node const &node) {
     to_redis_string(pipe, node.id);
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::json_value const &json) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::json_value const &json) {
     using Type = qb::redis::json_value::Type;
-    
+
     switch (json.type) {
         case Type::Null:
             to_redis_string(pipe, "null");
@@ -952,7 +1034,8 @@ inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::json_val
     return true;
 }
 
-inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::json const &json) {
+inline bool
+to_redis_string(qb::allocator::pipe<char> &pipe, qb::json const &json) {
     if (json.is_null()) {
         to_redis_string(pipe, std::string("null"));
     } else if (json.is_boolean()) {
@@ -982,19 +1065,39 @@ inline bool to_redis_string(qb::allocator::pipe<char> &pipe, qb::json const &jso
 // Argument counting for custom types
 // ============================================================================
 
-inline std::size_t redis_count(qb::redis::score const &) { return 1; }
-inline std::size_t redis_count(qb::redis::score_member const &) { return 2; }
-inline std::size_t redis_count(qb::redis::search_result const &sr) {
+inline std::size_t
+redis_count(qb::redis::score const &) {
+    return 1;
+}
+inline std::size_t
+redis_count(qb::redis::score_member const &) {
+    return 2;
+}
+inline std::size_t
+redis_count(qb::redis::search_result const &sr) {
     return 1 + sr.fields.size() + sr.values.size();
 }
-inline std::size_t redis_count(qb::redis::cluster_node const &) { return 1; }
-inline std::size_t redis_count(qb::redis::memory_info const &) { return 0; }
-inline std::size_t redis_count(qb::redis::geo_pos const &) { return 2; }
-inline std::size_t redis_count(qb::redis::stream_id const &) { return 1; }
+inline std::size_t
+redis_count(qb::redis::cluster_node const &) {
+    return 1;
+}
+inline std::size_t
+redis_count(qb::redis::memory_info const &) {
+    return 0;
+}
+inline std::size_t
+redis_count(qb::redis::geo_pos const &) {
+    return 2;
+}
+inline std::size_t
+redis_count(qb::redis::stream_id const &) {
+    return 1;
+}
 
-inline std::size_t redis_count(qb::redis::json_value const &json) {
+inline std::size_t
+redis_count(qb::redis::json_value const &json) {
     using Type = qb::redis::json_value::Type;
-    
+
     switch (json.type) {
         case Type::Null:
         case Type::Boolean:
@@ -1002,7 +1105,7 @@ inline std::size_t redis_count(qb::redis::json_value const &json) {
         case Type::String:
             return 1;
         case Type::Array: {
-            const auto &arr = std::get<std::vector<qb::redis::json_value>>(json.data);
+            const auto &arr   = std::get<std::vector<qb::redis::json_value>>(json.data);
             std::size_t count = 0;
             for (const auto &val : arr) {
                 count += redis_count(val);
@@ -1010,10 +1113,10 @@ inline std::size_t redis_count(qb::redis::json_value const &json) {
             return count;
         }
         case Type::Object: {
-            const auto &obj = std::get<qb::unordered_map<std::string, qb::redis::json_value>>(json.data);
+            const auto &obj   = std::get<qb::unordered_map<std::string, qb::redis::json_value>>(json.data);
             std::size_t count = 0;
             for (const auto &[key, val] : obj) {
-                count += 1;  // key
+                count += 1; // key
                 count += redis_count(val);
             }
             return count;
@@ -1027,7 +1130,8 @@ inline std::size_t redis_count(qb::redis::json_value const &json) {
 // ============================================================================
 
 template <typename... Args>
-void put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
+void
+put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
     pipe << '*' << (redis_count(std::forward<Args>(args)) + ...) << "\r\n";
     (to_redis_string(pipe, std::forward<Args>(args)) && ...);
 }
@@ -1050,30 +1154,53 @@ struct is_optional_like<std::optional<U>> : std::true_type {};
  */
 template <typename T>
 struct Reply {
-    bool       _ok{};
-    T          _result{};
-    reply_ptr  _raw{};
-    std::string _error{};  ///< owned string – never a dangling view
+    bool        _ok{};
+    T           _result{};
+    reply_ptr   _raw{};
+    std::string _error{}; ///< owned string – never a dangling view
 
-    [[nodiscard]] bool &ok() noexcept { return _ok; }
-    [[nodiscard]] bool  ok() const noexcept { return _ok; }
+    [[nodiscard]] bool &
+    ok() noexcept {
+        return _ok;
+    }
+    [[nodiscard]] bool
+    ok() const noexcept {
+        return _ok;
+    }
 
     /// Boolean context: true if command succeeded (no Redis error).
-    [[nodiscard]] explicit operator bool() const noexcept { return _ok; }
+    [[nodiscard]] explicit
+    operator bool() const noexcept {
+        return _ok;
+    }
 
     /// Access the parsed result value.
-    [[nodiscard]] T       &result()       { return _result; }
-    [[nodiscard]] T const &result() const { return _result; }
+    [[nodiscard]] T &
+    result() {
+        return _result;
+    }
+    [[nodiscard]] T const &
+    result() const {
+        return _result;
+    }
 
     /// Alias for result() – preferred in new code.
-    [[nodiscard]] T       &value()       { return _result; }
-    [[nodiscard]] T const &value() const { return _result; }
+    [[nodiscard]] T &
+    value() {
+        return _result;
+    }
+    [[nodiscard]] T const &
+    value() const {
+        return _result;
+    }
 
     /// Returns the value if ok() and (for optional) has_value(); otherwise returns default_value.
     /// Enables: if (auto email = r.value_or(""); !email.empty()) { ... }
     template <typename U>
-    [[nodiscard]] auto value_or(U &&default_value) const {
-        if (!_ok) return std::forward<U>(default_value);
+    [[nodiscard]] auto
+    value_or(U &&default_value) const {
+        if (!_ok)
+            return std::forward<U>(default_value);
         if constexpr (is_optional_like<T>::value) {
             return _result.has_value() ? *_result : std::forward<U>(default_value);
         } else {
@@ -1084,11 +1211,23 @@ struct Reply {
     /// Gives access to the original raw parser::Value that was received.
     /// Useful for types like pipeline_result where individual sub-replies
     /// are only accessible through the raw array.
-    [[nodiscard]] reply_ptr       &raw()       noexcept { return _raw; }
-    [[nodiscard]] reply_ptr const &raw() const noexcept { return _raw; }
+    [[nodiscard]] reply_ptr &
+    raw() noexcept {
+        return _raw;
+    }
+    [[nodiscard]] reply_ptr const &
+    raw() const noexcept {
+        return _raw;
+    }
 
-    [[nodiscard]] std::string       &error()       noexcept { return _error; }
-    [[nodiscard]] std::string const &error() const noexcept { return _error; }
+    [[nodiscard]] std::string &
+    error() noexcept {
+        return _error;
+    }
+    [[nodiscard]] std::string const &
+    error() const noexcept {
+        return _error;
+    }
 };
 
 // ============================================================================
@@ -1110,7 +1249,11 @@ public:
     // Fail the pending command with an explicit reason (timeout, deadline, …).
     // Default routes through the disconnect path; concrete handlers override
     // to surface the domain-specific message instead of "disconnected".
-    virtual void fail(const std::string &reason) { (void) reason; operator()(nullptr); }
+    virtual void
+    fail(const std::string &reason) {
+        (void) reason;
+        operator()(nullptr);
+    }
 };
 
 /**
@@ -1126,14 +1269,16 @@ class TReply final : public IReply {
 public:
     explicit TReply(Func &&func)
         : func(std::forward<Func>(func)) {}
-    
+
     ~TReply() override = default;
 
-    void fail(const std::string &reason) final {
+    void
+    fail(const std::string &reason) final {
         func(Reply<T>{false, {}, nullptr, reason});
     }
 
-    void operator()(std::unique_ptr<ReplyValue> raw) final {
+    void
+    operator()(std::unique_ptr<ReplyValue> raw) final {
         if (raw == nullptr) {
             func(Reply<T>{false, {}, nullptr, "disconnected"});
             return;

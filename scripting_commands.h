@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,13 +52,9 @@ public:
      */
     template <typename Ret>
     auto
-    eval(const std::string &script, const std::vector<std::string> &keys = {},
-         const std::vector<std::string> &args = {}) {
+    eval(const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
         return derived().template make_coro_command<Ret>(
-            [this, script, keys, args](auto&& callback) mutable {
-                this->template eval<Ret>(std::move(callback), script, keys, args);
-            }
-        );
+            [this, script, keys, args](auto &&callback) mutable { this->template eval<Ret>(std::move(callback), script, keys, args); });
     }
 
     /**
@@ -75,11 +71,8 @@ public:
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
-    eval(Func &&func, const std::string &script,
-         const std::vector<std::string> &keys = {},
-         const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "EVAL", script,
-                                               keys.size(), keys, args);
+    eval(Func &&func, const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "EVAL", script, keys.size(), keys, args);
     }
 
     /**
@@ -94,13 +87,9 @@ public:
      */
     template <typename Ret>
     auto
-    evalsha(const std::string &script, const std::vector<std::string> &keys = {},
-            const std::vector<std::string> &args = {}) {
+    evalsha(const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
         return derived().template make_coro_command<Ret>(
-            [this, script, keys, args](auto&& callback) mutable {
-                this->template evalsha<Ret>(std::move(callback), script, keys, args);
-            }
-        );
+            [this, script, keys, args](auto &&callback) mutable { this->template evalsha<Ret>(std::move(callback), script, keys, args); });
     }
 
     /**
@@ -117,11 +106,8 @@ public:
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
-    evalsha(Func &&func, const std::string &script,
-            const std::vector<std::string> &keys = {},
-            const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "EVALSHA",
-                                               script, keys.size(), keys, args);
+    evalsha(Func &&func, const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "EVALSHA", script, keys.size(), keys, args);
     }
 
     /**
@@ -135,11 +121,9 @@ public:
     template <typename... Keys>
     auto
     script_exists(Keys &&...keys) {
-        return derived().template make_coro_command<std::vector<bool>>(
-            [this, ...keys = std::forward<Keys>(keys)](auto&& callback) mutable {
-                this->script_exists(std::move(callback), std::forward<decltype(keys)>(keys)...);
-            }
-        );
+        return derived().template make_coro_command<std::vector<bool>>([this, ... keys = std::forward<Keys>(keys)](auto &&callback) mutable {
+            this->script_exists(std::move(callback), std::forward<decltype(keys)>(keys)...);
+        });
     }
 
     /**
@@ -155,8 +139,7 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<bool>> &&>, Derived &>
     script_exists(Func &&func, Keys &&...keys) {
-        return derived().template command<std::vector<bool>>(
-            std::forward<Func>(func), "SCRIPT", "EXISTS", std::forward<Keys>(keys)...);
+        return derived().template command<std::vector<bool>>(std::forward<Func>(func), "SCRIPT", "EXISTS", std::forward<Keys>(keys)...);
     }
 
     /**
@@ -167,11 +150,7 @@ public:
      */
     auto
     script_flush() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) mutable {
-                this->script_flush(std::move(callback));
-            }
-        );
+        return derived().template make_coro_command<status>([this](auto &&callback) mutable { this->script_flush(std::move(callback)); });
     }
 
     /**
@@ -185,8 +164,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     script_flush(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "SCRIPT",
-                                                  "FLUSH");
+        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "FLUSH");
     }
 
     /**
@@ -197,11 +175,7 @@ public:
      */
     auto
     script_kill() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) mutable {
-                this->script_kill(std::move(callback));
-            }
-        );
+        return derived().template make_coro_command<status>([this](auto &&callback) mutable { this->script_kill(std::move(callback)); });
     }
 
     /**
@@ -215,8 +189,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     script_kill(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "SCRIPT",
-                                                  "KILL");
+        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "KILL");
     }
 
     /**
@@ -229,10 +202,7 @@ public:
     auto
     script_load(std::string const &script) {
         return derived().template make_coro_command<std::string>(
-            [this, script](auto&& callback) mutable {
-                this->script_load(std::move(callback), script);
-            }
-        );
+            [this, script](auto &&callback) mutable { this->script_load(std::move(callback), script); });
     }
 
     /**
@@ -247,8 +217,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     script_load(Func &&func, std::string const &script) {
-        return derived().template command<std::string>(std::forward<Func>(func),
-                                                       "SCRIPT", "LOAD", script);
+        return derived().template command<std::string>(std::forward<Func>(func), "SCRIPT", "LOAD", script);
     }
 
     /**
@@ -262,13 +231,10 @@ public:
      * @see https://redis.io/commands/eval_ro
      */
     template <typename Ret>
-    auto evalRo(const std::string &script, const std::vector<std::string> &keys = {},
-               const std::vector<std::string> &args = {}) {
+    auto
+    evalRo(const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
         return derived().template make_coro_command<Ret>(
-            [this, script, keys, args](auto&& callback) mutable {
-                this->template evalRo<Ret>(std::move(callback), script, keys, args);
-            }
-        );
+            [this, script, keys, args](auto &&callback) mutable { this->template evalRo<Ret>(std::move(callback), script, keys, args); });
     }
 
     /**
@@ -277,11 +243,8 @@ public:
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
-    evalRo(Func &&func, const std::string &script,
-           const std::vector<std::string> &keys = {},
-           const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "EVAL_RO",
-                                             script, keys.size(), keys, args);
+    evalRo(Func &&func, const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "EVAL_RO", script, keys.size(), keys, args);
     }
 
     /**
@@ -295,13 +258,10 @@ public:
      * @see https://redis.io/commands/evalsha_ro
      */
     template <typename Ret>
-    auto evalshaRo(const std::string &sha1, const std::vector<std::string> &keys = {},
-                  const std::vector<std::string> &args = {}) {
+    auto
+    evalshaRo(const std::string &sha1, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
         return derived().template make_coro_command<Ret>(
-            [this, sha1, keys, args](auto&& callback) mutable {
-                this->template evalshaRo<Ret>(std::move(callback), sha1, keys, args);
-            }
-        );
+            [this, sha1, keys, args](auto &&callback) mutable { this->template evalshaRo<Ret>(std::move(callback), sha1, keys, args); });
     }
 
     /**
@@ -310,11 +270,8 @@ public:
      */
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
-    evalshaRo(Func &&func, const std::string &sha1,
-              const std::vector<std::string> &keys = {},
-              const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "EVALSHA_RO",
-                                              sha1, keys.size(), keys, args);
+    evalshaRo(Func &&func, const std::string &sha1, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
+        return derived().template command<Ret>(std::forward<Func>(func), "EVALSHA_RO", sha1, keys.size(), keys, args);
     }
 
     /**
@@ -324,12 +281,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/script-debug
      */
-    auto scriptDebug(const std::string &mode) {
-        return derived().template make_coro_command<status>(
-            [this, mode](auto&& callback) {
-                this->scriptDebug(std::move(callback), mode);
-            }
-        );
+    auto
+    scriptDebug(const std::string &mode) {
+        return derived().template make_coro_command<status>([this, mode](auto &&callback) { this->scriptDebug(std::move(callback), mode); });
     }
 
     /**
@@ -339,8 +293,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     scriptDebug(Func &&func, const std::string &mode) {
-        return derived().template command<status>(std::forward<Func>(func), "SCRIPT",
-                                                 "DEBUG", mode);
+        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "DEBUG", mode);
     }
 };
 

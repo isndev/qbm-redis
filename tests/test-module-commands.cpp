@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_LIST) {
 
                 // If modules are loaded, each entry should have a "name" field
                 if (!modules.empty()) {
-                    for (const auto& module : modules) {
+                    for (const auto &module : modules) {
                         EXPECT_TRUE(module.contains("name"));
                         EXPECT_TRUE(module["name"].is_string());
                     }
@@ -61,14 +61,12 @@ TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_LIST) {
             } else {
                 // This might happen if the Redis server doesn't support modules
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("module") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("module") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             // This might happen if the Redis server doesn't support module commands
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("module") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("module") != std::string::npos);
         }
 
         completed = true;
@@ -89,10 +87,8 @@ TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_LOAD) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             std::string error{reply.error()};
-            EXPECT_TRUE(error.find("wrong number") != std::string::npos ||
-                        error.find("unknown command") != std::string::npos ||
-                        error.find("ERR") != std::string::npos ||
-                        error.find("path") != std::string::npos);
+            EXPECT_TRUE(error.find("wrong number") != std::string::npos || error.find("unknown command") != std::string::npos
+                        || error.find("ERR") != std::string::npos || error.find("path") != std::string::npos);
         }
 
         completed = true;
@@ -113,10 +109,8 @@ TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_UNLOAD) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             std::string error{reply.error()};
-            EXPECT_TRUE(error.find("module not loaded") != std::string::npos ||
-                        error.find("unknown command") != std::string::npos ||
-                        error.find("ERR") != std::string::npos ||
-                        error.find("No such module") != std::string::npos);
+            EXPECT_TRUE(error.find("module not loaded") != std::string::npos || error.find("unknown command") != std::string::npos
+                        || error.find("ERR") != std::string::npos || error.find("No such module") != std::string::npos);
         }
 
         completed = true;
@@ -142,20 +136,18 @@ TEST_P(ModuleProtocolModesTest, CORO_MODULE_COMMANDS_HELP) {
                 EXPECT_FALSE(help.empty());
 
                 // Each line of help should be a string
-                for (const auto& line : help) {
+                for (const auto &line : help) {
                     EXPECT_FALSE(line.empty());
                 }
             } else {
                 // This might happen if the Redis server doesn't support module commands
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("module") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("module") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             // This might happen if the Redis server doesn't support module commands
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("module") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("module") != std::string::npos);
         }
 
         completed = true;
@@ -172,13 +164,15 @@ TEST_P(ModuleProtocolModesTest, MODULE_LIST_JSON) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r = co_await redis.module_list();
-            if (r.ok()) EXPECT_TRUE(r.result().is_array());
-        } catch (const std::exception&) {
+            if (r.ok())
+                EXPECT_TRUE(r.result().is_array());
+        } catch (const std::exception &) {
             // MODULE not available on older Redis
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test async MODULE LIST command

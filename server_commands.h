@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@
 
 #ifndef QBM_REDIS_SERVER_COMMANDS_H
 #define QBM_REDIS_SERVER_COMMANDS_H
-#include <sstream>
 #include <charconv>
+#include <map>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <map>
 #include "reply.h"
 
 namespace qb::redis {
@@ -100,9 +100,8 @@ private:
                         // Extract number of keys from db0:keys=1,expires=0,avg_ttl=0
                         size_t key_pos = val.find("keys=");
                         if (key_pos != std::string::npos) {
-                            size_t      comma_pos = val.find(',', key_pos);
-                            std::string keys_count =
-                                val.substr(key_pos + 5, comma_pos - (key_pos + 5));
+                            size_t      comma_pos  = val.find(',', key_pos);
+                            std::string keys_count = val.substr(key_pos + 5, comma_pos - (key_pos + 5));
                             info.number_of_keys += std::stoull(keys_count);
                         }
 
@@ -110,8 +109,7 @@ private:
                         size_t expires_pos = val.find("expires=");
                         if (expires_pos != std::string::npos) {
                             size_t      comma_pos     = val.find(',', expires_pos);
-                            std::string expires_count = val.substr(
-                                expires_pos + 8, comma_pos - (expires_pos + 8));
+                            std::string expires_count = val.substr(expires_pos + 8, comma_pos - (expires_pos + 8));
                             info.number_of_expires += std::stoull(expires_count);
                         }
                     }
@@ -137,13 +135,10 @@ public:
      * @return status object with the result
      * @see https://redis.io/commands/client-kill
      */
-    auto client_kill(const std::string &addr = "", long long id = 0,
-                     const std::string &type = "", bool skipme = true) {
+    auto
+    client_kill(const std::string &addr = "", long long id = 0, const std::string &type = "", bool skipme = true) {
         return derived().template make_coro_command<status>(
-            [this, addr, id, type, skipme](auto&& callback) {
-                this->client_kill(std::move(callback), addr, id, type, skipme);
-            }
-        );
+            [this, addr, id, type, skipme](auto &&callback) { this->client_kill(std::move(callback), addr, id, type, skipme); });
     }
 
     /**
@@ -160,8 +155,7 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    client_kill(Func &&func, const std::string &addr = "", long long id = 0,
-                const std::string &type = "", bool skipme = true) {
+    client_kill(Func &&func, const std::string &addr = "", long long id = 0, const std::string &type = "", bool skipme = true) {
         std::vector<std::string> args;
         if (!addr.empty()) {
             args.push_back("ADDR");
@@ -179,8 +173,7 @@ public:
             args.push_back("SKIPME");
             args.push_back("yes");
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
-                                                  "KILL", args);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "KILL", args);
     }
 
     /**
@@ -189,12 +182,9 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/client-id
      */
-    auto client_id() {
-        return derived().template make_coro_command<long long>(
-            [this](auto&& callback) {
-                this->client_id(std::move(callback));
-            }
-        );
+    auto
+    client_id() {
+        return derived().template make_coro_command<long long>([this](auto &&callback) { this->client_id(std::move(callback)); });
     }
 
     /**
@@ -204,8 +194,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     client_id(Func &&func) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "CLIENT", "ID");
+        return derived().template command<long long>(std::forward<Func>(func), "CLIENT", "ID");
     }
 
     /**
@@ -214,12 +203,10 @@ public:
      * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @see https://redis.io/commands/client-getname
      */
-    auto client_getname() {
+    auto
+    client_getname() {
         return derived().template make_coro_command<std::optional<std::string>>(
-            [this](auto&& callback) {
-                this->client_getname(std::move(callback));
-            }
-        );
+            [this](auto &&callback) { this->client_getname(std::move(callback)); });
     }
 
     /**
@@ -227,11 +214,9 @@ public:
      * @see https://redis.io/commands/client-getname
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     client_getname(Func &&func) {
-        return derived().template command<std::optional<std::string>>(
-            std::forward<Func>(func), "CLIENT", "GETNAME");
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "CLIENT", "GETNAME");
     }
 
     /**
@@ -241,12 +226,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/client-setname
      */
-    auto client_setname(const std::string &name) {
-        return derived().template make_coro_command<status>(
-            [this, name](auto&& callback) {
-                this->client_setname(std::move(callback), name);
-            }
-        );
+    auto
+    client_setname(const std::string &name) {
+        return derived().template make_coro_command<status>([this, name](auto &&callback) { this->client_setname(std::move(callback), name); });
     }
 
     /**
@@ -256,8 +238,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_setname(Func &&func, const std::string &name) {
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
-                                                  "SETNAME", name);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "SETNAME", name);
     }
 
     /**
@@ -268,12 +249,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/client-pause
      */
-    auto client_pause(long long timeout, const std::string &mode = "ALL") {
+    auto
+    client_pause(long long timeout, const std::string &mode = "ALL") {
         return derived().template make_coro_command<status>(
-            [this, timeout, mode](auto&& callback) {
-                this->client_pause(std::move(callback), timeout, mode);
-            }
-        );
+            [this, timeout, mode](auto &&callback) { this->client_pause(std::move(callback), timeout, mode); });
     }
 
     /**
@@ -289,8 +268,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_pause(Func &&func, long long timeout, const std::string &mode = "ALL") {
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
-                                                  "PAUSE", timeout, mode);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "PAUSE", timeout, mode);
     }
 
     /**
@@ -300,12 +278,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/client-tracking
      */
-    auto client_tracking(bool enabled = true) {
+    auto
+    client_tracking(bool enabled = true) {
         return derived().template make_coro_command<status>(
-            [this, enabled](auto&& callback) {
-                this->client_tracking(std::move(callback), enabled);
-            }
-        );
+            [this, enabled](auto &&callback) { this->client_tracking(std::move(callback), enabled); });
     }
 
     /**
@@ -315,8 +291,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_tracking(Func &&func, bool enabled = true) {
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
-                                                  "TRACKING", enabled ? "ON" : "OFF");
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "TRACKING", enabled ? "ON" : "OFF");
     }
 
     /**
@@ -327,12 +302,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/client-unblock
      */
-    auto client_unblock(long long client_id, bool error = false) {
+    auto
+    client_unblock(long long client_id, bool error = false) {
         return derived().template make_coro_command<status>(
-            [this, client_id, error](auto&& callback) {
-                this->client_unblock(std::move(callback), client_id, error);
-            }
-        );
+            [this, client_id, error](auto &&callback) { this->client_unblock(std::move(callback), client_id, error); });
     }
 
     /**
@@ -352,8 +325,7 @@ public:
         if (error) {
             args.push_back("ERROR");
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT",
-                                                  args);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", args);
     }
 
     // =============== Configuration Commands ===============
@@ -365,13 +337,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::pair<std::string, std::string>>>
      * @see https://redis.io/commands/config-get
      */
-    auto config_get(const std::string &parameter) {
-        return derived().template make_coro_command<
-            std::vector<std::pair<std::string, std::string>>>(
-            [this, parameter](auto&& callback) {
-                this->config_get(std::move(callback), parameter);
-            }
-        );
+    auto
+    config_get(const std::string &parameter) {
+        return derived().template make_coro_command<std::vector<std::pair<std::string, std::string>>>(
+            [this, parameter](auto &&callback) { this->config_get(std::move(callback), parameter); });
     }
 
     /**
@@ -383,10 +352,7 @@ public:
      * @see https://redis.io/commands/config-get
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func,
-                            Reply<std::vector<std::pair<std::string, std::string>>> &&>,
-        Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::pair<std::string, std::string>>> &&>, Derived &>
     config_get(Func &&func, const std::string &parameter) {
         return derived().template command<std::vector<std::string>>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
@@ -395,8 +361,7 @@ public:
                 if (reply.ok()) {
                     for (size_t i = 0; i < reply.result().size(); i += 2) {
                         if (i + 1 < reply.result().size()) {
-                            r.result().emplace_back(reply.result()[i],
-                                                    reply.result()[i + 1]);
+                            r.result().emplace_back(reply.result()[i], reply.result()[i + 1]);
                         }
                     }
                 }
@@ -413,12 +378,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/config-set
      */
-    auto config_set(const std::string &parameter, const std::string &value) {
+    auto
+    config_set(const std::string &parameter, const std::string &value) {
         return derived().template make_coro_command<status>(
-            [this, parameter, value](auto&& callback) {
-                this->config_set(std::move(callback), parameter, value);
-            }
-        );
+            [this, parameter, value](auto &&callback) { this->config_set(std::move(callback), parameter, value); });
     }
 
     /**
@@ -428,8 +391,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     config_set(Func &&func, const std::string &parameter, const std::string &value) {
-        return derived().template command<status>(std::forward<Func>(func), "CONFIG",
-                                                  "SET", parameter, value);
+        return derived().template command<status>(std::forward<Func>(func), "CONFIG", "SET", parameter, value);
     }
 
     /**
@@ -438,12 +400,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/config-resetstat
      */
-    auto config_resetstat() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->config_resetstat(std::move(callback));
-            }
-        );
+    auto
+    config_resetstat() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->config_resetstat(std::move(callback)); });
     }
 
     /**
@@ -453,8 +412,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     config_resetstat(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "CONFIG",
-                                                  "RESETSTAT");
+        return derived().template command<status>(std::forward<Func>(func), "CONFIG", "RESETSTAT");
     }
 
     /**
@@ -463,12 +421,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/config-rewrite
      */
-    auto config_rewrite() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->config_rewrite(std::move(callback));
-            }
-        );
+    auto
+    config_rewrite() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->config_rewrite(std::move(callback)); });
     }
 
     /**
@@ -478,8 +433,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     config_rewrite(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "CONFIG",
-                                                  "REWRITE");
+        return derived().template command<status>(std::forward<Func>(func), "CONFIG", "REWRITE");
     }
 
     // =============== Command Information Commands ===============
@@ -491,13 +445,10 @@ public:
      * @return Vector of command information
      * @see https://redis.io/commands/command-info
      */
-    auto command_info(const std::vector<std::string> &command_names = {}) {
-        return derived().template make_coro_command<
-            std::vector<std::map<std::string, std::string>>>(
-            [this, command_names](auto&& callback) {
-                this->command_info(std::move(callback), command_names);
-            }
-        );
+    auto
+    command_info(const std::vector<std::string> &command_names = {}) {
+        return derived().template make_coro_command<std::vector<std::map<std::string, std::string>>>(
+            [this, command_names](auto &&callback) { this->command_info(std::move(callback), command_names); });
     }
 
     /**
@@ -509,10 +460,7 @@ public:
      * @see https://redis.io/commands/command-info
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func,
-                            Reply<std::vector<std::map<std::string, std::string>>> &&>,
-        Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::map<std::string, std::string>>> &&>, Derived &>
     command_info(Func &&func, const std::vector<std::string> &command_names = {}) {
         return derived().template command<std::vector<std::vector<std::string>>>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
@@ -540,12 +488,9 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/command-count
      */
-    auto command_count() {
-        return derived().template make_coro_command<long long>(
-            [this](auto&& callback) {
-                this->command_count(std::move(callback));
-            }
-        );
+    auto
+    command_count() {
+        return derived().template make_coro_command<long long>([this](auto &&callback) { this->command_count(std::move(callback)); });
     }
 
     /**
@@ -559,8 +504,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     command_count(Func &&func) {
-        return derived().template command<long long>(std::forward<Func>(func), "COMMAND",
-                                                     "COUNT");
+        return derived().template command<long long>(std::forward<Func>(func), "COMMAND", "COUNT");
     }
 
     /**
@@ -571,13 +515,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/command-getkeys
      */
-    auto command_getkeys(const std::string &command,
-                         const std::vector<std::string> &args) {
+    auto
+    command_getkeys(const std::string &command, const std::vector<std::string> &args) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, command, args](auto&& callback) {
-                this->command_getkeys(std::move(callback), command, args);
-            }
-        );
+            [this, command, args](auto &&callback) { this->command_getkeys(std::move(callback), command, args); });
     }
 
     /**
@@ -585,12 +526,9 @@ public:
      * @see https://redis.io/commands/command-getkeys
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
-    command_getkeys(Func &&func, const std::string &command,
-                    const std::vector<std::string> &args) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "COMMAND", "GETKEYS", command, args);
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    command_getkeys(Func &&func, const std::string &command, const std::vector<std::string> &args) {
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "COMMAND", "GETKEYS", command, args);
     }
 
     /**
@@ -602,12 +540,9 @@ public:
      * @return Structured qb::json with command information
      * @see https://redis.io/commands/command
      */
-    auto command() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->command(std::move(callback));
-            }
-        );
+    auto
+    command() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->command(std::move(callback)); });
     }
 
     /**
@@ -620,12 +555,10 @@ public:
      * @return Structured qb::json with command information
      * @see https://redis.io/commands/command
      */
-    auto command(const std::vector<std::string> &command_names) {
+    auto
+    command(const std::vector<std::string> &command_names) {
         return derived().template make_coro_command<qb::json>(
-            [this, command_names](auto&& callback) {
-                this->command(std::move(callback), command_names);
-            }
-        );
+            [this, command_names](auto &&callback) { this->command(std::move(callback), command_names); });
     }
 
     /**
@@ -666,12 +599,9 @@ public:
      * @return Structured qb::json with command statistics
      * @see https://redis.io/commands/command-stats
      */
-    auto command_stats() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->command_stats(std::move(callback));
-            }
-        );
+    auto
+    command_stats() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->command_stats(std::move(callback)); });
     }
 
     /**
@@ -696,12 +626,10 @@ public:
      * @return Debug information
      * @see https://redis.io/commands/debug-object
      */
-    auto debug_object(const std::string &key) {
+    auto
+    debug_object(const std::string &key) {
         return derived().template make_coro_command<std::string>(
-            [this, key](auto&& callback) {
-                this->debug_object(std::move(callback), key);
-            }
-        );
+            [this, key](auto &&callback) { this->debug_object(std::move(callback), key); });
     }
 
     /**
@@ -715,8 +643,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     debug_object(Func &&func, const std::string &key) {
-        return derived().template command<std::string>(std::forward<Func>(func), "DEBUG",
-                                                       "OBJECT", key);
+        return derived().template command<std::string>(std::forward<Func>(func), "DEBUG", "OBJECT", key);
     }
 
     /**
@@ -725,12 +652,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/debug-segfault
      */
-    auto debug_segfault() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->debug_segfault(std::move(callback));
-            }
-        );
+    auto
+    debug_segfault() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->debug_segfault(std::move(callback)); });
     }
 
     /**
@@ -740,8 +664,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     debug_segfault(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "DEBUG",
-                                                  "SEGFAULT");
+        return derived().template command<status>(std::forward<Func>(func), "DEBUG", "SEGFAULT");
     }
 
     /**
@@ -751,12 +674,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/debug-sleep
      */
-    auto debug_sleep(qb::duration delay) {
-        return derived().template make_coro_command<status>(
-            [this, delay](auto&& callback) {
-                this->debug_sleep(std::move(callback), delay);
-            }
-        );
+    auto
+    debug_sleep(qb::duration delay) {
+        return derived().template make_coro_command<status>([this, delay](auto &&callback) { this->debug_sleep(std::move(callback), delay); });
     }
 
     /**
@@ -766,8 +686,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     debug_sleep(Func &&func, qb::duration delay) {
-        return derived().template command<status>(std::forward<Func>(func), "DEBUG",
-                                                  "SLEEP", qb::detail::to_ev_seconds(delay));
+        return derived().template command<status>(std::forward<Func>(func), "DEBUG", "SLEEP", qb::detail::to_ev_seconds(delay));
     }
 
     // =============== Memory Commands ===============
@@ -778,12 +697,9 @@ public:
      * @return Memory report
      * @see https://redis.io/commands/memory-doctor
      */
-    auto memory_doctor() {
-        return derived().template make_coro_command<std::string>(
-            [this](auto&& callback) {
-                this->memory_doctor(std::move(callback));
-            }
-        );
+    auto
+    memory_doctor() {
+        return derived().template make_coro_command<std::string>([this](auto &&callback) { this->memory_doctor(std::move(callback)); });
     }
 
     /**
@@ -796,8 +712,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     memory_doctor(Func &&func) {
-        return derived().template command<std::string>(std::forward<Func>(func),
-                                                       "MEMORY", "DOCTOR");
+        return derived().template command<std::string>(std::forward<Func>(func), "MEMORY", "DOCTOR");
     }
 
     /**
@@ -806,12 +721,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/memory-help
      */
-    auto memory_help() {
+    auto
+    memory_help() {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this](auto&& callback) {
-                this->memory_help(std::move(callback));
-            }
-        );
+            [this](auto &&callback) { this->memory_help(std::move(callback)); });
     }
 
     /**
@@ -819,11 +732,9 @@ public:
      * @see https://redis.io/commands/memory-help
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     memory_help(Func &&func) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "MEMORY", "HELP");
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "MEMORY", "HELP");
     }
 
     /**
@@ -832,12 +743,9 @@ public:
      * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/memory-malloc-stats
      */
-    auto memory_malloc_stats() {
-        return derived().template make_coro_command<std::string>(
-            [this](auto&& callback) {
-                this->memory_malloc_stats(std::move(callback));
-            }
-        );
+    auto
+    memory_malloc_stats() {
+        return derived().template make_coro_command<std::string>([this](auto &&callback) { this->memory_malloc_stats(std::move(callback)); });
     }
 
     /**
@@ -847,8 +755,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     memory_malloc_stats(Func &&func) {
-        return derived().template command<std::string>(std::forward<Func>(func),
-                                                       "MEMORY", "MALLOC-STATS");
+        return derived().template command<std::string>(std::forward<Func>(func), "MEMORY", "MALLOC-STATS");
     }
 
     /**
@@ -857,12 +764,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/memory-purge
      */
-    auto memory_purge() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->memory_purge(std::move(callback));
-            }
-        );
+    auto
+    memory_purge() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->memory_purge(std::move(callback)); });
     }
 
     /**
@@ -872,8 +776,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     memory_purge(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "MEMORY",
-                                                  "PURGE");
+        return derived().template command<status>(std::forward<Func>(func), "MEMORY", "PURGE");
     }
 
     /**
@@ -884,12 +787,10 @@ public:
      * @return redis_awaiter yielding Reply<long long> (memory in bytes)
      * @see https://redis.io/commands/memory-usage
      */
-    auto memory_usage(const std::string &key, long long samples = 0) {
+    auto
+    memory_usage(const std::string &key, long long samples = 0) {
         return derived().template make_coro_command<long long>(
-            [this, key, samples](auto&& callback) {
-                this->memory_usage(std::move(callback), key, samples);
-            }
-        );
+            [this, key, samples](auto &&callback) { this->memory_usage(std::move(callback), key, samples); });
     }
 
     /**
@@ -904,8 +805,7 @@ public:
             args.push_back("SAMPLES");
             args.push_back(std::to_string(samples));
         }
-        return derived().template command<long long>(std::forward<Func>(func), "MEMORY",
-                                                     "USAGE", key, args);
+        return derived().template command<long long>(std::forward<Func>(func), "MEMORY", "USAGE", key, args);
     }
 
     // =============== Monitor Commands ===============
@@ -920,8 +820,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     monitor(Func &&func) {
-        return derived().template command<std::string>(std::forward<Func>(func),
-                                                       "MONITOR");
+        return derived().template command<std::string>(std::forward<Func>(func), "MONITOR");
     }
 
     // =============== Role Commands ===============
@@ -932,12 +831,9 @@ public:
      * @return Server role information
      * @see https://redis.io/commands/role
      */
-    auto role() {
-        return derived().template make_coro_command<std::vector<std::string>>(
-            [this](auto&& callback) {
-                this->role(std::move(callback));
-            }
-        );
+    auto
+    role() {
+        return derived().template make_coro_command<std::vector<std::string>>([this](auto &&callback) { this->role(std::move(callback)); });
     }
 
     /**
@@ -948,11 +844,9 @@ public:
      * @see https://redis.io/commands/role
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     role(Func &&func) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "ROLE");
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ROLE");
     }
 
     // =============== Shutdown Commands ===============
@@ -967,12 +861,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/shutdown
      */
-    auto shutdown(const std::string &save_option = "") {
+    auto
+    shutdown(const std::string &save_option = "") {
         return derived().template make_coro_command<status>(
-            [this, save_option](auto&& callback) {
-                this->shutdown(std::move(callback), save_option);
-            }
-        );
+            [this, save_option](auto &&callback) { this->shutdown(std::move(callback), save_option); });
     }
 
     /**
@@ -988,11 +880,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     shutdown(Func &&func, const std::string &save_option = "") {
         if (save_option.empty()) {
-            return derived().template command<status>(std::forward<Func>(func),
-                                                      "SHUTDOWN");
+            return derived().template command<status>(std::forward<Func>(func), "SHUTDOWN");
         }
-        return derived().template command<status>(std::forward<Func>(func), "SHUTDOWN",
-                                                  save_option);
+        return derived().template command<status>(std::forward<Func>(func), "SHUTDOWN", save_option);
     }
 
     // =============== Slave Commands ===============
@@ -1005,12 +895,10 @@ public:
      * @return status object with the result
      * @see https://redis.io/commands/slaveof
      */
-    auto slaveof(const std::string &host, long long port) {
+    auto
+    slaveof(const std::string &host, long long port) {
         return derived().template make_coro_command<status>(
-            [this, host, port](auto&& callback) {
-                this->slaveof(std::move(callback), host, port);
-            }
-        );
+            [this, host, port](auto &&callback) { this->slaveof(std::move(callback), host, port); });
     }
 
     /**
@@ -1025,8 +913,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     slaveof(Func &&func, const std::string &host, long long port) {
-        return derived().template command<status>(std::forward<Func>(func), "SLAVEOF",
-                                                  host, port);
+        return derived().template command<status>(std::forward<Func>(func), "SLAVEOF", host, port);
     }
 
     // =============== Slowlog Commands ===============
@@ -1037,12 +924,9 @@ public:
      * @return Number of entries in the slowlog
      * @see https://redis.io/commands/slowlog
      */
-    auto slowlog_len() {
-        return derived().template make_coro_command<long long>(
-            [this](auto&& callback) {
-                this->slowlog_len(std::move(callback));
-            }
-        );
+    auto
+    slowlog_len() {
+        return derived().template make_coro_command<long long>([this](auto &&callback) { this->slowlog_len(std::move(callback)); });
     }
 
     /**
@@ -1052,8 +936,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     slowlog_len(Func &&func) {
-        return derived().template command<long long>(std::forward<Func>(func), "SLOWLOG",
-                                                     "LEN");
+        return derived().template command<long long>(std::forward<Func>(func), "SLOWLOG", "LEN");
     }
 
     /**
@@ -1062,12 +945,9 @@ public:
      * @return status object with the result
      * @see https://redis.io/commands/slowlog
      */
-    auto slowlog_reset() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->slowlog_reset(std::move(callback));
-            }
-        );
+    auto
+    slowlog_reset() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->slowlog_reset(std::move(callback)); });
     }
 
     /**
@@ -1077,8 +957,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     slowlog_reset(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "SLOWLOG",
-                                                  "RESET");
+        return derived().template command<status>(std::forward<Func>(func), "SLOWLOG", "RESET");
     }
 
     // =============== Sync Commands ===============
@@ -1089,12 +968,9 @@ public:
      * @return status object with the result
      * @see https://redis.io/commands/sync
      */
-    auto sync() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->sync(std::move(callback));
-            }
-        );
+    auto
+    sync() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->sync(std::move(callback)); });
     }
 
     /**
@@ -1118,12 +994,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/psync
      */
-    auto psync(const std::string &replication_id, long long offset) {
+    auto
+    psync(const std::string &replication_id, long long offset) {
         return derived().template make_coro_command<status>(
-            [this, replication_id, offset](auto&& callback) {
-                this->psync(std::move(callback), replication_id, offset);
-            }
-        );
+            [this, replication_id, offset](auto &&callback) { this->psync(std::move(callback), replication_id, offset); });
     }
 
     /**
@@ -1133,8 +1007,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     psync(Func &&func, const std::string &replication_id, long long offset) {
-        return derived().template command<status>(std::forward<Func>(func), "PSYNC",
-                                                  replication_id, offset);
+        return derived().template command<status>(std::forward<Func>(func), "PSYNC", replication_id, offset);
     }
 
     // =============== Persistence Commands ===============
@@ -1148,12 +1021,9 @@ public:
      * @return status object with the result
      * @see https://redis.io/commands/bgrewriteaof
      */
-    auto bgrewriteaof() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->bgrewriteaof(std::move(callback));
-            }
-        );
+    auto
+    bgrewriteaof() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->bgrewriteaof(std::move(callback)); });
     }
 
     /**
@@ -1167,8 +1037,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     bgrewriteaof(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func),
-                                                  "BGREWRITEAOF");
+        return derived().template command<status>(std::forward<Func>(func), "BGREWRITEAOF");
     }
 
     /**
@@ -1181,12 +1050,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/bgsave
      */
-    auto bgsave(bool schedule = false) {
-        return derived().template make_coro_command<status>(
-            [this, schedule](auto&& callback) {
-                this->bgsave(std::move(callback), schedule);
-            }
-        );
+    auto
+    bgsave(bool schedule = false) {
+        return derived().template make_coro_command<status>([this, schedule](auto &&callback) { this->bgsave(std::move(callback), schedule); });
     }
 
     /**
@@ -1202,8 +1068,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     bgsave(Func &&func, bool schedule = false) {
         if (schedule) {
-            return derived().template command<status>(std::forward<Func>(func), "BGSAVE",
-                                                      "SCHEDULE");
+            return derived().template command<status>(std::forward<Func>(func), "BGSAVE", "SCHEDULE");
         }
         return derived().template command<status>(std::forward<Func>(func), "BGSAVE");
     }
@@ -1217,12 +1082,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/save
      */
-    auto save() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->save(std::move(callback));
-            }
-        );
+    auto
+    save() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->save(std::move(callback)); });
     }
 
     /**
@@ -1249,12 +1111,9 @@ public:
      * @return Unix timestamp of the last successful save
      * @see https://redis.io/commands/lastsave
      */
-    auto lastsave() {
-        return derived().template make_coro_command<long long>(
-            [this](auto&& callback) {
-                this->lastsave(std::move(callback));
-            }
-        );
+    auto
+    lastsave() {
+        return derived().template make_coro_command<long long>([this](auto &&callback) { this->lastsave(std::move(callback)); });
     }
 
     /**
@@ -1267,8 +1126,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lastsave(Func &&func) {
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "LASTSAVE");
+        return derived().template command<long long>(std::forward<Func>(func), "LASTSAVE");
     }
 
     // =============== Database Commands ===============
@@ -1279,12 +1137,9 @@ public:
      * @return Number of keys in the current database
      * @see https://redis.io/commands/dbsize
      */
-    auto dbsize() {
-        return derived().template make_coro_command<long long>(
-            [this](auto&& callback) {
-                this->dbsize(std::move(callback));
-            }
-        );
+    auto
+    dbsize() {
+        return derived().template make_coro_command<long long>([this](auto &&callback) { this->dbsize(std::move(callback)); });
     }
 
     /**
@@ -1310,12 +1165,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/flushall
      */
-    auto flushall(bool async = false) {
-        return derived().template make_coro_command<status>(
-            [this, async](auto&& callback) {
-                this->flushall(std::move(callback), async);
-            }
-        );
+    auto
+    flushall(bool async = false) {
+        return derived().template make_coro_command<status>([this, async](auto &&callback) { this->flushall(std::move(callback), async); });
     }
 
     /**
@@ -1331,8 +1183,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     flushall(Func &&func, bool async = false) {
         if (async) {
-            return derived().template command<status>(std::forward<Func>(func),
-                                                      "FLUSHALL", "ASYNC");
+            return derived().template command<status>(std::forward<Func>(func), "FLUSHALL", "ASYNC");
         }
         return derived().template command<status>(std::forward<Func>(func), "FLUSHALL");
     }
@@ -1346,12 +1197,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/flushdb
      */
-    auto flushdb(bool async = false) {
-        return derived().template make_coro_command<status>(
-            [this, async](auto&& callback) {
-                this->flushdb(std::move(callback), async);
-            }
-        );
+    auto
+    flushdb(bool async = false) {
+        return derived().template make_coro_command<status>([this, async](auto &&callback) { this->flushdb(std::move(callback), async); });
     }
 
     /**
@@ -1367,8 +1215,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     flushdb(Func &&func, bool async = false) {
         if (async) {
-            return derived().template command<status>(std::forward<Func>(func),
-                                                      "FLUSHDB", "ASYNC");
+            return derived().template command<status>(std::forward<Func>(func), "FLUSHDB", "ASYNC");
         }
         return derived().template command<status>(std::forward<Func>(func), "FLUSHDB");
     }
@@ -1385,12 +1232,9 @@ public:
      * @return Server information as a qb::json object
      * @see https://redis.io/commands/info
      */
-    auto info(const std::string &section = "") {
-        return derived().template make_coro_command<qb::json>(
-            [this, section](auto&& callback) {
-                this->info(std::move(callback), section);
-            }
-        );
+    auto
+    info(const std::string &section = "") {
+        return derived().template make_coro_command<qb::json>([this, section](auto &&callback) { this->info(std::move(callback), section); });
     }
 
     /**
@@ -1421,32 +1265,31 @@ public:
      * @return Pair containing Unix timestamp and microseconds
      * @see https://redis.io/commands/time
      */
-    auto time() {
-        return derived().template make_coro_command<std::pair<long long, long long>>(
-            [this](auto&& callback) {
-                this->time([cb = std::move(callback)](Reply<std::vector<std::string>> &&raw) mutable {
-                    Reply<std::pair<long long, long long>> r;
-                    r.ok() = raw.ok();
-                    if (raw.ok() && raw.result().size() >= 2) {
-                        // Use from_chars, not stoll: a malformed/proxied TIME
-                        // reply must not throw out of the reply handler (which
-                        // would propagate into the libev callback and terminate).
-                        long long sec = 0, usec = 0;
-                        const auto &s0 = raw.result()[0];
-                        const auto &s1 = raw.result()[1];
-                        const auto e0 = std::from_chars(s0.data(), s0.data() + s0.size(), sec);
-                        const auto e1 = std::from_chars(s1.data(), s1.data() + s1.size(), usec);
-                        if (e0.ec == std::errc{} && e1.ec == std::errc{}) {
-                            r.result() = {sec, usec};
-                        } else {
-                            r.ok()    = false;
-                            r.error() = "Malformed TIME reply";
-                        }
+    auto
+    time() {
+        return derived().template make_coro_command<std::pair<long long, long long>>([this](auto &&callback) {
+            this->time([cb = std::move(callback)](Reply<std::vector<std::string>> &&raw) mutable {
+                Reply<std::pair<long long, long long>> r;
+                r.ok() = raw.ok();
+                if (raw.ok() && raw.result().size() >= 2) {
+                    // Use from_chars, not stoll: a malformed/proxied TIME
+                    // reply must not throw out of the reply handler (which
+                    // would propagate into the libev callback and terminate).
+                    long long   sec = 0, usec = 0;
+                    const auto &s0 = raw.result()[0];
+                    const auto &s1 = raw.result()[1];
+                    const auto  e0 = std::from_chars(s0.data(), s0.data() + s0.size(), sec);
+                    const auto  e1 = std::from_chars(s1.data(), s1.data() + s1.size(), usec);
+                    if (e0.ec == std::errc{} && e1.ec == std::errc{}) {
+                        r.result() = {sec, usec};
+                    } else {
+                        r.ok()    = false;
+                        r.error() = "Malformed TIME reply";
                     }
-                    cb(std::move(r));
-                });
-            }
-        );
+                }
+                cb(std::move(r));
+            });
+        });
     }
 
     /**
@@ -1457,11 +1300,9 @@ public:
      * @see https://redis.io/commands/time
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     time(Func &&func) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "TIME");
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "TIME");
     }
 
     /**
@@ -1473,12 +1314,9 @@ public:
      * @return qb::json array of client information
      * @see https://redis.io/commands/client-list
      */
-    auto client_list() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->client_list(std::move(callback));
-            }
-        );
+    auto
+    client_list() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->client_list(std::move(callback)); });
     }
 
     /**
@@ -1505,12 +1343,9 @@ public:
      * @return qb::json array of latency events
      * @see https://redis.io/commands/latency-latest
      */
-    auto latency_latest() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->latency_latest(std::move(callback));
-            }
-        );
+    auto
+    latency_latest() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->latency_latest(std::move(callback)); });
     }
 
     /**
@@ -1536,12 +1371,10 @@ public:
      * @return qb::json array of latency history entries
      * @see https://redis.io/commands/latency-history
      */
-    auto latency_history(const std::string &event) {
+    auto
+    latency_history(const std::string &event) {
         return derived().template make_coro_command<qb::json>(
-            [this, event](auto&& callback) {
-                this->latency_history(std::move(callback), event);
-            }
-        );
+            [this, event](auto &&callback) { this->latency_history(std::move(callback), event); });
     }
 
     /**
@@ -1557,7 +1390,7 @@ public:
     latency_history(Func &&func, const std::string &event) {
         return derived().template command<qb::json>(std::forward<Func>(func), "LATENCY", "HISTORY", event);
     }
-    
+
     /**
      * @brief Resets latency statistics
      *
@@ -1565,12 +1398,10 @@ public:
      * @return Number of events reset
      * @see https://redis.io/commands/latency-reset
      */
-    auto latency_reset(const std::string &event_name = "") {
+    auto
+    latency_reset(const std::string &event_name = "") {
         return derived().template make_coro_command<long long>(
-            [this, event_name](auto&& callback) {
-                this->latency_reset(std::move(callback), event_name);
-            }
-        );
+            [this, event_name](auto &&callback) { this->latency_reset(std::move(callback), event_name); });
     }
 
     /**
@@ -1600,12 +1431,9 @@ public:
      * @return qb::json object with memory stats
      * @see https://redis.io/commands/memory-stats
      */
-    auto memory_stats() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->memory_stats(std::move(callback));
-            }
-        );
+    auto
+    memory_stats() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->memory_stats(std::move(callback)); });
     }
 
     /**
@@ -1631,12 +1459,10 @@ public:
      * @return qb::json array of slowlog entries
      * @see https://redis.io/commands/slowlog-get
      */
-    auto slowlog_get(long long count = 10) {
+    auto
+    slowlog_get(long long count = 10) {
         return derived().template make_coro_command<qb::json>(
-            [this, count](auto&& callback) {
-                this->slowlog_get(std::move(callback), count);
-            }
-        );
+            [this, count](auto &&callback) { this->slowlog_get(std::move(callback), count); });
     }
 
     /**
@@ -1662,12 +1488,9 @@ public:
      * @return qb::json object with client tracking information
      * @see https://redis.io/commands/client-tracking-info
      */
-    auto client_tracking_info() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->client_tracking_info(std::move(callback));
-            }
-        );
+    auto
+    client_tracking_info() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->client_tracking_info(std::move(callback)); });
     }
 
     /**
@@ -1685,217 +1508,160 @@ public:
 
     // =============== New Server Commands (TODO_COMMANDS.md) ===============
 
-    auto command_docs(const std::vector<std::string> &command_names = {}) {
+    auto
+    command_docs(const std::vector<std::string> &command_names = {}) {
         return derived().template make_coro_command<qb::json>(
-            [this, command_names](auto&& callback) {
-                this->command_docs(std::move(callback), command_names);
-            }
-        );
+            [this, command_names](auto &&callback) { this->command_docs(std::move(callback), command_names); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     command_docs(Func &&func, const std::vector<std::string> &command_names = {}) {
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "COMMAND", "DOCS", command_names);
+        return derived().template command<qb::json>(std::forward<Func>(func), "COMMAND", "DOCS", command_names);
     }
 
-    auto command_getkeysandflags(const std::string &command_name,
-                                 const std::vector<std::string> &args) {
+    auto
+    command_getkeysandflags(const std::string &command_name, const std::vector<std::string> &args) {
         return derived().template make_coro_command<qb::json>(
-            [this, command_name, args](auto&& callback) {
-                this->command_getkeysandflags(std::move(callback), command_name, args);
-            }
-        );
+            [this, command_name, args](auto &&callback) { this->command_getkeysandflags(std::move(callback), command_name, args); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
-    command_getkeysandflags(Func &&func, const std::string &command_name,
-                            const std::vector<std::string> &args) {
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "COMMAND", "GETKEYSANDFLAGS", command_name, args);
+    command_getkeysandflags(Func &&func, const std::string &command_name, const std::vector<std::string> &args) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "COMMAND", "GETKEYSANDFLAGS", command_name, args);
     }
 
-    auto command_list(const std::vector<std::string> &filter = {}) {
+    auto
+    command_list(const std::vector<std::string> &filter = {}) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, filter](auto&& callback) {
-                this->command_list(std::move(callback), filter);
-            }
-        );
+            [this, filter](auto &&callback) { this->command_list(std::move(callback), filter); });
     }
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     command_list(Func &&func, const std::vector<std::string> &filter = {}) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "COMMAND", "LIST", filter);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "COMMAND", "LIST", filter);
     }
 
-    auto failover(const std::vector<std::string> &options = {}) {
-        return derived().template make_coro_command<status>(
-            [this, options](auto&& callback) {
-                this->failover(std::move(callback), options);
-            }
-        );
+    auto
+    failover(const std::vector<std::string> &options = {}) {
+        return derived().template make_coro_command<status>([this, options](auto &&callback) { this->failover(std::move(callback), options); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     failover(Func &&func, const std::vector<std::string> &options = {}) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "FAILOVER", options);
+        return derived().template command<status>(std::forward<Func>(func), "FAILOVER", options);
     }
 
-    auto latency_doctor() {
-        return derived().template make_coro_command<std::string>(
-            [this](auto&& callback) {
-                this->latency_doctor(std::move(callback));
-            }
-        );
+    auto
+    latency_doctor() {
+        return derived().template make_coro_command<std::string>([this](auto &&callback) { this->latency_doctor(std::move(callback)); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     latency_doctor(Func &&func) {
-        return derived().template command<std::string>(
-            std::forward<Func>(func), "LATENCY", "DOCTOR");
+        return derived().template command<std::string>(std::forward<Func>(func), "LATENCY", "DOCTOR");
     }
 
-    auto latency_graph(const std::string &event) {
+    auto
+    latency_graph(const std::string &event) {
         return derived().template make_coro_command<std::string>(
-            [this, event](auto&& callback) {
-                this->latency_graph(std::move(callback), event);
-            }
-        );
+            [this, event](auto &&callback) { this->latency_graph(std::move(callback), event); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     latency_graph(Func &&func, const std::string &event) {
-        return derived().template command<std::string>(
-            std::forward<Func>(func), "LATENCY", "GRAPH", event);
+        return derived().template command<std::string>(std::forward<Func>(func), "LATENCY", "GRAPH", event);
     }
 
-    auto latency_histogram(const std::vector<std::string> &commands = {}) {
+    auto
+    latency_histogram(const std::vector<std::string> &commands = {}) {
         return derived().template make_coro_command<qb::json>(
-            [this, commands](auto&& callback) {
-                this->latency_histogram(std::move(callback), commands);
-            }
-        );
+            [this, commands](auto &&callback) { this->latency_histogram(std::move(callback), commands); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     latency_histogram(Func &&func, const std::vector<std::string> &commands = {}) {
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "LATENCY", "HISTOGRAM", commands);
+        return derived().template command<qb::json>(std::forward<Func>(func), "LATENCY", "HISTOGRAM", commands);
     }
 
-    auto client_caching(bool yes) {
-        return derived().template make_coro_command<status>(
-            [this, yes](auto&& callback) {
-                this->client_caching(std::move(callback), yes);
-            }
-        );
+    auto
+    client_caching(bool yes) {
+        return derived().template make_coro_command<status>([this, yes](auto &&callback) { this->client_caching(std::move(callback), yes); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_caching(Func &&func, bool yes) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CLIENT", "CACHING", yes ? "YES" : "NO");
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "CACHING", yes ? "YES" : "NO");
     }
 
-    auto client_getredir() {
-        return derived().template make_coro_command<long long>(
-            [this](auto&& callback) {
-                this->client_getredir(std::move(callback));
-            }
-        );
+    auto
+    client_getredir() {
+        return derived().template make_coro_command<long long>([this](auto &&callback) { this->client_getredir(std::move(callback)); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     client_getredir(Func &&func) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "CLIENT", "GETREDIR");
+        return derived().template command<long long>(std::forward<Func>(func), "CLIENT", "GETREDIR");
     }
 
-    auto client_info() {
-        return derived().template make_coro_command<std::string>(
-            [this](auto&& callback) {
-                this->client_info(std::move(callback));
-            }
-        );
+    auto
+    client_info() {
+        return derived().template make_coro_command<std::string>([this](auto &&callback) { this->client_info(std::move(callback)); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     client_info(Func &&func) {
-        return derived().template command<std::string>(
-            std::forward<Func>(func), "CLIENT", "INFO");
+        return derived().template command<std::string>(std::forward<Func>(func), "CLIENT", "INFO");
     }
 
-    auto client_no_evict(bool on) {
-        return derived().template make_coro_command<status>(
-            [this, on](auto&& callback) {
-                this->client_no_evict(std::move(callback), on);
-            }
-        );
+    auto
+    client_no_evict(bool on) {
+        return derived().template make_coro_command<status>([this, on](auto &&callback) { this->client_no_evict(std::move(callback), on); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_no_evict(Func &&func, bool on) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CLIENT", "NO-EVICT", on ? "ON" : "OFF");
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "NO-EVICT", on ? "ON" : "OFF");
     }
 
-    auto client_no_touch(bool on) {
-        return derived().template make_coro_command<status>(
-            [this, on](auto&& callback) {
-                this->client_no_touch(std::move(callback), on);
-            }
-        );
+    auto
+    client_no_touch(bool on) {
+        return derived().template make_coro_command<status>([this, on](auto &&callback) { this->client_no_touch(std::move(callback), on); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_no_touch(Func &&func, bool on) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CLIENT", "NO-TOUCH", on ? "ON" : "OFF");
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "NO-TOUCH", on ? "ON" : "OFF");
     }
 
-    auto client_reply(const std::string &mode) {
-        return derived().template make_coro_command<status>(
-            [this, mode](auto&& callback) {
-                this->client_reply(std::move(callback), mode);
-            }
-        );
+    auto
+    client_reply(const std::string &mode) {
+        return derived().template make_coro_command<status>([this, mode](auto &&callback) { this->client_reply(std::move(callback), mode); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_reply(Func &&func, const std::string &mode) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CLIENT", "REPLY", mode);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "REPLY", mode);
     }
 
-    auto client_setinfo(const std::string &attr, const std::string &value) {
+    auto
+    client_setinfo(const std::string &attr, const std::string &value) {
         return derived().template make_coro_command<status>(
-            [this, attr, value](auto&& callback) {
-                this->client_setinfo(std::move(callback), attr, value);
-            }
-        );
+            [this, attr, value](auto &&callback) { this->client_setinfo(std::move(callback), attr, value); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_setinfo(Func &&func, const std::string &attr, const std::string &value) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CLIENT", "SETINFO", attr, value);
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "SETINFO", attr, value);
     }
 
-    auto client_unpause() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->client_unpause(std::move(callback));
-            }
-        );
+    auto
+    client_unpause() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->client_unpause(std::move(callback)); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_unpause(Func &&func) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "CLIENT", "UNPAUSE");
+        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "UNPAUSE");
     }
 };
 

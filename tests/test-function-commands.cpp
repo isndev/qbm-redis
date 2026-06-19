@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,20 +50,18 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_LIST) {
                 EXPECT_TRUE(functions.is_array());
 
                 if (!functions.empty()) {
-                    for (const auto& function : functions) {
+                    for (const auto &function : functions) {
                         EXPECT_TRUE(function.contains("name"));
                         EXPECT_TRUE(function["name"].is_string());
                     }
                 }
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("function") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("function") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
         }
 
         completed = true;
@@ -84,9 +82,8 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_LOAD) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             std::string error{reply.error()};
-            EXPECT_TRUE(error.find("syntax error") != std::string::npos ||
-                        error.find("unknown command") != std::string::npos ||
-                        error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("syntax error") != std::string::npos || error.find("unknown command") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         completed = true;
@@ -107,10 +104,8 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_DELETE) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             std::string error{reply.error()};
-            EXPECT_TRUE(error.find("function not found") != std::string::npos ||
-                        error.find("unknown command") != std::string::npos ||
-                        error.find("ERR") != std::string::npos ||
-                        error.find("Library not found") != std::string::npos);
+            EXPECT_TRUE(error.find("function not found") != std::string::npos || error.find("unknown command") != std::string::npos
+                        || error.find("ERR") != std::string::npos || error.find("Library not found") != std::string::npos);
         }
 
         completed = true;
@@ -134,13 +129,11 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_FLUSH) {
                 EXPECT_EQ(result, "OK");
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("function") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("function") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
         }
 
         completed = true;
@@ -161,15 +154,14 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_FCALL) {
             EXPECT_TRUE(reply.result().is_object() || reply.result().is_array());
         } else {
             std::string err{reply.error()};
-            EXPECT_TRUE(err.find("unknown command") != std::string::npos ||
-                       err.find("function") != std::string::npos ||
-                       err.find("not found") != std::string::npos ||
-                       err.find("ERR") != std::string::npos);
+            EXPECT_TRUE(err.find("unknown command") != std::string::npos || err.find("function") != std::string::npos
+                        || err.find("not found") != std::string::npos || err.find("ERR") != std::string::npos);
         }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_FCALL_RO) {
@@ -181,15 +173,14 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_FCALL_RO) {
             EXPECT_TRUE(reply.result().is_object() || reply.result().is_array());
         } else {
             std::string err{reply.error()};
-            EXPECT_TRUE(err.find("unknown command") != std::string::npos ||
-                       err.find("function") != std::string::npos ||
-                       err.find("not found") != std::string::npos ||
-                       err.find("ERR") != std::string::npos);
+            EXPECT_TRUE(err.find("unknown command") != std::string::npos || err.find("function") != std::string::npos
+                        || err.find("not found") != std::string::npos || err.find("ERR") != std::string::npos);
         }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test FUNCTION KILL command using coroutines
@@ -202,10 +193,8 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_KILL) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             std::string error{reply.error()};
-            EXPECT_TRUE(error.find("No scripts") != std::string::npos ||
-                        error.find("unknown command") != std::string::npos ||
-                        error.find("ERR") != std::string::npos ||
-                        error.find("NOTBUSY") != std::string::npos);
+            EXPECT_TRUE(error.find("No scripts") != std::string::npos || error.find("unknown command") != std::string::npos
+                        || error.find("ERR") != std::string::npos || error.find("NOTBUSY") != std::string::npos);
         }
 
         completed = true;
@@ -230,13 +219,11 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_STATS) {
                 EXPECT_TRUE(stats.contains("running_scripts") || stats.contains("engines"));
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("function") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("function") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
         }
 
         completed = true;
@@ -260,13 +247,11 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_DUMP) {
                 EXPECT_TRUE(dump.is_string() || dump.is_binary());
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("function") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("function") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
         }
 
         completed = true;
@@ -287,10 +272,8 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_RESTORE) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             std::string error{reply.error()};
-            EXPECT_TRUE(error.find("invalid payload") != std::string::npos ||
-                        error.find("unknown command") != std::string::npos ||
-                        error.find("ERR") != std::string::npos ||
-                        error.find("payload version") != std::string::npos);
+            EXPECT_TRUE(error.find("invalid payload") != std::string::npos || error.find("unknown command") != std::string::npos
+                        || error.find("ERR") != std::string::npos || error.find("payload version") != std::string::npos);
         }
 
         completed = true;
@@ -313,18 +296,16 @@ TEST_P(FunctionProtocolModesTest, CORO_FUNCTION_COMMANDS_HELP) {
                 auto help = reply.result();
                 EXPECT_FALSE(help.empty());
 
-                for (const auto& line : help) {
+                for (const auto &line : help) {
                     EXPECT_FALSE(line.empty());
                 }
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("function") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("function") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("function") != std::string::npos);
         }
 
         completed = true;
@@ -341,13 +322,15 @@ TEST_P(FunctionProtocolModesTest, FUNCTION_LIST_JSON) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r = co_await redis.function_list();
-            if (r.ok()) EXPECT_TRUE(r.result().is_array());
-        } catch (const std::exception&) {
+            if (r.ok())
+                EXPECT_TRUE(r.result().is_array());
+        } catch (const std::exception &) {
             // FUNCTION not available on older Redis
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test async FUNCTION LIST command

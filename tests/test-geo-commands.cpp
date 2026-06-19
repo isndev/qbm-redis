@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -70,7 +70,7 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEODIST) {
         std::string key = protocol_key("coro_geodist");
 
         // Add test locations
-        (void)co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
+        (void) co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
 
         // Test distance in meters (default)
         auto reply1 = co_await redis.geodist(key, "Palermo", "Catania");
@@ -100,7 +100,7 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEOHASH) {
         std::string key = protocol_key("coro_geohash");
 
         // Add test location
-        (void)co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo");
+        (void) co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo");
 
         // Test getting geohash
         auto reply = co_await redis.geohash(key, "Palermo");
@@ -126,7 +126,7 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEOPOS) {
         std::string key = protocol_key("coro_geopos");
 
         // Add test location
-        (void)co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo");
+        (void) co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo");
 
         // Test getting position
         auto reply = co_await redis.geopos(key, "Palermo");
@@ -153,7 +153,7 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEORADIUS) {
         std::string key = protocol_key("coro_georadius");
 
         // Add test locations
-        (void)co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
+        (void) co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
 
         // Test radius search from Palermo
         auto reply = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM);
@@ -163,8 +163,8 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEORADIUS) {
         EXPECT_TRUE(std::find(results.begin(), results.end(), "Palermo") != results.end());
 
         // Test with options
-        auto reply2 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM,
-                                                std::vector<std::string>{"WITHDIST", "WITHCOORD"});
+        auto reply2 =
+            co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, std::vector<std::string>{"WITHDIST", "WITHCOORD"});
         EXPECT_TRUE(reply2.ok());
         EXPECT_FALSE(reply2.result().empty());
 
@@ -184,7 +184,7 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEORADIUSBYMEMBER) {
         std::string key = protocol_key("coro_georadiusbymember");
 
         // Add test locations
-        (void)co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
+        (void) co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
 
         // Test radius search from Palermo
         auto reply = co_await redis.georadiusbymember(key, "Palermo", 200, qb::redis::GeoUnit::KM);
@@ -209,7 +209,7 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEOSEARCH) {
         std::string key = protocol_key("coro_geosearch");
 
         // Add test locations
-        (void)co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
+        (void) co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
 
         // Test search from Palermo
         auto reply = co_await redis.geosearch(key, "Palermo", 200, qb::redis::GeoUnit::KM);
@@ -234,23 +234,20 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEORADIUS_OPTIONS) {
         std::string key = protocol_key("coro_georadius_options");
 
         // Add test locations
-        (void)co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
+        (void) co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
 
         // Test with WITHDIST option
-        auto reply1 = co_await redis.georadius(key, 13.361389, 38.115556, 200,
-                                              qb::redis::GeoUnit::KM, std::vector<std::string>{"WITHDIST"});
+        auto reply1 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, std::vector<std::string>{"WITHDIST"});
         EXPECT_TRUE(reply1.ok());
         EXPECT_FALSE(reply1.result().empty());
 
         // Test with COUNT option
-        auto reply2 = co_await redis.georadius(key, 13.361389, 38.115556, 200,
-                                              qb::redis::GeoUnit::KM, std::vector<std::string>{"COUNT", "1"});
+        auto reply2 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, std::vector<std::string>{"COUNT", "1"});
         EXPECT_TRUE(reply2.ok());
         EXPECT_LE(reply2.result().size(), 1);
 
         // Test with SORT option
-        auto reply3 = co_await redis.georadius(key, 13.361389, 38.115556, 200,
-                                              qb::redis::GeoUnit::KM, std::vector<std::string>{"ASC"});
+        auto reply3 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, std::vector<std::string>{"ASC"});
         EXPECT_TRUE(reply3.ok());
         EXPECT_FALSE(reply3.result().empty());
 
@@ -281,8 +278,7 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_EDGE_CASES) {
         EXPECT_FALSE(reply2.result()[0].has_value());
 
         // Test with empty key
-        auto reply3 = co_await redis.georadius("NonExistentKey", 13.361389, 38.115556, 200,
-                                              qb::redis::GeoUnit::KM);
+        auto reply3 = co_await redis.georadius("NonExistentKey", 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM);
         EXPECT_TRUE(reply3.ok());
         EXPECT_TRUE(reply3.result().empty());
 
@@ -298,10 +294,11 @@ TEST_P(GeoProtocolModesTest, GEOADD_GEOPOS) {
     bool done = false;
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
-        auto k = protocol_key("geo");
+        auto k     = protocol_key("geo");
         auto add_r = co_await redis.geoadd(k, 13.361389, 38.115556, "Palermo");
         EXPECT_TRUE(add_r.ok()) << add_r.error();
-        if (add_r.ok()) EXPECT_EQ(add_r.result(), 1);
+        if (add_r.ok())
+            EXPECT_EQ(add_r.result(), 1);
         auto pos_r = co_await redis.geopos(k, "Palermo");
         EXPECT_TRUE(pos_r.ok()) << pos_r.error();
         if (pos_r.ok() && !pos_r.result().empty() && pos_r.result()[0]) {
@@ -310,7 +307,8 @@ TEST_P(GeoProtocolModesTest, GEOADD_GEOPOS) {
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(GeoProtocolModesTest, GEOHASH_STRING) {
@@ -318,16 +316,17 @@ TEST_P(GeoProtocolModesTest, GEOHASH_STRING) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("geo");
-        (void)co_await redis.geoadd(k, 13.361389, 38.115556, "Palermo");
+        (void) co_await redis.geoadd(k, 13.361389, 38.115556, "Palermo");
         auto r = co_await redis.geohash(k, "Palermo");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok() && !r.result().empty()) {
-            auto const& first = r.result().front();
+            auto const &first = r.result().front();
             EXPECT_TRUE(first.has_value() && !first->empty());
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(GeoProtocolModesTest, GEODIST_DOUBLE) {
@@ -335,13 +334,15 @@ TEST_P(GeoProtocolModesTest, GEODIST_DOUBLE) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("geodist");
-        (void)co_await redis.geoadd(k, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
+        (void) co_await redis.geoadd(k, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
         auto r = co_await redis.geodist(k, "Palermo", "Catania", qb::redis::GeoUnit::KM);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok() && r.result()) EXPECT_GT(*r.result(), 0.0);
+        if (r.ok() && r.result())
+            EXPECT_GT(*r.result(), 0.0);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test async GEOADD

@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,9 +59,8 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_CLIENT_MANAGEMENT) {
         auto tracking_info_reply = co_await redis.client_tracking_info();
         EXPECT_TRUE(tracking_info_reply.ok());
         // Redis 8+: may be object or array representation depending on RESP version
-        EXPECT_TRUE(tracking_info_reply.result().is_object() ||
-                    tracking_info_reply.result().is_array() ||
-                    !tracking_info_reply.result().is_null());
+        EXPECT_TRUE(tracking_info_reply.result().is_object() || tracking_info_reply.result().is_array()
+                    || !tracking_info_reply.result().is_null());
 
         // Test client_pause
         auto pause_reply = co_await redis.client_pause(100, "WRITE");
@@ -98,9 +97,8 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_FAILOVER_LATENCY_CLIENT_EXT) {
         auto failover_r = co_await redis.failover();
         if (!failover_r.ok()) {
             std::string err(failover_r.error());
-            EXPECT_TRUE(err.find("replica") != std::string::npos ||
-                       err.find("ERR") != std::string::npos ||
-                       err.find("cluster") != std::string::npos);
+            EXPECT_TRUE(err.find("replica") != std::string::npos || err.find("ERR") != std::string::npos
+                        || err.find("cluster") != std::string::npos);
         }
 
         // LATENCY DOCTOR - returns string
@@ -112,8 +110,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_FAILOVER_LATENCY_CLIENT_EXT) {
         auto graph_r = co_await redis.latency_graph("command");
         if (!graph_r.ok()) {
             std::string e(graph_r.error());
-            EXPECT_TRUE(e.find("ERR") != std::string::npos ||
-                       e.find("event") != std::string::npos);
+            EXPECT_TRUE(e.find("ERR") != std::string::npos || e.find("event") != std::string::npos);
         }
 
         // LATENCY HISTOGRAM - returns array; format may vary by Redis version
@@ -127,8 +124,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_FAILOVER_LATENCY_CLIENT_EXT) {
         auto caching_r = co_await redis.client_caching(true);
         if (!caching_r.ok()) {
             std::string e(caching_r.error());
-            EXPECT_TRUE(e.find("ERR") != std::string::npos ||
-                       e.find("tracking") != std::string::npos);
+            EXPECT_TRUE(e.find("ERR") != std::string::npos || e.find("tracking") != std::string::npos);
         }
 
         // CLIENT GETREDIR - returns redirect ID or -1
@@ -160,8 +156,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_FAILOVER_LATENCY_CLIENT_EXT) {
         auto unpause_r = co_await redis.client_unpause();
         if (!unpause_r.ok()) {
             std::string err(unpause_r.error());
-            EXPECT_TRUE(err.find("UNPAUSE") != std::string::npos ||
-                       err.find("ERR") != std::string::npos);
+            EXPECT_TRUE(err.find("UNPAUSE") != std::string::npos || err.find("ERR") != std::string::npos);
         }
 
         completed = true;
@@ -217,7 +212,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_COMMAND_INFORMATION) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         // Test command with specific commands
         std::vector<std::string> specific_cmds = {"get", "set"};
-        auto cmd_reply = co_await redis.command(specific_cmds);
+        auto                     cmd_reply     = co_await redis.command(specific_cmds);
         EXPECT_TRUE(cmd_reply.ok());
         auto cmd_json_info = cmd_reply.result();
         EXPECT_FALSE(cmd_json_info.empty());
@@ -227,15 +222,19 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_COMMAND_INFORMATION) {
             has_get = cmd_json_info.contains("get");
             has_set = cmd_json_info.contains("set");
         } else if (cmd_json_info.is_array()) {
-            for (const auto& cmd : cmd_json_info) {
+            for (const auto &cmd : cmd_json_info) {
                 if (cmd.is_array() && cmd.size() > 0 && cmd[0].is_string()) {
                     std::string name = cmd[0].get<std::string>();
-                    if (name == "get") has_get = true;
-                    else if (name == "set") has_set = true;
+                    if (name == "get")
+                        has_get = true;
+                    else if (name == "set")
+                        has_set = true;
                 } else if (cmd.is_object() && cmd.contains("name")) {
                     std::string name = cmd["name"].get<std::string>();
-                    if (name == "get") has_get = true;
-                    else if (name == "set") has_set = true;
+                    if (name == "get")
+                        has_get = true;
+                    else if (name == "set")
+                        has_set = true;
                 }
             }
         }
@@ -253,11 +252,17 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_COMMAND_INFORMATION) {
         if (cmd_json_all.is_object()) {
             has_ping = cmd_json_all.contains("ping");
         } else if (cmd_json_all.is_array()) {
-            for (const auto& cmd : cmd_json_all) {
+            for (const auto &cmd : cmd_json_all) {
                 if (cmd.is_array() && cmd.size() > 0 && cmd[0].is_string()) {
-                    if (cmd[0].get<std::string>() == "ping") { has_ping = true; break; }
+                    if (cmd[0].get<std::string>() == "ping") {
+                        has_ping = true;
+                        break;
+                    }
                 } else if (cmd.is_object() && cmd.contains("name")) {
-                    if (cmd["name"].get<std::string>() == "ping") { has_ping = true; break; }
+                    if (cmd["name"].get<std::string>() == "ping") {
+                        has_ping = true;
+                        break;
+                    }
                 }
             }
         }
@@ -268,9 +273,8 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_COMMAND_INFORMATION) {
         try {
             auto stats_reply = co_await redis.command_stats();
             if (stats_reply.ok()) {
-                EXPECT_TRUE(stats_reply.result().contains("total_calls") ||
-                            stats_reply.result().contains("cmdstat_get") ||
-                            stats_reply.result().is_object());
+                EXPECT_TRUE(stats_reply.result().contains("total_calls") || stats_reply.result().contains("cmdstat_get")
+                            || stats_reply.result().is_object());
             }
         } catch (const std::exception &e) {
             // Not supported on this Redis version — acceptable
@@ -283,7 +287,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_COMMAND_INFORMATION) {
 
         // Test command_getkeys
         std::vector<std::string> getkeys_args = {"test:key", "value"};
-        auto keys_reply = co_await redis.command_getkeys("set", getkeys_args);
+        auto                     keys_reply   = co_await redis.command_getkeys("set", getkeys_args);
         EXPECT_TRUE(keys_reply.ok());
         EXPECT_FALSE(keys_reply.result().empty());
         EXPECT_EQ(keys_reply.result()[0], "test:key");
@@ -318,16 +322,15 @@ TEST_P(ServerProtocolModesTest, DISABLED_CORO_SERVER_DEBUG_COMMANDS) {
         // Create test data
         std::string key   = protocol_key("debug_test");
         std::string value = "test_value";
-        (void)co_await redis.set(key, value);
+        (void) co_await redis.set(key, value);
 
         // Test debug_object
         auto debug_reply = co_await redis.debug_object(key);
         if (debug_reply.ok()) {
             auto debug_info = debug_reply.result();
             EXPECT_FALSE(debug_info.empty());
-            EXPECT_TRUE(debug_info.find("encoding") != std::string::npos ||
-                        debug_info.find("refcount") != std::string::npos ||
-                        debug_info.find("serializedlength") != std::string::npos);
+            EXPECT_TRUE(debug_info.find("encoding") != std::string::npos || debug_info.find("refcount") != std::string::npos
+                        || debug_info.find("serializedlength") != std::string::npos);
         }
 
         // Test debug_sleep (with a very short delay)
@@ -352,7 +355,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_MEMORY_MANAGEMENT) {
         // Create test data
         std::string key   = protocol_key("memory_test");
         std::string value = "test_value";
-        (void)co_await redis.set(key, value);
+        (void) co_await redis.set(key, value);
 
         // Test memory_usage
         auto usage_reply = co_await redis.memory_usage(key);
@@ -415,7 +418,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_SLOWLOG) {
         auto entries_json = entries_reply.result();
         EXPECT_TRUE(entries_json.is_array());
         if (!entries_json.empty()) {
-            for (const auto& entry : entries_json) {
+            for (const auto &entry : entries_json) {
                 if (entry.is_object()) {
                     EXPECT_TRUE(entry.contains("id") || entry.contains("command"));
                 } else if (entry.is_array()) {
@@ -534,8 +537,8 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_DATABASE) {
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         // Create test data
-        (void)co_await redis.set(protocol_key("db1"), "value1");
-        (void)co_await redis.set(protocol_key("db2"), "value2");
+        (void) co_await redis.set(protocol_key("db1"), "value1");
+        (void) co_await redis.set(protocol_key("db2"), "value2");
 
         // Test dbsize
         auto dbsize_reply = co_await redis.dbsize();
@@ -552,8 +555,8 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_DATABASE) {
         EXPECT_EQ(dbsize2_reply.result(), 0);
 
         // Recreate test data
-        (void)co_await redis.set(protocol_key("db1"), "value1");
-        (void)co_await redis.set(protocol_key("db2"), "value2");
+        (void) co_await redis.set(protocol_key("db1"), "value1");
+        (void) co_await redis.set(protocol_key("db2"), "value2");
 
         // Test async flushdb
         auto async_flushdb_reply = co_await redis.flushdb(true);
@@ -591,10 +594,9 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_INFORMATION) {
         EXPECT_TRUE(info_reply.ok());
         auto server_info_json = info_reply.result();
         if (server_info_json.is_object()) {
-            EXPECT_TRUE(server_info_json.contains("redis_version") ||
-                        (server_info_json.contains("server") &&
-                         server_info_json["server"].is_object() &&
-                         server_info_json["server"].contains("redis_version")));
+            EXPECT_TRUE(server_info_json.contains("redis_version")
+                        || (server_info_json.contains("server") && server_info_json["server"].is_object()
+                            && server_info_json["server"].contains("redis_version")));
         } else if (server_info_json.is_string()) {
             EXPECT_TRUE(server_info_json.get<std::string>().find("redis_version") != std::string::npos);
         } else {
@@ -606,10 +608,9 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_INFORMATION) {
         EXPECT_TRUE(memory_reply.ok());
         auto memory_info_json = memory_reply.result();
         if (memory_info_json.is_object()) {
-            EXPECT_TRUE(memory_info_json.contains("used_memory") ||
-                        (memory_info_json.contains("memory") &&
-                         memory_info_json["memory"].is_object() &&
-                         memory_info_json["memory"].contains("used_memory")));
+            EXPECT_TRUE(memory_info_json.contains("used_memory")
+                        || (memory_info_json.contains("memory") && memory_info_json["memory"].is_object()
+                            && memory_info_json["memory"].contains("used_memory")));
         } else if (memory_info_json.is_string()) {
             EXPECT_TRUE(memory_info_json.get<std::string>().find("used_memory") != std::string::npos);
         } else {
@@ -621,10 +622,9 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_INFORMATION) {
         EXPECT_TRUE(clients_reply.ok());
         auto clients_section_json = clients_reply.result();
         if (clients_section_json.is_object()) {
-            EXPECT_TRUE(clients_section_json.contains("connected_clients") ||
-                        (clients_section_json.contains("clients") &&
-                         clients_section_json["clients"].is_object() &&
-                         clients_section_json["clients"].contains("connected_clients")));
+            EXPECT_TRUE(clients_section_json.contains("connected_clients")
+                        || (clients_section_json.contains("clients") && clients_section_json["clients"].is_object()
+                            && clients_section_json["clients"].contains("connected_clients")));
         } else if (clients_section_json.is_string()) {
             EXPECT_TRUE(clients_section_json.get<std::string>().find("connected_clients") != std::string::npos);
         } else {
@@ -655,8 +655,7 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_ROLE) {
             auto role_info = role_reply.result();
             EXPECT_FALSE(role_info.empty());
             if (!role_info.empty()) {
-                EXPECT_TRUE(role_info[0] == "master" || role_info[0] == "slave" ||
-                            role_info[0] == "sentinel");
+                EXPECT_TRUE(role_info[0] == "master" || role_info[0] == "slave" || role_info[0] == "sentinel");
             }
         }
         completed = true;
@@ -668,22 +667,22 @@ TEST_P(ServerProtocolModesTest, CORO_SERVER_ROLE) {
 // =============== LATENCY COMMANDS ===============
 
 TEST_P(ServerProtocolModesTest, DISABLED_CORO_SERVER_LATENCY_COMMANDS) {
-    bool completed = false;
+    bool        completed  = false;
     std::string event_name = "command";
-    auto test_task = [this, &completed, event_name]() -> qb::io::async::task<void> {
+    auto        test_task  = [this, &completed, event_name]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         // LATENCY LATEST
         auto latest_reply = co_await redis.latency_latest();
         if (latest_reply.ok() && !latest_reply.result().empty()) {
-            for (const auto& event : latest_reply.result()) {
+            for (const auto &event : latest_reply.result()) {
                 EXPECT_TRUE(event.is_object());
                 EXPECT_TRUE(event.contains("event"));
             }
         }
 
         // Generate some commands
-        (void)co_await redis.ping();
-        (void)co_await redis.set(protocol_key("coro_latency_key"), "value");
+        (void) co_await redis.ping();
+        (void) co_await redis.set(protocol_key("coro_latency_key"), "value");
 
         // LATENCY HISTORY
         auto history_reply = co_await redis.latency_history(event_name);
@@ -727,10 +726,12 @@ TEST_P(ServerProtocolModesTest, DBSIZE) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.dbsize();
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_GE(r.result(), 0);
+        if (r.ok())
+            EXPECT_GE(r.result(), 0);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ServerProtocolModesTest, TIME) {
@@ -745,7 +746,8 @@ TEST_P(ServerProtocolModesTest, TIME) {
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ServerProtocolModesTest, CLIENT_ID_INTEGER) {
@@ -754,10 +756,12 @@ TEST_P(ServerProtocolModesTest, CLIENT_ID_INTEGER) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.client_id();
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_GE(r.result(), 0);
+        if (r.ok())
+            EXPECT_GE(r.result(), 0);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ServerProtocolModesTest, INFO_JSON) {
@@ -766,10 +770,12 @@ TEST_P(ServerProtocolModesTest, INFO_JSON) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.info();
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_TRUE(r.result().is_object() || r.result().is_string());
+        if (r.ok())
+            EXPECT_TRUE(r.result().is_object() || r.result().is_string());
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ServerProtocolModesTest, FLUSHDB_FLUSHALL) {
@@ -778,13 +784,16 @@ TEST_P(ServerProtocolModesTest, FLUSHDB_FLUSHALL) {
         PROTOCOL_ENSURE_RESP3();
         auto r1 = co_await redis.flushdb();
         EXPECT_TRUE(r1.ok()) << r1.error();
-        if (r1.ok()) EXPECT_TRUE(r1.result().ok());
+        if (r1.ok())
+            EXPECT_TRUE(r1.result().ok());
         auto r2 = co_await redis.flushall();
         EXPECT_TRUE(r2.ok()) << r2.error();
-        if (r2.ok()) EXPECT_TRUE(r2.result().ok());
+        if (r2.ok())
+            EXPECT_TRUE(r2.result().ok());
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Main function to run the tests

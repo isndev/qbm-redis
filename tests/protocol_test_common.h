@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use it except in compliance with the License.
@@ -18,10 +18,10 @@
 #ifndef QBM_REDIS_TESTS_PROTOCOL_TEST_COMMON_H
 #define QBM_REDIS_TESTS_PROTOCOL_TEST_COMMON_H
 
+#include <chrono>
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <chrono>
 #include <string>
 #include <thread>
 #include "../redis.h"
@@ -35,7 +35,8 @@
 #define REDIS_URI_PROTOCOL {"tcp://localhost:6379"}
 
 namespace qbm_redis_test_detail {
-[[nodiscard]] inline int process_id_for_keys() noexcept {
+[[nodiscard]] inline int
+process_id_for_keys() noexcept {
 #if defined(_WIN32)
     return static_cast<int>(_getpid());
 #else
@@ -54,7 +55,8 @@ class ProtocolModesTestBase : public ::testing::TestWithParam<ProtocolMode> {
 protected:
     qb::redis::tcp::client redis{REDIS_URI_PROTOCOL};
 
-    void SetUp() override {
+    void
+    SetUp() override {
         qb::io::async::init();
         // A previous test can leave the single-threaded Redis server transiently busy —
         // e.g. the EVAL busy-loop in CORO_DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT keeps
@@ -67,7 +69,7 @@ protected:
         for (;;) {
             redis.set_command_timeout(std::chrono::seconds(1)); // a flushall to a frozen server fails fast
             const bool connected = qb::io::async::run_sync(redis.connect());
-            const bool flushed = connected && qb::io::async::run_sync(redis.flushall()).ok();
+            const bool flushed   = connected && qb::io::async::run_sync(redis.flushall()).ok();
             redis.set_command_timeout(qb::duration::zero()); // restore the no-deadline default for the test body
             if (flushed)
                 return;
@@ -78,20 +80,22 @@ protected:
         }
     }
 
-    void TearDown() override {
+    void
+    TearDown() override {
         qb::io::async::run_sync(redis.flushall());
     }
 
-    std::string protocol_key(const char* base) const {
+    std::string
+    protocol_key(const char *base) const {
         // Include process id so two concurrent ctest workers (or manual parallel runs)
         // against the same Redis do not reuse identical key names.
-        return std::string(base) + (GetParam() == ProtocolMode::RESP3 ? ":resp3" : ":resp2") +
-               ":pid" + std::to_string(qbm_redis_test_detail::process_id_for_keys());
+        return std::string(base) + (GetParam() == ProtocolMode::RESP3 ? ":resp3" : ":resp2") + ":pid"
+               + std::to_string(qbm_redis_test_detail::process_id_for_keys());
     }
 };
 
 /** Suppress nodiscard for cleanup/setup calls where result is intentionally ignored */
-#define CO_IGNORE(expr) (void)(expr)
+#define CO_IGNORE(expr) (void) (expr)
 
 /**
  * @brief Pump the event loop until `completed` or a watchdog deadline expires.
@@ -106,52 +110,62 @@ protected:
  * @param completed   Flag set to true by the coroutine body on success.
  * @param timeout_sec Deadline applied to the overall test body.
  */
-inline void run_coro_test_until(const bool& completed, qb::duration timeout = std::chrono::seconds(30)) {
+inline void
+run_coro_test_until(const bool &completed, qb::duration timeout = std::chrono::seconds(30)) {
     bool timed_out = false;
-    auto watchdog = qb::io::async::scoped_callback([&timed_out]() noexcept { timed_out = true; }, timeout);
-    (void)watchdog;
+    auto watchdog  = qb::io::async::scoped_callback([&timed_out]() noexcept { timed_out = true; }, timeout);
+    (void) watchdog;
     while (!completed && !timed_out) {
         qb::io::async::run(EVRUN_NOWAIT);
     }
     if (!completed) {
-        ADD_FAILURE() << "Redis coroutine test exceeded "
-                      << qb::detail::to_ev_seconds(timeout) << "s watchdog — likely a hung await.";
+        ADD_FAILURE() << "Redis coroutine test exceeded " << qb::detail::to_ev_seconds(timeout) << "s watchdog — likely a hung await.";
     }
 }
 
-#define PROTOCOL_ENSURE_RESP3() \
+#define PROTOCOL_ENSURE_RESP3()              \
     if (GetParam() == ProtocolMode::RESP3) { \
-        auto _h = co_await redis.hello(3); \
-        EXPECT_TRUE(_h.ok()) << _h.error(); \
-        if (!_h.ok()) { done = true; co_return; } \
+        auto _h = co_await redis.hello(3);   \
+        EXPECT_TRUE(_h.ok()) << _h.error();  \
+        if (!_h.ok()) {                      \
+            done = true;                     \
+            co_return;                       \
+        }                                    \
     }
 
-#define PROTOCOL_ENSURE_RESP3_VAR(done_var) \
+#define PROTOCOL_ENSURE_RESP3_VAR(done_var)  \
     if (GetParam() == ProtocolMode::RESP3) { \
-        auto _h = co_await redis.hello(3); \
-        EXPECT_TRUE(_h.ok()) << _h.error(); \
-        if (!_h.ok()) { done_var = true; co_return; } \
+        auto _h = co_await redis.hello(3);   \
+        EXPECT_TRUE(_h.ok()) << _h.error();  \
+        if (!_h.ok()) {                      \
+            done_var = true;                 \
+            co_return;                       \
+        }                                    \
     }
 
 #define PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_var, done_var) \
-    if (GetParam() == ProtocolMode::RESP3) { \
-        auto _h = co_await consumer_var.hello(3); \
-        EXPECT_TRUE(_h.ok()) << _h.error(); \
-        if (!_h.ok()) { done_var = true; co_return; } \
+    if (GetParam() == ProtocolMode::RESP3) {                   \
+        auto _h = co_await consumer_var.hello(3);              \
+        EXPECT_TRUE(_h.ok()) << _h.error();                    \
+        if (!_h.ok()) {                                        \
+            done_var = true;                                   \
+            co_return;                                         \
+        }                                                      \
     }
 
 #define PROTOCOL_ENSURE_RESP3_CLIENT(client_var, done_var) \
-    if (GetParam() == ProtocolMode::RESP3) { \
-        auto _h = co_await client_var.hello(3); \
-        EXPECT_TRUE(_h.ok()) << _h.error(); \
-        if (!_h.ok()) { done_var = true; co_return; } \
+    if (GetParam() == ProtocolMode::RESP3) {               \
+        auto _h = co_await client_var.hello(3);            \
+        EXPECT_TRUE(_h.ok()) << _h.error();                \
+        if (!_h.ok()) {                                    \
+            done_var = true;                               \
+            co_return;                                     \
+        }                                                  \
     }
 
-#define INSTANTIATE_PROTOCOL_MODES(SuiteName) \
-    INSTANTIATE_TEST_SUITE_P(Resp2AndResp3, SuiteName, \
-        ::testing::Values(ProtocolMode::RESP2, ProtocolMode::RESP3), \
-        [](const ::testing::TestParamInfo<ProtocolMode>& info) { \
-            return info.param == ProtocolMode::RESP3 ? "RESP3" : "RESP2"; \
-        })
+#define INSTANTIATE_PROTOCOL_MODES(SuiteName)                                                  \
+    INSTANTIATE_TEST_SUITE_P(                                                                  \
+        Resp2AndResp3, SuiteName, ::testing::Values(ProtocolMode::RESP2, ProtocolMode::RESP3), \
+        [](const ::testing::TestParamInfo<ProtocolMode> &info) { return info.param == ProtocolMode::RESP3 ? "RESP3" : "RESP2"; })
 
 #endif // QBM_REDIS_TESTS_PROTOCOL_TEST_COMMON_H

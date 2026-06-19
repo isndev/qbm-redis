@@ -4,7 +4,7 @@
  */
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,12 @@
 #ifndef QBM_REDIS_SERVER_REPLY_H
 #define QBM_REDIS_SERVER_REPLY_H
 
+#include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <optional>
-#include <chrono>
 #include "parser.h"
 #include "types.h"
 
@@ -44,25 +44,46 @@ namespace qb::redis {
  */
 template <typename T>
 struct ServerReply {
-    bool ok{false};
-    T value{};
+    bool        ok{false};
+    T           value{};
     std::string error{};
-    
-    [[nodiscard]] bool is_ok() const noexcept { return ok; }
-    [[nodiscard]] const T& result() const& { return value; }
-    [[nodiscard]] T& result() & { return value; }
-    [[nodiscard]] T&& result() && { return std::move(value); }
-    [[nodiscard]] const std::string& error_message() const { return error; }
+
+    [[nodiscard]] bool
+    is_ok() const noexcept {
+        return ok;
+    }
+    [[nodiscard]] const T &
+    result() const & {
+        return value;
+    }
+    [[nodiscard]] T &
+    result() & {
+        return value;
+    }
+    [[nodiscard]] T &&
+    result() && {
+        return std::move(value);
+    }
+    [[nodiscard]] const std::string &
+    error_message() const {
+        return error;
+    }
 };
 
 /** @brief Specialization for void (commands that don't return data) */
 template <>
 struct ServerReply<void> {
-    bool ok{false};
+    bool        ok{false};
     std::string error{};
-    
-    [[nodiscard]] bool is_ok() const noexcept { return ok; }
-    [[nodiscard]] const std::string& error_message() const { return error; }
+
+    [[nodiscard]] bool
+    is_ok() const noexcept {
+        return ok;
+    }
+    [[nodiscard]] const std::string &
+    error_message() const {
+        return error;
+    }
 };
 
 // ============================================================================
@@ -77,79 +98,106 @@ struct ServerReply<void> {
  * array, map, set, and error message.
  */
 class ValueExtractor {
-    const parser::Value* _value;
-    
+    const parser::Value *_value;
+
 public:
-    explicit ValueExtractor(const parser::Value& v) : _value(&v) {}
-    explicit ValueExtractor(const std::unique_ptr<parser::Value>& v) : _value(v.get()) {}
-    
+    explicit ValueExtractor(const parser::Value &v)
+        : _value(&v) {}
+    explicit ValueExtractor(const std::unique_ptr<parser::Value> &v)
+        : _value(v.get()) {}
+
     // String extraction
-    [[nodiscard]] std::optional<std::string_view> as_string_view() const noexcept {
-        if (!_value || !_value->is_string()) return std::nullopt;
+    [[nodiscard]] std::optional<std::string_view>
+    as_string_view() const noexcept {
+        if (!_value || !_value->is_string())
+            return std::nullopt;
         return _value->as_string_view();
     }
-    
-    [[nodiscard]] std::optional<std::string> as_string() const {
+
+    [[nodiscard]] std::optional<std::string>
+    as_string() const {
         auto sv = as_string_view();
-        if (!sv) return std::nullopt;
+        if (!sv)
+            return std::nullopt;
         return std::string(*sv);
     }
-    
+
     // Integer extraction
-    [[nodiscard]] std::optional<int64_t> as_integer() const noexcept {
-        if (!_value || !_value->is_integer()) return std::nullopt;
+    [[nodiscard]] std::optional<int64_t>
+    as_integer() const noexcept {
+        if (!_value || !_value->is_integer())
+            return std::nullopt;
         return _value->as_integer().value;
     }
-    
+
     // Double extraction
-    [[nodiscard]] std::optional<double> as_double() const noexcept {
-        if (!_value) return std::nullopt;
-        if (_value->is_double()) return _value->as_double().value;
-        if (_value->is_integer()) return static_cast<double>(_value->as_integer().value);
+    [[nodiscard]] std::optional<double>
+    as_double() const noexcept {
+        if (!_value)
+            return std::nullopt;
+        if (_value->is_double())
+            return _value->as_double().value;
+        if (_value->is_integer())
+            return static_cast<double>(_value->as_integer().value);
         return std::nullopt;
     }
-    
+
     // Boolean extraction
-    [[nodiscard]] std::optional<bool> as_bool() const noexcept {
-        if (!_value || !_value->is_boolean()) return std::nullopt;
+    [[nodiscard]] std::optional<bool>
+    as_bool() const noexcept {
+        if (!_value || !_value->is_boolean())
+            return std::nullopt;
         return _value->as_boolean().value;
     }
-    
+
     // Null check
-    [[nodiscard]] bool is_null() const noexcept {
+    [[nodiscard]] bool
+    is_null() const noexcept {
         return !_value || _value->is_null();
     }
-    
+
     // Array iteration - returns span-like access
-    [[nodiscard]] std::optional<std::reference_wrapper<const parser::Array>> as_array() const noexcept {
-        if (!_value || !_value->is_array()) return std::nullopt;
+    [[nodiscard]] std::optional<std::reference_wrapper<const parser::Array>>
+    as_array() const noexcept {
+        if (!_value || !_value->is_array())
+            return std::nullopt;
         return std::cref(_value->as_array());
     }
-    
+
     // Map iteration
-    [[nodiscard]] std::optional<std::reference_wrapper<const parser::Map>> as_map() const noexcept {
-        if (!_value || !_value->is_map()) return std::nullopt;
+    [[nodiscard]] std::optional<std::reference_wrapper<const parser::Map>>
+    as_map() const noexcept {
+        if (!_value || !_value->is_map())
+            return std::nullopt;
         return std::cref(_value->as_map());
     }
-    
+
     // Set iteration
-    [[nodiscard]] std::optional<std::reference_wrapper<const parser::Set>> as_set() const noexcept {
-        if (!_value || !_value->is_set()) return std::nullopt;
+    [[nodiscard]] std::optional<std::reference_wrapper<const parser::Set>>
+    as_set() const noexcept {
+        if (!_value || !_value->is_set())
+            return std::nullopt;
         return std::cref(_value->as_set());
     }
-    
+
     // Error check and message
-    [[nodiscard]] bool is_error() const noexcept {
+    [[nodiscard]] bool
+    is_error() const noexcept {
         return _value && _value->is_error();
     }
-    
-    [[nodiscard]] std::string get_error_message() const {
-        if (!_value) return "no value";
+
+    [[nodiscard]] std::string
+    get_error_message() const {
+        if (!_value)
+            return "no value";
         return _value->get_error_message();
     }
-    
+
     // Raw access to underlying value
-    [[nodiscard]] const parser::Value* raw() const noexcept { return _value; }
+    [[nodiscard]] const parser::Value *
+    raw() const noexcept {
+        return _value;
+    }
 };
 
 // ============================================================================
@@ -157,64 +205,69 @@ public:
 // ============================================================================
 
 // Extract string from reply
-[[nodiscard]] inline expected<std::string, std::string> extract_string(
-    const parser::Value& value) {
-    if (value.is_null()) return unexpected("null value");
-    if (!value.is_string()) return unexpected("not a string");
+[[nodiscard]] inline expected<std::string, std::string>
+extract_string(const parser::Value &value) {
+    if (value.is_null())
+        return unexpected("null value");
+    if (!value.is_string())
+        return unexpected("not a string");
     return std::string(value.as_string_view());
 }
 
 // Extract integer from reply
-[[nodiscard]] inline expected<int64_t, std::string> extract_integer(
-    const parser::Value& value) {
-    if (value.is_null()) return unexpected("null value");
-    if (!value.is_integer()) return unexpected("not an integer");
+[[nodiscard]] inline expected<int64_t, std::string>
+extract_integer(const parser::Value &value) {
+    if (value.is_null())
+        return unexpected("null value");
+    if (!value.is_integer())
+        return unexpected("not an integer");
     return value.as_integer().value;
 }
 
 // Extract array of strings
-[[nodiscard]] inline expected<std::vector<std::string>, std::string> extract_string_array(
-    const parser::Value& value) {
-    if (value.is_null()) return expected<std::vector<std::string>, std::string>{};
-    if (!value.is_array()) return unexpected("not an array");
-    
+[[nodiscard]] inline expected<std::vector<std::string>, std::string>
+extract_string_array(const parser::Value &value) {
+    if (value.is_null())
+        return expected<std::vector<std::string>, std::string>{};
+    if (!value.is_array())
+        return unexpected("not an array");
+
     std::vector<std::string> result;
-    const auto& arr = value.as_array();
+    const auto              &arr = value.as_array();
     result.reserve(arr.size());
-    
-    for (const auto& elem : arr) {
+
+    for (const auto &elem : arr) {
         if (!elem || !elem->is_string()) {
             return unexpected("array contains non-string");
         }
         result.emplace_back(elem->as_string_view());
     }
-    
+
     return result;
 }
 
 // Extract map of string to string
 [[nodiscard]] inline expected<qb::unordered_map<std::string, std::string>, std::string>
-    extract_string_map(const parser::Value& value) {
-    if (value.is_null()) return qb::unordered_map<std::string, std::string>{};
-    if (!value.is_map()) return unexpected("not a map");
-    
+extract_string_map(const parser::Value &value) {
+    if (value.is_null())
+        return qb::unordered_map<std::string, std::string>{};
+    if (!value.is_map())
+        return unexpected("not a map");
+
     qb::unordered_map<std::string, std::string> result;
-    const auto& map = value.as_map();
+    const auto                                 &map = value.as_map();
     result.reserve(map.size());
-    
-    for (const auto& entry : map) {
+
+    for (const auto &entry : map) {
         if (!entry.first || !entry.first->is_string()) {
             return unexpected("map key is not a string");
         }
         if (!entry.second || !entry.second->is_string()) {
             return unexpected("map value is not a string");
         }
-        result.emplace(
-            std::string(entry.first->as_string_view()),
-            std::string(entry.second->as_string_view())
-        );
+        result.emplace(std::string(entry.first->as_string_view()), std::string(entry.second->as_string_view()));
     }
-    
+
     return result;
 }
 
@@ -230,63 +283,106 @@ public:
 template <typename T>
 class AsyncResult {
     expected<T, std::string> _result;
-    
+
 public:
     AsyncResult() = default;
-    explicit AsyncResult(T&& v) : _result(std::move(v)) {}
-    explicit AsyncResult(std::string&& e) : _result(unexpected(std::move(e))) {}
-    
-    [[nodiscard]] bool is_ok() const noexcept { return _result.has_value(); }
-    [[nodiscard]] bool has_error() const noexcept { return !_result.has_value(); }
-    
-    [[nodiscard]] const T& value() const& { return _result.value(); }
-    [[nodiscard]] T& value() & { return _result.value(); }
-    [[nodiscard]] T&& value() && { return std::move(_result.value()); }
-    
-    [[nodiscard]] const std::string& error() const { return _result.error(); }
-    
+    explicit AsyncResult(T &&v)
+        : _result(std::move(v)) {}
+    explicit AsyncResult(std::string &&e)
+        : _result(unexpected(std::move(e))) {}
+
+    [[nodiscard]] bool
+    is_ok() const noexcept {
+        return _result.has_value();
+    }
+    [[nodiscard]] bool
+    has_error() const noexcept {
+        return !_result.has_value();
+    }
+
+    [[nodiscard]] const T &
+    value() const & {
+        return _result.value();
+    }
+    [[nodiscard]] T &
+    value() & {
+        return _result.value();
+    }
+    [[nodiscard]] T &&
+    value() && {
+        return std::move(_result.value());
+    }
+
+    [[nodiscard]] const std::string &
+    error() const {
+        return _result.error();
+    }
+
     // Conversions
-    [[nodiscard]] operator bool() const noexcept { return is_ok(); }
-    [[nodiscard]] const T* operator->() const { return &_result.value(); }
-    [[nodiscard]] T* operator->() { return &_result.value(); }
+    [[nodiscard]]
+    operator bool() const noexcept {
+        return is_ok();
+    }
+    [[nodiscard]] const T *
+    operator->() const {
+        return &_result.value();
+    }
+    [[nodiscard]] T *
+    operator->() {
+        return &_result.value();
+    }
 };
 
 // Specialization for void
 template <>
 class AsyncResult<void> {
     std::optional<std::string> _error;
-    
+
 public:
     AsyncResult() = default;
-    explicit AsyncResult(std::string&& e) : _error(std::move(e)) {}
-    
-    [[nodiscard]] bool is_ok() const noexcept { return !_error.has_value(); }
-    [[nodiscard]] bool has_error() const noexcept { return _error.has_value(); }
-    [[nodiscard]] const std::string& error() const { return _error.value(); }
-    
-    [[nodiscard]] operator bool() const noexcept { return is_ok(); }
+    explicit AsyncResult(std::string &&e)
+        : _error(std::move(e)) {}
+
+    [[nodiscard]] bool
+    is_ok() const noexcept {
+        return !_error.has_value();
+    }
+    [[nodiscard]] bool
+    has_error() const noexcept {
+        return _error.has_value();
+    }
+    [[nodiscard]] const std::string &
+    error() const {
+        return _error.value();
+    }
+
+    [[nodiscard]]
+    operator bool() const noexcept {
+        return is_ok();
+    }
 };
 
 // ============================================================================
 // Stream ID helpers
 // ============================================================================
 
-[[nodiscard]] inline expected<stream_id, std::string> extract_stream_id(
-    const parser::Value& value) {
-    if (!value.is_string()) return unexpected("stream id must be a string");
-    
-    auto sv = value.as_string_view();
+[[nodiscard]] inline expected<stream_id, std::string>
+extract_stream_id(const parser::Value &value) {
+    if (!value.is_string())
+        return unexpected("stream id must be a string");
+
+    auto sv  = value.as_string_view();
     auto pos = sv.find('-');
     if (pos == std::string_view::npos) {
         return unexpected("invalid stream id format");
     }
-    
+
     try {
         stream_id id;
         id.timestamp = std::stoll(std::string(sv.substr(0, pos)));
-        id.sequence = std::stoll(std::string(sv.substr(pos + 1)));
+        id.sequence  = std::stoll(std::string(sv.substr(pos + 1)));
         return id;
-    } catch (const std::exception&) {
+    } catch (const std::exception &) {
         return unexpected("invalid stream id values");
     }
 }
@@ -295,20 +391,20 @@ public:
 // Score member helpers (for sorted sets)
 // ============================================================================
 
-[[nodiscard]] inline expected<score_member, std::string> extract_score_member(
-    const parser::Array& arr, size_t index) {
+[[nodiscard]] inline expected<score_member, std::string>
+extract_score_member(const parser::Array &arr, size_t index) {
     if (index + 1 >= arr.size()) {
         return unexpected("not enough elements for score-member pair");
     }
-    
+
     score_member sm;
-    
+
     // Member (string)
     if (!arr[index] || !arr[index]->is_string()) {
         return unexpected("member must be a string");
     }
     sm.member = std::string(arr[index]->as_string_view());
-    
+
     // Score (double or integer)
     if (!arr[index + 1]) {
         return unexpected("score is null");
@@ -320,7 +416,7 @@ public:
     } else {
         return unexpected("score must be a number");
     }
-    
+
     return sm;
 }
 

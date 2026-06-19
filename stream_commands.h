@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,14 +50,11 @@ public:
      * @param id Optional message ID. If not specified, Redis will auto-generate one
      * @return The ID of the added entry as a stream_id
      */
-    auto xadd(const std::string                                      &key,
-              const std::vector<std::pair<std::string, std::string>> &entries,
-              const std::optional<std::string>                       &id = std::nullopt) {
+    auto
+    xadd(const std::string &key, const std::vector<std::pair<std::string, std::string>> &entries,
+         const std::optional<std::string> &id = std::nullopt) {
         return derived().template make_coro_command<stream_id>(
-            [this, key, entries, id](auto&& callback) {
-                this->xadd(std::move(callback), key, entries, id);
-            }
-        );
+            [this, key, entries, id](auto &&callback) { this->xadd(std::move(callback), key, entries, id); });
     }
 
     /**
@@ -72,11 +69,9 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_id> &&>, Derived &>
-    xadd(Func &&func, const std::string &key,
-         const std::vector<std::pair<std::string, std::string>> &entries,
-         const std::optional<std::string>                       &id = std::nullopt) {
-        return derived().template command<stream_id>(std::forward<Func>(func), "XADD",
-                                                     key, id ? *id : "*", entries);
+    xadd(Func &&func, const std::string &key, const std::vector<std::pair<std::string, std::string>> &entries,
+         const std::optional<std::string> &id = std::nullopt) {
+        return derived().template command<stream_id>(std::forward<Func>(func), "XADD", key, id ? *id : "*", entries);
     }
 
     /**
@@ -107,12 +102,9 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/xlen
      */
-    auto xlen(const std::string &key) {
-        return derived().template make_coro_command<long long>(
-            [this, key](auto&& callback) {
-                this->xlen(std::move(callback), key);
-            }
-        );
+    auto
+    xlen(const std::string &key) {
+        return derived().template make_coro_command<long long>([this, key](auto &&callback) { this->xlen(std::move(callback), key); });
     }
 
     /**
@@ -127,8 +119,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xlen(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "XLEN",
-                                                     key);
+        return derived().template command<long long>(std::forward<Func>(func), "XLEN", key);
     }
 
     /**
@@ -141,12 +132,11 @@ public:
      * @see https://redis.io/commands/xdel
      */
     template <typename... Ids>
-    auto xdel(const std::string &key, Ids &&...ids) {
-        return derived().template make_coro_command<long long>(
-            [this, key, ...ids = std::forward<Ids>(ids)](auto&& callback) mutable {
-                this->xdel(std::move(callback), key, std::forward<Ids>(ids)...);
-            }
-        );
+    auto
+    xdel(const std::string &key, Ids &&...ids) {
+        return derived().template make_coro_command<long long>([this, key, ... ids = std::forward<Ids>(ids)](auto &&callback) mutable {
+            this->xdel(std::move(callback), key, std::forward<Ids>(ids)...);
+        });
     }
 
     /**
@@ -162,8 +152,7 @@ public:
     template <typename Func, typename... Ids>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xdel(Func &&func, const std::string &key, Ids &&...ids) {
-        return derived().template command<long long>(std::forward<Func>(func), "XDEL",
-                                                     key, std::forward<Ids>(ids)...);
+        return derived().template command<long long>(std::forward<Func>(func), "XDEL", key, std::forward<Ids>(ids)...);
     }
 
     /**
@@ -178,13 +167,10 @@ public:
      * @param mkstream Whether to create the stream if it doesn't exist
      * @return status object indicating success or failure
      */
-    auto xgroup_create(const std::string &key, const std::string &group,
-                       const std::string &id, bool mkstream = false) {
+    auto
+    xgroup_create(const std::string &key, const std::string &group, const std::string &id, bool mkstream = false) {
         return derived().template make_coro_command<status>(
-            [this, key, group, id, mkstream](auto&& callback) {
-                this->xgroup_create(std::move(callback), key, group, id, mkstream);
-            }
-        );
+            [this, key, group, id, mkstream](auto &&callback) { this->xgroup_create(std::move(callback), key, group, id, mkstream); });
     }
 
     /**
@@ -200,8 +186,7 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    xgroup_create(Func &&func, const std::string &key, const std::string &group,
-                  const std::string &id, bool mkstream = false) {
+    xgroup_create(Func &&func, const std::string &key, const std::string &group, const std::string &id, bool mkstream = false) {
         std::vector<std::string> args;
         args.push_back("CREATE");
         args.push_back(key);
@@ -210,8 +195,7 @@ public:
         if (mkstream) {
             args.push_back("MKSTREAM");
         }
-        return derived().template command<status>(std::forward<Func>(func), "XGROUP",
-                                                  args);
+        return derived().template command<status>(std::forward<Func>(func), "XGROUP", args);
     }
 
     /**
@@ -224,12 +208,10 @@ public:
      * @param group The name of the consumer group to delete
      * @return The number of messages that were deleted
      */
-    auto xgroup_destroy(const std::string &key, const std::string &group) {
+    auto
+    xgroup_destroy(const std::string &key, const std::string &group) {
         return derived().template make_coro_command<long long>(
-            [this, key, group](auto&& callback) {
-                this->xgroup_destroy(std::move(callback), key, group);
-            }
-        );
+            [this, key, group](auto &&callback) { this->xgroup_destroy(std::move(callback), key, group); });
     }
 
     /**
@@ -244,8 +226,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xgroup_destroy(Func &&func, const std::string &key, const std::string &group) {
-        return derived().template command<long long>(std::forward<Func>(func), "XGROUP",
-                                                     "DESTROY", key, group);
+        return derived().template command<long long>(std::forward<Func>(func), "XGROUP", "DESTROY", key, group);
     }
 
     /**
@@ -257,13 +238,10 @@ public:
      * @return redis_awaiter yielding Reply<long long> (number of pending messages deleted)
      * @see https://redis.io/commands/xgroup-delconsumer
      */
-    auto xgroup_delconsumer(const std::string &key, const std::string &group,
-                            const std::string &consumer) {
+    auto
+    xgroup_delconsumer(const std::string &key, const std::string &group, const std::string &consumer) {
         return derived().template make_coro_command<long long>(
-            [this, key, group, consumer](auto&& callback) {
-                this->xgroup_delconsumer(std::move(callback), key, group, consumer);
-            }
-        );
+            [this, key, group, consumer](auto &&callback) { this->xgroup_delconsumer(std::move(callback), key, group, consumer); });
     }
 
     /**
@@ -279,10 +257,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    xgroup_delconsumer(Func &&func, const std::string &key, const std::string &group,
-                       const std::string &consumer) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "XGROUP", "DELCONSUMER", key, group, consumer);
+    xgroup_delconsumer(Func &&func, const std::string &key, const std::string &group, const std::string &consumer) {
+        return derived().template command<long long>(std::forward<Func>(func), "XGROUP", "DELCONSUMER", key, group, consumer);
     }
 
     /**
@@ -296,12 +272,11 @@ public:
      * @see https://redis.io/commands/xack
      */
     template <typename... Ids>
-    auto xack(const std::string &key, const std::string &group, Ids &&...ids) {
-        return derived().template make_coro_command<long long>(
-            [this, key, group, ...ids = std::forward<Ids>(ids)](auto&& callback) mutable {
-                this->xack(std::move(callback), key, group, std::forward<Ids>(ids)...);
-            }
-        );
+    auto
+    xack(const std::string &key, const std::string &group, Ids &&...ids) {
+        return derived().template make_coro_command<long long>([this, key, group, ... ids = std::forward<Ids>(ids)](auto &&callback) mutable {
+            this->xack(std::move(callback), key, group, std::forward<Ids>(ids)...);
+        });
     }
 
     /**
@@ -319,8 +294,7 @@ public:
     template <typename Func, typename... Ids>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xack(Func &&func, const std::string &key, const std::string &group, Ids &&...ids) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "XACK", key, group, std::forward<Ids>(ids)...);
+        return derived().template command<long long>(std::forward<Func>(func), "XACK", key, group, std::forward<Ids>(ids)...);
     }
 
     /**
@@ -332,12 +306,10 @@ public:
      * @return redis_awaiter yielding Reply<long long> (number of entries deleted)
      * @see https://redis.io/commands/xtrim
      */
-    auto xtrim(const std::string &key, long long maxlen, bool approximate = false) {
+    auto
+    xtrim(const std::string &key, long long maxlen, bool approximate = false) {
         return derived().template make_coro_command<long long>(
-            [this, key, maxlen, approximate](auto&& callback) {
-                this->xtrim(std::move(callback), key, maxlen, approximate);
-            }
-        );
+            [this, key, maxlen, approximate](auto &&callback) { this->xtrim(std::move(callback), key, maxlen, approximate); });
     }
 
     /**
@@ -355,8 +327,7 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    xtrim(Func &&func, const std::string &key, long long maxlen,
-          bool approximate = false) {
+    xtrim(Func &&func, const std::string &key, long long maxlen, bool approximate = false) {
         std::vector<std::string> args;
         args.push_back(key);
         if (approximate) {
@@ -367,8 +338,7 @@ public:
             args.push_back("=");
         }
         args.push_back(std::to_string(maxlen));
-        return derived().template command<long long>(std::forward<Func>(func), "XTRIM",
-                                                     args);
+        return derived().template command<long long>(std::forward<Func>(func), "XTRIM", args);
     }
 
     /**
@@ -382,15 +352,12 @@ public:
      * @param block Optional timeout in milliseconds to block waiting for new messages
      * @return qb::json structured representation of stream entries
      */
-    auto xreadgroup(const std::string &key, const std::string &group,
-                    const std::string &consumer, const std::string &id,
-                    std::optional<long long> count = std::nullopt,
-                    std::optional<long long> block = std::nullopt) {
-        return derived().template make_coro_command<qb::json>(
-            [this, key, group, consumer, id, count, block](auto&& callback) mutable {
-                this->xreadgroup(std::move(callback), key, group, consumer, id, std::move(count), std::move(block));
-            }
-        );
+    auto
+    xreadgroup(const std::string &key, const std::string &group, const std::string &consumer, const std::string &id,
+               std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt) {
+        return derived().template make_coro_command<qb::json>([this, key, group, consumer, id, count, block](auto &&callback) mutable {
+            this->xreadgroup(std::move(callback), key, group, consumer, id, std::move(count), std::move(block));
+        });
     }
 
     /**
@@ -408,17 +375,14 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
-    xreadgroup(Func &&func, const std::string &key, const std::string &group,
-               const std::string &consumer, const std::string &id,
-               std::optional<long long> count = std::nullopt,
-               std::optional<long long> block = std::nullopt) {
+    xreadgroup(Func &&func, const std::string &key, const std::string &group, const std::string &consumer, const std::string &id,
+               std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt) {
         std::vector<std::string> args = {"GROUP", group, consumer};
         if (count)
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "XREADGROUP", args, "STREAMS", key, id);
+        return derived().template command<qb::json>(std::forward<Func>(func), "XREADGROUP", args, "STREAMS", key, id);
     }
 
     /**
@@ -432,15 +396,12 @@ public:
      * @param block Optional timeout in milliseconds to block waiting for new messages
      * @return qb::json structured representation of stream entries by key
      */
-    auto xreadgroup(const std::vector<std::string> &keys, const std::string &group,
-                    const std::string &consumer, const std::vector<std::string> &ids,
-                    std::optional<long long> count = std::nullopt,
-                    std::optional<long long> block = std::nullopt) {
-        return derived().template make_coro_command<qb::json>(
-            [this, keys, group, consumer, ids, count, block](auto&& callback) mutable {
-                this->xreadgroup(std::move(callback), keys, group, consumer, ids, std::move(count), std::move(block));
-            }
-        );
+    auto
+    xreadgroup(const std::vector<std::string> &keys, const std::string &group, const std::string &consumer, const std::vector<std::string> &ids,
+               std::optional<long long> count = std::nullopt, std::optional<long long> block = std::nullopt) {
+        return derived().template make_coro_command<qb::json>([this, keys, group, consumer, ids, count, block](auto &&callback) mutable {
+            this->xreadgroup(std::move(callback), keys, group, consumer, ids, std::move(count), std::move(block));
+        });
     }
 
     /**
@@ -458,14 +419,11 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
-    xreadgroup(Func &&func, const std::vector<std::string> &keys,
-               const std::string &group, const std::string &consumer,
-               const std::vector<std::string> &ids,
-               std::optional<long long> count = std::nullopt,
+    xreadgroup(Func &&func, const std::vector<std::string> &keys, const std::string &group, const std::string &consumer,
+               const std::vector<std::string> &ids, std::optional<long long> count = std::nullopt,
                std::optional<long long> block = std::nullopt) {
         if (keys.empty() || keys.size() != ids.size()) {
-            throw std::invalid_argument(
-                "Keys and IDs must be non-empty and have the same size");
+            throw std::invalid_argument("Keys and IDs must be non-empty and have the same size");
         }
 
         std::vector<std::string> args = {"GROUP", group, consumer};
@@ -474,18 +432,15 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "XREADGROUP", args, "STREAMS", keys, ids);
+        return derived().template command<qb::json>(std::forward<Func>(func), "XREADGROUP", args, "STREAMS", keys, ids);
     }
 
-    auto xread(const std::string &key, const std::string &id,
-               std::optional<long long> count = std::nullopt,
-               std::optional<long long> block = std::nullopt) {
-        return derived().template make_coro_command<qb::json>(
-            [this, key, id, count, block](auto&& callback) mutable {
-                this->xread(std::move(callback), key, id, std::move(count), std::move(block));
-            }
-        );
+    auto
+    xread(const std::string &key, const std::string &id, std::optional<long long> count = std::nullopt,
+          std::optional<long long> block = std::nullopt) {
+        return derived().template make_coro_command<qb::json>([this, key, id, count, block](auto &&callback) mutable {
+            this->xread(std::move(callback), key, id, std::move(count), std::move(block));
+        });
     }
 
     /**
@@ -501,8 +456,7 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
-    xread(Func &&func, const std::string &key, const std::string &id,
-          std::optional<long long> count = std::nullopt,
+    xread(Func &&func, const std::string &key, const std::string &id, std::optional<long long> count = std::nullopt,
           std::optional<long long> block = std::nullopt) {
         std::vector<std::string> args;
         if (count)
@@ -510,8 +464,7 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "XREAD", args, "STREAMS", key, id);
+        return derived().template command<qb::json>(std::forward<Func>(func), "XREAD", args, "STREAMS", key, id);
     }
 
     /**
@@ -523,14 +476,12 @@ public:
      * @param block Optional timeout in milliseconds to block waiting for new messages
      * @return qb::json structured representation of stream entries by key
      */
-    auto xread(const std::vector<std::string> &keys, const std::vector<std::string> &ids,
-               std::optional<long long> count = std::nullopt,
-               std::optional<long long> block = std::nullopt) {
-        return derived().template make_coro_command<qb::json>(
-            [this, keys, ids, count, block](auto&& callback) mutable {
-                this->xread(std::move(callback), keys, ids, std::move(count), std::move(block));
-            }
-        );
+    auto
+    xread(const std::vector<std::string> &keys, const std::vector<std::string> &ids, std::optional<long long> count = std::nullopt,
+          std::optional<long long> block = std::nullopt) {
+        return derived().template make_coro_command<qb::json>([this, keys, ids, count, block](auto &&callback) mutable {
+            this->xread(std::move(callback), keys, ids, std::move(count), std::move(block));
+        });
     }
 
     /**
@@ -546,13 +497,10 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
-    xread(Func &&func, const std::vector<std::string> &keys,
-          const std::vector<std::string> &ids,
-          std::optional<long long> count = std::nullopt,
+    xread(Func &&func, const std::vector<std::string> &keys, const std::vector<std::string> &ids, std::optional<long long> count = std::nullopt,
           std::optional<long long> block = std::nullopt) {
         if (keys.empty() || keys.size() != ids.size()) {
-            throw std::invalid_argument(
-                "Keys and IDs must be non-empty and have the same size");
+            throw std::invalid_argument("Keys and IDs must be non-empty and have the same size");
         }
 
         std::vector<std::string> args;
@@ -561,8 +509,7 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "XREAD", args, "STREAMS", keys, ids        );
+        return derived().template command<qb::json>(std::forward<Func>(func), "XREAD", args, "STREAMS", keys, ids);
     }
 
     /**
@@ -572,12 +519,9 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/xinfo-stream
      */
-    auto xinfo_stream(const std::string &key) {
-        return derived().template make_coro_command<qb::json>(
-            [this, key](auto&& callback) {
-                this->xinfo_stream(std::move(callback), key);
-            }
-        );
+    auto
+    xinfo_stream(const std::string &key) {
+        return derived().template make_coro_command<qb::json>([this, key](auto &&callback) { this->xinfo_stream(std::move(callback), key); });
     }
 
     /**
@@ -591,7 +535,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_stream(Func &&func, const std::string &key) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "STREAM", key        );
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "STREAM", key);
     }
 
     /**
@@ -601,12 +545,9 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/xinfo-groups
      */
-    auto xinfo_groups(const std::string &key) {
-        return derived().template make_coro_command<qb::json>(
-            [this, key](auto&& callback) {
-                this->xinfo_groups(std::move(callback), key);
-            }
-        );
+    auto
+    xinfo_groups(const std::string &key) {
+        return derived().template make_coro_command<qb::json>([this, key](auto &&callback) { this->xinfo_groups(std::move(callback), key); });
     }
 
     /**
@@ -620,7 +561,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_groups(Func &&func, const std::string &key) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "GROUPS", key        );
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "GROUPS", key);
     }
 
     /**
@@ -631,12 +572,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/xinfo-consumers
      */
-    auto xinfo_consumers(const std::string &key, const std::string &group) {
+    auto
+    xinfo_consumers(const std::string &key, const std::string &group) {
         return derived().template make_coro_command<qb::json>(
-            [this, key, group](auto&& callback) {
-                this->xinfo_consumers(std::move(callback), key, group);
-            }
-        );
+            [this, key, group](auto &&callback) { this->xinfo_consumers(std::move(callback), key, group); });
     }
 
     /**
@@ -651,7 +590,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_consumers(Func &&func, const std::string &key, const std::string &group) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "CONSUMERS", key, group        );
+        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "CONSUMERS", key, group);
     }
 
     /**
@@ -660,12 +599,9 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/xinfo-help
      */
-    auto xinfo_help() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->xinfo_help(std::move(callback));
-            }
-        );
+    auto
+    xinfo_help() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->xinfo_help(std::move(callback)); });
     }
 
     /**
@@ -696,17 +632,12 @@ public:
      * @return qb::json object with detailed pending message information
      * @see https://redis.io/commands/xpending
      */
-    auto xpending(const std::string &key, 
-                  const std::string &group,
-                  const std::string &start = "-", 
-                  const std::string &end = "+",
-                  long long count = 10,
-                  const std::optional<std::string> &consumer = std::nullopt) {
-        return derived().template make_coro_command<qb::json>(
-            [this, key, group, start, end, count, consumer](auto&& callback) mutable {
-                this->xpending(std::move(callback), key, group, start, end, count, std::move(consumer));
-            }
-        );
+    auto
+    xpending(const std::string &key, const std::string &group, const std::string &start = "-", const std::string &end = "+",
+             long long count = 10, const std::optional<std::string> &consumer = std::nullopt) {
+        return derived().template make_coro_command<qb::json>([this, key, group, start, end, count, consumer](auto &&callback) mutable {
+            this->xpending(std::move(callback), key, group, start, end, count, std::move(consumer));
+        });
     }
 
     /**
@@ -724,13 +655,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
-    xpending(Func &&func,
-                      const std::string &key, 
-                      const std::string &group,
-                      const std::string &start = "-", 
-                      const std::string &end = "+",
-                      long long count = 10,
-                      const std::optional<std::string> &consumer = std::nullopt) {
+    xpending(Func &&func, const std::string &key, const std::string &group, const std::string &start = "-", const std::string &end = "+",
+             long long count = 10, const std::optional<std::string> &consumer = std::nullopt) {
         std::vector<std::string> args;
         args.push_back(key);
         args.push_back(group);
@@ -755,13 +681,10 @@ public:
      * @return redis_awaiter yielding Reply<stream_entry_list>
      * @see https://redis.io/commands/xrange
      */
-    auto xrange(const std::string &key, const std::string &start,
-                const std::string &end, std::optional<long long> count = std::nullopt) {
+    auto
+    xrange(const std::string &key, const std::string &start, const std::string &end, std::optional<long long> count = std::nullopt) {
         return derived().template make_coro_command<stream_entry_list>(
-            [this, key, start, end, count](auto&& callback) {
-                this->xrange(std::move(callback), key, start, end, count);
-            }
-        );
+            [this, key, start, end, count](auto &&callback) { this->xrange(std::move(callback), key, start, end, count); });
     }
 
     /**
@@ -778,15 +701,14 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_entry_list> &&>, Derived &>
-    xrange(Func &&func, const std::string &key, const std::string &start,
-           const std::string &end, std::optional<long long> count = std::nullopt) {
+    xrange(Func &&func, const std::string &key, const std::string &start, const std::string &end,
+           std::optional<long long> count = std::nullopt) {
         std::vector<std::string> opt;
         if (count) {
             opt.push_back("COUNT");
             opt.push_back(std::to_string(*count));
         }
-        return derived().template command<stream_entry_list>(
-            std::forward<Func>(func), "XRANGE", key, start, end, opt);
+        return derived().template command<stream_entry_list>(std::forward<Func>(func), "XRANGE", key, start, end, opt);
     }
 
     /**
@@ -799,13 +721,10 @@ public:
      * @return redis_awaiter yielding Reply<stream_entry_list>
      * @see https://redis.io/commands/xrevrange
      */
-    auto xrevrange(const std::string &key, const std::string &end,
-                   const std::string &start, std::optional<long long> count = std::nullopt) {
+    auto
+    xrevrange(const std::string &key, const std::string &end, const std::string &start, std::optional<long long> count = std::nullopt) {
         return derived().template make_coro_command<stream_entry_list>(
-            [this, key, end, start, count](auto&& callback) {
-                this->xrevrange(std::move(callback), key, end, start, count);
-            }
-        );
+            [this, key, end, start, count](auto &&callback) { this->xrevrange(std::move(callback), key, end, start, count); });
     }
 
     /**
@@ -822,15 +741,14 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_entry_list> &&>, Derived &>
-    xrevrange(Func &&func, const std::string &key, const std::string &end,
-             const std::string &start, std::optional<long long> count = std::nullopt) {
+    xrevrange(Func &&func, const std::string &key, const std::string &end, const std::string &start,
+              std::optional<long long> count = std::nullopt) {
         std::vector<std::string> opt;
         if (count) {
             opt.push_back("COUNT");
             opt.push_back(std::to_string(*count));
         }
-        return derived().template command<stream_entry_list>(
-            std::forward<Func>(func), "XREVRANGE", key, end, start, opt);
+        return derived().template command<stream_entry_list>(std::forward<Func>(func), "XREVRANGE", key, end, start, opt);
     }
 
     /**
@@ -845,16 +763,13 @@ public:
      * @return redis_awaiter yielding Reply<stream_entry_list>
      * @see https://redis.io/commands/xclaim
      */
-    auto xclaim(const std::string &key, const std::string &group,
-                const std::string &consumer, long long min_idle_time,
-                const std::vector<std::string> &ids,
-                const std::vector<std::string> &options = {}) {
+    auto
+    xclaim(const std::string &key, const std::string &group, const std::string &consumer, long long min_idle_time,
+           const std::vector<std::string> &ids, const std::vector<std::string> &options = {}) {
         return derived().template make_coro_command<stream_entry_list>(
-            [this, key, group, consumer, min_idle_time, ids, options](auto&& callback) {
-                this->xclaim(std::move(callback), key, group, consumer, min_idle_time,
-                             ids, options);
-            }
-        );
+            [this, key, group, consumer, min_idle_time, ids, options](auto &&callback) {
+                this->xclaim(std::move(callback), key, group, consumer, min_idle_time, ids, options);
+            });
     }
 
     /**
@@ -873,97 +788,75 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_entry_list> &&>, Derived &>
-    xclaim(Func &&func, const std::string &key, const std::string &group,
-           const std::string &consumer, long long min_idle_time,
-           const std::vector<std::string> &ids,
-           const std::vector<std::string> &options = {}) {
-        std::vector<std::string> args = {key, group, consumer,
-                                         std::to_string(min_idle_time)};
+    xclaim(Func &&func, const std::string &key, const std::string &group, const std::string &consumer, long long min_idle_time,
+           const std::vector<std::string> &ids, const std::vector<std::string> &options = {}) {
+        std::vector<std::string> args = {key, group, consumer, std::to_string(min_idle_time)};
         args.insert(args.end(), ids.begin(), ids.end());
         args.insert(args.end(), options.begin(), options.end());
-        return derived().template command<stream_entry_list>(
-            std::forward<Func>(func), "XCLAIM", args);
+        return derived().template command<stream_entry_list>(std::forward<Func>(func), "XCLAIM", args);
     }
 
     /**
      * @brief Automatically claim idle pending messages.
      * @see https://redis.io/commands/xautoclaim
      */
-    auto xautoclaim(const std::string &key, const std::string &group,
-                    const std::string &consumer, long long min_idle_time,
-                    const std::string &start,
-                    std::optional<long long> count = std::nullopt,
-                    bool justid = false) {
+    auto
+    xautoclaim(const std::string &key, const std::string &group, const std::string &consumer, long long min_idle_time, const std::string &start,
+               std::optional<long long> count = std::nullopt, bool justid = false) {
         return derived().template make_coro_command<qb::json>(
-            [this, key, group, consumer, min_idle_time, start, count, justid](
-                auto&& callback) {
-                this->xautoclaim(std::move(callback), key, group, consumer,
-                                min_idle_time, start, count, justid);
-            }
-        );
+            [this, key, group, consumer, min_idle_time, start, count, justid](auto &&callback) {
+                this->xautoclaim(std::move(callback), key, group, consumer, min_idle_time, start, count, justid);
+            });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
-    xautoclaim(Func &&func, const std::string &key, const std::string &group,
-               const std::string &consumer, long long min_idle_time,
-               const std::string &start,
-               std::optional<long long> count = std::nullopt, bool justid = false) {
+    xautoclaim(Func &&func, const std::string &key, const std::string &group, const std::string &consumer, long long min_idle_time,
+               const std::string &start, std::optional<long long> count = std::nullopt, bool justid = false) {
         std::vector<std::string> opt;
         if (count) {
             opt.push_back("COUNT");
             opt.push_back(std::to_string(*count));
         }
-        if (justid) opt.push_back("JUSTID");
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "XAUTOCLAIM", key, group, consumer,
-            std::to_string(min_idle_time), start, opt);
+        if (justid)
+            opt.push_back("JUSTID");
+        return derived().template command<qb::json>(std::forward<Func>(func), "XAUTOCLAIM", key, group, consumer, std::to_string(min_idle_time),
+                                                    start, opt);
     }
 
     /**
      * @brief Set the last delivered ID of a consumer group.
      * @see https://redis.io/commands/xgroup-setid
      */
-    auto xgroupSetid(const std::string &key, const std::string &group,
-                     const std::string &id,
-                     std::optional<long long> entries_read = std::nullopt) {
+    auto
+    xgroupSetid(const std::string &key, const std::string &group, const std::string &id, std::optional<long long> entries_read = std::nullopt) {
         return derived().template make_coro_command<status>(
-            [this, key, group, id, entries_read](auto&& callback) {
-                this->xgroupSetid(std::move(callback), key, group, id, entries_read);
-            }
-        );
+            [this, key, group, id, entries_read](auto &&callback) { this->xgroupSetid(std::move(callback), key, group, id, entries_read); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    xgroupSetid(Func &&func, const std::string &key, const std::string &group,
-                const std::string &id,
+    xgroupSetid(Func &&func, const std::string &key, const std::string &group, const std::string &id,
                 std::optional<long long> entries_read = std::nullopt) {
         std::vector<std::string> opt;
         if (entries_read) {
             opt.push_back("ENTRIESREAD");
             opt.push_back(std::to_string(*entries_read));
         }
-        return derived().template command<status>(
-            std::forward<Func>(func), "XGROUP", "SETID", key, group, id, opt);
+        return derived().template command<status>(std::forward<Func>(func), "XGROUP", "SETID", key, group, id, opt);
     }
 
     /**
      * @brief Create a consumer in a consumer group.
      * @see https://redis.io/commands/xgroup-createconsumer
      */
-    auto xgroupCreateconsumer(const std::string &key, const std::string &group,
-                               const std::string &consumer) {
+    auto
+    xgroupCreateconsumer(const std::string &key, const std::string &group, const std::string &consumer) {
         return derived().template make_coro_command<bool>(
-            [this, key, group, consumer](auto&& callback) {
-                this->xgroupCreateconsumer(std::move(callback), key, group, consumer);
-            }
-        );
+            [this, key, group, consumer](auto &&callback) { this->xgroupCreateconsumer(std::move(callback), key, group, consumer); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
-    xgroupCreateconsumer(Func &&func, const std::string &key,
-                         const std::string &group, const std::string &consumer) {
-        return derived().template command<bool>(
-            std::forward<Func>(func), "XGROUP", "CREATECONSUMER", key, group, consumer);
+    xgroupCreateconsumer(Func &&func, const std::string &key, const std::string &group, const std::string &consumer) {
+        return derived().template command<bool>(std::forward<Func>(func), "XGROUP", "CREATECONSUMER", key, group, consumer);
     }
 };
 

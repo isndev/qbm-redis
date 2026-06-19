@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,12 +50,12 @@ public:
      * @see https://redis.io/commands/geoadd
      */
     template <typename... Members>
-    auto geoadd(const std::string &key, Members &&...members) {
+    auto
+    geoadd(const std::string &key, Members &&...members) {
         return derived().template make_coro_command<long long>(
-            [this, key, ...members = std::forward<Members>(members)](auto&& callback) mutable {
+            [this, key, ... members = std::forward<Members>(members)](auto &&callback) mutable {
                 this->geoadd(std::move(callback), key, std::forward<decltype(members)>(members)...);
-            }
-        );
+            });
     }
 
     /**
@@ -72,8 +72,7 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     geoadd(Func &&func, const std::string &key, Members &&...members) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "GEOADD", key, std::forward<Members>(members)...);
+        return derived().template command<long long>(std::forward<Func>(func), "GEOADD", key, std::forward<Members>(members)...);
     }
 
     /**
@@ -86,13 +85,10 @@ public:
      * @return Awaitable that yields Reply<std::optional<double>>
      * @see https://redis.io/commands/geodist
      */
-    auto geodist(const std::string &key, const std::string &member1,
-                 const std::string &member2, GeoUnit unit = GeoUnit::M) {
+    auto
+    geodist(const std::string &key, const std::string &member1, const std::string &member2, GeoUnit unit = GeoUnit::M) {
         return derived().template make_coro_command<std::optional<double>>(
-            [this, key, member1, member2, unit](auto&& callback) {
-                this->geodist(std::move(callback), key, member1, member2, unit);
-            }
-        );
+            [this, key, member1, member2, unit](auto &&callback) { this->geodist(std::move(callback), key, member1, member2, unit); });
     }
 
     /**
@@ -109,11 +105,8 @@ public:
      */
     template <typename Func>
     Derived &
-    geodist(Func &&func, const std::string &key, const std::string &member1,
-            const std::string &member2, GeoUnit unit = GeoUnit::M) {
-        return derived().template command<std::optional<double>>(
-            std::forward<Func>(func), "GEODIST", key, member1, member2,
-            to_string(unit));
+    geodist(Func &&func, const std::string &key, const std::string &member1, const std::string &member2, GeoUnit unit = GeoUnit::M) {
+        return derived().template command<std::optional<double>>(std::forward<Func>(func), "GEODIST", key, member1, member2, to_string(unit));
     }
 
     /**
@@ -126,12 +119,12 @@ public:
      * @see https://redis.io/commands/geohash
      */
     template <typename... Members>
-    auto geohash(const std::string &key, Members &&...members) {
+    auto
+    geohash(const std::string &key, Members &&...members) {
         return derived().template make_coro_command<std::vector<std::optional<std::string>>>(
-            [this, key, ...members = std::forward<Members>(members)](auto&& callback) mutable {
+            [this, key, ... members = std::forward<Members>(members)](auto &&callback) mutable {
                 this->geohash(std::move(callback), key, std::forward<decltype(members)>(members)...);
-            }
-        );
+            });
     }
 
     /**
@@ -146,12 +139,10 @@ public:
      * @see https://redis.io/commands/geohash
      */
     template <typename Func, typename... Members>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>,
-        Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
     geohash(Func &&func, const std::string &key, Members &&...members) {
-        return derived().template command<std::vector<std::optional<std::string>>>(
-            std::forward<Func>(func), "GEOHASH", key, std::forward<Members>(members)...);
+        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "GEOHASH", key,
+                                                                                   std::forward<Members>(members)...);
     }
 
     /**
@@ -164,12 +155,12 @@ public:
      * @see https://redis.io/commands/geopos
      */
     template <typename... Members>
-    auto geopos(const std::string &key, Members &&...members) {
+    auto
+    geopos(const std::string &key, Members &&...members) {
         return derived().template make_coro_command<std::vector<std::optional<geo_pos>>>(
-            [this, key, ...members = std::forward<Members>(members)](auto&& callback) mutable {
+            [this, key, ... members = std::forward<Members>(members)](auto &&callback) mutable {
                 this->geopos(std::move(callback), key, std::forward<decltype(members)>(members)...);
-            }
-        );
+            });
     }
 
     /**
@@ -184,12 +175,10 @@ public:
      * @see https://redis.io/commands/geopos
      */
     template <typename Func, typename... Members>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::optional<geo_pos>>> &&>,
-        Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<geo_pos>>> &&>, Derived &>
     geopos(Func &&func, const std::string &key, Members &&...members) {
-        return derived().template command<std::vector<std::optional<geo_pos>>>(
-            std::forward<Func>(func), "GEOPOS", key, std::forward<Members>(members)...);
+        return derived().template command<std::vector<std::optional<geo_pos>>>(std::forward<Func>(func), "GEOPOS", key,
+                                                                               std::forward<Members>(members)...);
     }
 
     /**
@@ -206,13 +195,13 @@ public:
      * @return Awaitable that yields Reply<std::vector<std::string>>
      * @see https://redis.io/commands/georadius
      */
-    auto georadius(const std::string &key, double longitude, double latitude, double radius,
-                   GeoUnit unit = GeoUnit::M, const std::vector<std::string> &options = {}) {
+    auto
+    georadius(const std::string &key, double longitude, double latitude, double radius, GeoUnit unit = GeoUnit::M,
+              const std::vector<std::string> &options = {}) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key, longitude, latitude, radius, unit, options](auto&& callback) {
+            [this, key, longitude, latitude, radius, unit, options](auto &&callback) {
                 this->georadius(std::move(callback), key, longitude, latitude, radius, unit, options);
-            }
-        );
+            });
     }
 
     /**
@@ -231,14 +220,11 @@ public:
      * @see https://redis.io/commands/georadius
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
-    georadius(Func &&func, const std::string &key, double longitude, double latitude,
-              double radius, GeoUnit unit = GeoUnit::M,
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    georadius(Func &&func, const std::string &key, double longitude, double latitude, double radius, GeoUnit unit = GeoUnit::M,
               const std::vector<std::string> &options = {}) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "GEORADIUS", key, longitude, latitude, radius,
-            to_string(unit), options);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEORADIUS", key, longitude, latitude, radius,
+                                                                    to_string(unit), options);
     }
 
     /**
@@ -254,13 +240,12 @@ public:
      * @return Awaitable that yields Reply<std::vector<std::string>>
      * @see https://redis.io/commands/georadiusbymember
      */
-    auto georadiusbymember(const std::string &key, const std::string &member, double radius,
-                          GeoUnit unit = GeoUnit::M, const std::vector<std::string> &options = {}) {
-        return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key, member, radius, unit, options](auto&& callback) {
-                this->georadiusbymember(std::move(callback), key, member, radius, unit, options);
-            }
-        );
+    auto
+    georadiusbymember(const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
+                      const std::vector<std::string> &options = {}) {
+        return derived().template make_coro_command<std::vector<std::string>>([this, key, member, radius, unit, options](auto &&callback) {
+            this->georadiusbymember(std::move(callback), key, member, radius, unit, options);
+        });
     }
 
     /**
@@ -278,14 +263,11 @@ public:
      * @see https://redis.io/commands/georadiusbymember
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
-    georadiusbymember(Func &&func, const std::string &key, const std::string &member,
-                      double radius, GeoUnit unit = GeoUnit::M,
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    georadiusbymember(Func &&func, const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
                       const std::vector<std::string> &options = {}) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "GEORADIUSBYMEMBER", key, member,
-            std::to_string(radius), to_string(unit), options);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEORADIUSBYMEMBER", key, member,
+                                                                    std::to_string(radius), to_string(unit), options);
     }
 
     /**
@@ -300,13 +282,12 @@ public:
      * @return Awaitable that yields Reply<std::vector<std::string>>
      * @see https://redis.io/commands/geosearch
      */
-    auto geosearch(const std::string &key, const std::string &member, double radius,
-                   GeoUnit unit = GeoUnit::M, const std::vector<std::string> &options = {}) {
-        return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key, member, radius, unit, options](auto&& callback) {
-                this->geosearch(std::move(callback), key, member, radius, unit, options);
-            }
-        );
+    auto
+    geosearch(const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
+              const std::vector<std::string> &options = {}) {
+        return derived().template make_coro_command<std::vector<std::string>>([this, key, member, radius, unit, options](auto &&callback) {
+            this->geosearch(std::move(callback), key, member, radius, unit, options);
+        });
     }
 
     /**
@@ -324,14 +305,11 @@ public:
      * @see https://redis.io/commands/geosearch
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
-    geosearch(Func &&func, const std::string &key, const std::string &member,
-              double radius, GeoUnit unit = GeoUnit::M,
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    geosearch(Func &&func, const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
               const std::vector<std::string> &options = {}) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "GEOSEARCH", key, "FROMMEMBER", member, "BYRADIUS",
-            std::to_string(radius), to_string(unit), options);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEOSEARCH", key, "FROMMEMBER", member,
+                                                                    "BYRADIUS", std::to_string(radius), to_string(unit), options);
     }
 };
 

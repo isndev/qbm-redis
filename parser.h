@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,14 +21,14 @@
 /**
  * @file parser.h
  * @brief Main include file for the QB Redis Protocol Parser
- * 
+ *
  * This is a world-class C++20/23 implementation of the Redis protocol (RESP2/RESP3).
  * It provides zero-copy parsing where possible, full RESP3 support, and seamless
  * integration with the QB actor framework.
- * 
+ *
  * @author QB Team
  * @version 1.0.0
- * 
+ *
  * Features:
  * - Complete RESP2 support (Simple String, Error, Integer, Bulk String, Array)
  * - Complete RESP3 support (Null, Boolean, Double, Big Number, Bulk Error,
@@ -37,7 +37,7 @@
  * - Zero-copy parsing from contiguous buffers
  * - Modern C++ features (qb::expected, std::variant, std::span)
  * - Full hiredis API compatibility for drop-in replacement
- * 
+ *
  * Usage:
  * @code
  * // Simple one-shot parsing
@@ -81,30 +81,32 @@ namespace qb::redis::parser {
 /**
  * @brief Get parser version string
  */
-[[nodiscard]] inline constexpr const char* version() noexcept {
+[[nodiscard]] inline constexpr const char *
+version() noexcept {
     return "1.0.0";
 }
 
 /**
  * @brief Get parser version number (encoded as 0x010000 for 1.0.0)
  */
-[[nodiscard]] inline constexpr uint32_t version_number() noexcept {
-    return (QBM_REDIS_PARSER_VERSION_MAJOR << 16) |
-           (QBM_REDIS_PARSER_VERSION_MINOR << 8) |
-           QBM_REDIS_PARSER_VERSION_PATCH;
+[[nodiscard]] inline constexpr uint32_t
+version_number() noexcept {
+    return (QBM_REDIS_PARSER_VERSION_MAJOR << 16) | (QBM_REDIS_PARSER_VERSION_MINOR << 8) | QBM_REDIS_PARSER_VERSION_PATCH;
 }
 
 /**
  * @brief Check if RESP3 is supported
  */
-[[nodiscard]] inline constexpr bool supports_resp3() noexcept {
+[[nodiscard]] inline constexpr bool
+supports_resp3() noexcept {
     return true;
 }
 
 /**
  * @brief Check if zero-copy parsing is available
  */
-[[nodiscard]] inline constexpr bool supports_zero_copy() noexcept {
+[[nodiscard]] inline constexpr bool
+supports_zero_copy() noexcept {
     return true;
 }
 
