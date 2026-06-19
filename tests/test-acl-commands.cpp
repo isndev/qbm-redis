@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
  */
 
 #include <gtest/gtest.h>
+#include <iostream>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include "../redis.h"
 #include "protocol_test_common.h"
-#include <iostream>
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -53,9 +53,9 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_CAT) {
 
             // Verify common categories are present
             bool found_string_category = false;
-            bool found_key_category = false;
+            bool found_key_category    = false;
 
-            for (const auto& cat : categories) {
+            for (const auto &cat : categories) {
                 if (cat == "string")
                     found_string_category = true;
                 if (cat == "keyspace")
@@ -75,19 +75,17 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_CAT) {
                 bool found_string_command = false;
                 for (const auto &cmd : commands) {
                     std::string cmd_name = cmd.get<std::string>();
-                    if (cmd_name == "incr" || cmd_name == "decr" || cmd_name == "getex" ||
-                        cmd_name == "getrange" || cmd_name == "strlen") {
+                    if (cmd_name == "incr" || cmd_name == "decr" || cmd_name == "getex" || cmd_name == "getrange" || cmd_name == "strlen") {
                         found_string_command = true;
                         break;
                     }
                 }
                 EXPECT_TRUE(found_string_command);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             // This might happen if the Redis server doesn't support ACL commands
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
 
         completed = true;
@@ -117,15 +115,14 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_GETUSER) {
 
             // Check if the default user is active (on)
             bool is_active = false;
-            for (const auto& flag : flags) {
+            for (const auto &flag : flags) {
                 if (flag.template get<std::string>() == "on")
                     is_active = true;
             }
             EXPECT_TRUE(is_active);
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
 
         completed = true;
@@ -151,16 +148,15 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_LIST) {
 
             // Verify that the default user is listed
             bool found_default_user = false;
-            for (const auto& rule : acl_rules) {
+            for (const auto &rule : acl_rules) {
                 std::string rule_str = rule.template get<std::string>();
                 if (rule_str.find("user default") != std::string::npos)
                     found_default_user = true;
             }
             EXPECT_TRUE(found_default_user);
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
 
         completed = true;
@@ -183,15 +179,15 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_DRYRUN) {
             EXPECT_TRUE(reply.ok());
             // DRYRUN returns "OK" (string) or error message (string); accept string or object
             EXPECT_TRUE(reply.result().is_string() || reply.result().is_object());
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test ACL LOG command using coroutines
@@ -214,10 +210,9 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_LOG) {
             if (!limited_logs.empty()) {
                 EXPECT_LE(limited_logs.size(), 5);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
 
         completed = true;
@@ -242,15 +237,14 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_USERS) {
 
             // Verify that the default user exists
             bool found_default_user = false;
-            for (const auto& user_str : users) {
+            for (const auto &user_str : users) {
                 if (user_str == "default")
                     found_default_user = true;
             }
             EXPECT_TRUE(found_default_user);
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
 
         completed = true;
@@ -272,10 +266,9 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_WHOAMI) {
 
             auto current_user = reply.result();
             EXPECT_EQ(current_user, "default");
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
 
         completed = true;
@@ -300,15 +293,14 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_HELP) {
 
             // Verify that the help contains useful information
             bool found_help_entry = false;
-            for (const auto& line_str : help) {
+            for (const auto &line_str : help) {
                 if (line_str.find("ACL") != std::string::npos)
                     found_help_entry = true;
             }
             EXPECT_TRUE(found_help_entry);
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
 
         completed = true;
@@ -337,10 +329,9 @@ TEST_P(AclProtocolModesTest, CORO_ACL_COMMANDS_GENPASS) {
             auto reply2 = co_await redis.acl_genpass(128);
             EXPECT_TRUE(reply2.ok());
             EXPECT_FALSE(reply2.result().empty());
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("ACL") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("ACL") != std::string::npos);
         }
 
         completed = true;
@@ -358,13 +349,15 @@ TEST_P(AclProtocolModesTest, ACL_WHOAMI_STRING) {
         try {
             auto r = co_await redis.acl_whoami();
             EXPECT_TRUE(r.ok()) << r.error();
-            if (r.ok()) EXPECT_FALSE(r.result().empty());
-        } catch (const std::exception&) {
+            if (r.ok())
+                EXPECT_FALSE(r.result().empty());
+        } catch (const std::exception &) {
             // ACL not available on older Redis
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(AclProtocolModesTest, ACL_LIST_JSON) {
@@ -373,13 +366,15 @@ TEST_P(AclProtocolModesTest, ACL_LIST_JSON) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r = co_await redis.acl_list();
-            if (r.ok()) EXPECT_TRUE(r.result().is_array());
-        } catch (const std::exception&) {
+            if (r.ok())
+                EXPECT_TRUE(r.result().is_array());
+        } catch (const std::exception &) {
             // ACL not available on older Redis
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test async ACL CAT command

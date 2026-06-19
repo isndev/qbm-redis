@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,9 +82,7 @@ private:
                 _started = true;
                 // Capture shared_ptr to keep alive during async operations
                 auto self = this->shared_from_this();
-                _handler.hscan(
-                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
-                    _key, 0, _pattern, 100);
+                _handler.hscan([self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); }, _key, 0, _pattern, 100);
             }
         }
 
@@ -96,14 +94,12 @@ private:
         void
         operator()(qb::redis::Reply<qb::redis::scan<>> &&reply) {
             _reply.ok() = reply.ok();
-            std::move(reply.result().items.begin(), reply.result().items.end(),
-                      std::back_inserter(_reply.result().items));
+            std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
             if (reply.ok() && reply.result().cursor) {
                 // Continue scanning - capture shared_ptr to keep alive
                 auto self = this->shared_from_this();
-                _handler.hscan(
-                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
-                    _key, reply.result().cursor, _pattern, 100);
+                _handler.hscan([self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); }, _key, reply.result().cursor, _pattern,
+                               100);
             } else {
                 try {
                     _func(std::move(_reply));
@@ -119,8 +115,7 @@ private:
          */
         static void
         create_and_start(Derived &handler, std::string key, std::string pattern, Func &&func) {
-            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern),
-                                                 std::forward<Func>(func));
+            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern), std::forward<Func>(func));
             ptr->start();
         }
     };
@@ -167,11 +162,7 @@ private:
             for (auto it = _keys.begin(); it != std::end(_keys); ++it) {
                 // Capture shared_ptr to keep alive during async operations
                 auto self = this->shared_from_this();
-                handler.hvals(
-                    [self](auto &&reply) {
-                        self->handle_reply(std::forward<decltype(reply)>(reply));
-                    },
-                    *it);
+                handler.hvals([self](auto &&reply) { self->handle_reply(std::forward<decltype(reply)>(reply)); }, *it);
             }
         }
 
@@ -181,8 +172,7 @@ private:
         void
         handle_reply(Reply<std::vector<std::string>> &&reply) {
             _reply.ok() &= reply.ok();
-            std::move(reply.result().begin(), reply.result().end(),
-                      std::back_inserter(_reply.result()));
+            std::move(reply.result().begin(), reply.result().end(), std::back_inserter(_reply.result()));
 
             if (--_pending == 0) {
                 complete();
@@ -223,12 +213,11 @@ public:
      * @see https://redis.io/commands/hdel
      */
     template <typename... Fields>
-    auto hdel(const std::string &key, Fields &&...fields) {
-        return derived().template make_coro_command<long long>(
-            [this, key, ...fields = std::forward<Fields>(fields)](auto&& callback) mutable {
-                this->hdel(std::move(callback), key, std::forward<decltype(fields)>(fields)...);
-            }
-        );
+    auto
+    hdel(const std::string &key, Fields &&...fields) {
+        return derived().template make_coro_command<long long>([this, key, ... fields = std::forward<Fields>(fields)](auto &&callback) mutable {
+            this->hdel(std::move(callback), key, std::forward<decltype(fields)>(fields)...);
+        });
     }
 
     /**
@@ -245,8 +234,7 @@ public:
     template <typename Func, typename... Fields>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     hdel(Func &&func, const std::string &key, Fields &&...fields) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "HDEL", key, std::forward<Fields>(fields)...);
+        return derived().template command<long long>(std::forward<Func>(func), "HDEL", key, std::forward<Fields>(fields)...);
     }
 
     /**
@@ -257,12 +245,10 @@ public:
      * @return redis_awaiter yielding Reply<bool>
      * @see https://redis.io/commands/hexists
      */
-    auto hexists(const std::string &key, const std::string &field) {
+    auto
+    hexists(const std::string &key, const std::string &field) {
         return derived().template make_coro_command<bool>(
-            [this, key, field](auto&& callback) {
-                this->hexists(std::move(callback), key, field);
-            }
-        );
+            [this, key, field](auto &&callback) { this->hexists(std::move(callback), key, field); });
     }
 
     /**
@@ -278,8 +264,7 @@ public:
     template <typename Func>
     Derived &
     hexists(Func &&func, const std::string &key, const std::string &field) {
-        return derived().template command<bool>(std::forward<Func>(func), "HEXISTS", key,
-                                                field);
+        return derived().template command<bool>(std::forward<Func>(func), "HEXISTS", key, field);
     }
 
     /**
@@ -290,12 +275,10 @@ public:
      * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @see https://redis.io/commands/hget
      */
-    auto hget(const std::string &key, const std::string &field) {
+    auto
+    hget(const std::string &key, const std::string &field) {
         return derived().template make_coro_command<std::optional<std::string>>(
-            [this, key, field](auto&& callback) {
-                this->hget(std::move(callback), key, field);
-            }
-        );
+            [this, key, field](auto &&callback) { this->hget(std::move(callback), key, field); });
     }
 
     /**
@@ -311,8 +294,7 @@ public:
     template <typename Func>
     Derived &
     hget(Func &&func, const std::string &key, const std::string &field) {
-        return derived().template command<std::optional<std::string>>(
-            std::forward<Func>(func), "HGET", key, field);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "HGET", key, field);
     }
 
     /**
@@ -322,12 +304,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::unordered_map<std::string, std::string>>
      * @see https://redis.io/commands/hgetall
      */
-    auto hgetall(const std::string &key) {
+    auto
+    hgetall(const std::string &key) {
         return derived().template make_coro_command<qb::unordered_map<std::string, std::string>>(
-            [this, key](auto&& callback) {
-                this->hgetall(std::move(callback), key);
-            }
-        );
+            [this, key](auto &&callback) { this->hgetall(std::move(callback), key); });
     }
 
     /**
@@ -342,8 +322,7 @@ public:
     template <typename Func>
     Derived &
     hgetall(Func &&func, const std::string &key) {
-        return derived().template command<qb::unordered_map<std::string, std::string>>(
-            std::forward<Func>(func), "HGETALL", key);
+        return derived().template command<qb::unordered_map<std::string, std::string>>(std::forward<Func>(func), "HGETALL", key);
     }
 
     /**
@@ -355,12 +334,10 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/hincrby
      */
-    auto hincrby(const std::string &key, const std::string &field, long long increment) {
+    auto
+    hincrby(const std::string &key, const std::string &field, long long increment) {
         return derived().template make_coro_command<long long>(
-            [this, key, field, increment](auto&& callback) {
-                this->hincrby(std::move(callback), key, field, increment);
-            }
-        );
+            [this, key, field, increment](auto &&callback) { this->hincrby(std::move(callback), key, field, increment); });
     }
 
     /**
@@ -376,10 +353,8 @@ public:
      */
     template <typename Func>
     Derived &
-    hincrby(Func &&func, const std::string &key, const std::string &field,
-            long long increment) {
-        return derived().template command<long long>(std::forward<Func>(func), "HINCRBY",
-                                                     key, field, increment);
+    hincrby(Func &&func, const std::string &key, const std::string &field, long long increment) {
+        return derived().template command<long long>(std::forward<Func>(func), "HINCRBY", key, field, increment);
     }
 
     /**
@@ -391,12 +366,10 @@ public:
      * @return redis_awaiter yielding Reply<double>
      * @see https://redis.io/commands/hincrbyfloat
      */
-    auto hincrbyfloat(const std::string &key, const std::string &field, double increment) {
+    auto
+    hincrbyfloat(const std::string &key, const std::string &field, double increment) {
         return derived().template make_coro_command<double>(
-            [this, key, field, increment](auto&& callback) {
-                this->hincrbyfloat(std::move(callback), key, field, increment);
-            }
-        );
+            [this, key, field, increment](auto &&callback) { this->hincrbyfloat(std::move(callback), key, field, increment); });
     }
 
     /**
@@ -412,10 +385,8 @@ public:
      */
     template <typename Func>
     Derived &
-    hincrbyfloat(Func &&func, const std::string &key, const std::string &field,
-                 double increment) {
-        return derived().template command<double>(std::forward<Func>(func),
-                                                  "HINCRBYFLOAT", key, field, increment);
+    hincrbyfloat(Func &&func, const std::string &key, const std::string &field, double increment) {
+        return derived().template command<double>(std::forward<Func>(func), "HINCRBYFLOAT", key, field, increment);
     }
 
     /**
@@ -425,12 +396,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/hkeys
      */
-    auto hkeys(const std::string &key) {
+    auto
+    hkeys(const std::string &key) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key](auto&& callback) {
-                this->hkeys(std::move(callback), key);
-            }
-        );
+            [this, key](auto &&callback) { this->hkeys(std::move(callback), key); });
     }
 
     /**
@@ -443,11 +412,9 @@ public:
      * @see https://redis.io/commands/hkeys
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     hkeys(Func &&func, const std::string &key) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "HKEYS", key);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "HKEYS", key);
     }
 
     /**
@@ -457,12 +424,9 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/hlen
      */
-    auto hlen(const std::string &key) {
-        return derived().template make_coro_command<long long>(
-            [this, key](auto&& callback) {
-                this->hlen(std::move(callback), key);
-            }
-        );
+    auto
+    hlen(const std::string &key) {
+        return derived().template make_coro_command<long long>([this, key](auto &&callback) { this->hlen(std::move(callback), key); });
     }
 
     /**
@@ -477,8 +441,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     hlen(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "HLEN",
-                                                     key);
+        return derived().template command<long long>(std::forward<Func>(func), "HLEN", key);
     }
 
     /**
@@ -491,12 +454,12 @@ public:
      * @see https://redis.io/commands/hmget
      */
     template <typename... Fields>
-    auto hmget(const std::string &key, Fields &&...fields) {
+    auto
+    hmget(const std::string &key, Fields &&...fields) {
         return derived().template make_coro_command<std::vector<std::optional<std::string>>>(
-            [this, key, ...fields = std::forward<Fields>(fields)](auto&& callback) mutable {
+            [this, key, ... fields = std::forward<Fields>(fields)](auto &&callback) mutable {
                 this->hmget(std::move(callback), key, std::forward<decltype(fields)>(fields)...);
-            }
-        );
+            });
     }
 
     /**
@@ -511,12 +474,10 @@ public:
      * @see https://redis.io/commands/hmget
      */
     template <typename Func, typename... Fields>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>,
-        Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
     hmget(Func &&func, const std::string &key, Fields &&...fields) {
-        return derived().template command<std::vector<std::optional<std::string>>>(
-            std::forward<Func>(func), "HMGET", key, std::forward<Fields>(fields)...);
+        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "HMGET", key,
+                                                                                   std::forward<Fields>(fields)...);
     }
 
     /**
@@ -529,12 +490,12 @@ public:
      * @see https://redis.io/commands/hset
      */
     template <typename... FieldValues>
-    auto hmset(const std::string &key, FieldValues &&...field_values) {
+    auto
+    hmset(const std::string &key, FieldValues &&...field_values) {
         return derived().template make_coro_command<status>(
-            [this, key, ...field_values = std::forward<FieldValues>(field_values)](auto&& callback) mutable {
+            [this, key, ... field_values = std::forward<FieldValues>(field_values)](auto &&callback) mutable {
                 this->hmset(std::move(callback), key, std::forward<decltype(field_values)>(field_values)...);
-            }
-        );
+            });
     }
 
     /**
@@ -551,9 +512,7 @@ public:
     template <typename Func, typename... FieldValues>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     hmset(Func &&func, const std::string &key, FieldValues &&...field_values) {
-        return derived().template command<status>(
-            std::forward<Func>(func), "HMSET", key,
-            std::forward<FieldValues>(field_values)...);
+        return derived().template command<status>(std::forward<Func>(func), "HMSET", key, std::forward<FieldValues>(field_values)...);
     }
 
     /**
@@ -568,13 +527,10 @@ public:
      * @see https://redis.io/commands/hscan
      */
     template <typename Out = qb::unordered_map<std::string, std::string>>
-    auto hscan(const std::string &key, long long cursor, const std::string &pattern = "*",
-               long long count = 10) {
+    auto
+    hscan(const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
         return derived().template make_coro_command<qb::redis::scan<Out>>(
-            [this, key, cursor, pattern, count](auto&& callback) {
-                this->hscan(std::move(callback), key, cursor, pattern, count);
-            }
-        );
+            [this, key, cursor, pattern, count](auto &&callback) { this->hscan(std::move(callback), key, cursor, pattern, count); });
     }
 
     /**
@@ -591,16 +547,13 @@ public:
      * @see https://redis.io/commands/hscan
      */
     template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>,
-                     Derived &>
-    hscan(Func &&func, const std::string &key, long long cursor,
-          const std::string &pattern = "*", long long count = 10) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
+    hscan(Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
         if (key.empty()) {
             return derived();
         }
-        return derived().template command<qb::redis::scan<Out>>(
-            std::forward<Func>(func), "HSCAN", key, cursor, "MATCH", pattern, "COUNT",
-            count);
+        return derived().template command<qb::redis::scan<Out>>(std::forward<Func>(func), "HSCAN", key, cursor, "MATCH", pattern, "COUNT",
+                                                                count);
     }
 
     /**
@@ -618,8 +571,7 @@ public:
      * @see https://redis.io/commands/hscan
      */
     template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
     hscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
         scanner<Func>::create_and_start(derived(), key, pattern, std::forward<Func>(func));
         return derived();
@@ -634,12 +586,10 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/hset
      */
-    auto hset(const std::string &key, const std::string &field, const std::string &val) {
+    auto
+    hset(const std::string &key, const std::string &field, const std::string &val) {
         return derived().template make_coro_command<long long>(
-            [this, key, field, val](auto&& callback) {
-                this->hset(std::move(callback), key, field, val);
-            }
-        );
+            [this, key, field, val](auto &&callback) { this->hset(std::move(callback), key, field, val); });
     }
 
     /**
@@ -655,10 +605,8 @@ public:
      */
     template <typename Func>
     Derived &
-    hset(Func &&func, const std::string &key, const std::string &field,
-         const std::string &val) {
-        return derived().template command<long long>(std::forward<Func>(func), "HSET",
-                                                     key, field, val);
+    hset(Func &&func, const std::string &key, const std::string &field, const std::string &val) {
+        return derived().template command<long long>(std::forward<Func>(func), "HSET", key, field, val);
     }
 
     /**
@@ -669,7 +617,8 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/hset
      */
-    auto hset(const std::string &key, const std::pair<std::string, std::string> &item) {
+    auto
+    hset(const std::string &key, const std::pair<std::string, std::string> &item) {
         return hset(key, item.first, item.second);
     }
 
@@ -685,8 +634,7 @@ public:
      */
     template <typename Func>
     Derived &
-    hset(Func &&func, const std::string &key,
-         const std::pair<std::string, std::string> &item) {
+    hset(Func &&func, const std::string &key, const std::pair<std::string, std::string> &item) {
         return hset(std::forward<Func>(func), key, item.first, item.second);
     }
 
@@ -699,12 +647,10 @@ public:
      * @return redis_awaiter yielding Reply<bool>
      * @see https://redis.io/commands/hsetnx
      */
-    auto hsetnx(const std::string &key, const std::string &field, const std::string &val) {
+    auto
+    hsetnx(const std::string &key, const std::string &field, const std::string &val) {
         return derived().template make_coro_command<bool>(
-            [this, key, field, val](auto&& callback) {
-                this->hsetnx(std::move(callback), key, field, val);
-            }
-        );
+            [this, key, field, val](auto &&callback) { this->hsetnx(std::move(callback), key, field, val); });
     }
 
     /**
@@ -720,10 +666,8 @@ public:
      */
     template <typename Func>
     Derived &
-    hsetnx(Func &&func, const std::string &key, const std::string &field,
-           const std::string &val) {
-        return derived().template command<bool>(std::forward<Func>(func), "HSETNX", key,
-                                                field, val);
+    hsetnx(Func &&func, const std::string &key, const std::string &field, const std::string &val) {
+        return derived().template command<bool>(std::forward<Func>(func), "HSETNX", key, field, val);
     }
 
     /**
@@ -734,7 +678,8 @@ public:
      * @return redis_awaiter yielding Reply<bool>
      * @see https://redis.io/commands/hsetnx
      */
-    auto hsetnx(const std::string &key, const std::pair<std::string, std::string> &item) {
+    auto
+    hsetnx(const std::string &key, const std::pair<std::string, std::string> &item) {
         return hsetnx(key, item.first, item.second);
     }
 
@@ -750,8 +695,7 @@ public:
      */
     template <typename Func>
     Derived &
-    hsetnx(Func &&func, const std::string &key,
-           const std::pair<std::string, std::string> &item) {
+    hsetnx(Func &&func, const std::string &key, const std::pair<std::string, std::string> &item) {
         return hsetnx(std::forward<Func>(func), key, item.first, item.second);
     }
 
@@ -763,12 +707,10 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/hstrlen
      */
-    auto hstrlen(const std::string &key, const std::string &field) {
+    auto
+    hstrlen(const std::string &key, const std::string &field) {
         return derived().template make_coro_command<long long>(
-            [this, key, field](auto&& callback) {
-                this->hstrlen(std::move(callback), key, field);
-            }
-        );
+            [this, key, field](auto &&callback) { this->hstrlen(std::move(callback), key, field); });
     }
 
     /**
@@ -784,8 +726,7 @@ public:
     template <typename Func>
     Derived &
     hstrlen(Func &&func, const std::string &key, const std::string &field) {
-        return derived().template command<long long>(std::forward<Func>(func), "HSTRLEN",
-                                                     key, field);
+        return derived().template command<long long>(std::forward<Func>(func), "HSTRLEN", key, field);
     }
 
     /**
@@ -795,12 +736,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/hvals
      */
-    auto hvals(const std::string &key) {
+    auto
+    hvals(const std::string &key) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key](auto&& callback) {
-                this->hvals(std::move(callback), key);
-            }
-        );
+            [this, key](auto &&callback) { this->hvals(std::move(callback), key); });
     }
 
     /**
@@ -815,8 +754,7 @@ public:
     template <typename Func>
     Derived &
     hvals(Func &&func, const std::string &key) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "HVALS", key);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "HVALS", key);
     }
 
     /**

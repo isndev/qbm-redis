@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,12 +54,10 @@ public:
      * @return Awaitable that yields Reply<long long> with the number of clients that received the message
      * @see https://redis.io/commands/publish
      */
-    auto publish(const std::string &channel, const std::string &message) {
+    auto
+    publish(const std::string &channel, const std::string &message) {
         return derived().template make_coro_command<long long>(
-            [this, channel, message](auto&& callback) {
-                this->publish(std::move(callback), channel, message);
-            }
-        );
+            [this, channel, message](auto &&callback) { this->publish(std::move(callback), channel, message); });
     }
 
     /**
@@ -78,8 +76,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     publish(Func &&func, const std::string &channel, const std::string &message) {
-        return derived().template command<long long>(std::forward<Func>(func), "PUBLISH",
-                                                     channel, message);
+        return derived().template command<long long>(std::forward<Func>(func), "PUBLISH", channel, message);
     }
 };
 

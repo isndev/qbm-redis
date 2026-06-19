@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,12 +49,9 @@ public:
      * @return redis_awaiter yielding Reply<qb::json> (server info map in RESP3)
      * @see https://redis.io/commands/hello
      */
-    auto hello(int version = 3) {
-        return derived().template make_coro_command<qb::json>(
-            [this, version](auto&& callback) {
-                this->hello(std::move(callback), version);
-            }
-        );
+    auto
+    hello(int version = 3) {
+        return derived().template make_coro_command<qb::json>([this, version](auto &&callback) { this->hello(std::move(callback), version); });
     }
 
     /**
@@ -69,8 +66,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     hello(Func &&func, int version = 3) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "HELLO",
-                                                    std::to_string(version));
+        return derived().template command<qb::json>(std::forward<Func>(func), "HELLO", std::to_string(version));
     }
 
     /**
@@ -80,12 +76,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/auth
      */
-    auto auth(const std::string &password) {
-        return derived().template make_coro_command<status>(
-            [this, password](auto&& callback) {
-                this->auth(std::move(callback), password);
-            }
-        );
+    auto
+    auth(const std::string &password) {
+        return derived().template make_coro_command<status>([this, password](auto &&callback) { this->auth(std::move(callback), password); });
     }
 
     /**
@@ -100,8 +93,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     auth(Func &&func, const std::string &password) {
-        return derived().template command<status>(std::forward<Func>(func), "AUTH",
-                                                  password);
+        return derived().template command<status>(std::forward<Func>(func), "AUTH", password);
     }
 
     /**
@@ -112,12 +104,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/auth
      */
-    auto auth(const std::string &user, const std::string &password) {
+    auto
+    auth(const std::string &user, const std::string &password) {
         return derived().template make_coro_command<status>(
-            [this, user, password](auto&& callback) {
-                this->auth(std::move(callback), user, password);
-            }
-        );
+            [this, user, password](auto &&callback) { this->auth(std::move(callback), user, password); });
     }
 
     /**
@@ -133,8 +123,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     auth(Func &&func, const std::string &user, const std::string &password) {
-        return derived().template command<status>(std::forward<Func>(func), "AUTH", user,
-                                                  password);
+        return derived().template command<status>(std::forward<Func>(func), "AUTH", user, password);
     }
 
     /**
@@ -144,12 +133,10 @@ public:
      * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/echo
      */
-    auto echo(const std::string &message) {
+    auto
+    echo(const std::string &message) {
         return derived().template make_coro_command<std::string>(
-            [this, message](auto&& callback) {
-                this->echo(std::move(callback), message);
-            }
-        );
+            [this, message](auto &&callback) { this->echo(std::move(callback), message); });
     }
 
     /**
@@ -164,8 +151,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     echo(Func &&func, const std::string &message) {
-        return derived().template command<std::string>(std::forward<Func>(func), "ECHO",
-                                                       message);
+        return derived().template command<std::string>(std::forward<Func>(func), "ECHO", message);
     }
 
     /**
@@ -174,12 +160,9 @@ public:
      * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/ping
      */
-    auto ping() {
-        return derived().template make_coro_command<std::string>(
-            [this](auto&& callback) {
-                this->ping(std::move(callback));
-            }
-        );
+    auto
+    ping() {
+        return derived().template make_coro_command<std::string>([this](auto &&callback) { this->ping(std::move(callback)); });
     }
 
     /**
@@ -203,12 +186,10 @@ public:
      * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/ping
      */
-    auto ping(const std::string &message) {
+    auto
+    ping(const std::string &message) {
         return derived().template make_coro_command<std::string>(
-            [this, message](auto&& callback) {
-                this->ping(std::move(callback), message);
-            }
-        );
+            [this, message](auto &&callback) { this->ping(std::move(callback), message); });
     }
 
     /**
@@ -223,8 +204,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     ping(Func &&func, const std::string &message) {
-        return derived().template command<std::string>(std::forward<Func>(func), "PING",
-                                                       message);
+        return derived().template command<std::string>(std::forward<Func>(func), "PING", message);
     }
 
     /**
@@ -233,12 +213,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/quit
      */
-    auto quit() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->quit(std::move(callback));
-            }
-        );
+    auto
+    quit() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->quit(std::move(callback)); });
     }
 
     /**
@@ -262,12 +239,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/select
      */
-    auto select(long long index) {
-        return derived().template make_coro_command<status>(
-            [this, index](auto&& callback) {
-                this->select(std::move(callback), index);
-            }
-        );
+    auto
+    select(long long index) {
+        return derived().template make_coro_command<status>([this, index](auto &&callback) { this->select(std::move(callback), index); });
     }
 
     /**
@@ -282,8 +256,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     select(Func &&func, long long index) {
-        return derived().template command<status>(std::forward<Func>(func), "SELECT",
-                                                  index);
+        return derived().template command<status>(std::forward<Func>(func), "SELECT", index);
     }
 
     /**
@@ -294,12 +267,10 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/swapdb
      */
-    auto swapdb(long long index1, long long index2) {
+    auto
+    swapdb(long long index1, long long index2) {
         return derived().template make_coro_command<status>(
-            [this, index1, index2](auto&& callback) {
-                this->swapdb(std::move(callback), index1, index2);
-            }
-        );
+            [this, index1, index2](auto &&callback) { this->swapdb(std::move(callback), index1, index2); });
     }
 
     /**
@@ -315,8 +286,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     swapdb(Func &&func, long long index1, long long index2) {
-        return derived().template command<status>(std::forward<Func>(func), "SWAPDB",
-                                                  index1, index2);
+        return derived().template command<status>(std::forward<Func>(func), "SWAPDB", index1, index2);
     }
 
     /**
@@ -327,12 +297,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/reset
      */
-    auto reset() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->reset(std::move(callback));
-            }
-        );
+    auto
+    reset() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->reset(std::move(callback)); });
     }
 
     /**

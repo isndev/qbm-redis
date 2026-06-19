@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@
 #ifndef QBM_REDIS_SET_COMMANDS_H
 #define QBM_REDIS_SET_COMMANDS_H
 
-#include "reply.h"
 #include <qb/system/container/unordered_set.h> // for qb::unordered_set (previously picked up transitively via listener.h)
+#include "reply.h"
 
 namespace qb::redis {
 
@@ -81,11 +81,9 @@ private:
         void
         start() {
             if (!_started) {
-                _started = true;
+                _started  = true;
                 auto self = this->shared_from_this();
-                _handler.sscan(
-                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
-                    _key, 0, _pattern, 100);
+                _handler.sscan([self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); }, _key, 0, _pattern, 100);
             }
         }
 
@@ -97,13 +95,11 @@ private:
         void
         operator()(qb::redis::Reply<qb::redis::scan<>> &&reply) {
             _reply.ok() = reply.ok();
-            std::move(reply.result().items.begin(), reply.result().items.end(),
-                      std::back_inserter(_reply.result().items));
+            std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
             if (reply.ok() && reply.result().cursor) {
                 auto self = this->shared_from_this();
-                _handler.sscan(
-                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
-                    _key, reply.result().cursor, _pattern, 100);
+                _handler.sscan([self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); }, _key, reply.result().cursor, _pattern,
+                               100);
             } else {
                 try {
                     _func(std::move(_reply));
@@ -118,8 +114,7 @@ private:
          */
         static void
         create_and_start(Derived &handler, std::string key, std::string pattern, Func &&func) {
-            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern),
-                                                 std::forward<Func>(func));
+            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern), std::forward<Func>(func));
             ptr->start();
         }
     };
@@ -137,12 +132,12 @@ public:
      * @see https://redis.io/commands/sadd
      */
     template <typename... Members>
-    auto sadd(const std::string &key, Members &&...members) {
+    auto
+    sadd(const std::string &key, Members &&...members) {
         return derived().template make_coro_command<long long>(
-            [this, key, ...members = std::forward<Members>(members)](auto&& callback) mutable {
+            [this, key, ... members = std::forward<Members>(members)](auto &&callback) mutable {
                 this->sadd(std::move(callback), key, std::forward<decltype(members)>(members)...);
-            }
-        );
+            });
     }
 
     /**
@@ -162,8 +157,7 @@ public:
         if (key.empty() || sizeof...(members) == 0) {
             return derived();
         }
-        return derived().template command<long long>(
-            std::forward<Func>(func), "SADD", key, std::forward<Members>(members)...);
+        return derived().template command<long long>(std::forward<Func>(func), "SADD", key, std::forward<Members>(members)...);
     }
 
     /**
@@ -173,12 +167,9 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/scard
      */
-    auto scard(const std::string &key) {
-        return derived().template make_coro_command<long long>(
-            [this, key](auto&& callback) {
-                this->scard(std::move(callback), key);
-            }
-        );
+    auto
+    scard(const std::string &key) {
+        return derived().template make_coro_command<long long>([this, key](auto &&callback) { this->scard(std::move(callback), key); });
     }
 
     /**
@@ -196,8 +187,7 @@ public:
         if (key.empty()) {
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "SCARD",
-                                                     key);
+        return derived().template command<long long>(std::forward<Func>(func), "SCARD", key);
     }
 
     // =============== Set Operations ===============
@@ -210,12 +200,10 @@ public:
      * @note Time complexity: O(N) where N is the total number of elements in all sets
      * @see https://redis.io/commands/sdiff
      */
-    auto sdiff(const std::vector<std::string> &keys) {
+    auto
+    sdiff(const std::vector<std::string> &keys) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, keys](auto&& callback) {
-                this->sdiff(std::move(callback), keys);
-            }
-        );
+            [this, keys](auto &&callback) { this->sdiff(std::move(callback), keys); });
     }
 
     /**
@@ -228,15 +216,13 @@ public:
      * @see https://redis.io/commands/sdiff
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     sdiff(Func &&func, const std::vector<std::string> &keys) {
         if (keys.size() == 0) {
             return derived();
         }
 
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "SDIFF", keys);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SDIFF", keys);
     }
 
     /**
@@ -247,12 +233,10 @@ public:
      * @return redis_awaiter yielding Reply<long long> (number of elements in result)
      * @see https://redis.io/commands/sdiffstore
      */
-    auto sdiffstore(const std::string &destination, const std::vector<std::string> &keys) {
+    auto
+    sdiffstore(const std::string &destination, const std::vector<std::string> &keys) {
         return derived().template make_coro_command<long long>(
-            [this, destination, keys](auto&& callback) {
-                this->sdiffstore(std::move(callback), destination, keys);
-            }
-        );
+            [this, destination, keys](auto &&callback) { this->sdiffstore(std::move(callback), destination, keys); });
     }
 
     /**
@@ -267,22 +251,18 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    sdiffstore(Func &&func, const std::string &destination,
-               const std::vector<std::string> &keys) {
+    sdiffstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
         if (destination.empty() || keys.size() == 0) {
             return derived();
         }
 
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "SDIFFSTORE", destination, keys);
+        return derived().template command<long long>(std::forward<Func>(func), "SDIFFSTORE", destination, keys);
     }
 
-    auto sinter(const std::vector<std::string> &keys) {
+    auto
+    sinter(const std::vector<std::string> &keys) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, keys](auto&& callback) {
-                this->sinter(std::move(callback), keys);
-            }
-        );
+            [this, keys](auto &&callback) { this->sinter(std::move(callback), keys); });
     }
 
     /**
@@ -295,15 +275,13 @@ public:
      * @see https://redis.io/commands/sinter
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     sinter(Func &&func, const std::vector<std::string> &keys) {
         if (keys.size() == 0) {
             return derived();
         }
 
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "SINTER", keys);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SINTER", keys);
     }
 
     /**
@@ -314,13 +292,10 @@ public:
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/sintercard
      */
-    auto sintercard(const std::vector<std::string> &keys,
-                    std::optional<long long>        limit = std::nullopt) {
+    auto
+    sintercard(const std::vector<std::string> &keys, std::optional<long long> limit = std::nullopt) {
         return derived().template make_coro_command<long long>(
-            [this, keys, limit](auto&& callback) mutable {
-                this->sintercard(std::move(callback), keys, std::move(limit));
-            }
-        );
+            [this, keys, limit](auto &&callback) mutable { this->sintercard(std::move(callback), keys, std::move(limit)); });
     }
 
     /**
@@ -335,8 +310,7 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    sintercard(Func &&func, const std::vector<std::string> &keys,
-               std::optional<long long> limit = std::nullopt) {
+    sintercard(Func &&func, const std::vector<std::string> &keys, std::optional<long long> limit = std::nullopt) {
         if (keys.size() == 0) {
             return derived();
         }
@@ -346,8 +320,7 @@ public:
             args.push_back("LIMIT");
             args.push_back(std::to_string(*limit));
         }
-        return derived().template command<long long>(
-            std::forward<Func>(func), "SINTERCARD", keys.size(), keys, args);
+        return derived().template command<long long>(std::forward<Func>(func), "SINTERCARD", keys.size(), keys, args);
     }
 
     /**
@@ -358,12 +331,10 @@ public:
      * @return redis_awaiter yielding Reply<long long> (number of elements in result)
      * @see https://redis.io/commands/sinterstore
      */
-    auto sinterstore(const std::string &destination, const std::vector<std::string> &keys) {
+    auto
+    sinterstore(const std::string &destination, const std::vector<std::string> &keys) {
         return derived().template make_coro_command<long long>(
-            [this, destination, keys](auto&& callback) {
-                this->sinterstore(std::move(callback), destination, keys);
-            }
-        );
+            [this, destination, keys](auto &&callback) { this->sinterstore(std::move(callback), destination, keys); });
     }
 
     /**
@@ -378,13 +349,11 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    sinterstore(Func &&func, const std::string &destination,
-                const std::vector<std::string> &keys) {
+    sinterstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
         if (destination.empty() || keys.size() == 0) {
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "SINTERSTORE", destination, keys);
+        return derived().template command<long long>(std::forward<Func>(func), "SINTERSTORE", destination, keys);
     }
 
     /**
@@ -396,12 +365,10 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/sismember
      */
-    auto sismember(const std::string &key, const std::string &member) {
+    auto
+    sismember(const std::string &key, const std::string &member) {
         return derived().template make_coro_command<bool>(
-            [this, key, member](auto&& callback) {
-                this->sismember(std::move(callback), key, member);
-            }
-        );
+            [this, key, member](auto &&callback) { this->sismember(std::move(callback), key, member); });
     }
 
     /**
@@ -420,8 +387,7 @@ public:
         if (key.empty() || member.empty()) {
             return derived();
         }
-        return derived().template command<bool>(std::forward<Func>(func), "SISMEMBER",
-                                                key, member);
+        return derived().template command<bool>(std::forward<Func>(func), "SISMEMBER", key, member);
     }
 
     /**
@@ -435,12 +401,12 @@ public:
      * @see https://redis.io/commands/smismember
      */
     template <typename... Members>
-    auto smismember(const std::string &key, Members &&...members) {
+    auto
+    smismember(const std::string &key, Members &&...members) {
         return derived().template make_coro_command<std::vector<bool>>(
-            [this, key, ...members = std::forward<Members>(members)](auto&& callback) mutable {
+            [this, key, ... members = std::forward<Members>(members)](auto &&callback) mutable {
                 this->smismember(std::move(callback), key, std::forward<decltype(members)>(members)...);
-            }
-        );
+            });
     }
 
     /**
@@ -460,9 +426,7 @@ public:
         if (key.empty() || sizeof...(members) == 0) {
             return derived();
         }
-        return derived().template command<std::vector<bool>>(
-            std::forward<Func>(func), "SMISMEMBER", key,
-            std::forward<Members>(members)...);
+        return derived().template command<std::vector<bool>>(std::forward<Func>(func), "SMISMEMBER", key, std::forward<Members>(members)...);
     }
 
     /**
@@ -472,12 +436,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::unordered_set<std::string>>
      * @see https://redis.io/commands/smembers
      */
-    auto smembers(const std::string &key) {
+    auto
+    smembers(const std::string &key) {
         return derived().template make_coro_command<qb::unordered_set<std::string>>(
-            [this, key](auto&& callback) {
-                this->smembers(std::move(callback), key);
-            }
-        );
+            [this, key](auto &&callback) { this->smembers(std::move(callback), key); });
     }
 
     /**
@@ -490,14 +452,12 @@ public:
      * @see https://redis.io/commands/smembers
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::unordered_set<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::unordered_set<std::string>> &&>, Derived &>
     smembers(Func &&func, const std::string &key) {
         if (key.empty()) {
             return derived();
         }
-        return derived().template command<qb::unordered_set<std::string>>(
-            std::forward<Func>(func), "SMEMBERS", key);
+        return derived().template command<qb::unordered_set<std::string>>(std::forward<Func>(func), "SMEMBERS", key);
     }
 
     /**
@@ -509,13 +469,10 @@ public:
      * @return redis_awaiter yielding Reply<bool> (true if member was moved)
      * @see https://redis.io/commands/smove
      */
-    auto smove(const std::string &source, const std::string &destination,
-               const std::string &member) {
+    auto
+    smove(const std::string &source, const std::string &destination, const std::string &member) {
         return derived().template make_coro_command<bool>(
-            [this, source, destination, member](auto&& callback) {
-                this->smove(std::move(callback), source, destination, member);
-            }
-        );
+            [this, source, destination, member](auto &&callback) { this->smove(std::move(callback), source, destination, member); });
     }
 
     /**
@@ -531,13 +488,11 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
-    smove(Func &&func, const std::string &source, const std::string &destination,
-          const std::string &member) {
+    smove(Func &&func, const std::string &source, const std::string &destination, const std::string &member) {
         if (source.empty() || destination.empty() || member.empty()) {
             return derived();
         }
-        return derived().template command<bool>(            std::forward<Func>(func), "SMOVE",
-                                                source, destination, member);
+        return derived().template command<bool>(std::forward<Func>(func), "SMOVE", source, destination, member);
     }
 
     /**
@@ -547,12 +502,10 @@ public:
      * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @see https://redis.io/commands/spop
      */
-    auto spop(const std::string &key) {
+    auto
+    spop(const std::string &key) {
         return derived().template make_coro_command<std::optional<std::string>>(
-            [this, key](auto&& callback) {
-                this->spop(std::move(callback), key);
-            }
-        );
+            [this, key](auto &&callback) { this->spop(std::move(callback), key); });
     }
 
     /**
@@ -565,14 +518,12 @@ public:
      * @see https://redis.io/commands/spop
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     spop(Func &&func, const std::string &key) {
         if (key.empty()) {
             return derived();
         }
-        return derived().template command<std::optional<std::string>>(
-            std::forward<Func>(func), "SPOP", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "SPOP", key);
     }
 
     /**
@@ -583,12 +534,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/spop
      */
-    auto spop(const std::string &key, long long count) {
+    auto
+    spop(const std::string &key, long long count) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key, count](auto&& callback) {
-                this->spop(std::move(callback), key, count);
-            }
-        );
+            [this, key, count](auto &&callback) { this->spop(std::move(callback), key, count); });
     }
 
     /**
@@ -602,14 +551,12 @@ public:
      * @see https://redis.io/commands/spop
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     spop(Func &&func, const std::string &key, long long count) {
         if (key.empty() || count < 1) {
             return derived();
         }
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "SPOP", key, count);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SPOP", key, count);
     }
 
     /**
@@ -620,12 +567,10 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/srandmember
      */
-    auto srandmember(const std::string &key) {
+    auto
+    srandmember(const std::string &key) {
         return derived().template make_coro_command<std::optional<std::string>>(
-            [this, key](auto&& callback) {
-                this->srandmember(std::move(callback), key);
-            }
-        );
+            [this, key](auto &&callback) { this->srandmember(std::move(callback), key); });
     }
 
     /**
@@ -638,14 +583,12 @@ public:
      * @see https://redis.io/commands/srandmember
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     srandmember(Func &&func, const std::string &key) {
         if (key.empty()) {
             return derived();
         }
-        return derived().template command<std::optional<std::string>>(
-            std::forward<Func>(func), "SRANDMEMBER", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "SRANDMEMBER", key);
     }
 
     /**
@@ -657,12 +600,10 @@ public:
      * @note Time complexity: O(N) where N is the absolute value of count
      * @see https://redis.io/commands/srandmember
      */
-    auto srandmember(const std::string &key, long long count) {
+    auto
+    srandmember(const std::string &key, long long count) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key, count](auto&& callback) {
-                this->srandmember(std::move(callback), key, count);
-            }
-        );
+            [this, key, count](auto &&callback) { this->srandmember(std::move(callback), key, count); });
     }
 
     /**
@@ -676,14 +617,12 @@ public:
      * @see https://redis.io/commands/srandmember
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     srandmember(Func &&func, const std::string &key, long long count) {
         if (key.empty()) {
             return derived();
         }
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "SRANDMEMBER", key, count);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SRANDMEMBER", key, count);
     }
 
     /**
@@ -696,12 +635,12 @@ public:
      * @see https://redis.io/commands/srem
      */
     template <typename... Members>
-    auto srem(const std::string &key, Members &&...members) {
+    auto
+    srem(const std::string &key, Members &&...members) {
         return derived().template make_coro_command<long long>(
-            [this, key, ...members = std::forward<Members>(members)](auto&& callback) mutable {
+            [this, key, ... members = std::forward<Members>(members)](auto &&callback) mutable {
                 this->srem(std::move(callback), key, std::forward<decltype(members)>(members)...);
-            }
-        );
+            });
     }
 
     /**
@@ -721,8 +660,7 @@ public:
         if (key.empty() || sizeof...(members) == 0) {
             return derived();
         }
-        return derived().template command<long long>(
-            std::forward<Func>(func), "SREM", key, std::forward<Members>(members)...);
+        return derived().template command<long long>(std::forward<Func>(func), "SREM", key, std::forward<Members>(members)...);
     }
 
     // =============== Set Scanning Operations ===============
@@ -737,13 +675,10 @@ public:
      * @return redis_awaiter yielding Reply<scan<>>
      * @see https://redis.io/commands/sscan
      */
-    auto sscan(const std::string &key, long long cursor, const std::string &pattern = "*",
-               long long count = 10) {
+    auto
+    sscan(const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
         return derived().template make_coro_command<scan<>>(
-            [this, key, cursor, pattern, count](auto&& callback) {
-                this->sscan(std::move(callback), key, cursor, pattern, count);
-            }
-        );
+            [this, key, cursor, pattern, count](auto &&callback) { this->sscan(std::move(callback), key, cursor, pattern, count); });
     }
 
     /**
@@ -760,14 +695,11 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<scan<>> &&>, Derived &>
-    sscan(Func &&func, const std::string &key, long long cursor,
-          const std::string &pattern = "*", long long count = 10) {
+    sscan(Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
         if (key.empty()) {
             return derived();
         }
-        return derived().template command<scan<>>(std::forward<Func>(func), "SSCAN", key,
-                                                  cursor, "MATCH", pattern, "COUNT",
-                                                  count);
+        return derived().template command<scan<>>(std::forward<Func>(func), "SSCAN", key, cursor, "MATCH", pattern, "COUNT", count);
     }
 
     /**
@@ -803,12 +735,10 @@ public:
      * @note Time complexity: O(N) where N is the total number of elements in all sets
      * @see https://redis.io/commands/sunion
      */
-    auto sunion(const std::vector<std::string> &keys) {
+    auto
+    sunion(const std::vector<std::string> &keys) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, keys](auto&& callback) {
-                this->sunion(std::move(callback), keys);
-            }
-        );
+            [this, keys](auto &&callback) { this->sunion(std::move(callback), keys); });
     }
 
     /**
@@ -821,8 +751,7 @@ public:
      * @see https://redis.io/commands/sunion
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     sunion(Func &&func, const std::vector<std::string> &keys) {
         if (keys.size() == 0) {
             return derived();
@@ -830,8 +759,7 @@ public:
         std::vector<std::string> args;
         args.reserve(keys.size());
         args.insert(args.end(), keys.begin(), keys.end());
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "SUNION", args);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SUNION", args);
     }
 
     /**
@@ -843,12 +771,10 @@ public:
      * @note Time complexity: O(N) where N is the total number of elements in all sets
      * @see https://redis.io/commands/sunionstore
      */
-    auto sunionstore(const std::string &destination, const std::vector<std::string> &keys) {
+    auto
+    sunionstore(const std::string &destination, const std::vector<std::string> &keys) {
         return derived().template make_coro_command<long long>(
-            [this, destination, keys](auto&& callback) {
-                this->sunionstore(std::move(callback), destination, keys);
-            }
-        );
+            [this, destination, keys](auto &&callback) { this->sunionstore(std::move(callback), destination, keys); });
     }
 
     /**
@@ -863,13 +789,11 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    sunionstore(Func &&func, const std::string &destination,
-                const std::vector<std::string> &keys) {
+    sunionstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
         if (destination.empty() || keys.size() == 0) {
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "SUNIONSTORE", destination, keys);
+        return derived().template command<long long>(std::forward<Func>(func), "SUNIONSTORE", destination, keys);
     }
 };
 

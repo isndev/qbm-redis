@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,11 +83,10 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RESP3_HELLO) {
         auto reply = co_await redis.hello(3);
         EXPECT_TRUE(reply.ok()) << "HELLO 3 failed: " << reply.error();
         if (reply.ok()) {
-            const auto& info = reply.result();
+            const auto &info = reply.result();
             // RESP3 HELLO returns a map with server info
             EXPECT_TRUE(info.is_object());
-            EXPECT_TRUE(info.contains("server") || info.contains("version"))
-                << "HELLO reply should contain server info";
+            EXPECT_TRUE(info.contains("server") || info.contains("version")) << "HELLO reply should contain server info";
         }
         completed = true;
     };
@@ -110,7 +109,8 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RESP3_HELLO_THEN_PING) {
         }
         auto ping_reply = co_await redis.ping();
         EXPECT_TRUE(ping_reply.ok()) << "PING after HELLO 3 failed: " << ping_reply.error();
-        if (ping_reply.ok()) EXPECT_EQ(ping_reply.result(), "PONG");
+        if (ping_reply.ok())
+            EXPECT_EQ(ping_reply.result(), "PONG");
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -135,11 +135,13 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_COMMANDS_RESET) {
         // Connection stays open after RESET; verify we can still PING
         auto ping_r = co_await redis.ping();
         EXPECT_TRUE(ping_r.ok()) << "PING after RESET failed: " << ping_r.error();
-        if (ping_r.ok()) EXPECT_EQ(ping_r.result(), "PONG");
+        if (ping_r.ok())
+            EXPECT_EQ(ping_r.result(), "PONG");
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test PING without message using coroutines
@@ -226,17 +228,18 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_COMMANDS_SWAPDB) {
     }
 }
 
-
 TEST_P(ConnectionProtocolModesTest, PING) {
     bool done = false;
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.ping();
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), "PONG");
+        if (r.ok())
+            EXPECT_EQ(r.result(), "PONG");
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ConnectionProtocolModesTest, PING_WITH_MESSAGE) {
@@ -245,10 +248,12 @@ TEST_P(ConnectionProtocolModesTest, PING_WITH_MESSAGE) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.ping("hello");
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), "hello");
+        if (r.ok())
+            EXPECT_EQ(r.result(), "hello");
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ConnectionProtocolModesTest, ECHO) {
@@ -257,10 +262,12 @@ TEST_P(ConnectionProtocolModesTest, ECHO) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.echo("hello");
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), "hello");
+        if (r.ok())
+            EXPECT_EQ(r.result(), "hello");
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ConnectionProtocolModesTest, HELLO_RESP3_MAP) {
@@ -269,17 +276,16 @@ TEST_P(ConnectionProtocolModesTest, HELLO_RESP3_MAP) {
         auto r = co_await redis.hello(GetParam() == ProtocolMode::RESP3 ? 3 : 2);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) {
-            const auto& info = r.result();
-            EXPECT_TRUE(info.is_object() || info.is_array())
-                << "HELLO reply must be map (RESP3) or array (RESP2)";
+            const auto &info = r.result();
+            EXPECT_TRUE(info.is_object() || info.is_array()) << "HELLO reply must be map (RESP3) or array (RESP2)";
             if (info.is_object()) {
-                EXPECT_TRUE(info.contains("server") || info.contains("version"))
-                    << "HELLO map should contain server info";
+                EXPECT_TRUE(info.contains("server") || info.contains("version")) << "HELLO map should contain server info";
             }
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ConnectionProtocolModesTest, SELECT) {
@@ -288,14 +294,17 @@ TEST_P(ConnectionProtocolModesTest, SELECT) {
         PROTOCOL_ENSURE_RESP3();
         auto r1 = co_await redis.select(0);
         EXPECT_TRUE(r1.ok()) << r1.error();
-        if (r1.ok()) EXPECT_TRUE(r1.result().ok());
+        if (r1.ok())
+            EXPECT_TRUE(r1.result().ok());
         auto r2 = co_await redis.select(1);
         EXPECT_TRUE(r2.ok()) << r2.error();
-        if (r2.ok()) EXPECT_TRUE(r2.result().ok());
-        (void)co_await redis.select(0);
+        if (r2.ok())
+            EXPECT_TRUE(r2.result().ok());
+        (void) co_await redis.select(0);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ConnectionProtocolModesTest, ERROR_REPLY) {
@@ -304,10 +313,12 @@ TEST_P(ConnectionProtocolModesTest, ERROR_REPLY) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.command<std::string>("INVALIDCMD");
         EXPECT_FALSE(r.ok()) << "Expected error for invalid command";
-        if (!r.ok()) EXPECT_FALSE(r.error().empty());
+        if (!r.ok())
+            EXPECT_FALSE(r.error().empty());
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ConnectionProtocolModesTest, SWAPDB) {
@@ -316,11 +327,13 @@ TEST_P(ConnectionProtocolModesTest, SWAPDB) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.swapdb(0, 1);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_TRUE(r.result().ok());
-        (void)co_await redis.swapdb(0, 1);
+        if (r.ok())
+            EXPECT_TRUE(r.result().ok());
+        (void) co_await redis.swapdb(0, 1);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // ============================================================================
@@ -330,15 +343,12 @@ TEST_P(ConnectionProtocolModesTest, SWAPDB) {
 // Test: connect_with_retry succeeds on the first attempt when Redis is up
 TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_IMMEDIATE_SUCCESS) {
     qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
-    bool completed = false;
-    bool connected = false;
+    bool                   completed = false;
+    bool                   connected = false;
 
     auto test_task = [&]() -> qb::io::async::task<void> {
         connected = co_await client.connect_with_retry(
-            qb::redis::RetryPolicy{}
-                .with_max_attempts(5)
-                .with_initial_delay(std::chrono::milliseconds{10})
-                .with_connect_timeout(2s));
+            qb::redis::RetryPolicy{}.with_max_attempts(5).with_initial_delay(std::chrono::milliseconds{10}).with_connect_timeout(2s));
         completed = true;
     };
 
@@ -354,17 +364,16 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_IMMEDIATE_SUCCESS) {
 TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_EXHAUSTED) {
     // Use a port with no listener; ECONNREFUSED arrives almost instantly
     qb::redis::tcp::client client{qb::io::uri{"tcp://127.0.0.1:19379"}};
-    bool completed = false;
-    bool connected = true;  // intentionally wrong; expect false
+    bool                   completed = false;
+    bool                   connected = true; // intentionally wrong; expect false
 
     auto test_task = [&]() -> qb::io::async::task<void> {
-        connected = co_await client.connect_with_retry(
-            qb::redis::RetryPolicy{}
-                .with_max_attempts(3)
-                .with_initial_delay(std::chrono::milliseconds{20})
-                .with_max_delay(std::chrono::milliseconds{50})
-                .with_jitter(false)       // deterministic timing
-                .with_connect_timeout(500ms));
+        connected = co_await client.connect_with_retry(qb::redis::RetryPolicy{}
+                                                           .with_max_attempts(3)
+                                                           .with_initial_delay(std::chrono::milliseconds{20})
+                                                           .with_max_delay(std::chrono::milliseconds{50})
+                                                           .with_jitter(false) // deterministic timing
+                                                           .with_connect_timeout(500ms));
         completed = true;
     };
 
@@ -379,19 +388,16 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_EXHAUSTED) {
 // Test: on_retry callback is invoked for each failed attempt
 TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_OBSERVER) {
     qb::redis::tcp::client client{qb::io::uri{"tcp://127.0.0.1:19380"}};
-    bool  completed    = false;
-    int   retry_count  = 0;
+    bool                   completed   = false;
+    int                    retry_count = 0;
 
     auto test_task = [&]() -> qb::io::async::task<void> {
-        co_await client.connect_with_retry(
-            qb::redis::RetryPolicy{}
-                .with_max_attempts(3)
-                .with_initial_delay(std::chrono::milliseconds{10})
-                .with_jitter(false)
-                .with_connect_timeout(200ms)
-                .with_on_retry([&](int /*attempt*/, qb::duration /*wait*/) {
-                    ++retry_count;
-                }));
+        co_await client.connect_with_retry(qb::redis::RetryPolicy{}
+                                               .with_max_attempts(3)
+                                               .with_initial_delay(std::chrono::milliseconds{10})
+                                               .with_jitter(false)
+                                               .with_connect_timeout(200ms)
+                                               .with_on_retry([&](int /*attempt*/, qb::duration /*wait*/) { ++retry_count; }));
         completed = true;
     };
 
@@ -407,15 +413,13 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_OBSERVER) {
 // Test: connect_with_retry with URI overload
 TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_WITH_URI) {
     qb::redis::tcp::client client;
-    bool completed = false;
-    bool connected = false;
+    bool                   completed = false;
+    bool                   connected = false;
 
     auto test_task = [&]() -> qb::io::async::task<void> {
-        connected = co_await client.connect_with_retry(
-            qb::io::uri{"tcp://localhost:6379"},
-            qb::redis::RetryPolicy{}
-                .with_max_attempts(3)
-                .with_initial_delay(std::chrono::milliseconds{10}));
+        connected =
+            co_await client.connect_with_retry(qb::io::uri{"tcp://localhost:6379"},
+                                               qb::redis::RetryPolicy{}.with_max_attempts(3).with_initial_delay(std::chrono::milliseconds{10}));
         completed = true;
     };
 
@@ -430,11 +434,11 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RETRY_WITH_URI) {
 // Test: connect() with configurable timeout
 TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_CUSTOM_TIMEOUT) {
     qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
-    bool completed = false;
-    bool connected = false;
+    bool                   completed = false;
+    bool                   connected = false;
 
     auto test_task = [&]() -> qb::io::async::task<void> {
-        connected = co_await client.connect(1s);  // 1 second timeout
+        connected = co_await client.connect(1s); // 1 second timeout
         completed = true;
     };
 

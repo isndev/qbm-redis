@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,12 +51,12 @@ public:
      * @see https://redis.io/commands/pfadd
      */
     template <typename... Elements>
-    auto pfadd(const std::string &key, Elements &&...elements) {
+    auto
+    pfadd(const std::string &key, Elements &&...elements) {
         return derived().template make_coro_command<bool>(
-            [this, key, ...elements = std::forward<Elements>(elements)](auto&& callback) mutable {
+            [this, key, ... elements = std::forward<Elements>(elements)](auto &&callback) mutable {
                 this->pfadd(std::move(callback), key, std::forward<decltype(elements)>(elements)...);
-            }
-        );
+            });
     }
 
     /**
@@ -73,8 +73,7 @@ public:
     template <typename Func, typename... Elements>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pfadd(Func &&func, const std::string &key, Elements &&...elements) {
-        return derived().template command<bool>(std::forward<Func>(func), "PFADD", key,
-                                                std::forward<Elements>(elements)...);
+        return derived().template command<bool>(std::forward<Func>(func), "PFADD", key, std::forward<Elements>(elements)...);
     }
 
     /**
@@ -86,12 +85,11 @@ public:
      * @see https://redis.io/commands/pfcount
      */
     template <typename... Keys>
-    auto pfcount(Keys &&...keys) {
-        return derived().template make_coro_command<long long>(
-            [this, ...keys = std::forward<Keys>(keys)](auto&& callback) mutable {
-                this->pfcount(std::move(callback), std::forward<decltype(keys)>(keys)...);
-            }
-        );
+    auto
+    pfcount(Keys &&...keys) {
+        return derived().template make_coro_command<long long>([this, ... keys = std::forward<Keys>(keys)](auto &&callback) mutable {
+            this->pfcount(std::move(callback), std::forward<decltype(keys)>(keys)...);
+        });
     }
 
     /**
@@ -107,8 +105,7 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     pfcount(Func &&func, Keys &&...keys) {
-        return derived().template command<long long>(std::forward<Func>(func), "PFCOUNT",
-                                                     std::forward<Keys>(keys)...);
+        return derived().template command<long long>(std::forward<Func>(func), "PFCOUNT", std::forward<Keys>(keys)...);
     }
 
     /**
@@ -121,12 +118,11 @@ public:
      * @see https://redis.io/commands/pfmerge
      */
     template <typename... Keys>
-    auto pfmerge(const std::string &destination, Keys &&...keys) {
-        return derived().template make_coro_command<status>(
-            [this, destination, ...keys = std::forward<Keys>(keys)](auto&& callback) mutable {
-                this->pfmerge(std::move(callback), destination, std::forward<decltype(keys)>(keys)...);
-            }
-        );
+    auto
+    pfmerge(const std::string &destination, Keys &&...keys) {
+        return derived().template make_coro_command<status>([this, destination, ... keys = std::forward<Keys>(keys)](auto &&callback) mutable {
+            this->pfmerge(std::move(callback), destination, std::forward<decltype(keys)>(keys)...);
+        });
     }
 
     /**
@@ -143,9 +139,7 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     pfmerge(Func &&func, const std::string &destination, Keys &&...keys) {
-        return derived().template command<status>(std::forward<Func>(func), "PFMERGE",
-                                                  destination,
-                                                  std::forward<Keys>(keys)...);
+        return derived().template command<status>(std::forward<Func>(func), "PFMERGE", destination, std::forward<Keys>(keys)...);
     }
 };
 

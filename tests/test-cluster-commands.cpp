@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,13 +51,11 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_INFO) {
                 }
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
         }
 
         completed = true;
@@ -86,13 +84,11 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_NODES) {
                 }
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
         }
 
         completed = true;
@@ -110,8 +106,8 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_ASKING_READONLY_READWRITE
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         try {
-            auto asking_r = co_await redis.asking();
-            auto readonly_r = co_await redis.readonly();
+            auto asking_r    = co_await redis.asking();
+            auto readonly_r  = co_await redis.readonly();
             auto readwrite_r = co_await redis.readwrite();
             if (asking_r.ok() && readonly_r.ok() && readwrite_r.ok()) {
                 // All succeeded (cluster or standalone with redirect support)
@@ -121,21 +117,19 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_ASKING_READONLY_READWRITE
                 std::string e1 = asking_r.ok() ? "" : std::string(asking_r.error());
                 std::string e2 = readonly_r.ok() ? "" : std::string(readonly_r.error());
                 std::string e3 = readwrite_r.ok() ? "" : std::string(readwrite_r.error());
-                EXPECT_TRUE(e1.find("cluster") != std::string::npos ||
-                           e2.find("cluster") != std::string::npos ||
-                           e3.find("cluster") != std::string::npos ||
-                           e1.find("READONLY") != std::string::npos ||
-                           e2.find("READONLY") != std::string::npos);
+                EXPECT_TRUE(e1.find("cluster") != std::string::npos || e2.find("cluster") != std::string::npos
+                            || e3.find("cluster") != std::string::npos || e1.find("READONLY") != std::string::npos
+                            || e2.find("READONLY") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
         }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test CLUSTER SLOTS command using coroutines
@@ -151,13 +145,11 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_SLOTS) {
                 EXPECT_TRUE(slots.is_array() || slots.is_object());
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
         }
 
         completed = true;
@@ -174,8 +166,8 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_KEYSLOT) {
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         try {
-            std::string key = protocol_key("coro_keyslot-test");
-            auto reply = co_await redis.cluster_keyslot(key);
+            std::string key   = protocol_key("coro_keyslot-test");
+            auto        reply = co_await redis.cluster_keyslot(key);
 
             if (reply.ok()) {
                 auto slot = reply.result();
@@ -183,13 +175,11 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_KEYSLOT) {
                 EXPECT_LE(slot, 16383);
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
         }
 
         completed = true;
@@ -213,13 +203,11 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_COUNTKEYSINSLOT) {
                 EXPECT_GE(count, 0);
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
         }
 
         completed = true;
@@ -243,13 +231,11 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_GETKEYSINSLOT) {
                 EXPECT_TRUE(keys.empty() || !keys.empty());
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
         }
 
         completed = true;
@@ -275,13 +261,11 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MYID) {
                 }
             } else {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos);
         }
 
         completed = true;
@@ -302,15 +286,13 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MODIFICATION) {
             auto reply = co_await redis.cluster_meet("127.0.0.1", 7000);
             if (!reply.ok()) {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos ||
-                           error.find("ERR") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                            || error.find("ERR") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         // CLUSTER FORGET
@@ -318,15 +300,13 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MODIFICATION) {
             auto reply = co_await redis.cluster_forget("0000000000000000000000000000000000000000");
             if (!reply.ok()) {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos ||
-                           error.find("ERR") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                            || error.find("ERR") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         // CLUSTER RESET
@@ -334,15 +314,13 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MODIFICATION) {
             auto reply = co_await redis.cluster_reset();
             if (!reply.ok()) {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos ||
-                           error.find("ERR") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                            || error.find("ERR") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         // CLUSTER FAILOVER
@@ -350,15 +328,13 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MODIFICATION) {
             auto reply = co_await redis.cluster_failover();
             if (!reply.ok()) {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos ||
-                           error.find("ERR") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                            || error.find("ERR") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         // CLUSTER REPLICATE
@@ -366,15 +342,13 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MODIFICATION) {
             auto reply = co_await redis.cluster_replicate("0000000000000000000000000000000000000000");
             if (!reply.ok()) {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos ||
-                           error.find("ERR") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                            || error.find("ERR") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         // CLUSTER SAVECONFIG
@@ -382,15 +356,13 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MODIFICATION) {
             auto reply = co_await redis.cluster_saveconfig();
             if (!reply.ok()) {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos ||
-                           error.find("ERR") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                            || error.find("ERR") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         // CLUSTER SET-CONFIG-EPOCH
@@ -398,15 +370,13 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MODIFICATION) {
             auto reply = co_await redis.cluster_set_config_epoch(1);
             if (!reply.ok()) {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos ||
-                           error.find("ERR") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                            || error.find("ERR") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         // CLUSTER BUMPEPOCH
@@ -414,15 +384,13 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_MODIFICATION) {
             auto reply = co_await redis.cluster_bumpepoch();
             if (!reply.ok()) {
                 std::string error = std::string(reply.error());
-                EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                           error.find("cluster") != std::string::npos ||
-                           error.find("ERR") != std::string::npos);
+                EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                            || error.find("ERR") != std::string::npos);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::string error = e.what();
-            EXPECT_TRUE(error.find("unknown command") != std::string::npos ||
-                       error.find("cluster") != std::string::npos ||
-                       error.find("ERR") != std::string::npos);
+            EXPECT_TRUE(error.find("unknown command") != std::string::npos || error.find("cluster") != std::string::npos
+                        || error.find("ERR") != std::string::npos);
         }
 
         completed = true;
@@ -438,27 +406,33 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_SLOT_MANAGEMENT) {
     bool completed = false;
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
-        auto check_cluster_err = [](const auto& r) {
-            if (r.ok()) return true;
+        auto check_cluster_err = [](const auto &r) {
+            if (r.ok())
+                return true;
             std::string e(r.error());
-            return e.find("cluster") != std::string::npos ||
-                   e.find("unknown command") != std::string::npos ||
-                   e.find("ERR") != std::string::npos;
+            return e.find("cluster") != std::string::npos || e.find("unknown command") != std::string::npos
+                   || e.find("ERR") != std::string::npos;
         };
         auto r1 = co_await redis.cluster_addslots(0);
-        if (!r1.ok()) EXPECT_TRUE(check_cluster_err(r1));
+        if (!r1.ok())
+            EXPECT_TRUE(check_cluster_err(r1));
         auto r2 = co_await redis.cluster_addslotsrange({{1, 2}});
-        if (!r2.ok()) EXPECT_TRUE(check_cluster_err(r2));
+        if (!r2.ok())
+            EXPECT_TRUE(check_cluster_err(r2));
         auto r3 = co_await redis.cluster_delslots(0);
-        if (!r3.ok()) EXPECT_TRUE(check_cluster_err(r3));
+        if (!r3.ok())
+            EXPECT_TRUE(check_cluster_err(r3));
         auto r4 = co_await redis.cluster_delslotsrange({{1, 2}});
-        if (!r4.ok()) EXPECT_TRUE(check_cluster_err(r4));
+        if (!r4.ok())
+            EXPECT_TRUE(check_cluster_err(r4));
         auto r5 = co_await redis.cluster_flushslots();
-        if (!r5.ok()) EXPECT_TRUE(check_cluster_err(r5));
+        if (!r5.ok())
+            EXPECT_TRUE(check_cluster_err(r5));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test CLUSTER COUNT-FAILURE-REPORTS, LINKS, MYSHARDID, REPLICAS, SETSLOT, SHARDS, SLAVES
@@ -466,32 +440,40 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_INFO_EXT) {
     bool completed = false;
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
-        auto check_cluster_err = [](const auto& r) {
-            if (r.ok()) return true;
+        auto check_cluster_err = [](const auto &r) {
+            if (r.ok())
+                return true;
             std::string e(r.error());
-            return e.find("cluster") != std::string::npos ||
-                   e.find("unknown command") != std::string::npos ||
-                   e.find("ERR") != std::string::npos;
+            return e.find("cluster") != std::string::npos || e.find("unknown command") != std::string::npos
+                   || e.find("ERR") != std::string::npos;
         };
         std::string dummy_id = "0000000000000000000000000000000000000000";
-        auto r1 = co_await redis.cluster_count_failure_reports(dummy_id);
-        if (!r1.ok()) EXPECT_TRUE(check_cluster_err(r1));
+        auto        r1       = co_await redis.cluster_count_failure_reports(dummy_id);
+        if (!r1.ok())
+            EXPECT_TRUE(check_cluster_err(r1));
         auto r2 = co_await redis.cluster_links();
-        if (!r2.ok()) EXPECT_TRUE(check_cluster_err(r2));
+        if (!r2.ok())
+            EXPECT_TRUE(check_cluster_err(r2));
         auto r3 = co_await redis.cluster_myshardid();
-        if (!r3.ok()) EXPECT_TRUE(check_cluster_err(r3));
+        if (!r3.ok())
+            EXPECT_TRUE(check_cluster_err(r3));
         auto r4 = co_await redis.cluster_replicas(dummy_id);
-        if (!r4.ok()) EXPECT_TRUE(check_cluster_err(r4));
+        if (!r4.ok())
+            EXPECT_TRUE(check_cluster_err(r4));
         auto r5 = co_await redis.cluster_setslot(0, "NODE", dummy_id);
-        if (!r5.ok()) EXPECT_TRUE(check_cluster_err(r5));
+        if (!r5.ok())
+            EXPECT_TRUE(check_cluster_err(r5));
         auto r6 = co_await redis.cluster_shards();
-        if (!r6.ok()) EXPECT_TRUE(check_cluster_err(r6));
+        if (!r6.ok())
+            EXPECT_TRUE(check_cluster_err(r6));
         auto r7 = co_await redis.cluster_slaves(dummy_id);
-        if (!r7.ok()) EXPECT_TRUE(check_cluster_err(r7));
+        if (!r7.ok())
+            EXPECT_TRUE(check_cluster_err(r7));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ClusterProtocolModesTest, CLUSTER_INFO_JSON) {
@@ -500,13 +482,15 @@ TEST_P(ClusterProtocolModesTest, CLUSTER_INFO_JSON) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r = co_await redis.cluster_info();
-            if (r.ok()) EXPECT_TRUE(r.result().is_object() || r.result().is_string());
-        } catch (const std::exception&) {
+            if (r.ok())
+                EXPECT_TRUE(r.result().is_object() || r.result().is_string());
+        } catch (const std::exception &) {
             // CLUSTER not available on older Redis
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(ClusterProtocolModesTest, CLUSTER_NODES_SLOTS) {
@@ -515,13 +499,16 @@ TEST_P(ClusterProtocolModesTest, CLUSTER_NODES_SLOTS) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r1 = co_await redis.cluster_nodes();
-            if (r1.ok()) EXPECT_TRUE(r1.result().is_string() || r1.result().is_array() || r1.result().is_object());
+            if (r1.ok())
+                EXPECT_TRUE(r1.result().is_string() || r1.result().is_array() || r1.result().is_object());
             auto r2 = co_await redis.cluster_slots();
-            if (r2.ok()) EXPECT_TRUE(r2.result().is_array());
-        } catch (const std::exception&) {
+            if (r2.ok())
+                EXPECT_TRUE(r2.result().is_array());
+        } catch (const std::exception &) {
             // CLUSTER not available on standalone Redis
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }

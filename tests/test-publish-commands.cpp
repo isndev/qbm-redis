@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,12 +36,12 @@ using namespace std::chrono;
 class PublishProtocolModesTest : public ProtocolModesTestBase {
 protected:
     qb::redis::tcp::client      publisher{REDIS_URI_PROTOCOL};
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI_PROTOCOL, [](auto&&) {}};
+    qb::redis::tcp::cb_consumer consumer{REDIS_URI_PROTOCOL, [](auto &&) {}};
 
-    void SetUp() override {
+    void
+    SetUp() override {
         ProtocolModesTestBase::SetUp();
-        if (!qb::io::async::run_sync(publisher.connect()) ||
-            !qb::io::async::run_sync(consumer.connect())) {
+        if (!qb::io::async::run_sync(publisher.connect()) || !qb::io::async::run_sync(consumer.connect())) {
             throw std::runtime_error("Unable to connect publisher/consumer");
         }
     }
@@ -53,16 +53,16 @@ INSTANTIATE_PROTOCOL_MODES(PublishProtocolModesTest);
 
 TEST_P(PublishProtocolModesTest, CORO_PUBLISH_BASIC) {
     std::atomic<size_t> message_count{0};
-    auto ch = protocol_key("pub");
+    auto                ch = protocol_key("pub");
 
-    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
-        EXPECT_EQ(msg.payload, TEST_MESSAGE);
-        ++message_count;
-    }};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto &&msg) {
+                                                     EXPECT_EQ(msg.payload, TEST_MESSAGE);
+                                                     ++message_count;
+                                                 }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
     bool completed = false;
-    auto sub_task = [&completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
+    auto sub_task  = [&completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
         auto reply = co_await consumer_with_cb.subscribe(ch);
         if (!reply.ok() || !reply.result().channel.has_value() || *reply.result().channel != ch) {
@@ -73,9 +73,10 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_BASIC) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(sub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed     = false;
     auto pub_task = [this, &completed, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
         auto reply = co_await publisher.publish(ch, TEST_MESSAGE);
@@ -84,15 +85,17 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_BASIC) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(pub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed      = false;
     auto wait_task = [&]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(wait_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     EXPECT_EQ(message_count, 1);
 
@@ -103,17 +106,17 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_BASIC) {
 
 TEST_P(PublishProtocolModesTest, CORO_PUBLISH_PATTERN) {
     std::atomic<size_t> message_count{0};
-    auto pat = protocol_key("t") + "_*";
-    auto ch = protocol_key("t") + "_channel";
+    auto                pat = protocol_key("t") + "_*";
+    auto                ch  = protocol_key("t") + "_channel";
 
-    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
-        EXPECT_EQ(msg.payload, TEST_MESSAGE);
-        ++message_count;
-    }};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto &&msg) {
+                                                     EXPECT_EQ(msg.payload, TEST_MESSAGE);
+                                                     ++message_count;
+                                                 }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
     bool completed = false;
-    auto sub_task = [&completed, &consumer_with_cb, pat]() -> qb::io::async::task<void> {
+    auto sub_task  = [&completed, &consumer_with_cb, pat]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
         auto reply = co_await consumer_with_cb.psubscribe(pat);
         if (!reply.ok() || !reply.result().channel.has_value()) {
@@ -124,9 +127,10 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_PATTERN) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(sub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed     = false;
     auto pub_task = [this, &completed, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
         auto reply = co_await publisher.publish(ch, TEST_MESSAGE);
@@ -135,15 +139,17 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_PATTERN) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(pub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed      = false;
     auto wait_task = [&]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(wait_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     EXPECT_EQ(message_count, 1);
 
@@ -155,21 +161,21 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_PATTERN) {
 TEST_P(PublishProtocolModesTest, CORO_PUBLISH_MULTIPLE_SUBSCRIBERS) {
     std::atomic<size_t> message_count1{0};
     std::atomic<size_t> message_count2{0};
-    auto ch = protocol_key("multi");
+    auto                ch = protocol_key("multi");
 
-    qb::redis::tcp::cb_consumer consumer1{REDIS_URI_PROTOCOL, [&](auto&& msg) {
-        EXPECT_EQ(msg.payload, TEST_MESSAGE);
-        ++message_count1;
-    }};
-    qb::redis::tcp::cb_consumer consumer2{REDIS_URI_PROTOCOL, [&](auto&& msg) {
-        EXPECT_EQ(msg.payload, TEST_MESSAGE);
-        ++message_count2;
-    }};
+    qb::redis::tcp::cb_consumer consumer1{REDIS_URI_PROTOCOL, [&](auto &&msg) {
+                                              EXPECT_EQ(msg.payload, TEST_MESSAGE);
+                                              ++message_count1;
+                                          }};
+    qb::redis::tcp::cb_consumer consumer2{REDIS_URI_PROTOCOL, [&](auto &&msg) {
+                                              EXPECT_EQ(msg.payload, TEST_MESSAGE);
+                                              ++message_count2;
+                                          }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer1.connect()));
     ASSERT_TRUE(qb::io::async::run_sync(consumer2.connect()));
 
     bool completed = false;
-    auto sub_task = [&completed, &consumer1, &consumer2, ch]() -> qb::io::async::task<void> {
+    auto sub_task  = [&completed, &consumer1, &consumer2, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer1, completed);
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer2, completed);
         auto r1 = co_await consumer1.subscribe(ch);
@@ -182,9 +188,10 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_MULTIPLE_SUBSCRIBERS) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(sub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed     = false;
     auto pub_task = [this, &completed, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
         auto reply = co_await publisher.publish(ch, TEST_MESSAGE);
@@ -193,15 +200,17 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_MULTIPLE_SUBSCRIBERS) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(pub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed      = false;
     auto wait_task = [&]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(wait_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     EXPECT_EQ(message_count1, 1);
     EXPECT_EQ(message_count2, 1);
@@ -214,7 +223,7 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_MULTIPLE_SUBSCRIBERS) {
 
 TEST_P(PublishProtocolModesTest, CORO_PUBLISH_EMPTY_CHANNEL) {
     bool completed = false;
-    auto pub_task = [this, &completed]() -> qb::io::async::task<void> {
+    auto pub_task  = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
         auto reply = co_await publisher.publish("", TEST_MESSAGE);
         EXPECT_TRUE(reply.ok());
@@ -222,21 +231,22 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_EMPTY_CHANNEL) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(pub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(PublishProtocolModesTest, CORO_PUBLISH_EMPTY_MESSAGE) {
     std::atomic<size_t> message_count{0};
-    auto ch = protocol_key("empty");
+    auto                ch = protocol_key("empty");
 
-    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
-        EXPECT_EQ(msg.payload, "");
-        ++message_count;
-    }};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto &&msg) {
+                                                     EXPECT_EQ(msg.payload, "");
+                                                     ++message_count;
+                                                 }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
     bool completed = false;
-    auto sub_task = [&completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
+    auto sub_task  = [&completed, &consumer_with_cb, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
         auto reply = co_await consumer_with_cb.subscribe(ch);
         if (!reply.ok() || !reply.result().channel.has_value()) {
@@ -247,9 +257,10 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_EMPTY_MESSAGE) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(sub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed     = false;
     auto pub_task = [this, &completed, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CLIENT(publisher, completed);
         auto reply = co_await publisher.publish(ch, "");
@@ -258,15 +269,17 @@ TEST_P(PublishProtocolModesTest, CORO_PUBLISH_EMPTY_MESSAGE) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(pub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed      = false;
     auto wait_task = [&]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(wait_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     EXPECT_EQ(message_count, 1);
 
@@ -280,8 +293,10 @@ TEST_P(PublishProtocolModesTest, PUBLISH_INTEGER) {
         auto k = protocol_key("chan");
         auto r = co_await redis.publish(k, "msg");
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_GE(r.result(), 0);
+        if (r.ok())
+            EXPECT_GE(r.result(), 0);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }

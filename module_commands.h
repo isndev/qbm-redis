@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,12 +49,9 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/module-list
      */
-    auto module_list() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->module_list(std::move(callback));
-            }
-        );
+    auto
+    module_list() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->module_list(std::move(callback)); });
     }
 
     /**
@@ -82,12 +79,11 @@ public:
      * @see https://redis.io/commands/module-load
      */
     template <typename... Args>
-    auto module_load(const std::string &path, Args&&... args) {
-        return derived().template make_coro_command<status>(
-            [this, path, ...args = std::forward<Args>(args)](auto&& callback) mutable {
-                this->module_load(std::move(callback), path, std::forward<Args>(args)...);
-            }
-        );
+    auto
+    module_load(const std::string &path, Args &&...args) {
+        return derived().template make_coro_command<status>([this, path, ... args = std::forward<Args>(args)](auto &&callback) mutable {
+            this->module_load(std::move(callback), path, std::forward<Args>(args)...);
+        });
     }
 
     /**
@@ -101,7 +97,7 @@ public:
      */
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    module_load(Func &&func, const std::string &path, Args&&... args) {
+    module_load(Func &&func, const std::string &path, Args &&...args) {
         return derived().template command<status>(std::forward<Func>(func), "MODULE", "LOAD", path, std::forward<Args>(args)...);
     }
 
@@ -114,12 +110,9 @@ public:
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/module-unload
      */
-    auto module_unload(const std::string &name) {
-        return derived().template make_coro_command<status>(
-            [this, name](auto&& callback) {
-                this->module_unload(std::move(callback), name);
-            }
-        );
+    auto
+    module_unload(const std::string &name) {
+        return derived().template make_coro_command<status>([this, name](auto &&callback) { this->module_unload(std::move(callback), name); });
     }
 
     /**
@@ -144,12 +137,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/module-help
      */
-    auto module_help() {
+    auto
+    module_help() {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this](auto&& callback) {
-                this->module_help(std::move(callback));
-            }
-        );
+            [this](auto &&callback) { this->module_help(std::move(callback)); });
     }
 
     /**

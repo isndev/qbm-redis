@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,12 +57,9 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/multi
      */
-    auto multi() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->multi(std::move(callback));
-            }
-        );
+    auto
+    multi() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->multi(std::move(callback)); });
     }
 
     /**
@@ -95,12 +92,9 @@ public:
      * @see https://redis.io/commands/exec
      */
     template <typename Result>
-    auto exec() {
-        return derived().template make_coro_command<std::vector<Result>>(
-            [this](auto&& callback) {
-                this->exec<Result>(std::move(callback));
-            }
-        );
+    auto
+    exec() {
+        return derived().template make_coro_command<std::vector<Result>>([this](auto &&callback) { this->exec<Result>(std::move(callback)); });
     }
 
     /**
@@ -133,12 +127,9 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/discard
      */
-    auto discard() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->discard(std::move(callback));
-            }
-        );
+    auto
+    discard() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->discard(std::move(callback)); });
     }
 
     /**
@@ -169,12 +160,9 @@ public:
      * @note Time complexity: O(1) for every key
      * @see https://redis.io/commands/watch
      */
-    auto watch(const std::string &key) {
-        return derived().template make_coro_command<status>(
-            [this, key](auto&& callback) {
-                this->watch(std::move(callback), key);
-            }
-        );
+    auto
+    watch(const std::string &key) {
+        return derived().template make_coro_command<status>([this, key](auto &&callback) { this->watch(std::move(callback), key); });
     }
 
     /**
@@ -191,13 +179,12 @@ public:
     watch(Func &&func, const std::string &key) {
         if (key.empty()) {
             Reply<status> reply;
-            reply.ok() = false;
+            reply.ok()    = false;
             reply.error() = "Key cannot be empty";
             func(std::move(reply));
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "WATCH",
-                                                  key);
+        return derived().template command<status>(std::forward<Func>(func), "WATCH", key);
     }
 
     /**
@@ -208,12 +195,9 @@ public:
      * @note Time complexity: O(N) where N is the number of keys to watch
      * @see https://redis.io/commands/watch
      */
-    auto watch(const std::vector<std::string> &keys) {
-        return derived().template make_coro_command<status>(
-            [this, keys](auto&& callback) {
-                this->watch(std::move(callback), keys);
-            }
-        );
+    auto
+    watch(const std::vector<std::string> &keys) {
+        return derived().template make_coro_command<status>([this, keys](auto &&callback) { this->watch(std::move(callback), keys); });
     }
 
     /**
@@ -230,13 +214,12 @@ public:
     watch(Func &&func, const std::vector<std::string> &keys) {
         if (keys.empty()) {
             Reply<status> reply;
-            reply.ok() = false;
+            reply.ok()    = false;
             reply.error() = "Key list cannot be empty";
             func(std::move(reply));
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "WATCH",
-                                                  keys);
+        return derived().template command<status>(std::forward<Func>(func), "WATCH", keys);
     }
 
     /**
@@ -248,12 +231,9 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/unwatch
      */
-    auto unwatch() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->unwatch(std::move(callback));
-            }
-        );
+    auto
+    unwatch() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->unwatch(std::move(callback)); });
     }
 
     /**

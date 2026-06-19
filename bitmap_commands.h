@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,12 +62,10 @@ public:
      * @note Time complexity: O(N) where N is the number of bytes examined
      * @see https://redis.io/commands/bitcount
      */
-    auto bitcount(const std::string &key, long long start = 0, long long end = -1) {
+    auto
+    bitcount(const std::string &key, long long start = 0, long long end = -1) {
         return derived().template make_coro_command<long long>(
-            [this, key, start, end](auto&& callback) {
-                this->bitcount(std::move(callback), key, start, end);
-            }
-        );
+            [this, key, start, end](auto &&callback) { this->bitcount(std::move(callback), key, start, end); });
     }
 
     /**
@@ -84,10 +82,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    bitcount(Func &&func, const std::string &key, long long start = 0,
-             long long end = -1) {
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "BITCOUNT", key, start, end);
+    bitcount(Func &&func, const std::string &key, long long start = 0, long long end = -1) {
+        return derived().template command<long long>(std::forward<Func>(func), "BITCOUNT", key, start, end);
     }
 
     /**
@@ -103,12 +99,10 @@ public:
      * @note Time complexity: O(1) for each operation
      * @see https://redis.io/commands/bitfield
      */
-    auto bitfield(const std::string &key, const std::vector<std::string> &operations) {
+    auto
+    bitfield(const std::string &key, const std::vector<std::string> &operations) {
         return derived().template make_coro_command<std::vector<std::optional<long long>>>(
-            [this, key, operations](auto&& callback) {
-                this->bitfield(std::move(callback), key, operations);
-            }
-        );
+            [this, key, operations](auto &&callback) { this->bitfield(std::move(callback), key, operations); });
     }
 
     /**
@@ -121,13 +115,9 @@ public:
      * @see https://redis.io/commands/bitfield
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::optional<long long>>> &&>,
-        Derived &>
-    bitfield(Func &&func, const std::string &key,
-             const std::vector<std::string> &operations) {
-        return derived().template command<std::vector<std::optional<long long>>>(
-            std::forward<Func>(func), "BITFIELD", key, operations);
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<long long>>> &&>, Derived &>
+    bitfield(Func &&func, const std::string &key, const std::vector<std::string> &operations) {
+        return derived().template command<std::vector<std::optional<long long>>>(std::forward<Func>(func), "BITFIELD", key, operations);
     }
 
     /**
@@ -143,13 +133,10 @@ public:
      * @note Time complexity: O(N) where N is the size of the longest string
      * @see https://redis.io/commands/bitop
      */
-    auto bitop(const std::string &operation, const std::string &destkey,
-          const std::vector<std::string> &keys) {
+    auto
+    bitop(const std::string &operation, const std::string &destkey, const std::vector<std::string> &keys) {
         return derived().template make_coro_command<long long>(
-            [this, operation, destkey, keys](auto&& callback) {
-                this->bitop(std::move(callback), operation, destkey, keys);
-            }
-        );
+            [this, operation, destkey, keys](auto &&callback) { this->bitop(std::move(callback), operation, destkey, keys); });
     }
 
     /**
@@ -164,10 +151,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    bitop(Func &&func, const std::string &operation, const std::string &destkey,
-          const std::vector<std::string> &keys) {
-        return derived().template command<long long>(std::forward<Func>(func), "BITOP",
-                                                     operation, destkey, keys);
+    bitop(Func &&func, const std::string &operation, const std::string &destkey, const std::vector<std::string> &keys) {
+        return derived().template command<long long>(std::forward<Func>(func), "BITOP", operation, destkey, keys);
     }
 
     /**
@@ -186,12 +171,10 @@ public:
      * @note Time complexity: O(N) where N is the number of bytes examined
      * @see https://redis.io/commands/bitpos
      */
-    auto bitpos(const std::string &key, bool bit, long long start = 0, long long end = -1) {
+    auto
+    bitpos(const std::string &key, bool bit, long long start = 0, long long end = -1) {
         return derived().template make_coro_command<long long>(
-            [this, key, bit, start, end](auto&& callback) {
-                this->bitpos(std::move(callback), key, bit, start, end);
-            }
-        );
+            [this, key, bit, start, end](auto &&callback) { this->bitpos(std::move(callback), key, bit, start, end); });
     }
 
     /**
@@ -209,10 +192,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    bitpos(Func &&func, const std::string &key, bool bit, long long start = 0,
-           long long end = -1) {
-        return derived().template command<long long>(std::forward<Func>(func), "BITPOS",
-                                                     key, bit ? 1 : 0, start, end);
+    bitpos(Func &&func, const std::string &key, bool bit, long long start = 0, long long end = -1) {
+        return derived().template command<long long>(std::forward<Func>(func), "BITPOS", key, bit ? 1 : 0, start, end);
     }
 
     /**
@@ -226,12 +207,10 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/getbit
      */
-    auto getbit(const std::string &key, long long offset) {
+    auto
+    getbit(const std::string &key, long long offset) {
         return derived().template make_coro_command<long long>(
-            [this, key, offset](auto&& callback) {
-                this->getbit(std::move(callback), key, offset);
-            }
-        );
+            [this, key, offset](auto &&callback) { this->getbit(std::move(callback), key, offset); });
     }
 
     /**
@@ -246,8 +225,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     getbit(Func &&func, const std::string &key, long long offset) {
-        return derived().template command<long long>(std::forward<Func>(func), "GETBIT",
-                                                     key, offset);
+        return derived().template command<long long>(std::forward<Func>(func), "GETBIT", key, offset);
     }
 
     /**
@@ -262,12 +240,10 @@ public:
      * @note Time complexity: O(1)
      * @see https://redis.io/commands/setbit
      */
-    auto setbit(const std::string &key, long long offset, bool value) {
+    auto
+    setbit(const std::string &key, long long offset, bool value) {
         return derived().template make_coro_command<long long>(
-            [this, key, offset, value](auto&& callback) {
-                this->setbit(std::move(callback), key, offset, value);
-            }
-        );
+            [this, key, offset, value](auto &&callback) { this->setbit(std::move(callback), key, offset, value); });
     }
 
     /**
@@ -283,8 +259,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     setbit(Func &&func, const std::string &key, long long offset, bool value) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "SETBIT", key, offset, static_cast<int>(value));
+        return derived().template command<long long>(std::forward<Func>(func), "SETBIT", key, offset, static_cast<int>(value));
     }
 
     /**
@@ -298,13 +273,10 @@ public:
      * @note Time complexity: O(1) for each operation
      * @see https://redis.io/commands/bitfield_ro
      */
-    auto bitfieldRo(const std::string &key,
-                    const std::vector<std::string> &operations) {
+    auto
+    bitfieldRo(const std::string &key, const std::vector<std::string> &operations) {
         return derived().template make_coro_command<std::vector<std::optional<long long>>>(
-            [this, key, operations](auto&& callback) {
-                this->bitfieldRo(std::move(callback), key, operations);
-            }
-        );
+            [this, key, operations](auto &&callback) { this->bitfieldRo(std::move(callback), key, operations); });
     }
 
     /**
@@ -318,13 +290,9 @@ public:
      * @see https://redis.io/commands/bitfield_ro
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::optional<long long>>> &&>,
-        Derived &>
-    bitfieldRo(Func &&func, const std::string &key,
-               const std::vector<std::string> &operations) {
-        return derived().template command<std::vector<std::optional<long long>>>(
-            std::forward<Func>(func), "BITFIELD_RO", key, operations);
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<long long>>> &&>, Derived &>
+    bitfieldRo(Func &&func, const std::string &key, const std::vector<std::string> &operations) {
+        return derived().template command<std::vector<std::optional<long long>>>(std::forward<Func>(func), "BITFIELD_RO", key, operations);
     }
 };
 

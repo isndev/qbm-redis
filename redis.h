@@ -4,7 +4,7 @@
  */
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,40 +22,40 @@
 #ifndef QBM_REDIS_H
 #define QBM_REDIS_H
 
-#include <queue>
 #include <deque>
-#include <utility>
-#include <random>
 #include <functional>
-#include <qb/system/container/unordered_set.h>
 #include <qb/io/async.h>
 #include <qb/io/async/tcp/connector.h>
+#include <qb/system/container/unordered_set.h>
+#include <queue>
+#include <random>
+#include <utility>
 
 // Native Redis Protocol Parser (C++20/23)
 #include "parser.h"
 #include "reply.h"
 
 // Command traits
+#include "acl_commands.h"
+#include "bitmap_commands.h"
+#include "cluster_commands.h"
 #include "connection_commands.h"
-#include "server_commands.h"
-#include "key_commands.h"
-#include "string_commands.h"
-#include "list_commands.h"
+#include "function_commands.h"
+#include "geo_commands.h"
 #include "hash_commands.h"
+#include "hyperloglog_commands.h"
+#include "key_commands.h"
+#include "list_commands.h"
+#include "module_commands.h"
+#include "publish_commands.h"
+#include "scripting_commands.h"
+#include "server_commands.h"
 #include "set_commands.h"
 #include "sorted_set_commands.h"
-#include "hyperloglog_commands.h"
-#include "geo_commands.h"
-#include "scripting_commands.h"
 #include "stream_commands.h"
-#include "publish_commands.h"
+#include "string_commands.h"
 #include "subscription_commands.h"
-#include "bitmap_commands.h"
 #include "transaction_commands.h"
-#include "cluster_commands.h"
-#include "acl_commands.h"
-#include "module_commands.h"
-#include "function_commands.h"
 
 namespace qb::protocol {
 
@@ -69,7 +69,8 @@ namespace qb::protocol {
  */
 template <typename IO_>
 class redis final : public qb::io::async::AProtocol<IO_> {
-    constexpr IO_ &derived() {
+    constexpr IO_ &
+    derived() {
         return static_cast<IO_ &>(*this);
     }
 
@@ -77,7 +78,7 @@ public:
     /**
      * @struct message
      * @brief Container for Redis reply data with ownership transfer
-     * 
+     *
      * Uses unique_ptr for clear ownership semantics. The handler takes ownership
      * of the reply via move semantics.
      */
@@ -100,24 +101,23 @@ public:
     explicit redis(IO_ &io) noexcept
         : qb::io::async::AProtocol<IO_>(io)
         , _parser(qb::redis::parser::ParserConfig{
-              .protocol_version = qb::redis::parser::ProtocolVersion::RESP3,
+              .protocol_version  = qb::redis::parser::ProtocolVersion::RESP3,
               .max_nesting_depth = 64,
-              .max_bulk_size = 512 * 1024 * 1024,
-              .max_array_size = 1'000'000
+              .max_bulk_size     = 512 * 1024 * 1024,
+              .max_array_size    = 1'000'000
           }) {}
 
     ~redis() = default;
 
-    std::size_t getMessageSize() noexcept final {
+    std::size_t
+    getMessageSize() noexcept final {
         const size_t current_size = this->_io.in().size();
 
         // Feed only the bytes that arrived since our last call so we never
         // double-feed the same bytes into the parser's internal buffer.
         if (current_size > _fed_bytes) {
-            const auto new_data = std::span<const char>(
-                this->_io.in().begin() + static_cast<std::ptrdiff_t>(_fed_bytes),
-                current_size - _fed_bytes
-            );
+            const auto new_data =
+                std::span<const char>(this->_io.in().begin() + static_cast<std::ptrdiff_t>(_fed_bytes), current_size - _fed_bytes);
 
             if (qb__unlikely(!_parser.feed(new_data))) {
                 this->not_ok();
@@ -153,8 +153,10 @@ public:
         return _pending_messages.empty() ? 0 : current_size;
     }
 
-    void onMessage(std::size_t) noexcept final {
-        if (!this->ok()) return;
+    void
+    onMessage(std::size_t) noexcept final {
+        if (!this->ok())
+            return;
 
         // The framework is about to flush current_size bytes from _io.in().
         // Reset the offset so the next getMessageSize() feeds from 0.
@@ -162,9 +164,7 @@ public:
 
         // Dispatch every pending parsed reply to the owning IO handler.
         while (!_pending_messages.empty()) {
-            auto reply_ptr = std::make_unique<qb::redis::parser::Value>(
-                std::move(_pending_messages.front())
-            );
+            auto reply_ptr = std::make_unique<qb::redis::parser::Value>(std::move(_pending_messages.front()));
             _pending_messages.pop_front();
             // noexcept boundary: an exception escaping here would std::terminate. The
             // per-handler dispatch already catches std::exception gracefully; this is a
@@ -182,7 +182,8 @@ public:
         _parser.compact();
     }
 
-    void reset() noexcept final {
+    void
+    reset() noexcept final {
         _parser.reset();
         _pending_messages.clear();
         _fed_bytes = 0;
@@ -205,47 +206,53 @@ namespace qb::redis {
  * reconnection attempts when the Redis connection is lost.
  */
 struct RetryPolicy {
-    int max_attempts = -1;
-    qb::duration initial_delay{std::chrono::milliseconds(100)};
-    qb::duration max_delay{std::chrono::seconds(30)};
-    double multiplier = 2.0;
-    bool jitter = true;
-    qb::duration connect_timeout = std::chrono::seconds(3);
+    int                                                       max_attempts = -1;
+    qb::duration                                              initial_delay{std::chrono::milliseconds(100)};
+    qb::duration                                              max_delay{std::chrono::seconds(30)};
+    double                                                    multiplier      = 2.0;
+    bool                                                      jitter          = true;
+    qb::duration                                              connect_timeout = std::chrono::seconds(3);
     std::function<void(int attempt, qb::duration next_delay)> on_retry;
 
     /** @brief Set maximum number of retry attempts (-1 = unlimited) */
-    RetryPolicy &with_max_attempts(int n) noexcept {
+    RetryPolicy &
+    with_max_attempts(int n) noexcept {
         max_attempts = n;
         return *this;
     }
     /** @brief Set initial delay between retries */
-    RetryPolicy &with_initial_delay(qb::duration d) noexcept {
+    RetryPolicy &
+    with_initial_delay(qb::duration d) noexcept {
         initial_delay = d;
         return *this;
     }
     /** @brief Set maximum delay cap */
-    RetryPolicy &with_max_delay(qb::duration d) noexcept {
+    RetryPolicy &
+    with_max_delay(qb::duration d) noexcept {
         max_delay = d;
         return *this;
     }
     /** @brief Set exponential backoff multiplier */
-    RetryPolicy &with_multiplier(double m) noexcept {
+    RetryPolicy &
+    with_multiplier(double m) noexcept {
         multiplier = m;
         return *this;
     }
     /** @brief Enable/disable random jitter on delays */
-    RetryPolicy &with_jitter(bool j) noexcept {
+    RetryPolicy &
+    with_jitter(bool j) noexcept {
         jitter = j;
         return *this;
     }
     /** @brief Set connection timeout */
-    RetryPolicy &with_connect_timeout(qb::duration t) noexcept {
+    RetryPolicy &
+    with_connect_timeout(qb::duration t) noexcept {
         connect_timeout = t;
         return *this;
     }
     /** @brief Set callback invoked before each retry (attempt, next_delay) */
-    RetryPolicy &with_on_retry(
-        std::function<void(int, qb::duration)> cb) {
+    RetryPolicy &
+    with_on_retry(std::function<void(int, qb::duration)> cb) {
         on_retry = std::move(cb);
         return *this;
     }
@@ -271,14 +278,13 @@ using namespace qb::io;
  * @tparam Derived CRTP derived class (Redis or RedisConsumer)
  */
 template <typename QB_IO_, typename Derived>
-class connector
-    : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, QB_IO_, void> {
-    friend struct has_method_on<connector<QB_IO_, Derived>, void,
-                                qb::io::async::event::disconnected>;
+class connector : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, QB_IO_, void> {
+    friend struct has_method_on<connector<QB_IO_, Derived>, void, qb::io::async::event::disconnected>;
     friend class qb::io::async::io<connector<QB_IO_, Derived>>;
     friend class qb::protocol::redis<connector<QB_IO_, Derived>>;
-    
-    constexpr Derived &derived() {
+
+    constexpr Derived &
+    derived() {
         return static_cast<Derived &>(*this);
     }
 
@@ -286,43 +292,48 @@ public:
     using redis_protocol = qb::protocol::redis<connector<QB_IO_, Derived>>;
 
 private:
-    qb::io::uri _uri;
+    qb::io::uri                _uri;
     std::optional<RetryPolicy> _reconnect_policy;
-    bool _is_reconnecting = false;
-    bool _connected_flag = false;
-    bool _verify_peer = true; /**< Verify server TLS cert for rediss:// (stcp transport). */
-    std::shared_ptr<bool> _alive{std::make_shared<bool>(true)};
+    bool                       _is_reconnecting = false;
+    bool                       _connected_flag  = false;
+    bool                       _verify_peer     = true; /**< Verify server TLS cert for rediss:// (stcp transport). */
+    std::shared_ptr<bool>      _alive{std::make_shared<bool>(true)};
 
-    void start_async() {
-        if (this->protocol()) this->clear_protocols();
+    void
+    start_async() {
+        if (this->protocol())
+            this->clear_protocols();
         this->reset_io_state();
         this->template switch_protocol<redis_protocol>(*this);
         this->start();
         _connected_flag = true;
     }
 
-    void on(typename redis_protocol::message msg) {
+    void
+    on(typename redis_protocol::message msg) {
         derived().on(std::move(msg));
     }
 
-    void on(qb::io::async::event::disconnected &&ev) {
+    void
+    on(qb::io::async::event::disconnected &&ev) {
         _connected_flag = false;
         LOG_WARN("[qbm][redis] disconnected");
         derived().on(std::forward<qb::io::async::event::disconnected>(ev));
 
         if (_reconnect_policy && !_is_reconnecting) {
             _is_reconnecting = true;
-            qb::io::async::coro_scheduler().spawn(
-                _reconnect_task(*_reconnect_policy, _alive));
+            qb::io::async::coro_scheduler().spawn(_reconnect_task(*_reconnect_policy, _alive));
         }
     }
 
-    qb::io::async::task<void> _reconnect_task(RetryPolicy policy, std::shared_ptr<bool> alive) {
+    qb::io::async::task<void>
+    _reconnect_task(RetryPolicy policy, std::shared_ptr<bool> alive) {
         LOG_INFO("[qbm][redis] auto-reconnect starting...");
 
         const bool ok = co_await connect_with_retry(policy);
 
-        if (!*alive) co_return;
+        if (!*alive)
+            co_return;
 
         _is_reconnecting = false;
 
@@ -335,9 +346,12 @@ private:
 
 protected:
     connector() = default;
-    ~connector() { *_alive = false; }
+    ~connector() {
+        *_alive = false;
+    }
 
-    explicit connector(qb::io::uri uri) : _uri{std::move(uri)} {}
+    explicit connector(qb::io::uri uri)
+        : _uri{std::move(uri)} {}
 
     /**
      * @brief Liveness token shared with deferred work (timers, watchers).
@@ -346,7 +360,8 @@ protected:
      * the client has been destroyed can detect it and no-op instead of
      * touching freed memory. Set to `false` by ~connector().
      */
-    [[nodiscard]] std::shared_ptr<bool> connector_alive() const noexcept {
+    [[nodiscard]] std::shared_ptr<bool>
+    connector_alive() const noexcept {
         return _alive;
     }
 
@@ -356,22 +371,30 @@ public:
      * @brief Coroutine awaiter for async connection (co_await connect())
      */
     struct connect_awaiter {
-        connector& _client;
-        qb::duration _timeout;
-        bool _connected = false;
+        connector              &_client;
+        qb::duration            _timeout;
+        bool                    _connected = false;
         std::coroutine_handle<> _handle;
-        bool _ready = false;
-        std::shared_ptr<bool> _valid{std::make_shared<bool>(true)};
+        bool                    _ready = false;
+        std::shared_ptr<bool>   _valid{std::make_shared<bool>(true)};
 
         explicit connect_awaiter(connector &client, qb::duration timeout = std::chrono::seconds(3))
-            : _client(client), _timeout(timeout) {}
+            : _client(client)
+            , _timeout(timeout) {}
 
-        ~connect_awaiter() { if (_valid) *_valid = false; }
+        ~connect_awaiter() {
+            if (_valid)
+                *_valid = false;
+        }
 
-        bool await_ready() const noexcept { return _ready; }
+        bool
+        await_ready() const noexcept {
+            return _ready;
+        }
 
-        void await_suspend(std::coroutine_handle<> h) {
-            _handle = h;
+        void
+        await_suspend(std::coroutine_handle<> h) {
+            _handle    = h;
             auto valid = _valid;
             // Capture the CLIENT's liveness too, not just the awaiter's. The
             // auto-reconnect task runs detached: it owns this awaiter on its coroutine
@@ -384,7 +407,8 @@ public:
             ::qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
                 _client._uri,
                 [this, valid, client_alive](auto &&raw_io) {
-                    if (!*valid) return;
+                    if (!*valid)
+                        return;
                     if (*client_alive && raw_io.is_open()) {
                         _connected = _client.setup_connection(_client._uri, std::move(raw_io));
                     }
@@ -393,30 +417,42 @@ public:
                         ::qb::io::async::coro_scheduler().schedule_resume(_handle);
                     }
                 },
-                _timeout,
-                _client._verify_peer);
+                _timeout, _client._verify_peer);
         }
 
-        bool await_resume() const noexcept { return _connected; }
+        bool
+        await_resume() const noexcept {
+            return _connected;
+        }
     };
 
     /** @brief Start async connection (co_awaitable) */
-    connect_awaiter connect() { return connect_awaiter{*this}; }
-    connect_awaiter connect(qb::io::uri uri) {
+    connect_awaiter
+    connect() {
+        return connect_awaiter{*this};
+    }
+    connect_awaiter
+    connect(qb::io::uri uri) {
         _uri = std::move(uri);
         return connect_awaiter{*this};
     }
-    connect_awaiter connect(qb::duration timeout) {
+    connect_awaiter
+    connect(qb::duration timeout) {
         return connect_awaiter{*this, timeout};
     }
-    connect_awaiter connect(qb::io::uri uri, qb::duration timeout) {
+    connect_awaiter
+    connect(qb::io::uri uri, qb::duration timeout) {
         _uri = std::move(uri);
         return connect_awaiter{*this, timeout};
     }
 
-    void set_uri(qb::io::uri uri) noexcept { _uri = std::move(uri); }
+    void
+    set_uri(qb::io::uri uri) noexcept {
+        _uri = std::move(uri);
+    }
 
-    qb::io::async::task<bool> connect_with_retry(RetryPolicy policy = RetryPolicy{}) {
+    qb::io::async::task<bool>
+    connect_with_retry(RetryPolicy policy = RetryPolicy{}) {
         static thread_local std::mt19937 rng_{std::random_device{}()};
 
         // Capture the liveness flag by value BEFORE any suspension: when this
@@ -425,29 +461,29 @@ public:
         // before touching *this again (the next connect_awaiter{*this}).
         auto alive = _alive;
 
-        auto delay = policy.initial_delay;
-        int attempt = 0;
+        auto delay   = policy.initial_delay;
+        int  attempt = 0;
 
         while (policy.max_attempts < 0 || attempt < policy.max_attempts) {
             ++attempt;
 
             if (co_await connect_awaiter{*this, policy.connect_timeout})
                 co_return true;
-            if (!*alive) co_return false; // *this may have been destroyed
+            if (!*alive)
+                co_return false; // *this may have been destroyed
 
             if (policy.max_attempts > 0 && attempt >= policy.max_attempts)
                 break;
 
             // Backoff math is done in integer milliseconds (jitter + exponential
             // growth), then assigned back into the qb::duration delay variables.
-            const auto delay_ms =
-                std::chrono::duration_cast<std::chrono::milliseconds>(delay).count();
+            const auto   delay_ms    = std::chrono::duration_cast<std::chrono::milliseconds>(delay).count();
             qb::duration sleep_delay = delay;
             if (policy.jitter && delay_ms > 0) {
-                const long long quarter = delay_ms / 4;
+                const long long                          quarter = delay_ms / 4;
                 std::uniform_int_distribution<long long> dist{-quarter, quarter};
-                sleep_delay = std::max(qb::duration{std::chrono::milliseconds{1}},
-                                       qb::duration{std::chrono::milliseconds{delay_ms + dist(rng_)}});
+                sleep_delay =
+                    std::max(qb::duration{std::chrono::milliseconds{1}}, qb::duration{std::chrono::milliseconds{delay_ms + dist(rng_)}});
             }
 
             if (policy.on_retry) {
@@ -455,23 +491,25 @@ public:
             }
 
             co_await qb::io::async::sleep(sleep_delay);
-            if (!*alive) co_return false; // destroyed during the backoff sleep
+            if (!*alive)
+                co_return false; // destroyed during the backoff sleep
 
-            const auto next_ms = static_cast<long long>(
-                static_cast<double>(delay_ms) * policy.multiplier);
-            delay = std::min(qb::duration{std::chrono::milliseconds{next_ms}}, policy.max_delay);
+            const auto next_ms = static_cast<long long>(static_cast<double>(delay_ms) * policy.multiplier);
+            delay              = std::min(qb::duration{std::chrono::milliseconds{next_ms}}, policy.max_delay);
         }
 
         co_return false;
     }
 
-    qb::io::async::task<bool> connect_with_retry(qb::io::uri uri, RetryPolicy policy = RetryPolicy{}) {
+    qb::io::async::task<bool>
+    connect_with_retry(qb::io::uri uri, RetryPolicy policy = RetryPolicy{}) {
         _uri = std::move(uri);
         co_return co_await connect_with_retry(std::move(policy));
     }
 
     template <std::invocable<bool> Func>
-    void connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3)) {
+    void
+    connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3)) {
         qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
             uri,
             [this, uri, func = std::forward<Func>(func)](auto &&raw_io) {
@@ -481,43 +519,65 @@ public:
                     func(false);
                 }
             },
-            timeout,
-            _verify_peer);
+            timeout, _verify_peer);
     }
 
     template <std::invocable<bool> Func>
-    void connect(Func &&func, qb::duration timeout = std::chrono::seconds(3)) {
+    void
+    connect(Func &&func, qb::duration timeout = std::chrono::seconds(3)) {
         connect(std::forward<Func>(func), _uri, timeout);
     }
 
-    [[nodiscard]] qb::io::uri const &uri() const noexcept { return _uri; }
+    [[nodiscard]] qb::io::uri const &
+    uri() const noexcept {
+        return _uri;
+    }
 
     /**
      * @brief Enable/disable TLS server certificate verification for rediss://.
      * @param value `true` (default) verifies chain + hostname; `false` disables it
      *              (trusted/self-signed endpoints only). Set before connect().
      */
-    void set_verify_peer(bool value) noexcept { _verify_peer = value; }
-    [[nodiscard]] bool verify_peer() const noexcept { return _verify_peer; }
+    void
+    set_verify_peer(bool value) noexcept {
+        _verify_peer = value;
+    }
+    [[nodiscard]] bool
+    verify_peer() const noexcept {
+        return _verify_peer;
+    }
 
-    bool setup_connection(qb::io::uri uri, typename QB_IO_::transport_io_type &&raw_io) {
-        if (_connected_flag) return false;
-        _uri = std::move(uri);
+    bool
+    setup_connection(qb::io::uri uri, typename QB_IO_::transport_io_type &&raw_io) {
+        if (_connected_flag)
+            return false;
+        _uri              = std::move(uri);
         this->transport() = std::move(raw_io);
         start_async();
         return true;
     }
 
-    void enable_auto_reconnect(RetryPolicy policy = RetryPolicy{}) noexcept {
+    void
+    enable_auto_reconnect(RetryPolicy policy = RetryPolicy{}) noexcept {
         _reconnect_policy = std::move(policy);
     }
 
-    void disable_auto_reconnect() noexcept { _reconnect_policy.reset(); }
+    void
+    disable_auto_reconnect() noexcept {
+        _reconnect_policy.reset();
+    }
 
-    [[nodiscard]] bool is_reconnecting() const noexcept { return _is_reconnecting; }
-    [[nodiscard]] bool is_connected() const noexcept { return _connected_flag; }
+    [[nodiscard]] bool
+    is_reconnecting() const noexcept {
+        return _is_reconnecting;
+    }
+    [[nodiscard]] bool
+    is_connected() const noexcept {
+        return _connected_flag;
+    }
 
-    void disconnect() noexcept {
+    void
+    disconnect() noexcept {
         _connected_flag = false;
         qb::io::async::io<connector<QB_IO_, Derived>>::disconnect();
     }
@@ -537,35 +597,47 @@ public:
  */
 template <typename T, typename Operation>
 class redis_awaiter {
-    Reply<T> result_;
+    Reply<T>                result_;
     std::coroutine_handle<> handle_;
-    std::shared_ptr<bool> valid_{std::make_shared<bool>(true)};
-    Operation operation_;
+    std::shared_ptr<bool>   valid_{std::make_shared<bool>(true)};
+    Operation               operation_;
 
 public:
     explicit redis_awaiter(Operation &&op)
         : operation_(std::forward<Operation>(op)) {}
 
-    ~redis_awaiter() { if (valid_) *valid_ = false; }
+    ~redis_awaiter() {
+        if (valid_)
+            *valid_ = false;
+    }
 
-    bool await_ready() const noexcept { return false; }
+    bool
+    await_ready() const noexcept {
+        return false;
+    }
 
-    void await_suspend(std::coroutine_handle<> h) {
-        handle_ = h;
+    void
+    await_suspend(std::coroutine_handle<> h) {
+        handle_    = h;
         auto valid = valid_;
         operation_([this, valid](Reply<T> &&reply) {
-            if (!*valid) return;
+            if (!*valid)
+                return;
             result_ = std::move(reply);
             qb::io::async::coro_scheduler().schedule_resume(handle_);
         });
     }
 
-    [[nodiscard]] Reply<T> await_resume() { return std::move(result_); }
+    [[nodiscard]] Reply<T>
+    await_resume() {
+        return std::move(result_);
+    }
 };
 
 /** @brief Factory for redis_awaiter from a callback-based operation */
 template <typename T, typename Func>
-[[nodiscard]] auto make_redis_awaiter(Func &&operation) {
+[[nodiscard]] auto
+make_redis_awaiter(Func &&operation) {
     return redis_awaiter<T, std::remove_cvref_t<Func>>{std::forward<Func>(operation)};
 }
 
@@ -630,7 +702,7 @@ private:
      */
     struct PendingReply {
         std::unique_ptr<IReply> handler;
-        bool blocking;
+        bool                    blocking;
     };
 
     std::queue<PendingReply> _replies;
@@ -667,23 +739,22 @@ private:
      * BLOCK option; treating them as blocking is conservative (less protection,
      * never a false drop).
      */
-    [[nodiscard]] static bool is_blocking_command(std::string_view name) noexcept {
-        static const qb::unordered_flat_set<std::string_view> blocking{
-            "BLPOP", "BRPOP", "BLMOVE", "BLMPOP", "BRPOPLPUSH",
-            "BZPOPMIN", "BZPOPMAX", "BZMPOP",
-            "WAIT", "WAITAOF", "XREAD", "XREADGROUP"};
+    [[nodiscard]] static bool
+    is_blocking_command(std::string_view name) noexcept {
+        static const qb::unordered_flat_set<std::string_view> blocking{"BLPOP",    "BRPOP",  "BLMOVE", "BLMPOP",  "BRPOPLPUSH", "BZPOPMIN",
+                                                                       "BZPOPMAX", "BZMPOP", "WAIT",   "WAITAOF", "XREAD",      "XREADGROUP"};
         return blocking.find(name) != blocking.end();
     }
 
     /** @brief Arm the deadline watcher if one is warranted and not already live. */
-    void arm_deadline() {
+    void
+    arm_deadline() {
         if (_deadline_armed)
             return;
         if (_command_timeout <= qb::duration::zero() || _replies.empty() || _inflight_blocking > 0)
             return;
         _deadline_armed = true;
-        qb::io::async::coro_scheduler().spawn(
-            deadline_watch(++_deadline_gen, this->connector_alive()));
+        qb::io::async::coro_scheduler().spawn(deadline_watch(++_deadline_gen, this->connector_alive()));
     }
 
     /**
@@ -694,8 +765,8 @@ private:
      * quietly when cancelled (generation bump), disabled, idle, or while a
      * blocking command holds the connection; re-arms while replies keep flowing.
      */
-    qb::io::async::task<void> deadline_watch(std::size_t gen,
-                                             std::shared_ptr<bool> alive) {
+    qb::io::async::task<void>
+    deadline_watch(std::size_t gen, std::shared_ptr<bool> alive) {
         const std::size_t snapshot = _reply_progress;
         co_await qb::io::async::sleep(_command_timeout);
         if (!*alive || gen != _deadline_gen)
@@ -711,7 +782,8 @@ private:
     }
 
     /** @brief Cancel a pending deadline watcher (its wake-up becomes a no-op). */
-    void cancel_deadline() {
+    void
+    cancel_deadline() {
         ++_deadline_gen;
         _deadline_armed = false;
     }
@@ -726,21 +798,23 @@ private:
      * on(disconnected) fails every pending command with the timeout reason —
      * we deliberately do NOT resolve awaiters here.
      */
-    void on_command_deadline() {
-        LOG_WARN("[qbm][redis] command timeout ("
-                 << qb::detail::to_ev_seconds(_command_timeout)
-                 << "s) exceeded with no reply; dropping connection");
+    void
+    on_command_deadline() {
+        LOG_WARN("[qbm][redis] command timeout (" << qb::detail::to_ev_seconds(_command_timeout)
+                                                  << "s) exceeded with no reply; dropping connection");
         _deadline_tripped = true;
         this->disconnect();
     }
 
     template <typename... Args>
-    void _command(Args &&...args) {
+    void
+    _command(Args &&...args) {
         this->ready_to_write();
         put_in_pipe(this->out(), std::forward<Args>(args)...);
     }
 
-    void on(typename redis_protocol::message msg) {
+    void
+    on(typename redis_protocol::message msg) {
         // RESP3 PUSH frames (client-side-caching invalidations, server pushes)
         // are out-of-band: they must NOT pop a command-reply handler, or the
         // reply/command FIFO desynchronizes permanently. The plain client does
@@ -771,14 +845,15 @@ private:
         }
     }
 
-    void on(qb::io::async::event::disconnected &&) {
+    void
+    on(qb::io::async::event::disconnected &&) {
         LOG_WARN("[qbm][redis] disconnected by remote");
         _inflight_blocking = 0;
         cancel_deadline();
         // If the command deadline tripped, report it as a timeout rather than a
         // plain disconnect so callers can distinguish a slow/dead peer.
         const bool timed_out = _deadline_tripped;
-        _deadline_tripped = false;
+        _deadline_tripped    = false;
         // Swap the queue out before failing: a failing callback may legitimately
         // re-issue a command (e.g. trigger a reconnect + retry), and that brand
         // new command must NOT be failed by this same drain loop.
@@ -809,13 +884,13 @@ public:
         : connector<QB_IO_, Redis<QB_IO_>>(std::move(uri)) {}
 
     template <typename Ret, typename Func, typename... Args>
-        requires std::invocable<Func, Reply<Ret> &&>
-    Redis &command(Func &&func, std::string const &name, Args &&...args) {
+    requires std::invocable<Func, Reply<Ret> &&>
+    Redis &
+    command(Func &&func, std::string const &name, Args &&...args) {
         // Register the reply handler before sending so a very fast/synchronous
         // delivery cannot run before the handler is queued (pipeline-safe).
         const bool blocking = is_blocking_command(name);
-        _replies.push(PendingReply{
-            std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), blocking});
+        _replies.push(PendingReply{std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), blocking});
         if (blocking)
             ++_inflight_blocking;
         _command(name, std::forward<Args>(args)...);
@@ -824,17 +899,13 @@ public:
     }
 
     template <typename Ret, typename... Args>
-    auto command(std::string const &name, Args &&...args) {
-        return make_coro_command<Ret>(
-            [this, name, args_tuple = std::make_tuple(std::forward<Args>(args)...)](
-                auto &&callback) mutable {
-                std::apply(
-                    [this, &callback, &name](auto &&...a) {
-                        this->command<Ret>(std::move(callback), name,
-                                          std::forward<decltype(a)>(a)...);
-                    },
-                    std::move(args_tuple));
-            });
+    auto
+    command(std::string const &name, Args &&...args) {
+        return make_coro_command<Ret>([this, name, args_tuple = std::make_tuple(std::forward<Args>(args)...)](auto &&callback) mutable {
+            std::apply(
+                [this, &callback, &name](auto &&...a) { this->command<Ret>(std::move(callback), name, std::forward<decltype(a)>(a)...); },
+                std::move(args_tuple));
+        });
     }
 
     /**
@@ -855,14 +926,16 @@ public:
      *          pumps, but a non-blocking loop here only needs libev + same semantics
      *          as before the guard existed.
      */
-    Redis &await() {
+    Redis &
+    await() {
         while (!_replies.empty())
             qb::io::async::listener::current.run(EVRUN_NOWAIT);
         return *this;
     }
 
     /** @brief Number of commands sent awaiting a Redis reply (for pipeline debugging). */
-    [[nodiscard]] std::size_t pending_reply_count() const noexcept {
+    [[nodiscard]] std::size_t
+    pending_reply_count() const noexcept {
         return _replies.size();
     }
 
@@ -879,7 +952,8 @@ public:
      *
      * @param timeout Command deadline as a `qb::duration`; zero (default) disables it.
      */
-    void set_command_timeout(qb::duration timeout) noexcept {
+    void
+    set_command_timeout(qb::duration timeout) noexcept {
         _command_timeout = timeout > qb::duration::zero() ? timeout : qb::duration::zero();
         if (_command_timeout <= qb::duration::zero())
             cancel_deadline();
@@ -888,12 +962,14 @@ public:
     }
 
     /** @brief Current command deadline (`qb::duration::zero()` = disabled). */
-    [[nodiscard]] qb::duration command_timeout() const noexcept {
+    [[nodiscard]] qb::duration
+    command_timeout() const noexcept {
         return _command_timeout;
     }
 
     template <typename T, typename Func>
-    [[nodiscard]] auto make_coro_command(Func &&operation) {
+    [[nodiscard]] auto
+    make_coro_command(Func &&operation) {
         return make_redis_awaiter<T>(std::forward<Func>(operation));
     }
 };
@@ -927,24 +1003,34 @@ public:
     explicit RedisPipeline(Redis<QB_IO_> &client) noexcept
         : _client(client) {}
 
-    [[nodiscard]] Redis<QB_IO_> &client() noexcept { return _client; }
-    [[nodiscard]] Redis<QB_IO_> const &client() const noexcept { return _client; }
+    [[nodiscard]] Redis<QB_IO_> &
+    client() noexcept {
+        return _client;
+    }
+    [[nodiscard]] Redis<QB_IO_> const &
+    client() const noexcept {
+        return _client;
+    }
 
     /** @brief Same as `client().pending_reply_count()`. */
-    [[nodiscard]] std::size_t pending_reply_count() const noexcept {
+    [[nodiscard]] std::size_t
+    pending_reply_count() const noexcept {
         return _client.pending_reply_count();
     }
 
     template <typename Ret, typename Func, typename... Args>
-        requires std::invocable<Func, Reply<Ret> &&>
-    RedisPipeline &command(Func &&func, std::string const &name, Args &&...args) {
-        _client.template command<Ret>(std::forward<Func>(func), name,
-                                      std::forward<Args>(args)...);
+    requires std::invocable<Func, Reply<Ret> &&>
+    RedisPipeline &
+    command(Func &&func, std::string const &name, Args &&...args) {
+        _client.template command<Ret>(std::forward<Func>(func), name, std::forward<Args>(args)...);
         return *this;
     }
 
     /** @brief Drain pending replies (calls `client().await()`). */
-    Redis<QB_IO_> &flush() { return _client.await(); }
+    Redis<QB_IO_> &
+    flush() {
+        return _client.await();
+    }
 };
 
 // ============================================================================
@@ -959,26 +1045,24 @@ class RedisConsumer
     friend class connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>;
     friend class connection_commands<Derived>;
     friend class subscription_commands<Derived>;
-    
-    constexpr Derived &derived() {
+
+    constexpr Derived &
+    derived() {
         return static_cast<Derived &>(*this);
     }
 
 public:
-    using redis_protocol =
-        typename connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>::redis_protocol;
+    using redis_protocol = typename connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>::redis_protocol;
 
 private:
     enum class MsgType { SUBSCRIBE, UNSUBSCRIBE, PSUBSCRIBE, PUNSUBSCRIBE, MESSAGE, PMESSAGE, UNKNOWN };
 
-    static MsgType msg_type(const std::string_view &type) {
+    static MsgType
+    msg_type(const std::string_view &type) {
         static const qb::unordered_flat_map<std::string_view, MsgType> str_to_enum{
-            {"message", MsgType::MESSAGE},
-            {"pmessage", MsgType::PMESSAGE},
-            {"subscribe", MsgType::SUBSCRIBE},
-            {"unsubscribe", MsgType::UNSUBSCRIBE},
-            {"psubscribe", MsgType::PSUBSCRIBE},
-            {"punsubscribe", MsgType::PUNSUBSCRIBE}};
+            {"message", MsgType::MESSAGE},         {"pmessage", MsgType::PMESSAGE},     {"subscribe", MsgType::SUBSCRIBE},
+            {"unsubscribe", MsgType::UNSUBSCRIBE}, {"psubscribe", MsgType::PSUBSCRIBE}, {"punsubscribe", MsgType::PUNSUBSCRIBE}
+        };
 
         auto it = str_to_enum.find(type);
         return it != str_to_enum.end() ? it->second : MsgType::UNKNOWN;
@@ -997,7 +1081,7 @@ private:
      */
     struct PendingReply {
         std::unique_ptr<IReply> handler;
-        int remaining;
+        int                     remaining;
         /// True for (P)SUBSCRIBE/(P)UNSUBSCRIBE handlers. Lets the dispatcher tell a
         /// subscription-confirmation handler apart from a regular command handler so a
         /// server that emits more confirmations than predicted cannot pop and
@@ -1014,16 +1098,17 @@ private:
     qb::unordered_flat_set<std::string> _pred_patterns;
 
     template <typename... Args>
-    void _command(Args &&...args) {
+    void
+    _command(Args &&...args) {
         this->ready_to_write();
         put_in_pipe(this->out(), std::forward<Args>(args)...);
     }
 
     template <typename Ret, typename Func, typename... Args>
-        requires std::invocable<Func, Reply<Ret> &&>
-    Derived &command(Func &&func, std::string const &name, Args &&...args) {
-        _replies.push(PendingReply{
-            std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), 1});
+    requires std::invocable<Func, Reply<Ret> &&>
+    Derived &
+    command(Func &&func, std::string const &name, Args &&...args) {
+        _replies.push(PendingReply{std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), 1});
         _command(name, std::forward<Args>(args)...);
         return derived();
     }
@@ -1037,8 +1122,8 @@ private:
      * names acknowledge once per name; with no name they acknowledge once per
      * currently-subscribed channel/pattern (or once when none are subscribed).
      */
-    int predict_confirmations(bool is_unsub, bool is_pattern,
-                              const std::vector<std::string> &names) {
+    int
+    predict_confirmations(bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
         auto &set = is_pattern ? _pred_patterns : _pred_channels;
         if (!is_unsub) {
             for (auto const &n : names)
@@ -1066,15 +1151,14 @@ private:
      * @param names      Channel/pattern arguments (empty ⇒ unsubscribe-all).
      */
     template <typename Func>
-        requires std::invocable<Func, Reply<qb::redis::subscription> &&>
-    Derived &pubsub_command(Func &&func, const char *cmd, bool is_unsub,
-                            bool is_pattern, const std::vector<std::string> &names) {
+    requires std::invocable<Func, Reply<qb::redis::subscription> &&>
+    Derived &
+    pubsub_command(Func &&func, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
         const int expected = predict_confirmations(is_unsub, is_pattern, names);
         _replies.push(PendingReply{
-            std::make_unique<TReply<Func, qb::redis::subscription>>(
-                std::forward<Func>(func)),
-            expected,
-            /*is_subscription=*/true});
+            std::make_unique<TReply<Func, qb::redis::subscription>>(std::forward<Func>(func)), expected,
+            /*is_subscription=*/true
+        });
         if (names.empty())
             _command(cmd);
         else
@@ -1083,14 +1167,18 @@ private:
     }
 
     template <typename Ret, typename... Args>
-    Reply<Ret> command(std::string const &name, Args &&...args) {
+    Reply<Ret>
+    command(std::string const &name, Args &&...args) {
         Reply<Ret> value{};
-        auto func = [&value](auto &&reply) { value = std::forward<Reply<Ret>>(reply); };
+        auto       func = [&value](auto &&reply) {
+            value = std::forward<Reply<Ret>>(reply);
+        };
         command<Ret>(func, name, std::forward<Args>(args)...).await();
         return value;
     }
 
-    void on(typename redis_protocol::message msg) {
+    void
+    on(typename redis_protocol::message msg) {
         try {
             if (!msg.reply) {
                 throw ProtoError("Null reply received");
@@ -1117,7 +1205,8 @@ private:
                 throw ProtoError("Invalid message format");
             }
             auto const *elem0 = reply::get_pubsub_element(raw, 0);
-            if (!elem0) throw ProtoError("Invalid message format");
+            if (!elem0)
+                throw ProtoError("Invalid message format");
             auto type = msg_type(reply::parse<std::string_view>(*elem0));
 
             switch (type) {
@@ -1194,14 +1283,16 @@ private:
                 auto handler = std::move(_replies.front().handler);
                 _replies.pop();
                 try {
-                    (*handler)(nullptr);  // Completes awaitable with error
-                } catch (...) {}
+                    (*handler)(nullptr); // Completes awaitable with error
+                } catch (...) {
+                }
             }
             on(qb::redis::error{e.what(), nullptr});
         }
     }
 
-    void on(qb::io::async::event::disconnected &&e) {
+    void
+    on(qb::io::async::event::disconnected &&e) {
         LOG_WARN("[qbm][redis] consumer disconnected");
         // Predicted subscription state is meaningless across a reconnect.
         _pred_channels.clear();
@@ -1223,7 +1314,8 @@ private:
             derived().on(std::forward<qb::io::async::event::disconnected>(e));
     }
 
-    void on(qb::redis::error &&error) {
+    void
+    on(qb::redis::error &&error) {
         LOG_WARN("[qbm][redis] parse error: " << error.what);
         if constexpr (has_method_on<Derived, void, qb::redis::error>::value)
             derived().on(std::forward<qb::redis::error>(error));
@@ -1234,19 +1326,22 @@ public:
     explicit RedisConsumer(qb::io::uri uri)
         : connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>(std::move(uri)) {}
 
-    Derived &await() {
+    Derived &
+    await() {
         while (!_replies.empty())
             qb::io::async::listener::current.run(EVRUN_NOWAIT);
         return derived();
     }
 
     /** @brief Number of subscription/command replies still awaited (debugging). */
-    [[nodiscard]] std::size_t pending_reply_count() const noexcept {
+    [[nodiscard]] std::size_t
+    pending_reply_count() const noexcept {
         return _replies.size();
     }
 
     template <typename T, typename Func>
-    [[nodiscard]] auto make_coro_command(Func &&operation) {
+    [[nodiscard]] auto
+    make_coro_command(Func &&operation) {
         return make_redis_awaiter<T>(std::forward<Func>(operation));
     }
 };
@@ -1262,55 +1357,59 @@ public:
  * Set on_message(), on_error(), on_disconnected() before subscribing.
  */
 template <typename QB_IO_>
-class RedisCallbackConsumer
-    : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
+class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
     friend struct has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::redis::error>;
-    friend struct has_method_on<RedisCallbackConsumer<QB_IO_>, void,
-                                qb::io::async::event::disconnected>;
+    friend struct has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::io::async::event::disconnected>;
     friend RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>;
-    
-    using cb_msg_t = std::function<void(qb::redis::message &&)>;
-    using cb_err_t = std::function<void(qb::redis::error &&)>;
+
+    using cb_msg_t  = std::function<void(qb::redis::message &&)>;
+    using cb_err_t  = std::function<void(qb::redis::error &&)>;
     using cb_disc_t = std::function<void(qb::io::async::event::disconnected &&)>;
 
-    cb_msg_t _on_message;
-    cb_err_t _on_error;
+    cb_msg_t  _on_message;
+    cb_err_t  _on_error;
     cb_disc_t _on_disconnected;
 
-    void on(qb::redis::message &&msg) {
-        if (_on_message) _on_message(std::forward<qb::redis::message>(msg));
+    void
+    on(qb::redis::message &&msg) {
+        if (_on_message)
+            _on_message(std::forward<qb::redis::message>(msg));
     }
 
-    void on(qb::redis::error &&error) {
-        if (_on_error) _on_error(std::forward<qb::redis::error>(error));
+    void
+    on(qb::redis::error &&error) {
+        if (_on_error)
+            _on_error(std::forward<qb::redis::error>(error));
     }
 
-    void on(qb::io::async::event::disconnected &&ev) {
-        if (_on_disconnected) _on_disconnected(std::forward<qb::io::async::event::disconnected>(ev));
+    void
+    on(qb::io::async::event::disconnected &&ev) {
+        if (_on_disconnected)
+            _on_disconnected(std::forward<qb::io::async::event::disconnected>(ev));
     }
 
 public:
-    explicit RedisCallbackConsumer(
-        qb::io::uri uri = {}, 
-        cb_msg_t &&on_message = cb_msg_t{},
-        cb_err_t &&on_error = cb_err_t{},
-        cb_disc_t &&on_disconnected = cb_disc_t{})
+    explicit RedisCallbackConsumer(qb::io::uri uri = {}, cb_msg_t &&on_message = cb_msg_t{}, cb_err_t &&on_error = cb_err_t{},
+                                   cb_disc_t &&on_disconnected = cb_disc_t{})
         : RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>(std::move(uri))
         , _on_message(std::forward<cb_msg_t>(on_message))
         , _on_error(std::forward<cb_err_t>(on_error))
         , _on_disconnected(std::forward<cb_disc_t>(on_disconnected)) {}
 
-    RedisCallbackConsumer &on_message(cb_msg_t &&cb) {
+    RedisCallbackConsumer &
+    on_message(cb_msg_t &&cb) {
         _on_message = std::forward<cb_msg_t>(cb);
         return *this;
     }
 
-    RedisCallbackConsumer &on_error(cb_err_t &&cb) {
+    RedisCallbackConsumer &
+    on_error(cb_err_t &&cb) {
         _on_error = std::forward<cb_err_t>(cb);
         return *this;
     }
 
-    RedisCallbackConsumer &on_disconnected(cb_disc_t &&cb) {
+    RedisCallbackConsumer &
+    on_disconnected(cb_disc_t &&cb) {
         _on_disconnected = std::forward<cb_disc_t>(cb);
         return *this;
     }
@@ -1341,8 +1440,7 @@ public:
  * when the buffer is full (otherwise a warning is logged).
  */
 template <typename QB_IO_>
-class RedisCoroConsumer
-    : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>> {
+class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>> {
     friend RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>>;
 
     /// Default buffered capacity for co_await receive() (tune for burst tolerance).
@@ -1351,9 +1449,10 @@ class RedisCoroConsumer
     using message_drop_callback = std::function<void(qb::redis::message &&)>;
 
     qb::io::async::channel<qb::redis::message> _msg_channel{DEFAULT_MSG_CAPACITY};
-    message_drop_callback _on_message_dropped;
+    message_drop_callback                      _on_message_dropped;
 
-    void enqueue_pubsub_message(qb::redis::message &&msg) {
+    void
+    enqueue_pubsub_message(qb::redis::message &&msg) {
         if (_msg_channel.try_send(std::move(msg))) {
             return;
         }
@@ -1368,17 +1467,20 @@ class RedisCoroConsumer
         }
     }
 
-    void on(qb::redis::message &&msg) {
+    void
+    on(qb::redis::message &&msg) {
         enqueue_pubsub_message(std::move(msg));
     }
 
-    void on(qb::redis::pmessage &&msg) {
+    void
+    on(qb::redis::pmessage &&msg) {
         // pmessage inherits from message; store as message (pattern is in base)
         qb::redis::message m = std::move(msg);
         enqueue_pubsub_message(std::move(m));
     }
 
-    void on(qb::io::async::event::disconnected &&e) {
+    void
+    on(qb::io::async::event::disconnected &&e) {
         _msg_channel.close();
         // Base already cleared _replies and invoked us; no need to re-enter
     }
@@ -1386,8 +1488,7 @@ class RedisCoroConsumer
 public:
     RedisCoroConsumer() = default;
 
-    explicit RedisCoroConsumer(qb::io::uri uri,
-                               size_t message_channel_capacity = DEFAULT_MSG_CAPACITY)
+    explicit RedisCoroConsumer(qb::io::uri uri, size_t message_channel_capacity = DEFAULT_MSG_CAPACITY)
         : RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>>(std::move(uri))
         , _msg_channel(message_channel_capacity) {}
 
@@ -1395,13 +1496,15 @@ public:
      * @brief Optional callback when the internal queue is full and a message is dropped.
      * @return *this
      */
-    RedisCoroConsumer &on_message_dropped(message_drop_callback cb) {
+    RedisCoroConsumer &
+    on_message_dropped(message_drop_callback cb) {
         _on_message_dropped = std::move(cb);
         return *this;
     }
 
     /** @brief Configured capacity of the internal pub/sub message queue. */
-    [[nodiscard]] size_t message_channel_capacity() const noexcept {
+    [[nodiscard]] size_t
+    message_channel_capacity() const noexcept {
         return _msg_channel.capacity();
     }
 
@@ -1410,7 +1513,8 @@ public:
      * @return std::optional<message> - has value when a message arrived,
      *         nullopt when the channel is closed (disconnected).
      */
-    [[nodiscard]] auto receive() {
+    [[nodiscard]] auto
+    receive() {
         return [this]() -> qb::io::async::task<std::optional<qb::redis::message>> {
             co_return co_await _msg_channel.recv();
         }();
@@ -1439,28 +1543,29 @@ struct tcp {
     using client = detail::Redis<qb::io::transport::tcp>;
     /** @brief Callback pipelining helper; see detail::RedisPipeline */
     using pipeline = detail::RedisPipeline<qb::io::transport::tcp>;
-    
+
     template <typename Derived>
     using consumer = detail::RedisConsumer<qb::io::transport::tcp, Derived>;
-    
+
     using cb_consumer = detail::RedisCallbackConsumer<qb::io::transport::tcp>;
     using co_consumer = detail::RedisCoroConsumer<qb::io::transport::tcp>;
 
 #ifdef QB_HAS_SSL
     struct ssl {
-        using client = detail::Redis<qb::io::transport::stcp>;
+        using client   = detail::Redis<qb::io::transport::stcp>;
         using pipeline = detail::RedisPipeline<qb::io::transport::stcp>;
-        
+
         template <typename Derived>
         using consumer = detail::RedisConsumer<qb::io::transport::stcp, Derived>;
-        
+
         using cb_consumer = detail::RedisCallbackConsumer<qb::io::transport::stcp>;
         using co_consumer = detail::RedisCoroConsumer<qb::io::transport::stcp>;
     };
 #endif
 };
 
-inline constexpr auto no_check = [](auto &&) {};
+inline constexpr auto no_check = [](auto &&) {
+};
 
 } // namespace qb::redis
 

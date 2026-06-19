@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,12 +53,12 @@ private:
      */
     template <typename Func>
     class scanner : public std::enable_shared_from_this<scanner<Func>> {
-        Derived    &_handler;
-        std::string _key;
-        std::string _pattern;
-        Func        _func;
+        Derived                                                                  &_handler;
+        std::string                                                               _key;
+        std::string                                                               _pattern;
+        Func                                                                      _func;
         qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> _reply;
-        bool        _started{false};
+        bool                                                                      _started{false};
 
     public:
         /**
@@ -81,11 +81,9 @@ private:
         void
         start() {
             if (!_started) {
-                _started = true;
+                _started  = true;
                 auto self = this->shared_from_this();
-                _handler.zscan(
-                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
-                    _key, 0, _pattern, 100);
+                _handler.zscan([self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); }, _key, 0, _pattern, 100);
             }
         }
 
@@ -95,17 +93,14 @@ private:
          * @param reply The scan operation reply
          */
         void
-        operator()(
-            qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, double>>>
-                &&reply) {
+        operator()(qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&reply) {
             _reply.ok() = reply.ok();
             std::move(reply.result().items.begin(), reply.result().items.end(),
                       std::inserter(_reply.result().items, _reply.result().items.end()));
             if (reply.ok() && reply.result().cursor) {
                 auto self = this->shared_from_this();
-                _handler.zscan(
-                    [self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); },
-                    _key, reply.result().cursor, _pattern, 100);
+                _handler.zscan([self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); }, _key, reply.result().cursor, _pattern,
+                               100);
             } else {
                 try {
                     _func(std::move(_reply));
@@ -120,8 +115,7 @@ private:
          */
         static void
         create_and_start(Derived &handler, std::string key, std::string pattern, Func &&func) {
-            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern),
-                                                 std::forward<Func>(func));
+            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern), std::forward<Func>(func));
             ptr->start();
         }
     };
@@ -135,12 +129,10 @@ public:
      * @param timeout Timeout in seconds, 0 means block forever
      * @return Optional tuple containing key name, member name, and score
      */
-    auto bzpopmax(const std::vector<std::string> &keys, long long timeout) {
+    auto
+    bzpopmax(const std::vector<std::string> &keys, long long timeout) {
         return derived().template make_coro_command<std::optional<std::tuple<std::string, std::string, double>>>(
-            [this, keys, timeout](auto&& callback) {
-                this->bzpopmax(std::move(callback), keys, timeout);
-            }
-        );
+            [this, keys, timeout](auto &&callback) { this->bzpopmax(std::move(callback), keys, timeout); });
     }
 
     /**
@@ -153,19 +145,14 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<
-            Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>,
-        Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
     bzpopmax(Func &&func, const std::vector<std::string> &keys, long long timeout) {
-        return derived()
-            .template command<
-                std::optional<std::tuple<std::string, std::string, double>>>(
-                std::forward<Func>(func), "BZPOPMAX", keys, timeout);
+        return derived().template command<std::optional<std::tuple<std::string, std::string, double>>>(std::forward<Func>(func), "BZPOPMAX",
+                                                                                                       keys, timeout);
     }
 
-    auto bzpopmax(const std::vector<std::string> &keys,
-                  const std::chrono::seconds     &timeout = std::chrono::seconds{0}) {
+    auto
+    bzpopmax(const std::vector<std::string> &keys, const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
         return bzpopmax(keys, timeout.count());
     }
 
@@ -179,12 +166,8 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<
-            Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>,
-        Derived &>
-    bzpopmax(Func &&func, const std::vector<std::string> &keys,
-             const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
+    bzpopmax(Func &&func, const std::vector<std::string> &keys, const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
         return bzpopmax(std::forward<Func>(func), keys, timeout.count());
     }
 
@@ -196,12 +179,10 @@ public:
      * @param timeout Timeout in seconds, 0 means block forever
      * @return Optional tuple containing key name, member name, and score
      */
-    auto bzpopmin(const std::vector<std::string> &keys, long long timeout) {
+    auto
+    bzpopmin(const std::vector<std::string> &keys, long long timeout) {
         return derived().template make_coro_command<std::optional<std::tuple<std::string, std::string, double>>>(
-            [this, keys, timeout](auto&& callback) {
-                this->bzpopmin(std::move(callback), keys, timeout);
-            }
-        );
+            [this, keys, timeout](auto &&callback) { this->bzpopmin(std::move(callback), keys, timeout); });
     }
 
     /**
@@ -214,19 +195,14 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<
-            Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>,
-        Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
     bzpopmin(Func &&func, const std::vector<std::string> &keys, long long timeout) {
-        return derived()
-            .template command<
-                std::optional<std::tuple<std::string, std::string, double>>>(
-                std::forward<Func>(func), "BZPOPMIN", keys, timeout);
+        return derived().template command<std::optional<std::tuple<std::string, std::string, double>>>(std::forward<Func>(func), "BZPOPMIN",
+                                                                                                       keys, timeout);
     }
 
-    auto bzpopmin(const std::vector<std::string> &keys,
-                  const std::chrono::seconds     &timeout = std::chrono::seconds{0}) {
+    auto
+    bzpopmin(const std::vector<std::string> &keys, const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
         return bzpopmin(keys, timeout.count());
     }
 
@@ -240,22 +216,15 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<
-            Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>,
-        Derived &>
-    bzpopmin(Func &&func, const std::vector<std::string> &keys,
-             const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
+    bzpopmin(Func &&func, const std::vector<std::string> &keys, const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
         return bzpopmin(std::forward<Func>(func), keys, timeout.count());
     }
 
-    auto zadd(const std::string &key, const std::vector<score_member> &members,
-              UpdateType type = UpdateType::ALWAYS, bool changed = false) {
+    auto
+    zadd(const std::string &key, const std::vector<score_member> &members, UpdateType type = UpdateType::ALWAYS, bool changed = false) {
         return derived().template make_coro_command<long long>(
-            [this, key, members, type, changed](auto&& callback) {
-                this->zadd(std::move(callback), key, members, type, changed);
-            }
-        );
+            [this, key, members, type, changed](auto &&callback) { this->zadd(std::move(callback), key, members, type, changed); });
     }
 
     /**
@@ -271,8 +240,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    zadd(Func &&func, const std::string &key, const std::vector<score_member> &members,
-         UpdateType type = UpdateType::ALWAYS, bool changed = false) {
+    zadd(Func &&func, const std::string &key, const std::vector<score_member> &members, UpdateType type = UpdateType::ALWAYS,
+         bool changed = false) {
         std::optional<std::string> opt_up, opt_ch;
 
         if (type != UpdateType::ALWAYS)
@@ -280,8 +249,7 @@ public:
 
         if (changed)
             opt_ch = "CH";
-        return derived().template command<long long>(std::forward<Func>(func), "ZADD",
-                                                     key, opt_up, opt_ch, members);
+        return derived().template command<long long>(std::forward<Func>(func), "ZADD", key, opt_up, opt_ch, members);
     }
 
     /**
@@ -290,12 +258,9 @@ public:
      * @param key Key where the sorted set is stored
      * @return Number of members in the sorted set
      */
-    auto zcard(const std::string &key) {
-        return derived().template make_coro_command<long long>(
-            [this, key](auto&& callback) {
-                this->zcard(std::move(callback), key);
-            }
-        );
+    auto
+    zcard(const std::string &key) {
+        return derived().template make_coro_command<long long>([this, key](auto &&callback) { this->zcard(std::move(callback), key); });
     }
 
     /**
@@ -309,8 +274,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zcard(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZCARD",
-                                                     key);
+        return derived().template command<long long>(std::forward<Func>(func), "ZCARD", key);
     }
 
     /**
@@ -323,12 +287,10 @@ public:
      * @return Number of members in the sorted set with scores in the interval
      */
     template <typename Interval>
-    auto zcount(const std::string &key, const Interval &interval) {
+    auto
+    zcount(const std::string &key, const Interval &interval) {
         return derived().template make_coro_command<long long>(
-            [this, key, interval](auto&& callback) {
-                this->zcount(std::move(callback), key, interval);
-            }
-        );
+            [this, key, interval](auto &&callback) { this->zcount(std::move(callback), key, interval); });
     }
 
     /**
@@ -344,16 +306,13 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zcount(Func &&func, const std::string &key, const Interval &interval) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "ZCOUNT", key, interval.lower(), interval.upper());
+        return derived().template command<long long>(std::forward<Func>(func), "ZCOUNT", key, interval.lower(), interval.upper());
     }
 
-    auto zincrby(const std::string &key, double increment, const std::string &member) {
+    auto
+    zincrby(const std::string &key, double increment, const std::string &member) {
         return derived().template make_coro_command<double>(
-            [this, key, increment, member](auto&& callback) {
-                this->zincrby(std::move(callback), key, increment, member);
-            }
-        );
+            [this, key, increment, member](auto &&callback) { this->zincrby(std::move(callback), key, increment, member); });
     }
 
     /**
@@ -368,20 +327,16 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<double> &&>, Derived &>
-    zincrby(Func &&func, const std::string &key, double increment,
-            const std::string &member) {
-        return derived().template command<double>(std::forward<Func>(func), "ZINCRBY",
-                                                  key, increment, member);
+    zincrby(Func &&func, const std::string &key, double increment, const std::string &member) {
+        return derived().template command<double>(std::forward<Func>(func), "ZINCRBY", key, increment, member);
     }
 
-    auto zunionstore(const std::string &destination, const std::vector<std::string> &keys,
-                     const std::vector<double> &weights = {},
-                     Aggregation                type    = Aggregation::SUM) {
-        return derived().template make_coro_command<long long>(
-            [this, destination, keys, weights, type](auto&& callback) {
-                this->zunionstore(std::move(callback), destination, keys, weights, type);
-            }
-        );
+    auto
+    zunionstore(const std::string &destination, const std::vector<std::string> &keys, const std::vector<double> &weights = {},
+                Aggregation type = Aggregation::SUM) {
+        return derived().template make_coro_command<long long>([this, destination, keys, weights, type](auto &&callback) {
+            this->zunionstore(std::move(callback), destination, keys, weights, type);
+        });
     }
 
     /**
@@ -397,16 +352,13 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    zunionstore(Func &&func, const std::string &destination,
-                const std::vector<std::string> &keys,
-                const std::vector<double>      &weights = {},
-                Aggregation                     type    = Aggregation::SUM) {
+    zunionstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys, const std::vector<double> &weights = {},
+                Aggregation type = Aggregation::SUM) {
         std::optional<std::string> opt;
         if (!weights.empty())
             opt = "WEIGHTS";
-        return derived().template command<long long>(
-            std::forward<Func>(func), "ZUNIONSTORE", destination, keys.size(), keys, opt,
-            weights, "AGGREGATE", to_string(type));
+        return derived().template command<long long>(std::forward<Func>(func), "ZUNIONSTORE", destination, keys.size(), keys, opt, weights,
+                                                     "AGGREGATE", to_string(type));
     }
 
     /**
@@ -418,14 +370,12 @@ public:
      * @param type Aggregation type (SUM, MIN, or MAX)
      * @return Number of members in the resulting sorted set
      */
-    auto zinterstore(const std::string &destination, const std::vector<std::string> &keys,
-                     const std::vector<double> &weights = {},
-                     Aggregation                type    = Aggregation::SUM) {
-        return derived().template make_coro_command<long long>(
-            [this, destination, keys, weights, type](auto&& callback) {
-                this->zinterstore(std::move(callback), destination, keys, weights, type);
-            }
-        );
+    auto
+    zinterstore(const std::string &destination, const std::vector<std::string> &keys, const std::vector<double> &weights = {},
+                Aggregation type = Aggregation::SUM) {
+        return derived().template make_coro_command<long long>([this, destination, keys, weights, type](auto &&callback) {
+            this->zinterstore(std::move(callback), destination, keys, weights, type);
+        });
     }
 
     /**
@@ -441,25 +391,20 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    zinterstore(Func &&func, const std::string &destination,
-                const std::vector<std::string> &keys,
-                const std::vector<double>      &weights = {},
-                Aggregation                     type    = Aggregation::SUM) {
+    zinterstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys, const std::vector<double> &weights = {},
+                Aggregation type = Aggregation::SUM) {
         std::optional<std::string> opt;
         if (!weights.empty())
             opt = "WEIGHTS";
-        return derived().template command<long long>(
-            std::forward<Func>(func), "ZINTERSTORE", destination, keys.size(), keys, opt,
-            weights, "AGGREGATE", to_string(type));
+        return derived().template command<long long>(std::forward<Func>(func), "ZINTERSTORE", destination, keys.size(), keys, opt, weights,
+                                                     "AGGREGATE", to_string(type));
     }
 
     template <typename Interval>
-    auto zlexcount(const std::string &key, const Interval &interval) {
+    auto
+    zlexcount(const std::string &key, const Interval &interval) {
         return derived().template make_coro_command<long long>(
-            [this, key, interval](auto&& callback) {
-                this->zlexcount(std::move(callback), key, interval);
-            }
-        );
+            [this, key, interval](auto &&callback) { this->zlexcount(std::move(callback), key, interval); });
     }
 
     /**
@@ -475,17 +420,13 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zlexcount(Func &&func, const std::string &key, const Interval &interval) {
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "ZLEXCOUNT", key, interval.lower(),
-                                                     interval.upper());
+        return derived().template command<long long>(std::forward<Func>(func), "ZLEXCOUNT", key, interval.lower(), interval.upper());
     }
 
-    auto zpopmax(const std::string &key, long long count = 1) {
+    auto
+    zpopmax(const std::string &key, long long count = 1) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, key, count](auto&& callback) {
-                this->zpopmax(std::move(callback), key, count);
-            }
-        );
+            [this, key, count](auto &&callback) { this->zpopmax(std::move(callback), key, count); });
     }
 
     /**
@@ -498,11 +439,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zpopmax(Func &&func, const std::string &key, long long count = 1) {
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZPOPMAX", key, count);
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZPOPMAX", key, count);
     }
 
     /**
@@ -512,12 +451,10 @@ public:
      * @param count Number of members to pop (default is 1)
      * @return Vector of score_member objects that were removed
      */
-    auto zpopmin(const std::string &key, long long count = 1) {
+    auto
+    zpopmin(const std::string &key, long long count = 1) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, key, count](auto&& callback) {
-                this->zpopmin(std::move(callback), key, count);
-            }
-        );
+            [this, key, count](auto &&callback) { this->zpopmin(std::move(callback), key, count); });
     }
 
     /**
@@ -530,19 +467,15 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zpopmin(Func &&func, const std::string &key, long long count = 1) {
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZPOPMIN", key, count);
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZPOPMIN", key, count);
     }
 
-    auto zrange(const std::string &key, long long start, long long stop) {
+    auto
+    zrange(const std::string &key, long long start, long long stop) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, key, start, stop](auto&& callback) {
-                this->zrange(std::move(callback), key, start, stop);
-            }
-        );
+            [this, key, start, stop](auto &&callback) { this->zrange(std::move(callback), key, start, stop); });
     }
 
     /**
@@ -556,21 +489,16 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zrange(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZRANGE", key, start, stop, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZRANGE", key, start, stop, "WITHSCORES");
     }
 
     template <typename Interval>
-    auto zrangebylex(const std::string &key, Interval const &interval,
-                     const LimitOptions &opts = {}) {
+    auto
+    zrangebylex(const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key, interval, opts](auto&& callback) {
-                this->zrangebylex(std::move(callback), key, interval, opts);
-            }
-        );
+            [this, key, interval, opts](auto &&callback) { this->zrangebylex(std::move(callback), key, interval, opts); });
     }
 
     /**
@@ -585,15 +513,11 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func, typename Interval>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
-    zrangebylex(Func &&func, const std::string &key, Interval const &interval,
-                const LimitOptions &opts = {}) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    zrangebylex(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
         return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "ZRANGEBYLEX", key, interval.lower(),
-            interval.upper(), opts.offset >= 0 ? "LIMIT" : "",
-            opts.offset >= 0 ? std::to_string(opts.offset) : "",
-            opts.offset >= 0 ? std::to_string(opts.count) : "");
+            std::forward<Func>(func), "ZRANGEBYLEX", key, interval.lower(), interval.upper(), opts.offset >= 0 ? "LIMIT" : "",
+            opts.offset >= 0 ? std::to_string(opts.offset) : "", opts.offset >= 0 ? std::to_string(opts.count) : "");
     }
 
     /**
@@ -607,13 +531,10 @@ public:
      * @return Vector of member-score pairs within the score range
      */
     template <typename Interval>
-    auto zrangebyscore(const std::string &key, Interval const &interval,
-                         const LimitOptions &opts = {}) {
+    auto
+    zrangebyscore(const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, key, &interval, &opts](auto&& callback) {
-                this->zrangebyscore(std::move(callback), key, interval, opts);
-            }
-        );
+            [this, key, &interval, &opts](auto &&callback) { this->zrangebyscore(std::move(callback), key, interval, opts); });
     }
 
     /**
@@ -628,23 +549,17 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func, typename Interval>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
-    zrangebyscore(Func &&func, const std::string &key, Interval const &interval,
-                  const LimitOptions &opts = {}) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
+    zrangebyscore(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
         return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZRANGEBYSCORE", key, interval.lower(),
-            interval.upper(), opts.offset >= 0 ? "LIMIT" : "",
-            opts.offset >= 0 ? std::to_string(opts.offset) : "",
-            opts.offset >= 0 ? std::to_string(opts.count) : "", "WITHSCORES");
+            std::forward<Func>(func), "ZRANGEBYSCORE", key, interval.lower(), interval.upper(), opts.offset >= 0 ? "LIMIT" : "",
+            opts.offset >= 0 ? std::to_string(opts.offset) : "", opts.offset >= 0 ? std::to_string(opts.count) : "", "WITHSCORES");
     }
 
-    auto zrank(const std::string &key, const std::string &member) {
+    auto
+    zrank(const std::string &key, const std::string &member) {
         return derived().template make_coro_command<std::optional<long long>>(
-            [this, key, member](auto&& callback) {
-                this->zrank(std::move(callback), key, member);
-            }
-        );
+            [this, key, member](auto &&callback) { this->zrank(std::move(callback), key, member); });
     }
 
     /**
@@ -657,19 +572,15 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>, Derived &>
     zrank(Func &&func, const std::string &key, const std::string &member) {
-        return derived().template command<std::optional<long long>>(
-            std::forward<Func>(func), "ZRANK", key, member);
+        return derived().template command<std::optional<long long>>(std::forward<Func>(func), "ZRANK", key, member);
     }
 
-    auto zrem(const std::string &key, const std::vector<std::string> &members) {
+    auto
+    zrem(const std::string &key, const std::vector<std::string> &members) {
         return derived().template make_coro_command<long long>(
-            [this, key, members](auto&& callback) {
-                this->zrem(std::move(callback), key, members);
-            }
-        );
+            [this, key, members](auto &&callback) { this->zrem(std::move(callback), key, members); });
     }
 
     /**
@@ -684,17 +595,14 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zrem(Func &&func, const std::string &key, const std::vector<std::string> &members) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZREM",
-                                                     key, members);
+        return derived().template command<long long>(std::forward<Func>(func), "ZREM", key, members);
     }
 
     template <typename Interval>
-    auto zremrangebylex(const std::string &key, Interval const &interval) {
+    auto
+    zremrangebylex(const std::string &key, Interval const &interval) {
         return derived().template make_coro_command<long long>(
-            [this, key, interval](auto&& callback) {
-                this->zremrangebylex(std::move(callback), key, interval);
-            }
-        );
+            [this, key, interval](auto &&callback) { this->zremrangebylex(std::move(callback), key, interval); });
     }
 
     /**
@@ -710,9 +618,7 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zremrangebylex(Func &&func, const std::string &key, Interval const &interval) {
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "ZREMRANGEBYLEX", key,
-                                                     interval.lower(), interval.upper());
+        return derived().template command<long long>(std::forward<Func>(func), "ZREMRANGEBYLEX", key, interval.lower(), interval.upper());
     }
 
     /**
@@ -723,12 +629,10 @@ public:
      * @param stop Stop index (inclusive, can be negative to count from the end)
      * @return Number of members removed
      */
-    auto zremrangebyrank(const std::string &key, long long start, long long stop) {
+    auto
+    zremrangebyrank(const std::string &key, long long start, long long stop) {
         return derived().template make_coro_command<long long>(
-            [this, key, start, stop](auto&& callback) {
-                this->zremrangebyrank(std::move(callback), key, start, stop);
-            }
-        );
+            [this, key, start, stop](auto &&callback) { this->zremrangebyrank(std::move(callback), key, start, stop); });
     }
 
     /**
@@ -743,19 +647,15 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    zremrangebyrank(Func &&func, const std::string &key, long long start,
-                    long long stop) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "ZREMRANGEBYRANK", key, start, stop);
+    zremrangebyrank(Func &&func, const std::string &key, long long start, long long stop) {
+        return derived().template command<long long>(std::forward<Func>(func), "ZREMRANGEBYRANK", key, start, stop);
     }
 
     template <typename Interval>
-    auto zremrangebyscore(const std::string &key, Interval const &interval) {
+    auto
+    zremrangebyscore(const std::string &key, Interval const &interval) {
         return derived().template make_coro_command<long long>(
-            [this, key, interval](auto&& callback) {
-                this->zremrangebyscore(std::move(callback), key, interval);
-            }
-        );
+            [this, key, interval](auto &&callback) { this->zremrangebyscore(std::move(callback), key, interval); });
     }
 
     /**
@@ -771,17 +671,13 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zremrangebyscore(Func &&func, const std::string &key, Interval const &interval) {
-        return derived().template command<long long>(std::forward<Func>(func),
-                                                     "ZREMRANGEBYSCORE", key,
-                                                     interval.lower(), interval.upper());
+        return derived().template command<long long>(std::forward<Func>(func), "ZREMRANGEBYSCORE", key, interval.lower(), interval.upper());
     }
 
-    auto zrevrange(const std::string &key, long long start, long long stop) {
+    auto
+    zrevrange(const std::string &key, long long start, long long stop) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, key, start, stop](auto&& callback) {
-                this->zrevrange(std::move(callback), key, start, stop);
-            }
-        );
+            [this, key, start, stop](auto &&callback) { this->zrevrange(std::move(callback), key, start, stop); });
     }
 
     /**
@@ -795,11 +691,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zrevrange(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZREVRANGE", key, start, stop, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZREVRANGE", key, start, stop, "WITHSCORES");
     }
 
     /**
@@ -813,13 +707,10 @@ public:
      * @return Vector of members within the lexicographical range
      */
     template <typename Interval>
-    auto zrevrangebylex(const std::string &key, Interval const &interval,
-                        const LimitOptions &opt = {}) {
+    auto
+    zrevrangebylex(const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key, interval, opt](auto&& callback) {
-                this->zrevrangebylex(std::move(callback), key, interval, opt);
-            }
-        );
+            [this, key, interval, opt](auto &&callback) { this->zrevrangebylex(std::move(callback), key, interval, opt); });
     }
 
     /**
@@ -834,23 +725,17 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func, typename Interval>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
-    zrevrangebylex(Func &&func, const std::string &key, Interval const &interval,
-                   const LimitOptions &opt = {}) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "ZREVRANGEBYLEX", key, interval.upper(),
-            interval.lower(), "LIMIT", opt.offset, opt.count);
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    zrevrangebylex(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZREVRANGEBYLEX", key, interval.upper(),
+                                                                    interval.lower(), "LIMIT", opt.offset, opt.count);
     }
 
     template <typename Interval>
-    auto zrevrangebyscore(const std::string &key, Interval const &interval,
-                          const LimitOptions &opt = {}) {
+    auto
+    zrevrangebyscore(const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, key, &interval, &opt](auto&& callback) {
-                this->zrevrangebyscore(std::move(callback), key, interval, opt);
-            }
-        );
+            [this, key, &interval, &opt](auto &&callback) { this->zrevrangebyscore(std::move(callback), key, interval, opt); });
     }
 
     /**
@@ -865,21 +750,16 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func, typename Interval>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
-    zrevrangebyscore(Func &&func, const std::string &key, Interval const &interval,
-                     const LimitOptions &opt = {}) {
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZREVRANGEBYSCORE", key, interval.upper(),
-            interval.lower(), "WITHSCORES", "LIMIT", opt.offset, opt.count);
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
+    zrevrangebyscore(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZREVRANGEBYSCORE", key, interval.upper(),
+                                                                     interval.lower(), "WITHSCORES", "LIMIT", opt.offset, opt.count);
     }
 
-    auto zrevrank(const std::string &key, const std::string &member) {
+    auto
+    zrevrank(const std::string &key, const std::string &member) {
         return derived().template make_coro_command<std::optional<long long>>(
-            [this, key, member](auto&& callback) {
-                this->zrevrank(std::move(callback), key, member);
-            }
-        );
+            [this, key, member](auto &&callback) { this->zrevrank(std::move(callback), key, member); });
     }
 
     /**
@@ -892,20 +772,15 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>, Derived &>
     zrevrank(Func &&func, const std::string &key, const std::string &member) {
-        return derived().template command<std::optional<long long>>(
-            std::forward<Func>(func), "ZREVRANK", key, member);
+        return derived().template command<std::optional<long long>>(std::forward<Func>(func), "ZREVRANK", key, member);
     }
 
-    auto zscan(const std::string &key, long long cursor, const std::string &pattern = "*",
-               long long count = 10) {
+    auto
+    zscan(const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
         return derived().template make_coro_command<qb::redis::scan<qb::unordered_map<std::string, double>>>(
-            [this, key, cursor, pattern, count](auto&& callback) {
-                this->zscan(std::move(callback), key, cursor, pattern, count);
-            }
-        );
+            [this, key, cursor, pattern, count](auto &&callback) { this->zscan(std::move(callback), key, cursor, pattern, count); });
     }
 
     /**
@@ -920,19 +795,13 @@ public:
      * @return Reference to the derived class
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<
-            Func, Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>,
-        Derived &>
-    zscan(Func &&func, const std::string &key, long long cursor,
-          const std::string &pattern = "*", long long count = 10) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>, Derived &>
+    zscan(Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
         if (key.empty()) {
             return derived();
         }
-        return derived()
-            .template command<qb::redis::scan<qb::unordered_map<std::string, double>>>(
-                std::forward<Func>(func), "ZSCAN", key, cursor, "MATCH", pattern,
-                "COUNT", count);
+        return derived().template command<qb::redis::scan<qb::unordered_map<std::string, double>>>(std::forward<Func>(func), "ZSCAN", key,
+                                                                                                   cursor, "MATCH", pattern, "COUNT", count);
     }
 
     /**
@@ -948,21 +817,16 @@ public:
      * @return Reference to the derived class
      */
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<
-            Func, Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>,
-        Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>, Derived &>
     zscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
         scanner<Func>::create_and_start(derived(), key, pattern, std::forward<Func>(func));
         return derived();
     }
 
-    auto zscore(const std::string &key, const std::string &member) {
+    auto
+    zscore(const std::string &key, const std::string &member) {
         return derived().template make_coro_command<std::optional<double>>(
-            [this, key, member](auto&& callback) {
-                this->zscore(std::move(callback), key, member);
-            }
-        );
+            [this, key, member](auto &&callback) { this->zscore(std::move(callback), key, member); });
     }
 
     /**
@@ -975,11 +839,9 @@ public:
      * @return Reference to the Redis handler for chaining
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<double>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<double>> &&>, Derived &>
     zscore(Func &&func, const std::string &key, const std::string &member) {
-        return derived().template command<std::optional<double>>(
-            std::forward<Func>(func), "ZSCORE", key, member);
+        return derived().template command<std::optional<double>>(std::forward<Func>(func), "ZSCORE", key, member);
     }
 
     // =============== New Sorted Set Commands (TODO_COMMANDS.md) ===============
@@ -991,12 +853,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/zdiff
      */
-    auto zdiff(const std::vector<std::string> &keys) {
+    auto
+    zdiff(const std::vector<std::string> &keys) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, keys](auto&& callback) {
-                this->zdiff(std::move(callback), keys);
-            }
-        );
+            [this, keys](auto &&callback) { this->zdiff(std::move(callback), keys); });
     }
     /**
      * @brief Return the difference between sorted sets with scores (coroutine awaitable)
@@ -1005,12 +865,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<score_member>>
      * @see https://redis.io/commands/zdiff
      */
-    auto zdiffWithScores(const std::vector<std::string> &keys) {
+    auto
+    zdiffWithScores(const std::vector<std::string> &keys) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, keys](auto&& callback) {
-                this->zdiffWithScores(std::move(callback), keys);
-            }
-        );
+            [this, keys](auto &&callback) { this->zdiffWithScores(std::move(callback), keys); });
     }
     /**
      * @brief Asynchronous version of zdiff
@@ -1022,11 +880,9 @@ public:
      * @see https://redis.io/commands/zdiff
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     zdiff(Func &&func, const std::vector<std::string> &keys) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "ZDIFF", keys.size(), keys);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZDIFF", keys.size(), keys);
     }
     /**
      * @brief Asynchronous version of zdiffWithScores
@@ -1038,11 +894,9 @@ public:
      * @see https://redis.io/commands/zdiff
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zdiffWithScores(Func &&func, const std::vector<std::string> &keys) {
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZDIFF", keys.size(), keys, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZDIFF", keys.size(), keys, "WITHSCORES");
     }
 
     /**
@@ -1053,13 +907,10 @@ public:
      * @return redis_awaiter yielding Reply<long long> (number of elements in result)
      * @see https://redis.io/commands/zdiffstore
      */
-    auto zdiffstore(const std::string &destination,
-                    const std::vector<std::string> &keys) {
+    auto
+    zdiffstore(const std::string &destination, const std::vector<std::string> &keys) {
         return derived().template make_coro_command<long long>(
-            [this, destination, keys](auto&& callback) {
-                this->zdiffstore(std::move(callback), destination, keys);
-            }
-        );
+            [this, destination, keys](auto &&callback) { this->zdiffstore(std::move(callback), destination, keys); });
     }
     /**
      * @brief Asynchronous version of zdiffstore
@@ -1073,10 +924,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    zdiffstore(Func &&func, const std::string &destination,
-               const std::vector<std::string> &keys) {
-        return derived().template command<long long>(
-            std::forward<Func>(func), "ZDIFFSTORE", destination, keys.size(), keys);
+    zdiffstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
+        return derived().template command<long long>(std::forward<Func>(func), "ZDIFFSTORE", destination, keys.size(), keys);
     }
 
     /**
@@ -1088,14 +937,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/zinter
      */
-    auto zinter(const std::vector<std::string> &keys,
-                const std::vector<double> &weights = {},
-                Aggregation type = Aggregation::SUM) {
+    auto
+    zinter(const std::vector<std::string> &keys, const std::vector<double> &weights = {}, Aggregation type = Aggregation::SUM) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, keys, weights, type](auto&& callback) {
-                this->zinter(std::move(callback), keys, weights, type);
-            }
-        );
+            [this, keys, weights, type](auto &&callback) { this->zinter(std::move(callback), keys, weights, type); });
     }
     /**
      * @brief Intersect multiple sorted sets with scores (coroutine awaitable)
@@ -1106,14 +951,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<score_member>>
      * @see https://redis.io/commands/zinter
      */
-    auto zinterWithScores(const std::vector<std::string> &keys,
-                          const std::vector<double> &weights = {},
-                          Aggregation type = Aggregation::SUM) {
+    auto
+    zinterWithScores(const std::vector<std::string> &keys, const std::vector<double> &weights = {}, Aggregation type = Aggregation::SUM) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, keys, weights, type](auto&& callback) {
-                this->zinterWithScores(std::move(callback), keys, weights, type);
-            }
-        );
+            [this, keys, weights, type](auto &&callback) { this->zinterWithScores(std::move(callback), keys, weights, type); });
     }
 
     /**
@@ -1128,20 +969,17 @@ public:
      * @see https://redis.io/commands/zinter
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
-    zinter(Func &&func, const std::vector<std::string> &keys,
-           const std::vector<double> &weights = {},
-           Aggregation type = Aggregation::SUM) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    zinter(Func &&func, const std::vector<std::string> &keys, const std::vector<double> &weights = {}, Aggregation type = Aggregation::SUM) {
         std::vector<std::string> opt;
         if (!weights.empty()) {
             opt.push_back("WEIGHTS");
-            for (double w : weights) opt.push_back(std::to_string(w));
+            for (double w : weights)
+                opt.push_back(std::to_string(w));
         }
         opt.push_back("AGGREGATE");
         opt.push_back(to_string(type));
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
     }
 
     /**
@@ -1156,46 +994,39 @@ public:
      * @see https://redis.io/commands/zinter
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
-    zinterWithScores(Func &&func, const std::vector<std::string> &keys,
-                    const std::vector<double> &weights = {},
-                    Aggregation type = Aggregation::SUM) {
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
+    zinterWithScores(Func &&func, const std::vector<std::string> &keys, const std::vector<double> &weights = {},
+                     Aggregation type = Aggregation::SUM) {
         std::vector<std::string> opt;
         if (!weights.empty()) {
             opt.push_back("WEIGHTS");
-            for (double w : weights) opt.push_back(std::to_string(w));
+            for (double w : weights)
+                opt.push_back(std::to_string(w));
         }
         opt.push_back("AGGREGATE");
         opt.push_back(to_string(type));
         opt.push_back("WITHSCORES");
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
     }
 
     /**
      * @brief Return the cardinality of the intersection of sorted sets.
      * @see https://redis.io/commands/zintercard
      */
-    auto zintercard(const std::vector<std::string> &keys,
-                    std::optional<long long> limit = std::nullopt) {
+    auto
+    zintercard(const std::vector<std::string> &keys, std::optional<long long> limit = std::nullopt) {
         return derived().template make_coro_command<long long>(
-            [this, keys, limit](auto&& callback) {
-                this->zintercard(std::move(callback), keys, limit);
-            }
-        );
+            [this, keys, limit](auto &&callback) { this->zintercard(std::move(callback), keys, limit); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    zintercard(Func &&func, const std::vector<std::string> &keys,
-               std::optional<long long> limit = std::nullopt) {
+    zintercard(Func &&func, const std::vector<std::string> &keys, std::optional<long long> limit = std::nullopt) {
         std::vector<std::string> opt;
         if (limit) {
             opt.push_back("LIMIT");
             opt.push_back(std::to_string(*limit));
         }
-        return derived().template command<long long>(
-            std::forward<Func>(func), "ZINTERCARD", keys.size(), keys, opt);
+        return derived().template command<long long>(std::forward<Func>(func), "ZINTERCARD", keys.size(), keys, opt);
     }
 
     /**
@@ -1205,71 +1036,53 @@ public:
      * @param count Number of members to pop.
      * @see https://redis.io/commands/zmpop
      */
-    auto zmpop(const std::vector<std::string> &keys, const std::string &min_or_max,
-               long long count = 1) {
-        return derived().template make_coro_command<
-            std::optional<std::pair<std::string, std::vector<score_member>>>>(
-            [this, keys, min_or_max, count](auto&& callback) {
-                this->zmpop(std::move(callback), keys, min_or_max, count);
-            }
-        );
+    auto
+    zmpop(const std::vector<std::string> &keys, const std::string &min_or_max, long long count = 1) {
+        return derived().template make_coro_command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
+            [this, keys, min_or_max, count](auto &&callback) { this->zmpop(std::move(callback), keys, min_or_max, count); });
     }
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func,
-                           Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>,
-        Derived &>
-    zmpop(Func &&func, const std::vector<std::string> &keys,
-          const std::string &min_or_max, long long count = 1) {
-        if (keys.empty()) return derived();
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
+    zmpop(Func &&func, const std::vector<std::string> &keys, const std::string &min_or_max, long long count = 1) {
+        if (keys.empty())
+            return derived();
         std::vector<std::string> opt;
         if (count > 1) {
             opt.push_back("COUNT");
             opt.push_back(std::to_string(count));
         }
-        return derived()
-            .template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
-                std::forward<Func>(func), "ZMPOP", keys.size(), keys, min_or_max, opt);
+        return derived().template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(std::forward<Func>(func), "ZMPOP",
+                                                                                                            keys.size(), keys, min_or_max, opt);
     }
 
     /**
      * @brief Get scores of multiple members.
      * @see https://redis.io/commands/zmscore
      */
-    auto zmscore(const std::string &key, const std::vector<std::string> &members) {
+    auto
+    zmscore(const std::string &key, const std::vector<std::string> &members) {
         return derived().template make_coro_command<std::vector<std::optional<double>>>(
-            [this, key, members](auto&& callback) {
-                this->zmscore(std::move(callback), key, members);
-            }
-        );
+            [this, key, members](auto &&callback) { this->zmscore(std::move(callback), key, members); });
     }
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func, Reply<std::vector<std::optional<double>>> &&>,
-        Derived &>
-    zmscore(Func &&func, const std::string &key,
-            const std::vector<std::string> &members) {
-        return derived().template command<std::vector<std::optional<double>>>(
-            std::forward<Func>(func), "ZMSCORE", key, members);
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<double>>> &&>, Derived &>
+    zmscore(Func &&func, const std::string &key, const std::vector<std::string> &members) {
+        return derived().template command<std::vector<std::optional<double>>>(std::forward<Func>(func), "ZMSCORE", key, members);
     }
 
     /**
      * @brief Get a random member from a sorted set (coroutine awaitable).
      * @see https://redis.io/commands/zrandmember
      */
-    auto zrandmember(const std::string &key) {
+    auto
+    zrandmember(const std::string &key) {
         return derived().template make_coro_command<std::optional<std::string>>(
-            [this, key](auto&& callback) {
-                this->zrandmember(std::move(callback), key);
-            }
-        );
+            [this, key](auto &&callback) { this->zrandmember(std::move(callback), key); });
     }
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     zrandmember(Func &&func, const std::string &key) {
-        return derived().template command<std::optional<std::string>>(
-            std::forward<Func>(func), "ZRANDMEMBER", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "ZRANDMEMBER", key);
     }
 
     /**
@@ -1280,12 +1093,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/zrandmember
      */
-    auto zrandmemberCount(const std::string &key, long long count) {
+    auto
+    zrandmemberCount(const std::string &key, long long count) {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, key, count](auto&& callback) {
-                this->zrandmemberCount(std::move(callback), key, count);
-            }
-        );
+            [this, key, count](auto &&callback) { this->zrandmemberCount(std::move(callback), key, count); });
     }
     /**
      * @brief Get random members with scores from a sorted set (coroutine awaitable)
@@ -1295,12 +1106,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<score_member>>
      * @see https://redis.io/commands/zrandmember
      */
-    auto zrandmemberWithScores(const std::string &key, long long count) {
+    auto
+    zrandmemberWithScores(const std::string &key, long long count) {
         return derived().template make_coro_command<std::vector<score_member>>(
-            [this, key, count](auto&& callback) {
-                this->zrandmemberWithScores(std::move(callback), key, count);
-            }
-        );
+            [this, key, count](auto &&callback) { this->zrandmemberWithScores(std::move(callback), key, count); });
     }
 
     /**
@@ -1308,11 +1117,9 @@ public:
      * @see https://redis.io/commands/zrandmember
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     zrandmemberCount(Func &&func, const std::string &key, long long count) {
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "ZRANDMEMBER", key, count);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZRANDMEMBER", key, count);
     }
 
     /**
@@ -1320,67 +1127,51 @@ public:
      * @see https://redis.io/commands/zrandmember
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>,
-                     Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zrandmemberWithScores(Func &&func, const std::string &key, long long count) {
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZRANDMEMBER", key, count, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZRANDMEMBER", key, count, "WITHSCORES");
     }
 
     /**
      * @brief Store a range of members from a sorted set into another key.
      * @see https://redis.io/commands/zrangestore
      */
-    auto zrangestore(const std::string &dst, const std::string &src,
-                    const std::string &min, const std::string &max,
-                    const std::vector<std::string> &options = {}) {
+    auto
+    zrangestore(const std::string &dst, const std::string &src, const std::string &min, const std::string &max,
+                const std::vector<std::string> &options = {}) {
         return derived().template make_coro_command<long long>(
-            [this, dst, src, min, max, options](auto&& callback) {
-                this->zrangestore(std::move(callback), dst, src, min, max, options);
-            }
-        );
+            [this, dst, src, min, max, options](auto &&callback) { this->zrangestore(std::move(callback), dst, src, min, max, options); });
     }
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    zrangestore(Func &&func, const std::string &dst, const std::string &src,
-                const std::string &min, const std::string &max,
+    zrangestore(Func &&func, const std::string &dst, const std::string &src, const std::string &min, const std::string &max,
                 const std::vector<std::string> &options = {}) {
         std::vector<std::string> args = {dst, src, min, max};
         args.insert(args.end(), options.begin(), options.end());
-        return derived().template command<long long>(
-            std::forward<Func>(func), "ZRANGESTORE", args);
+        return derived().template command<long long>(std::forward<Func>(func), "ZRANGESTORE", args);
     }
 
     /**
      * @brief Blocking variant of ZMPOP.
      * @see https://redis.io/commands/bzmpop
      */
-    auto bzmpop(const std::vector<std::string> &keys, long long timeout,
-                const std::string &min_or_max, long long count = 1) {
-        return derived().template make_coro_command<
-            std::optional<std::pair<std::string, std::vector<score_member>>>>(
-            [this, keys, timeout, min_or_max, count](auto&& callback) {
-                this->bzmpop(std::move(callback), keys, timeout, min_or_max, count);
-            }
-        );
+    auto
+    bzmpop(const std::vector<std::string> &keys, long long timeout, const std::string &min_or_max, long long count = 1) {
+        return derived().template make_coro_command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
+            [this, keys, timeout, min_or_max, count](auto &&callback) { this->bzmpop(std::move(callback), keys, timeout, min_or_max, count); });
     }
     template <typename Func>
-    std::enable_if_t<
-        std::is_invocable_v<Func,
-                           Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>,
-        Derived &>
-    bzmpop(Func &&func, const std::vector<std::string> &keys, long long timeout,
-           const std::string &min_or_max, long long count = 1) {
-        if (keys.empty()) return derived();
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
+    bzmpop(Func &&func, const std::vector<std::string> &keys, long long timeout, const std::string &min_or_max, long long count = 1) {
+        if (keys.empty())
+            return derived();
         std::vector<std::string> opt;
         if (count > 1) {
             opt.push_back("COUNT");
             opt.push_back(std::to_string(count));
         }
-        return derived()
-            .template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
-                std::forward<Func>(func), "BZMPOP", timeout, keys.size(), keys,
-                min_or_max, opt);
+        return derived().template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
+            std::forward<Func>(func), "BZMPOP", timeout, keys.size(), keys, min_or_max, opt);
     }
 };
 

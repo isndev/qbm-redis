@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,8 +51,8 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_MULTI_EXEC) {
         EXPECT_TRUE(redis.is_in_multi());
 
         // Add commands to the transaction (using callback version inside transaction)
-        (void)co_await redis.set(key1, "value1");
-        (void)co_await redis.set(key2, "value2");
+        (void) co_await redis.set(key1, "value1");
+        (void) co_await redis.set(key2, "value2");
 
         // Execute the transaction
         auto exec_reply = co_await redis.exec<std::string>();
@@ -92,7 +92,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_DISCARD) {
         EXPECT_TRUE(redis.is_in_multi());
 
         // Add a command to the transaction
-        (void)co_await redis.set(key, "value");
+        (void) co_await redis.set(key, "value");
 
         // Discard the transaction
         auto discard_reply = co_await redis.discard();
@@ -135,8 +135,8 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_UNWATCH) {
         // Start a transaction
         auto multi_reply = co_await redis.multi();
         EXPECT_TRUE(multi_reply.ok());
-        
-        (void)co_await redis.set(key, "new_value");
+
+        (void) co_await redis.set(key, "new_value");
 
         // Execute the transaction - should fail because key was modified
         // Redis returns nil when EXEC is aborted due to WATCH → ok() == false
@@ -168,8 +168,8 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
         std::string key2 = protocol_key("coro_watch2");
 
         // Set initial values
-        (void)co_await redis.set(key1, "initial1");
-        (void)co_await redis.set(key2, "initial2");
+        (void) co_await redis.set(key1, "initial1");
+        (void) co_await redis.set(key2, "initial2");
 
         // Watch both keys
         auto watch_reply = co_await redis.watch({key1, key2});
@@ -184,9 +184,9 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_MULTIPLE) {
         // Start a transaction
         auto multi_reply = co_await redis.multi();
         EXPECT_TRUE(multi_reply.ok());
-        
-        (void)co_await redis.set(key1, "new_value1");
-        (void)co_await redis.set(key2, "new_value2");
+
+        (void) co_await redis.set(key1, "new_value1");
+        (void) co_await redis.set(key2, "new_value2");
 
         // Execute the transaction - should fail because key was modified
         // Redis returns nil when EXEC is aborted due to WATCH → ok() == false
@@ -218,8 +218,8 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_SUCCESS) {
         std::string key2 = protocol_key("coro_watch_success2");
 
         // Set initial values
-        (void)co_await redis.set(key1, "initial1");
-        (void)co_await redis.set(key2, "initial2");
+        (void) co_await redis.set(key1, "initial1");
+        (void) co_await redis.set(key2, "initial2");
 
         // Watch both keys
         auto watch_reply = co_await redis.watch({key1, key2});
@@ -228,9 +228,9 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_WATCH_SUCCESS) {
         // Start a transaction (no modifications from other clients)
         auto multi_reply = co_await redis.multi();
         EXPECT_TRUE(multi_reply.ok());
-        
-        (void)co_await redis.set(key1, "updated1");
-        (void)co_await redis.set(key2, "updated2");
+
+        (void) co_await redis.set(key1, "updated1");
+        (void) co_await redis.set(key2, "updated2");
 
         // Execute the transaction - should succeed
         auto exec_reply = co_await redis.exec<std::string>();
@@ -298,7 +298,7 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_UNWATCH_THEN_EXEC
         std::string key = protocol_key("coro_unwatch_exec");
 
         // Set initial value
-        (void)co_await redis.set(key, "initial");
+        (void) co_await redis.set(key, "initial");
 
         // Watch the key
         auto watch_reply = co_await redis.watch(key);
@@ -317,8 +317,8 @@ TEST_P(TransactionProtocolModesTest, CORO_TRANSACTION_COMMANDS_UNWATCH_THEN_EXEC
         // Start a transaction
         auto multi_reply = co_await redis.multi();
         EXPECT_TRUE(multi_reply.ok());
-        
-        (void)co_await redis.set(key, "new_value");
+
+        (void) co_await redis.set(key, "new_value");
 
         // Execute the transaction - should succeed because we unwatched
         auto exec_reply = co_await redis.exec<std::string>();
@@ -343,15 +343,15 @@ TEST_P(TransactionProtocolModesTest, MULTI_EXEC) {
     bool done = false;
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
-        auto k = protocol_key("tx");
+        auto k       = protocol_key("tx");
         auto multi_r = co_await redis.multi();
         EXPECT_TRUE(multi_r.ok()) << multi_r.error();
-        (void)co_await redis.set(k, "x");
-        (void)co_await redis.set(std::string(k) + ":2", "y");
+        (void) co_await redis.set(k, "x");
+        (void) co_await redis.set(std::string(k) + ":2", "y");
         auto exec_r = co_await redis.exec<std::string>();
         EXPECT_TRUE(exec_r.ok()) << exec_r.error();
         if (exec_r.ok()) {
-            const auto& results = exec_r.result();
+            const auto &results = exec_r.result();
             EXPECT_EQ(results.size(), 2u);
             EXPECT_EQ(results[0], "OK");
             EXPECT_EQ(results[1], "OK");

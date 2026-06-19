@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -96,7 +96,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_HSET_HGET) {
         EXPECT_EQ(len_after_del.result(), 1);
 
         // Cleanup
-        (void)co_await redis.del(key);
+        (void) co_await redis.del(key);
         completed = true;
     };
 
@@ -139,7 +139,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_HMSET_HMGET) {
         EXPECT_EQ(all_values_reply.result()["field3"], "value3");
 
         // Cleanup
-        (void)co_await redis.del(key);
+        (void) co_await redis.del(key);
         completed = true;
     };
 
@@ -192,7 +192,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_INCR) {
         EXPECT_EQ(*float_reply.result(), "9.5");
 
         // Cleanup
-        (void)co_await redis.del(key);
+        (void) co_await redis.del(key);
         completed = true;
     };
 
@@ -228,7 +228,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_HSETNX) {
         EXPECT_EQ(*hget2_reply.result(), "value1"); // Value should not change
 
         // Cleanup
-        (void)co_await redis.del(key);
+        (void) co_await redis.del(key);
         completed = true;
     };
 
@@ -246,7 +246,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_KEYS_VALUES) {
         std::string key = protocol_key("keys-values");
 
         // Setup hash
-        (void)co_await redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3");
+        (void) co_await redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3");
 
         // HKEYS test
         auto keys_reply = co_await redis.hkeys(key);
@@ -265,7 +265,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_KEYS_VALUES) {
         EXPECT_TRUE(std::find(values_reply.result().begin(), values_reply.result().end(), "value3") != values_reply.result().end());
 
         // Cleanup
-        (void)co_await redis.del(key);
+        (void) co_await redis.del(key);
         completed = true;
     };
 
@@ -283,8 +283,8 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_STRLEN) {
         std::string key = protocol_key("strlen");
 
         // Setup hash
-        (void)co_await redis.hset(key, "field1", "hello");
-        (void)co_await redis.hset(key, "field2", "world!");
+        (void) co_await redis.hset(key, "field1", "hello");
+        (void) co_await redis.hset(key, "field2", "world!");
 
         // HSTRLEN test
         auto len1_reply = co_await redis.hstrlen(key, "field1");
@@ -300,7 +300,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_STRLEN) {
         EXPECT_EQ(len3_reply.result(), 0);
 
         // Cleanup
-        (void)co_await redis.del(key);
+        (void) co_await redis.del(key);
         completed = true;
     };
 
@@ -318,7 +318,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_SCAN) {
         std::string key = protocol_key("scan");
 
         // Setup hash with multiple fields
-        (void)co_await redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3");
+        (void) co_await redis.hmset(key, "field1", "value1", "field2", "value2", "field3", "value3");
 
         // HSCAN test
         auto scan_reply = co_await redis.hscan(key, 0, "*", 10);
@@ -326,7 +326,7 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_SCAN) {
         EXPECT_EQ(scan_reply.result().items.size(), 3);
 
         // Cleanup
-        (void)co_await redis.del(key);
+        (void) co_await redis.del(key);
         completed = true;
     };
 
@@ -344,9 +344,9 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_SEQUENCE) {
         std::string key = protocol_key("sequence");
 
         // Set multiple fields
-        (void)co_await redis.hset(key, "name", "John");
-        (void)co_await redis.hset(key, "age", "30");
-        (void)co_await redis.hset(key, "city", "NYC");
+        (void) co_await redis.hset(key, "name", "John");
+        (void) co_await redis.hset(key, "age", "30");
+        (void) co_await redis.hset(key, "city", "NYC");
 
         // Verify with HGETALL
         auto all_reply = co_await redis.hgetall(key);
@@ -356,21 +356,21 @@ TEST_P(HashProtocolModesTest, CORO_HASH_COMMANDS_SEQUENCE) {
         EXPECT_EQ(all_reply.result()["city"], "NYC");
 
         // Update age
-        (void)co_await redis.hincrby(key, "age", 1);
+        (void) co_await redis.hincrby(key, "age", 1);
 
         auto age_reply = co_await redis.hget(key, "age");
         EXPECT_TRUE(age_reply.ok());
         EXPECT_EQ(*age_reply.result(), "31");
 
         // Delete a field
-        (void)co_await redis.hdel(key, "city");
+        (void) co_await redis.hdel(key, "city");
 
         auto len_reply = co_await redis.hlen(key);
         EXPECT_TRUE(len_reply.ok());
         EXPECT_EQ(len_reply.result(), 2);
 
         // Cleanup
-        (void)co_await redis.del(key);
+        (void) co_await redis.del(key);
         completed = true;
     };
 
@@ -385,13 +385,15 @@ TEST_P(HashProtocolModesTest, HSET_HGET) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("hash");
-        (void)co_await redis.hset(k, "field", "value");
+        (void) co_await redis.hset(k, "field", "value");
         auto r = co_await redis.hget(k, "field");
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok() && r.result()) EXPECT_EQ(*r.result(), "value");
+        if (r.ok() && r.result())
+            EXPECT_EQ(*r.result(), "value");
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(HashProtocolModesTest, HGETALL_MAP) {
@@ -399,19 +401,20 @@ TEST_P(HashProtocolModesTest, HGETALL_MAP) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("hgetall");
-        (void)co_await redis.hset(k, "a", "1");
-        (void)co_await redis.hset(k, "b", "2");
+        (void) co_await redis.hset(k, "a", "1");
+        (void) co_await redis.hset(k, "b", "2");
         auto r = co_await redis.hgetall(k);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok()) {
-            const auto& m = r.result();
+            const auto &m = r.result();
             EXPECT_EQ(m.size(), 2u);
             EXPECT_EQ(m.at("a"), "1");
             EXPECT_EQ(m.at("b"), "2");
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(HashProtocolModesTest, HMGET_HEXISTS) {
@@ -419,12 +422,12 @@ TEST_P(HashProtocolModesTest, HMGET_HEXISTS) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("hmget");
-        (void)co_await redis.hset(k, "f1", "v1");
-        (void)co_await redis.hset(k, "f2", "v2");
+        (void) co_await redis.hset(k, "f1", "v1");
+        (void) co_await redis.hset(k, "f2", "v2");
         auto hmget_r = co_await redis.hmget(k, "f1", "f2", "f3");
         EXPECT_TRUE(hmget_r.ok()) << hmget_r.error();
         if (hmget_r.ok()) {
-            const auto& v = hmget_r.result();
+            const auto &v = hmget_r.result();
             EXPECT_EQ(v.size(), 3u);
             EXPECT_TRUE(v[0].has_value() && *v[0] == "v1");
             EXPECT_TRUE(v[1].has_value() && *v[1] == "v2");
@@ -432,10 +435,12 @@ TEST_P(HashProtocolModesTest, HMGET_HEXISTS) {
         }
         auto hexists_r = co_await redis.hexists(k, "f1");
         EXPECT_TRUE(hexists_r.ok()) << hexists_r.error();
-        if (hexists_r.ok()) EXPECT_TRUE(hexists_r.result());
+        if (hexists_r.ok())
+            EXPECT_TRUE(hexists_r.result());
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(HashProtocolModesTest, HINCRBY_INTEGER) {
@@ -443,13 +448,15 @@ TEST_P(HashProtocolModesTest, HINCRBY_INTEGER) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("hincrby");
-        (void)co_await redis.hset(k, "n", "5");
+        (void) co_await redis.hset(k, "n", "5");
         auto r = co_await redis.hincrby(k, "n", 3);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), 8);
+        if (r.ok())
+            EXPECT_EQ(r.result(), 8);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(HashProtocolModesTest, HDEL_INTEGER) {
@@ -457,14 +464,16 @@ TEST_P(HashProtocolModesTest, HDEL_INTEGER) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("hdel");
-        (void)co_await redis.hset(k, "a", "1");
-        (void)co_await redis.hset(k, "b", "2");
+        (void) co_await redis.hset(k, "a", "1");
+        (void) co_await redis.hset(k, "b", "2");
         auto r = co_await redis.hdel(k, "a");
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), 1);
+        if (r.ok())
+            EXPECT_EQ(r.result(), 1);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Main function to run the tests

@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,15 +33,16 @@ const std::string POSITIVE_INFINITY_NUMERIC = "+inf";
  */
 std::string
 double_to_redis(double v) {
-    if (std::isinf(v)) return v > 0 ? "+inf" : "-inf";
+    if (std::isinf(v))
+        return v > 0 ? "+inf" : "-inf";
     char buf[64];
-    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), v,
-                                   std::chars_format::general, 17);
-    if (ec == std::errc{}) return std::string(buf, ptr - buf);
-    return "0";  // unreachable in practice
+    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), v, std::chars_format::general, 17);
+    if (ec == std::errc{})
+        return std::string(buf, ptr - buf);
+    return "0"; // unreachable in practice
 }
-const std::string NEGATIVE_INFINITY_STRING  = "-";
-const std::string POSITIVE_INFINITY_STRING  = "+";
+const std::string NEGATIVE_INFINITY_STRING = "-";
+const std::string POSITIVE_INFINITY_STRING = "+";
 
 /**
  * @brief Creates an unbounded representation of a value
@@ -205,8 +206,7 @@ UnboundedInterval<std::string>::upper() const {
  * @param max Maximum value of the interval
  * @param type Type of bounds (open, closed, etc.)
  */
-BoundedInterval<std::string>::BoundedInterval(const std::string &min,
-                                              const std::string &max, BoundType type) {
+BoundedInterval<std::string>::BoundedInterval(const std::string &min, const std::string &max, BoundType type) {
     switch (type) {
         case BoundType::CLOSED:
             _min = bound(min);
@@ -239,8 +239,7 @@ BoundedInterval<std::string>::BoundedInterval(const std::string &min,
  * @param min Minimum value of the interval
  * @param type Type of bounds (open or right-open)
  */
-LeftBoundedInterval<std::string>::LeftBoundedInterval(const std::string &min,
-                                                      BoundType          type) {
+LeftBoundedInterval<std::string>::LeftBoundedInterval(const std::string &min, BoundType type) {
     switch (type) {
         case BoundType::OPEN:
             _min = unbound(min);
@@ -270,8 +269,7 @@ LeftBoundedInterval<std::string>::upper() const {
  * @param max Maximum value of the interval
  * @param type Type of bounds (open or left-open)
  */
-RightBoundedInterval<std::string>::RightBoundedInterval(const std::string &max,
-                                                        BoundType          type) {
+RightBoundedInterval<std::string>::RightBoundedInterval(const std::string &max, BoundType type) {
     switch (type) {
         case BoundType::OPEN:
             _max = unbound(max);
@@ -316,10 +314,14 @@ namespace qb::redis {
 std::string
 to_string(BitOp op) {
     switch (op) {
-        case BitOp::AND: return "AND";
-        case BitOp::OR:  return "OR";
-        case BitOp::XOR: return "XOR";
-        case BitOp::NOT: return "NOT";
+        case BitOp::AND:
+            return "AND";
+        case BitOp::OR:
+            return "OR";
+        case BitOp::XOR:
+            return "XOR";
+        case BitOp::NOT:
+            return "NOT";
     }
     return {};
 }
@@ -327,18 +329,24 @@ to_string(BitOp op) {
 std::string
 to_string(UpdateType op) {
     switch (op) {
-        case UpdateType::EXIST:     return "XX";
-        case UpdateType::NOT_EXIST: return "NX";
-        default:                    return {};
+        case UpdateType::EXIST:
+            return "XX";
+        case UpdateType::NOT_EXIST:
+            return "NX";
+        default:
+            return {};
     }
 }
 
 std::string
 to_string(Aggregation op) {
     switch (op) {
-        case Aggregation::SUM: return "SUM";
-        case Aggregation::MIN: return "MIN";
-        case Aggregation::MAX: return "MAX";
+        case Aggregation::SUM:
+            return "SUM";
+        case Aggregation::MIN:
+            return "MIN";
+        case Aggregation::MAX:
+            return "MAX";
     }
     return {};
 }
@@ -346,10 +354,14 @@ to_string(Aggregation op) {
 std::string
 to_string(GeoUnit op) {
     switch (op) {
-        case GeoUnit::M:  return "m";
-        case GeoUnit::KM: return "km";
-        case GeoUnit::MI: return "mi";
-        case GeoUnit::FT: return "ft";
+        case GeoUnit::M:
+            return "m";
+        case GeoUnit::KM:
+            return "km";
+        case GeoUnit::MI:
+            return "mi";
+        case GeoUnit::FT:
+            return "ft";
     }
     return {};
 }
@@ -357,8 +369,10 @@ to_string(GeoUnit op) {
 std::string
 to_string(InsertPosition pos) {
     switch (pos) {
-        case InsertPosition::BEFORE: return "BEFORE";
-        case InsertPosition::AFTER:  return "AFTER";
+        case InsertPosition::BEFORE:
+            return "BEFORE";
+        case InsertPosition::AFTER:
+            return "AFTER";
     }
     return {};
 }
@@ -366,8 +380,10 @@ to_string(InsertPosition pos) {
 std::string
 to_string(ListPosition pos) {
     switch (pos) {
-        case ListPosition::LEFT:  return "LEFT";
-        case ListPosition::RIGHT: return "RIGHT";
+        case ListPosition::LEFT:
+            return "LEFT";
+        case ListPosition::RIGHT:
+            return "RIGHT";
     }
     return {};
 }

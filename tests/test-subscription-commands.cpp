@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,15 +36,15 @@ using namespace std::chrono;
 
 class SubscriptionProtocolModesTest : public ProtocolModesTestBase {
 protected:
-    qb::redis::tcp::client       publisher{REDIS_URI_PROTOCOL};
-    qb::redis::tcp::cb_consumer  consumer{REDIS_URI_PROTOCOL, [](auto&&) {}};
-    qb::redis::tcp::co_consumer  co_consumer{REDIS_URI_PROTOCOL};
+    qb::redis::tcp::client      publisher{REDIS_URI_PROTOCOL};
+    qb::redis::tcp::cb_consumer consumer{REDIS_URI_PROTOCOL, [](auto &&) {}};
+    qb::redis::tcp::co_consumer co_consumer{REDIS_URI_PROTOCOL};
 
-    void SetUp() override {
+    void
+    SetUp() override {
         ProtocolModesTestBase::SetUp();
-        if (!qb::io::async::run_sync(publisher.connect()) ||
-            !qb::io::async::run_sync(consumer.connect()) ||
-            !qb::io::async::run_sync(co_consumer.connect())) {
+        if (!qb::io::async::run_sync(publisher.connect()) || !qb::io::async::run_sync(consumer.connect())
+            || !qb::io::async::run_sync(co_consumer.connect())) {
             throw std::runtime_error("Unable to connect publisher/consumer");
         }
     }
@@ -59,17 +59,17 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_CHANNEL) {
     std::vector<std::string> messages;
     std::mutex               mutex;
 
-    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
-        std::lock_guard<std::mutex> lock(mutex);
-        messages.push_back(std::string(msg.payload));
-        ++message_count;
-    }};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto &&msg) {
+                                                     std::lock_guard<std::mutex> lock(mutex);
+                                                     messages.push_back(std::string(msg.payload));
+                                                     ++message_count;
+                                                 }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
     bool completed = false;
     auto test_task = [&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
-        auto ch = protocol_key("sub");
+        auto ch    = protocol_key("sub");
         auto reply = co_await consumer_with_cb.subscribe(ch);
         EXPECT_TRUE(reply.ok());
         EXPECT_TRUE(reply.result().channel.has_value());
@@ -77,10 +77,11 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_CHANNEL) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
-    auto ch = protocol_key("sub");
+    completed       = false;
+    auto ch         = protocol_key("sub");
     auto test_task2 = [&]() -> qb::io::async::task<void> {
         auto reply = co_await publisher.publish(ch, TEST_MESSAGE);
         EXPECT_TRUE(reply.ok());
@@ -88,15 +89,17 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_CHANNEL) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task2());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed      = false;
     auto wait_task = [&]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(wait_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     EXPECT_EQ(message_count, 1);
     if (message_count > 0) {
@@ -104,14 +107,15 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_CHANNEL) {
         EXPECT_EQ(messages[0], TEST_MESSAGE);
     }
 
-    completed = false;
+    completed       = false;
     auto test_task3 = [&]() -> qb::io::async::task<void> {
         auto reply = co_await consumer_with_cb.unsubscribe(ch);
         EXPECT_TRUE(reply.ok());
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task3());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // A throwing pub/sub message callback must be CONTAINED in the MESSAGE/PMESSAGE
@@ -122,38 +126,40 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_CHANNEL) {
 // interleaving the harness cannot deterministically force; the fix is the same
 // containment the other three handler-dispatch paths already use.)
 TEST_P(SubscriptionProtocolModesTest, ThrowingMessageCallbackDoesNotBreakConsumer) {
-    qb::redis::tcp::cb_consumer thrower{REDIS_URI_PROTOCOL,
-                                        [](auto &&) { throw std::runtime_error("boom in message cb"); }};
+    qb::redis::tcp::cb_consumer thrower{REDIS_URI_PROTOCOL, [](auto &&) { throw std::runtime_error("boom in message cb"); }};
     ASSERT_TRUE(qb::io::async::run_sync(thrower.connect()));
 
-    auto ch = protocol_key("throwsub");
+    auto ch   = protocol_key("throwsub");
     bool done = false;
-    auto sub = [&]() -> qb::io::async::task<void> {
+    auto sub  = [&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(thrower, done);
         EXPECT_TRUE((co_await thrower.subscribe(ch)).ok());
         done = true;
     };
     qb::io::async::coro_scheduler().spawn(sub());
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    done = false;
+    done     = false;
     auto pub = [&]() -> qb::io::async::task<void> {
         EXPECT_TRUE((co_await publisher.publish(ch, TEST_MESSAGE)).ok());
         co_await qb::io::async::sleep(std::chrono::milliseconds(100)); // let the cb fire (and throw)
         done = true;
     };
     qb::io::async::coro_scheduler().spawn(pub());
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     // The consumer must still be healthy: a follow-up command resolves correctly.
-    done = false;
+    done          = false;
     bool unsub_ok = false;
-    auto fin = [&]() -> qb::io::async::task<void> {
+    auto fin      = [&]() -> qb::io::async::task<void> {
         unsub_ok = (co_await thrower.unsubscribe(ch)).ok();
-        done = true;
+        done     = true;
     };
     qb::io::async::coro_scheduler().spawn(fin());
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
     EXPECT_TRUE(unsub_ok);
 }
 
@@ -161,8 +167,8 @@ TEST_P(SubscriptionProtocolModesTest, ThrowingMessageCallbackDoesNotBreakConsume
 
 TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_RECEIVE) {
     std::optional<std::string> received_payload;
-    bool                      done = false;
-    auto ch = protocol_key("recv");
+    bool                       done = false;
+    auto                       ch   = protocol_key("recv");
 
     auto recv_task = [this, &received_payload, &done, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(co_consumer, done);
@@ -190,7 +196,8 @@ TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_RECEIVE) {
     qb::io::async::coro_scheduler().spawn(recv_task());
     qb::io::async::coro_scheduler().spawn(pub_task());
 
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     ASSERT_TRUE(received_payload.has_value());
     EXPECT_EQ(*received_payload, TEST_MESSAGE);
@@ -203,9 +210,9 @@ TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_PSUBSCRIBE_RECEIVE) {
     std::optional<std::string> received_payload;
     std::optional<std::string> received_channel;
     std::optional<std::string> received_pattern;
-    bool                      done = false;
-    auto pat = protocol_key("tpat") + "*";
-    auto ch_for_pub = protocol_key("tpat") + "1";
+    bool                       done       = false;
+    auto                       pat        = protocol_key("tpat") + "*";
+    auto                       ch_for_pub = protocol_key("tpat") + "1";
 
     auto recv_task = [this, &received_payload, &received_channel, &received_pattern, &done, pat]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(co_consumer, done);
@@ -219,9 +226,9 @@ TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_PSUBSCRIBE_RECEIVE) {
         if (!msg.has_value()) {
             ADD_FAILURE() << "receive returned nullopt";
         } else {
-            received_payload  = std::string(msg->payload);
-            received_channel  = std::string(msg->channel);
-            received_pattern  = std::string(msg->pattern);
+            received_payload = std::string(msg->payload);
+            received_channel = std::string(msg->channel);
+            received_pattern = std::string(msg->pattern);
         }
         done = true;
     };
@@ -235,7 +242,8 @@ TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_PSUBSCRIBE_RECEIVE) {
     qb::io::async::coro_scheduler().spawn(recv_task());
     qb::io::async::coro_scheduler().spawn(pub_task());
 
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     ASSERT_TRUE(received_payload.has_value());
     EXPECT_EQ(*received_payload, TEST_MESSAGE);
@@ -251,7 +259,7 @@ TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_PSUBSCRIBE_RECEIVE) {
 TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_RECEIVE_MULTIPLE_MESSAGES) {
     std::vector<std::string> received;
     bool                     done = false;
-    auto ch = protocol_key("recv");
+    auto                     ch   = protocol_key("recv");
 
     auto recv_task = [this, &received, &done, ch]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(co_consumer, done);
@@ -263,7 +271,8 @@ TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_RECEIVE_MULTIPLE_MESSAGES) {
         }
         for (int i = 0; i < 3; ++i) {
             auto msg = co_await co_consumer.receive();
-            if (!msg.has_value()) break;
+            if (!msg.has_value())
+                break;
             received.push_back(std::string(msg->payload));
         }
         done = true;
@@ -281,7 +290,8 @@ TEST_P(SubscriptionProtocolModesTest, CORO_CONSUMER_RECEIVE_MULTIPLE_MESSAGES) {
     qb::io::async::coro_scheduler().spawn(recv_task());
     qb::io::async::coro_scheduler().spawn(pub_task());
 
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     ASSERT_EQ(received.size(), 3u);
     EXPECT_EQ(received[0], "msg0");
@@ -316,14 +326,14 @@ TEST_P(SubscriptionProtocolModesTest, DISABLED_CORO_CONSUMER_RECEIVE_NULLOPT_ON_
 
 TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_PATTERN) {
     std::atomic<size_t> message_count{0};
-    auto pat = protocol_key("tpat") + "*";
-    auto ch1 = protocol_key("tpat") + "1";
-    auto ch2 = protocol_key("tpat") + "2";
+    auto                pat = protocol_key("tpat") + "*";
+    auto                ch1 = protocol_key("tpat") + "1";
+    auto                ch2 = protocol_key("tpat") + "2";
 
-    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
-        ++message_count;
-        EXPECT_EQ(msg.payload, TEST_MESSAGE);
-    }};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto &&msg) {
+                                                     ++message_count;
+                                                     EXPECT_EQ(msg.payload, TEST_MESSAGE);
+                                                 }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
     bool completed = false;
@@ -336,9 +346,10 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_PATTERN) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed       = false;
     auto test_task2 = [this, &completed, ch1, ch2]() -> qb::io::async::task<void> {
         auto reply1 = co_await publisher.publish(ch1, TEST_MESSAGE);
         EXPECT_TRUE(reply1.ok());
@@ -349,26 +360,29 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_PATTERN) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task2());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed      = false;
     auto wait_task = [&]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(wait_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     EXPECT_EQ(message_count, 2);
 
-    completed = false;
+    completed       = false;
     auto test_task3 = [&]() -> qb::io::async::task<void> {
         auto reply = co_await consumer_with_cb.punsubscribe(pat);
         EXPECT_TRUE(reply.ok());
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task3());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // =============== MULTI-CHANNEL SUBSCRIPTION TESTS ===============
@@ -378,20 +392,20 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MULTI_CHANNEL) {
     std::vector<std::string> received_channels;
     std::mutex               mutex;
 
-    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&& msg) {
-        std::lock_guard<std::mutex> lock(mutex);
-        received_channels.push_back(std::string(msg.channel));
-        ++message_count;
-    }};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto &&msg) {
+                                                     std::lock_guard<std::mutex> lock(mutex);
+                                                     received_channels.push_back(std::string(msg.channel));
+                                                     ++message_count;
+                                                 }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
-    auto ch_a = protocol_key("mca");
-    auto ch_b = protocol_key("mcb");
-    auto ch_c = protocol_key("mcc");
+    auto                     ch_a     = protocol_key("mca");
+    auto                     ch_b     = protocol_key("mcb");
+    auto                     ch_c     = protocol_key("mcc");
     std::vector<std::string> channels = {ch_a, ch_b, ch_c};
 
     bool completed = false;
-    auto sub_task = [&]() -> qb::io::async::task<void> {
+    auto sub_task  = [&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
         auto reply = co_await consumer_with_cb.subscribe(channels);
         EXPECT_TRUE(reply.ok());
@@ -399,27 +413,30 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MULTI_CHANNEL) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(sub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed     = false;
     auto pub_task = [this, &completed, channels]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(30));
-        for (const auto& ch : channels) {
+        for (const auto &ch : channels) {
             auto r = co_await publisher.publish(ch, "msg_" + ch);
             EXPECT_TRUE(r.ok());
         }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(pub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed      = false;
     auto wait_task = [&]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(wait_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     EXPECT_EQ(message_count, 3u);
     std::sort(received_channels.begin(), received_channels.end());
@@ -427,20 +444,21 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MULTI_CHANNEL) {
     std::sort(expected.begin(), expected.end());
     EXPECT_EQ(received_channels, expected);
 
-    completed = false;
+    completed       = false;
     auto unsub_task = [&]() -> qb::io::async::task<void> {
         auto reply = co_await consumer_with_cb.unsubscribe(channels);
         EXPECT_TRUE(reply.ok());
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(unsub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(SubscriptionProtocolModesTest, CORO_UNSUBSCRIBE_ALL_CHANNELS) {
     bool completed = false;
-    auto ch1 = protocol_key("ch1");
-    auto ch2 = protocol_key("ch2");
+    auto ch1       = protocol_key("ch1");
+    auto ch2       = protocol_key("ch2");
 
     auto sub_task = [this, &completed, ch1, ch2]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer, completed);
@@ -450,16 +468,18 @@ TEST_P(SubscriptionProtocolModesTest, CORO_UNSUBSCRIBE_ALL_CHANNELS) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(sub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed           = false;
     auto unsub_all_task = [this, &completed]() -> qb::io::async::task<void> {
         auto r = co_await consumer.unsubscribe("");
         EXPECT_TRUE(r.ok());
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(unsub_all_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Pipelined multi-channel subscribe: the N confirmations of one command must
@@ -467,7 +487,7 @@ TEST_P(SubscriptionProtocolModesTest, CORO_UNSUBSCRIBE_ALL_CHANNELS) {
 // are issued back-to-back WITHOUT draining the loop in between; each handler
 // must resolve exactly once, on its own command's final confirmation.
 TEST_P(SubscriptionProtocolModesTest, PIPELINED_MULTI_CHANNEL_NO_DESYNC) {
-    qb::redis::tcp::cb_consumer c{REDIS_URI_PROTOCOL, [](auto&&) {}};
+    qb::redis::tcp::cb_consumer c{REDIS_URI_PROTOCOL, [](auto &&) {}};
     ASSERT_TRUE(qb::io::async::run_sync(c.connect()));
 
     int         n1 = 0, n2 = 0;
@@ -481,32 +501,35 @@ TEST_P(SubscriptionProtocolModesTest, PIPELINED_MULTI_CHANNEL_NO_DESYNC) {
     auto d  = protocol_key("pdd");
 
     bool completed = false;
-    auto task = [&]() -> qb::io::async::task<void> {
+    auto task      = [&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(c, completed);
         c.subscribe(
-            [&](auto&& r) {
+            [&](auto &&r) {
                 ++n1;
                 ok1 = r.ok();
                 if (r.ok()) {
                     num1 = r.result().num;
-                    if (r.result().channel) ch1_last = *r.result().channel;
+                    if (r.result().channel)
+                        ch1_last = *r.result().channel;
                 }
             },
             std::vector<std::string>{a, b, cc});
         c.subscribe(
-            [&](auto&& r) {
+            [&](auto &&r) {
                 ++n2;
                 ok2 = r.ok();
                 if (r.ok()) {
                     num2 = r.result().num;
-                    if (r.result().channel) ch2_last = *r.result().channel;
+                    if (r.result().channel)
+                        ch2_last = *r.result().channel;
                 }
             },
             std::vector<std::string>{d});
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     c.await(); // drain all 4 confirmations
     EXPECT_EQ(c.pending_reply_count(), 0u);
@@ -525,7 +548,7 @@ TEST_P(SubscriptionProtocolModesTest, PIPELINED_MULTI_CHANNEL_NO_DESYNC) {
 // expect exactly the predicted number of confirmations (3 here), so it resolves
 // on the final "num == 0" frame rather than on a stray subscribe confirmation.
 TEST_P(SubscriptionProtocolModesTest, PIPELINED_SUBSCRIBE_THEN_UNSUBSCRIBE_ALL) {
-    qb::redis::tcp::cb_consumer c{REDIS_URI_PROTOCOL, [](auto&&) {}};
+    qb::redis::tcp::cb_consumer c{REDIS_URI_PROTOCOL, [](auto &&) {}};
     ASSERT_TRUE(qb::io::async::run_sync(c.connect()));
 
     int       n_sub = 0, n_unsub = 0;
@@ -537,21 +560,27 @@ TEST_P(SubscriptionProtocolModesTest, PIPELINED_SUBSCRIBE_THEN_UNSUBSCRIBE_ALL) 
     auto cc = protocol_key("puc");
 
     bool completed = false;
-    auto task = [&]() -> qb::io::async::task<void> {
+    auto task      = [&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(c, completed);
-        c.subscribe([&](auto&& r) { ++n_sub; ok_sub = r.ok(); },
-                    std::vector<std::string>{a, b, cc});
+        c.subscribe(
+            [&](auto &&r) {
+                ++n_sub;
+                ok_sub = r.ok();
+            },
+            std::vector<std::string>{a, b, cc});
         c.unsubscribe(
-            [&](auto&& r) {
+            [&](auto &&r) {
                 ++n_unsub;
                 ok_unsub = r.ok();
-                if (r.ok()) num_unsub = r.result().num;
+                if (r.ok())
+                    num_unsub = r.result().num;
             },
             std::string{""}); // unsubscribe from all channels
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     c.await();
     EXPECT_EQ(c.pending_reply_count(), 0u);
@@ -568,17 +597,17 @@ TEST_P(SubscriptionProtocolModesTest, PIPELINED_SUBSCRIBE_THEN_UNSUBSCRIBE_ALL) 
 TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MULTI_PATTERN) {
     std::atomic<size_t> message_count{0};
 
-    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto&&) { ++message_count; }};
+    qb::redis::tcp::cb_consumer consumer_with_cb{REDIS_URI_PROTOCOL, [&](auto &&) { ++message_count; }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer_with_cb.connect()));
 
-    auto pat_a = protocol_key("mpa") + "*";
-    auto pat_b = protocol_key("mpb") + "*";
-    auto ch_a = protocol_key("mpa") + "1";
-    auto ch_b = protocol_key("mpb") + "1";
+    auto                     pat_a    = protocol_key("mpa") + "*";
+    auto                     pat_b    = protocol_key("mpb") + "*";
+    auto                     ch_a     = protocol_key("mpa") + "1";
+    auto                     ch_b     = protocol_key("mpb") + "1";
     std::vector<std::string> patterns = {pat_a, pat_b};
 
     bool completed = false;
-    auto sub_task = [&]() -> qb::io::async::task<void> {
+    auto sub_task  = [&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_with_cb, completed);
         auto reply = co_await consumer_with_cb.psubscribe(patterns);
         EXPECT_TRUE(reply.ok());
@@ -586,9 +615,10 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MULTI_PATTERN) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(sub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed     = false;
     auto pub_task = [this, &completed, ch_a, ch_b]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(30));
         auto r1 = co_await publisher.publish(ch_a, "msg");
@@ -598,32 +628,35 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MULTI_PATTERN) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(pub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed      = false;
     auto wait_task = [&]() -> qb::io::async::task<void> {
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(wait_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
     EXPECT_EQ(message_count, 2u);
 
-    completed = false;
+    completed       = false;
     auto unsub_task = [&]() -> qb::io::async::task<void> {
         auto reply = co_await consumer_with_cb.punsubscribe(patterns);
         EXPECT_TRUE(reply.ok());
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(unsub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(SubscriptionProtocolModesTest, CORO_PUNSUBSCRIBE_ALL_PATTERNS) {
     bool completed = false;
-    auto p1 = protocol_key("p1") + "*";
-    auto p2 = protocol_key("p2") + "*";
+    auto p1        = protocol_key("p1") + "*";
+    auto p2        = protocol_key("p2") + "*";
 
     auto sub_task = [this, &completed, p1, p2]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CONSUMER(consumer, completed);
@@ -633,16 +666,18 @@ TEST_P(SubscriptionProtocolModesTest, CORO_PUNSUBSCRIBE_ALL_PATTERNS) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(sub_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed            = false;
     auto punsub_all_task = [this, &completed]() -> qb::io::async::task<void> {
         auto r = co_await consumer.punsubscribe("");
         EXPECT_TRUE(r.ok());
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(punsub_all_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // =============== SUBSCRIPTION MANAGEMENT TESTS ===============
@@ -661,9 +696,10 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MANAGEMENT) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed       = false;
     auto test_task2 = [this, &completed, ch]() -> qb::io::async::task<void> {
         auto reply = co_await consumer.unsubscribe(ch);
         EXPECT_TRUE(reply.ok());
@@ -673,7 +709,8 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_MANAGEMENT) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task2());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(SubscriptionProtocolModesTest, CORO_PATTERN_SUBSCRIPTION_MANAGEMENT) {
@@ -690,9 +727,10 @@ TEST_P(SubscriptionProtocolModesTest, CORO_PATTERN_SUBSCRIPTION_MANAGEMENT) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed       = false;
     auto test_task2 = [this, &completed, pat]() -> qb::io::async::task<void> {
         auto reply = co_await consumer.punsubscribe(pat);
         EXPECT_TRUE(reply.ok());
@@ -702,7 +740,8 @@ TEST_P(SubscriptionProtocolModesTest, CORO_PATTERN_SUBSCRIPTION_MANAGEMENT) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task2());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // =============== EDGE CASES: EMPTY CHANNEL / PATTERN / VECTOR ===============
@@ -716,16 +755,18 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_EMPTY_CHANNEL) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 
-    completed = false;
+    completed       = false;
     auto test_task2 = [this, &completed]() -> qb::io::async::task<void> {
         auto reply = co_await consumer.psubscribe("");
         EXPECT_FALSE(reply.ok());
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task2());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_EMPTY_CHANNELS_VECTOR) {
@@ -737,7 +778,8 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_EMPTY_CHANNELS_VECTOR) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_EMPTY_PATTERNS_VECTOR) {
@@ -749,5 +791,6 @@ TEST_P(SubscriptionProtocolModesTest, CORO_SUBSCRIPTION_EMPTY_PATTERNS_VECTOR) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }

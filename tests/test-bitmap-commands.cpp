@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITCOUNT) {
         std::string key = protocol_key("coro_bitcount");
 
         // Set a string with bits
-        (void)co_await redis.set(key, std::string("\xFF\x00\xFF", 3));
+        (void) co_await redis.set(key, std::string("\xFF\x00\xFF", 3));
 
         // Count all bits
         auto reply = co_await redis.bitcount(key);
@@ -81,10 +81,7 @@ TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITFIELD) {
         std::string key = protocol_key("coro_bitfield");
 
         // Test SET and GET
-        std::vector<std::string> operations = {
-            "SET", "u4", "0", "100",
-            "GET", "u4", "0"
-        };
+        std::vector<std::string> operations = {"SET", "u4", "0", "100", "GET", "u4", "0"};
 
         auto reply = co_await redis.bitfield(key, operations);
         EXPECT_TRUE(reply.ok());
@@ -113,8 +110,8 @@ TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITOP) {
         std::string destkey = protocol_key("coro_bitop_dest");
 
         // Prepare test strings
-        (void)co_await redis.set(key1, std::string("\xFF\x00\xFF", 3));
-        (void)co_await redis.set(key2, "\x0F\xF0");
+        (void) co_await redis.set(key1, std::string("\xFF\x00\xFF", 3));
+        (void) co_await redis.set(key2, "\x0F\xF0");
 
         // Test AND
         auto reply_and = co_await redis.bitop("AND", destkey, std::vector<std::string>{key1, key2});
@@ -176,7 +173,7 @@ TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITPOS) {
         std::string key = protocol_key("coro_bitpos");
 
         // Set a string with bits
-        (void)co_await redis.set(key, std::string("\xFF\x00\xFF", 3));
+        (void) co_await redis.set(key, std::string("\xFF\x00\xFF", 3));
 
         // Find the first bit set to 1
         auto reply1 = co_await redis.bitpos(key, true);
@@ -217,7 +214,7 @@ TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITFIELD_RO) {
         std::string key = protocol_key("coro_bitfield_ro");
 
         // Set value with BITFIELD first
-        (void)co_await redis.bitfield(key, {"SET", "u8", "0", "42", "GET", "u8", "0"});
+        (void) co_await redis.bitfield(key, {"SET", "u8", "0", "42", "GET", "u8", "0"});
 
         // BITFIELD_RO: read-only GET
         auto reply = co_await redis.bitfieldRo(key, {"GET", "u8", "0"});
@@ -229,7 +226,8 @@ TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_BITFIELD_RO) {
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
-    while (!completed) qb::io::async::run(EVRUN_NOWAIT);
+    while (!completed)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test GETBIT and SETBIT with coroutines
@@ -242,15 +240,15 @@ TEST_P(BitmapProtocolModesTest, CORO_BITMAP_COMMANDS_GETBIT_SETBIT) {
         // Test SETBIT
         auto reply1 = co_await redis.setbit(key, 7, true);
         EXPECT_TRUE(reply1.ok());
-        EXPECT_EQ(reply1.result(), 0);  // Old value was 0
+        EXPECT_EQ(reply1.result(), 0); // Old value was 0
 
         auto reply2 = co_await redis.setbit(key, 7, false);
         EXPECT_TRUE(reply2.ok());
-        EXPECT_EQ(reply2.result(), 1);  // Old value was 1
+        EXPECT_EQ(reply2.result(), 1); // Old value was 1
 
         auto reply3 = co_await redis.setbit(key, 7, true);
         EXPECT_TRUE(reply3.ok());
-        EXPECT_EQ(reply3.result(), 0);  // Old value was 0
+        EXPECT_EQ(reply3.result(), 0); // Old value was 0
 
         // Test GETBIT
         auto reply4 = co_await redis.getbit(key, 0);
@@ -274,13 +272,15 @@ TEST_P(BitmapProtocolModesTest, SETBIT_GETBIT) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("bitmap");
-        (void)co_await redis.setbit(k, 7, true);
+        (void) co_await redis.setbit(k, 7, true);
         auto get_r = co_await redis.getbit(k, 7);
         EXPECT_TRUE(get_r.ok()) << get_r.error();
-        if (get_r.ok()) EXPECT_EQ(get_r.result(), 1);
+        if (get_r.ok())
+            EXPECT_EQ(get_r.result(), 1);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(BitmapProtocolModesTest, BITFIELD_INTEGER) {
@@ -290,10 +290,12 @@ TEST_P(BitmapProtocolModesTest, BITFIELD_INTEGER) {
         auto k = protocol_key("bitfield");
         auto r = co_await redis.bitfield(k, {"SET", "i32", "#0", "100"});
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_FALSE(r.result().empty());
+        if (r.ok())
+            EXPECT_FALSE(r.result().empty());
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(BitmapProtocolModesTest, BITFIELD_RO) {
@@ -301,7 +303,7 @@ TEST_P(BitmapProtocolModesTest, BITFIELD_RO) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("bitfield_ro");
-        (void)co_await redis.bitfield(k, {"SET", "u8", "0", "100"});
+        (void) co_await redis.bitfield(k, {"SET", "u8", "0", "100"});
         auto r = co_await redis.bitfieldRo(k, {"GET", "u8", "0"});
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok() && !r.result().empty() && r.result()[0]) {
@@ -309,7 +311,8 @@ TEST_P(BitmapProtocolModesTest, BITFIELD_RO) {
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(BitmapProtocolModesTest, BITCOUNT_INTEGER) {
@@ -317,15 +320,17 @@ TEST_P(BitmapProtocolModesTest, BITCOUNT_INTEGER) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("bitcount");
-        (void)co_await redis.setbit(k, 0, true);
-        (void)co_await redis.setbit(k, 1, true);
-        (void)co_await redis.setbit(k, 2, true);
+        (void) co_await redis.setbit(k, 0, true);
+        (void) co_await redis.setbit(k, 1, true);
+        (void) co_await redis.setbit(k, 2, true);
         auto r = co_await redis.bitcount(k);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), 3);
+        if (r.ok())
+            EXPECT_EQ(r.result(), 3);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test async BITCOUNT

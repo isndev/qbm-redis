@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_DECR) {
         std::string key = protocol_key("decr");
 
         // Set initial value
-        (void)co_await redis.set(key, "10");
+        (void) co_await redis.set(key, "10");
 
         // Test DECR with co_await
         auto reply1 = co_await redis.decr(key);
@@ -99,7 +99,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_DECR) {
 
         // Test with non-existent key
         std::string new_key = protocol_key("decr_new");
-        auto reply5 = co_await redis.decr(new_key);
+        auto        reply5  = co_await redis.decr(new_key);
         EXPECT_TRUE(reply5.ok());
         EXPECT_EQ(reply5.result(), -1);
 
@@ -126,7 +126,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_GET) {
         std::string value = "Hello World";
 
         // Set value
-        (void)co_await redis.set(key, value);
+        (void) co_await redis.set(key, value);
 
         // Test GET
         auto reply1 = co_await redis.get(key);
@@ -180,7 +180,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_GETSET) {
         EXPECT_FALSE(reply1.result().has_value());
 
         // Test with existing key
-        (void)co_await redis.set(key, "old_value");
+        (void) co_await redis.set(key, "old_value");
         auto reply2 = co_await redis.getset(key, "new_value");
         EXPECT_TRUE(reply2.ok());
         EXPECT_TRUE(reply2.result().has_value());
@@ -229,7 +229,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_INCR) {
 
         // Test with non-existent key
         std::string new_key = protocol_key("incr_new");
-        auto reply5 = co_await redis.incr(new_key);
+        auto        reply5  = co_await redis.incr(new_key);
         EXPECT_TRUE(reply5.ok());
         EXPECT_EQ(reply5.result(), 1);
 
@@ -255,7 +255,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_INCRBYFLOAT) {
         std::string key = protocol_key("incrbyfloat");
 
         // Set initial value
-        (void)co_await redis.set(key, "10.5");
+        (void) co_await redis.set(key, "10.5");
 
         // Test increment
         auto reply1 = co_await redis.incrbyfloat(key, 0.1);
@@ -268,7 +268,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_INCRBYFLOAT) {
 
         // Test with non-existent key
         std::string new_key = protocol_key("incrbyfloat_new");
-        auto reply3 = co_await redis.incrbyfloat(new_key, 1.5);
+        auto        reply3  = co_await redis.incrbyfloat(new_key, 1.5);
         EXPECT_TRUE(reply3.ok());
         EXPECT_DOUBLE_EQ(reply3.result(), 1.5);
 
@@ -401,8 +401,8 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_SET) {
         EXPECT_TRUE(reply2.ok());
 
         // Test SET with NX option
-        std::string key2 = protocol_key("set_nx");
-        auto reply3 = co_await redis.set(key2, "value3", UpdateType::NOT_EXIST);
+        std::string key2   = protocol_key("set_nx");
+        auto        reply3 = co_await redis.set(key2, "value3", UpdateType::NOT_EXIST);
         EXPECT_TRUE(reply3.ok());
 
         // Test SET with XX option
@@ -486,7 +486,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_SETRANGE) {
         std::string key = protocol_key("setrange");
 
         // Set initial value
-        (void)co_await redis.set(key, "Hello World");
+        (void) co_await redis.set(key, "Hello World");
 
         // Test SETRANGE
         auto reply1 = co_await redis.setrange(key, 6, "Redis");
@@ -517,7 +517,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_STRLEN) {
         std::string key = protocol_key("strlen");
 
         // Test with existing key
-        (void)co_await redis.set(key, "Hello World");
+        (void) co_await redis.set(key, "Hello World");
         auto reply1 = co_await redis.strlen(key);
         EXPECT_TRUE(reply1.ok());
         EXPECT_EQ(reply1.result(), 11);
@@ -550,7 +550,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_GETDEL) {
         EXPECT_FALSE(reply1.result().has_value());
 
         // Set and then GETDEL
-        (void)co_await redis.set(key, "to_delete");
+        (void) co_await redis.set(key, "to_delete");
         auto reply2 = co_await redis.getdel(key);
         EXPECT_TRUE(reply2.ok());
         EXPECT_TRUE(reply2.result().has_value());
@@ -577,7 +577,7 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_GETEX) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string key = protocol_key("getex");
 
-        (void)co_await redis.set(key, "value");
+        (void) co_await redis.set(key, "value");
 
         // GETEX with TTL (milliseconds integer)
         auto reply1 = co_await redis.getex(key, 5000LL);
@@ -619,8 +619,8 @@ TEST_P(StringProtocolModesTest, CORO_STRING_COMMANDS_LCS) {
         std::string key1 = protocol_key("lcs1");
         std::string key2 = protocol_key("lcs2");
 
-        (void)co_await redis.set(key1, "ohmytext");
-        (void)co_await redis.set(key2, "mynewtext");
+        (void) co_await redis.set(key1, "ohmytext");
+        (void) co_await redis.set(key2, "mynewtext");
 
         // LCS basic: longest common substring
         auto reply = co_await redis.lcs(key1, key2);
@@ -642,14 +642,16 @@ TEST_P(StringProtocolModesTest, SET_GET) {
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("set_get");
-        (void)co_await redis.set(k, "val");
+        (void) co_await redis.set(k, "val");
         auto r = co_await redis.get(k);
         EXPECT_TRUE(r.ok()) << r.error();
         EXPECT_TRUE(r.result().has_value());
-        if (r.result()) EXPECT_EQ(*r.result(), "val");
+        if (r.result())
+            EXPECT_EQ(*r.result(), "val");
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, GET_MISSING_KEY) {
@@ -661,7 +663,8 @@ TEST_P(StringProtocolModesTest, GET_MISSING_KEY) {
         EXPECT_FALSE(r.result().has_value());
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, MSET_MGET) {
@@ -670,7 +673,7 @@ TEST_P(StringProtocolModesTest, MSET_MGET) {
         PROTOCOL_ENSURE_RESP3();
         auto k1 = protocol_key("mset1");
         auto k2 = protocol_key("mset2");
-        (void)co_await redis.mset({{k1, "a"}, {k2, "b"}});
+        (void) co_await redis.mset({{k1, "a"}, {k2, "b"}});
         auto r = co_await redis.mget({k1, k2});
         EXPECT_TRUE(r.ok()) << r.error();
         auto v = r.result();
@@ -678,12 +681,15 @@ TEST_P(StringProtocolModesTest, MSET_MGET) {
         if (v.size() >= 2) {
             EXPECT_TRUE(v[0].has_value());
             EXPECT_TRUE(v[1].has_value());
-            if (v[0]) EXPECT_EQ(*v[0], "a");
-            if (v[1]) EXPECT_EQ(*v[1], "b");
+            if (v[0])
+                EXPECT_EQ(*v[0], "a");
+            if (v[1])
+                EXPECT_EQ(*v[1], "b");
         }
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, APPEND) {
@@ -691,13 +697,14 @@ TEST_P(StringProtocolModesTest, APPEND) {
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("append");
-        (void)co_await redis.append(k, "Hello");
+        (void) co_await redis.append(k, "Hello");
         auto r = co_await redis.append(k, " World");
         EXPECT_TRUE(r.ok()) << r.error();
         EXPECT_EQ(r.result(), 11);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, INCR_DECR) {
@@ -705,7 +712,7 @@ TEST_P(StringProtocolModesTest, INCR_DECR) {
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("incr_decr");
-        (void)co_await redis.set(k, "10");
+        (void) co_await redis.set(k, "10");
         auto r1 = co_await redis.incr(k);
         EXPECT_TRUE(r1.ok()) << r1.error();
         EXPECT_EQ(r1.result(), 11);
@@ -714,7 +721,8 @@ TEST_P(StringProtocolModesTest, INCR_DECR) {
         EXPECT_EQ(r2.result(), 10);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, INCRBYFLOAT_DOUBLE) {
@@ -722,13 +730,14 @@ TEST_P(StringProtocolModesTest, INCRBYFLOAT_DOUBLE) {
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("incrbyfloat");
-        (void)co_await redis.set(k, "1.5");
+        (void) co_await redis.set(k, "1.5");
         auto r = co_await redis.incrbyfloat(k, 0.5);
         EXPECT_TRUE(r.ok()) << r.error();
         EXPECT_DOUBLE_EQ(r.result(), 2.0);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, STRLEN_INTEGER) {
@@ -736,13 +745,15 @@ TEST_P(StringProtocolModesTest, STRLEN_INTEGER) {
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("strlen");
-        (void)co_await redis.set(k, "hello");
+        (void) co_await redis.set(k, "hello");
         auto r = co_await redis.strlen(k);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), 5);
+        if (r.ok())
+            EXPECT_EQ(r.result(), 5);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, SETEX_STATUS) {
@@ -752,10 +763,12 @@ TEST_P(StringProtocolModesTest, SETEX_STATUS) {
         auto k = protocol_key("setex");
         auto r = co_await redis.setex(k, 60, "val");
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_TRUE(r.result().ok());
+        if (r.ok())
+            EXPECT_TRUE(r.result().ok());
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, GETRANGE_STRING) {
@@ -763,13 +776,15 @@ TEST_P(StringProtocolModesTest, GETRANGE_STRING) {
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("getrange");
-        (void)co_await redis.set(k, "hello");
+        (void) co_await redis.set(k, "hello");
         auto r = co_await redis.getrange(k, 0, 2);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), "hel");
+        if (r.ok())
+            EXPECT_EQ(r.result(), "hel");
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, SUBSTR_STRING) {
@@ -777,13 +792,15 @@ TEST_P(StringProtocolModesTest, SUBSTR_STRING) {
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("substr");
-        (void)co_await redis.set(k, "HelloWorld");
+        (void) co_await redis.set(k, "HelloWorld");
         auto r = co_await redis.substr(k, 0, 4);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), "Hello");
+        if (r.ok())
+            EXPECT_EQ(r.result(), "Hello");
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(StringProtocolModesTest, DECR_INTEGER) {
@@ -791,13 +808,15 @@ TEST_P(StringProtocolModesTest, DECR_INTEGER) {
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("decr");
-        (void)co_await redis.set(k, "10");
+        (void) co_await redis.set(k, "10");
         auto r = co_await redis.decr(k);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_EQ(r.result(), 9);
+        if (r.ok())
+            EXPECT_EQ(r.result(), 9);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Main function to run the tests

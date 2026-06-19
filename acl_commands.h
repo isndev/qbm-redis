@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,12 +48,9 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/acl-list
      */
-    auto acl_list() {
-        return derived().template make_coro_command<qb::json>(
-            [this](auto&& callback) {
-                this->acl_list(std::move(callback));
-            }
-        );
+    auto
+    acl_list() {
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->acl_list(std::move(callback)); });
     }
 
     /**
@@ -73,19 +70,17 @@ public:
      * @brief Get ACL security events logs (coroutine awaitable)
      *
      * Returns a structured JSON array of denied commands due to ACL rules.
-     * Each entry includes information about the denied command, the user that 
+     * Each entry includes information about the denied command, the user that
      * attempted to run it, the client IP address, and more.
      *
      * @param count Optional number of entries to return
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/acl-log
      */
-    auto acl_log(std::optional<long long> count = std::nullopt) {
+    auto
+    acl_log(std::optional<long long> count = std::nullopt) {
         return derived().template make_coro_command<qb::json>(
-            [this, count](auto&& callback) mutable {
-                this->acl_log(std::move(callback), count);
-            }
-        );
+            [this, count](auto &&callback) mutable { this->acl_log(std::move(callback), count); });
     }
 
     /**
@@ -100,11 +95,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     acl_log(Func &&func, std::optional<long long> count = std::nullopt) {
         if (count) {
-            return derived().template command<qb::json>(std::forward<Func>(func), 
-                                                        "ACL", "LOG", *count);
+            return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "LOG", *count);
         } else {
-            return derived().template command<qb::json>(std::forward<Func>(func), 
-                                                        "ACL", "LOG");
+            return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "LOG");
         }
     }
 
@@ -118,12 +111,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/acl-cat
      */
-    auto acl_cat(const std::string &category = "") {
+    auto
+    acl_cat(const std::string &category = "") {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this, category](auto&& callback) {
-                this->acl_cat(std::move(callback), category);
-            }
-        );
+            [this, category](auto &&callback) { this->acl_cat(std::move(callback), category); });
     }
 
     /**
@@ -154,12 +145,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/acl-getuser
      */
-    auto acl_getuser(const std::string &username) {
+    auto
+    acl_getuser(const std::string &username) {
         return derived().template make_coro_command<qb::json>(
-            [this, username](auto&& callback) {
-                this->acl_getuser(std::move(callback), username);
-            }
-        );
+            [this, username](auto &&callback) { this->acl_getuser(std::move(callback), username); });
     }
 
     /**
@@ -173,8 +162,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     acl_getuser(Func &&func, const std::string &username) {
-        return derived().template command<qb::json>(std::forward<Func>(func), 
-                                                   "ACL", "GETUSER", username);
+        return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "GETUSER", username);
     }
 
     /**
@@ -185,12 +173,10 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/acl-users
      */
-    auto acl_users() {
+    auto
+    acl_users() {
         return derived().template make_coro_command<std::vector<std::string>>(
-            [this](auto&& callback) {
-                this->acl_users(std::move(callback));
-            }
-        );
+            [this](auto &&callback) { this->acl_users(std::move(callback)); });
     }
 
     /**
@@ -214,12 +200,9 @@ public:
      * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/acl-whoami
      */
-    auto acl_whoami() {
-        return derived().template make_coro_command<std::string>(
-            [this](auto&& callback) {
-                this->acl_whoami(std::move(callback));
-            }
-        );
+    auto
+    acl_whoami() {
+        return derived().template make_coro_command<std::string>([this](auto &&callback) { this->acl_whoami(std::move(callback)); });
     }
 
     /**
@@ -243,12 +226,9 @@ public:
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/acl-help
      */
-    auto acl_help() {
-        return derived().template make_coro_command<std::vector<std::string>>(
-            [this](auto&& callback) {
-                this->acl_help(std::move(callback));
-            }
-        );
+    auto
+    acl_help() {
+        return derived().template make_coro_command<std::vector<std::string>>([this](auto &&callback) { this->acl_help(std::move(callback)); });
     }
 
     /**
@@ -266,19 +246,17 @@ public:
 
     /**
      * @brief Delete an ACL user (coroutine awaitable)
-     * 
+     *
      * Removes the specified user from the Redis ACL system.
-     * 
+     *
      * @param username Name of the user to delete
      * @return redis_awaiter yielding Reply<long long>
      * @see https://redis.io/commands/acl-deluser
      */
-    auto acl_deluser(const std::string &username) {
+    auto
+    acl_deluser(const std::string &username) {
         return derived().template make_coro_command<long long>(
-            [this, username](auto&& callback) {
-                this->acl_deluser(std::move(callback), username);
-            }
-        );
+            [this, username](auto &&callback) { this->acl_deluser(std::move(callback), username); });
     }
 
     /**
@@ -297,19 +275,17 @@ public:
 
     /**
      * @brief Generate a random secure password (coroutine awaitable)
-     * 
+     *
      * Generates a strong, secure password that can be used for Redis ACL users.
-     * 
+     *
      * @param bits Optional number of bits of entropy (default 256)
      * @return redis_awaiter yielding Reply<std::string>
      * @see https://redis.io/commands/acl-genpass
      */
-    auto acl_genpass(std::optional<long long> bits = std::nullopt) {
+    auto
+    acl_genpass(std::optional<long long> bits = std::nullopt) {
         return derived().template make_coro_command<std::string>(
-            [this, bits](auto&& callback) mutable {
-                this->acl_genpass(std::move(callback), bits);
-            }
-        );
+            [this, bits](auto &&callback) mutable { this->acl_genpass(std::move(callback), bits); });
     }
 
     /**
@@ -332,18 +308,15 @@ public:
 
     /**
      * @brief Load ACL rules from the ACL file (coroutine awaitable)
-     * 
+     *
      * Loads the ACL rules from the configured ACL file on disk.
-     * 
+     *
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/acl-load
      */
-    auto acl_load() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->acl_load(std::move(callback));
-            }
-        );
+    auto
+    acl_load() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->acl_load(std::move(callback)); });
     }
 
     /**
@@ -361,18 +334,15 @@ public:
 
     /**
      * @brief Save ACL rules to the ACL file (coroutine awaitable)
-     * 
+     *
      * Saves the current ACL rules to the configured ACL file on disk.
-     * 
+     *
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/acl-save
      */
-    auto acl_save() {
-        return derived().template make_coro_command<status>(
-            [this](auto&& callback) {
-                this->acl_save(std::move(callback));
-            }
-        );
+    auto
+    acl_save() {
+        return derived().template make_coro_command<status>([this](auto &&callback) { this->acl_save(std::move(callback)); });
     }
 
     /**
@@ -390,21 +360,20 @@ public:
 
     /**
      * @brief Create or modify an ACL user (coroutine awaitable)
-     * 
+     *
      * Modifies the rules for a Redis ACL user.
-     * 
+     *
      * @param username Name of the user to create/modify
      * @param rules Variable list of rules to apply
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/acl-setuser
      */
     template <typename... Args>
-    auto acl_setuser(const std::string &username, Args&&... rules) {
-        return derived().template make_coro_command<status>(
-            [this, username, ...rules = std::forward<Args>(rules)](auto&& callback) mutable {
-                this->acl_setuser(std::move(callback), username, std::forward<Args>(rules)...);
-            }
-        );
+    auto
+    acl_setuser(const std::string &username, Args &&...rules) {
+        return derived().template make_coro_command<status>([this, username, ... rules = std::forward<Args>(rules)](auto &&callback) mutable {
+            this->acl_setuser(std::move(callback), username, std::forward<Args>(rules)...);
+        });
     }
 
     /**
@@ -418,9 +387,8 @@ public:
      */
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
-    acl_setuser(Func &&func, const std::string &username, Args&&... rules) {
-        return derived().template command<status>(std::forward<Func>(func), "ACL", "SETUSER", 
-                                                 username, std::forward<Args>(rules)...);
+    acl_setuser(Func &&func, const std::string &username, Args &&...rules) {
+        return derived().template command<status>(std::forward<Func>(func), "ACL", "SETUSER", username, std::forward<Args>(rules)...);
     }
 
     /**
@@ -434,13 +402,10 @@ public:
      * @return redis_awaiter yielding Reply<qb::json>
      * @see https://redis.io/commands/acl-dryrun
      */
-    auto acl_dryrun(const std::string &username, const std::string &command,
-                   const std::vector<std::string> &args = {}) {
+    auto
+    acl_dryrun(const std::string &username, const std::string &command, const std::vector<std::string> &args = {}) {
         return derived().template make_coro_command<qb::json>(
-            [this, username, command, args](auto&& callback) {
-                this->acl_dryrun(std::move(callback), username, command, args);
-            }
-        );
+            [this, username, command, args](auto &&callback) { this->acl_dryrun(std::move(callback), username, command, args); });
     }
 
     /**
@@ -456,10 +421,8 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
-    acl_dryrun(Func &&func, const std::string &username, const std::string &command,
-               const std::vector<std::string> &args = {}) {
-        return derived().template command<qb::json>(
-            std::forward<Func>(func), "ACL", "DRYRUN", username, command, args);
+    acl_dryrun(Func &&func, const std::string &username, const std::string &command, const std::vector<std::string> &args = {}) {
+        return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "DRYRUN", username, command, args);
     }
 };
 

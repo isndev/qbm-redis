@@ -1,6 +1,6 @@
 /*
  * qb - C++ Actor Framework
- * Copyright (C) 2011-2025 isndev (cpp.actor). All rights reserved.
+ * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,10 +79,10 @@ TEST_P(HyperLogLogProtocolModesTest, CORO_HYPERLOGLOG_PFCOUNT) {
         auto key2 = protocol_key("pfcount2");
 
         // Add elements to first HyperLogLog
-        (void)co_await redis.pfadd(key1, "element1", "element2", "element3");
+        (void) co_await redis.pfadd(key1, "element1", "element2", "element3");
 
         // Add elements to second HyperLogLog
-        (void)co_await redis.pfadd(key2, "element3", "element4", "element5");
+        (void) co_await redis.pfadd(key2, "element3", "element4", "element5");
 
         // Test counting single HyperLogLog
         auto reply1 = co_await redis.pfcount(key1);
@@ -112,8 +112,8 @@ TEST_P(HyperLogLogProtocolModesTest, CORO_HYPERLOGLOG_PFMERGE) {
         auto destkey = protocol_key("pfmerge_dest");
 
         // Add elements to source HyperLogLogs
-        (void)co_await redis.pfadd(key1, "element1", "element2", "element3");
-        (void)co_await redis.pfadd(key2, "element3", "element4", "element5");
+        (void) co_await redis.pfadd(key1, "element1", "element2", "element3");
+        (void) co_await redis.pfadd(key2, "element3", "element4", "element5");
 
         // Merge HyperLogLogs
         auto reply = co_await redis.pfmerge(destkey, key1, key2);
@@ -138,30 +138,34 @@ TEST_P(HyperLogLogProtocolModesTest, PFADD_PFCOUNT) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(done);
         auto k = protocol_key("hll");
-        (void)co_await redis.pfadd(k, "a", "b", "c");
+        (void) co_await redis.pfadd(k, "a", "b", "c");
         auto count_r = co_await redis.pfcount(k);
         EXPECT_TRUE(count_r.ok()) << count_r.error();
-        if (count_r.ok()) EXPECT_EQ(count_r.result(), 3);
+        if (count_r.ok())
+            EXPECT_EQ(count_r.result(), 3);
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 TEST_P(HyperLogLogProtocolModesTest, PFMERGE_STATUS) {
     bool done = false;
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(done);
-        auto k1 = protocol_key("pfmerge1");
-        auto k2 = protocol_key("pfmerge2");
+        auto k1   = protocol_key("pfmerge1");
+        auto k2   = protocol_key("pfmerge2");
         auto dest = protocol_key("pfmerge_dest");
-        (void)co_await redis.pfadd(k1, "a", "b");
-        (void)co_await redis.pfadd(k2, "c", "d");
+        (void) co_await redis.pfadd(k1, "a", "b");
+        (void) co_await redis.pfadd(k2, "c", "d");
         auto r = co_await redis.pfmerge(dest, k1, k2);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok()) EXPECT_TRUE(r.result().ok());
+        if (r.ok())
+            EXPECT_TRUE(r.result().ok());
         done = true;
     });
-    while (!done) qb::io::async::run(EVRUN_NOWAIT);
+    while (!done)
+        qb::io::async::run(EVRUN_NOWAIT);
 }
 
 // Test async PFADD
