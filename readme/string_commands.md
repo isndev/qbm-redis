@@ -15,7 +15,7 @@ Reference for the `qb::redis::string_commands` group: the `SET`/`GET` families, 
 ```cpp
 #include <redis/redis.h>            // umbrella header; pulls in string_commands.h
 
-qb::redis::tcp::client redis{"tcp://127.0.0.1:6379"};
+qb::redis::tcp::client redis{qb::io::uri{"tcp://127.0.0.1:6379"}};
 redis.connect();                    // see connection.md
 ```
 
