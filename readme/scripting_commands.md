@@ -301,7 +301,7 @@ Derived &scriptDebug(Func &&func, const std::string &mode);
 
 <!-- src: qbm/redis/scripting_commands.h:327-344 -->
 
-Sets the script-debugging mode on the connection. `mode` is a free-form `std::string`; the only meaningful values are `"YES"` (start a synchronous-blocking debug session on the next `EVAL`), `"SYNC"` (debug but keep changes), and `"NO"` (disable). The module does **not** validate the string — anything else is passed straight through and surfaces only as a Redis-side error.
+Sets the script-debugging mode on the connection. `mode` is a free-form `std::string`; the only meaningful values are `"YES"` (enable asynchronous, non-blocking debugging — dataset changes made by the debugged script are rolled back), `"SYNC"` (enable synchronous, blocking debugging — changes are committed to the dataset), and `"NO"` (disable the debugger). The module does **not** validate the string — anything else is passed straight through and surfaces only as a Redis-side error.
 
 ```cpp
 // coroutine — <!-- src: qbm/redis/tests/test-scripting-commands.cpp:233 -->
