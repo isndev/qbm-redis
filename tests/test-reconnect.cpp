@@ -21,11 +21,12 @@
 #include "../redis.h"
 #include "protocol_test_common.h"
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
+// The lifetime test below opens a raw listening socket. Use qb-io's cross-platform
+// socket layer (platform socket headers + the socket_type alias and closesocket()
+// shim) so it builds on POSIX and Windows; Winsock is initialised by qb-io's global
+// ws2_32 guard, linked in via the qb-io / qb-redis sockets this test uses.
+#include <qb/io/system/sys__socket.h>
 #include <string>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #define REDIS_URI {"tcp://localhost:6379"}
 #define BAD_REDIS_URI {"tcp://localhost:19999"}
@@ -76,8 +77,8 @@ TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
 
     // Listening socket on an ephemeral loopback port; never accept() — the kernel
     // completes the 3-way handshake from its backlog, so a connect to it succeeds.
-    const int lfd = ::socket(AF_INET, SOCK_STREAM, 0);
-    ASSERT_GE(lfd, 0);
+    const socket_type lfd = ::socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_NE(lfd, qb::io::inet::invalid_socket);
     sockaddr_in addr{};
     addr.sin_family      = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -106,7 +107,7 @@ TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
     for (int i = 0; i < 500; ++i)
         qb::io::async::run(EVRUN_NOWAIT);
 
-    ::close(lfd);
+    closesocket(lfd);
     SUCCEED();
 }
 
