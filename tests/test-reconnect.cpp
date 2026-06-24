@@ -310,7 +310,9 @@ TEST_P(ReconnectProtocolModesTest, RECONNECT_THEN_PING) {
         auto r = co_await redis.ping();
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), "PONG");
+            }
         done = true;
     });
     while (!done)

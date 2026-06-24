@@ -380,7 +380,9 @@ TEST_P(ScriptingProtocolModesTest, EVAL) {
         auto r = co_await redis.eval<long long>("return 42");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), 42);
+            }
         done = true;
     });
     while (!done)
@@ -396,7 +398,9 @@ TEST_P(ScriptingProtocolModesTest, EVAL_WITH_KEYS_ARGS) {
         auto        r      = co_await redis.eval<std::string>(script, {k}, {"value"});
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), "OK");
+            }
         auto get_r = co_await redis.get(k);
         EXPECT_TRUE(get_r.ok() && get_r.result() && *get_r.result() == "value");
         done = true;
@@ -420,7 +424,9 @@ TEST_P(ScriptingProtocolModesTest, SCRIPT_LOAD_EVALSHA) {
         auto evalsha_r = co_await redis.evalsha<long long>(sha);
         EXPECT_TRUE(evalsha_r.ok()) << evalsha_r.error();
         if (evalsha_r.ok())
+            {
             EXPECT_EQ(evalsha_r.result(), 123);
+            }
         done = true;
     });
     while (!done)

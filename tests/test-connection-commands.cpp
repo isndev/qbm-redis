@@ -110,7 +110,9 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_RESP3_HELLO_THEN_PING) {
         auto ping_reply = co_await redis.ping();
         EXPECT_TRUE(ping_reply.ok()) << "PING after HELLO 3 failed: " << ping_reply.error();
         if (ping_reply.ok())
+            {
             EXPECT_EQ(ping_reply.result(), "PONG");
+            }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -136,7 +138,9 @@ TEST_P(ConnectionProtocolModesTest, CORO_CONNECTION_COMMANDS_RESET) {
         auto ping_r = co_await redis.ping();
         EXPECT_TRUE(ping_r.ok()) << "PING after RESET failed: " << ping_r.error();
         if (ping_r.ok())
+            {
             EXPECT_EQ(ping_r.result(), "PONG");
+            }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -235,7 +239,9 @@ TEST_P(ConnectionProtocolModesTest, PING) {
         auto r = co_await redis.ping();
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), "PONG");
+            }
         done = true;
     });
     while (!done)
@@ -249,7 +255,9 @@ TEST_P(ConnectionProtocolModesTest, PING_WITH_MESSAGE) {
         auto r = co_await redis.ping("hello");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), "hello");
+            }
         done = true;
     });
     while (!done)
@@ -263,7 +271,9 @@ TEST_P(ConnectionProtocolModesTest, ECHO) {
         auto r = co_await redis.echo("hello");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), "hello");
+            }
         done = true;
     });
     while (!done)
@@ -295,11 +305,15 @@ TEST_P(ConnectionProtocolModesTest, SELECT) {
         auto r1 = co_await redis.select(0);
         EXPECT_TRUE(r1.ok()) << r1.error();
         if (r1.ok())
+            {
             EXPECT_TRUE(r1.result().ok());
+            }
         auto r2 = co_await redis.select(1);
         EXPECT_TRUE(r2.ok()) << r2.error();
         if (r2.ok())
+            {
             EXPECT_TRUE(r2.result().ok());
+            }
         (void) co_await redis.select(0);
         done = true;
     });
@@ -314,7 +328,9 @@ TEST_P(ConnectionProtocolModesTest, ERROR_REPLY) {
         auto r = co_await redis.command<std::string>("INVALIDCMD");
         EXPECT_FALSE(r.ok()) << "Expected error for invalid command";
         if (!r.ok())
+            {
             EXPECT_FALSE(r.error().empty());
+            }
         done = true;
     });
     while (!done)
@@ -328,7 +344,9 @@ TEST_P(ConnectionProtocolModesTest, SWAPDB) {
         auto r = co_await redis.swapdb(0, 1);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_TRUE(r.result().ok());
+            }
         (void) co_await redis.swapdb(0, 1);
         done = true;
     });

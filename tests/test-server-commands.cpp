@@ -727,7 +727,9 @@ TEST_P(ServerProtocolModesTest, DBSIZE) {
         auto r = co_await redis.dbsize();
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_GE(r.result(), 0);
+            }
         done = true;
     });
     while (!done)
@@ -757,7 +759,9 @@ TEST_P(ServerProtocolModesTest, CLIENT_ID_INTEGER) {
         auto r = co_await redis.client_id();
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_GE(r.result(), 0);
+            }
         done = true;
     });
     while (!done)
@@ -771,7 +775,9 @@ TEST_P(ServerProtocolModesTest, INFO_JSON) {
         auto r = co_await redis.info();
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_TRUE(r.result().is_object() || r.result().is_string());
+            }
         done = true;
     });
     while (!done)
@@ -785,11 +791,15 @@ TEST_P(ServerProtocolModesTest, FLUSHDB_FLUSHALL) {
         auto r1 = co_await redis.flushdb();
         EXPECT_TRUE(r1.ok()) << r1.error();
         if (r1.ok())
+            {
             EXPECT_TRUE(r1.result().ok());
+            }
         auto r2 = co_await redis.flushall();
         EXPECT_TRUE(r2.ok()) << r2.error();
         if (r2.ok())
+            {
             EXPECT_TRUE(r2.result().ok());
+            }
         done = true;
     });
     while (!done)

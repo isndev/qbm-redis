@@ -454,7 +454,9 @@ TEST_P(StreamProtocolModesTest, XADD_XLEN) {
         auto len_r = co_await redis.xlen(k);
         EXPECT_TRUE(len_r.ok()) << len_r.error();
         if (len_r.ok())
+            {
             EXPECT_EQ(len_r.result(), 1);
+            }
         done = true;
     });
     while (!done)
@@ -471,7 +473,9 @@ TEST_P(StreamProtocolModesTest, XREAD_JSON) {
         auto r = co_await redis.xread(k, "0", 10);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_TRUE(r.result().is_object() || r.result().is_array());
+            }
         done = true;
     });
     while (!done)
@@ -488,11 +492,15 @@ TEST_P(StreamProtocolModesTest, XRANGE_XREVRANGE) {
         auto range_r = co_await redis.xrange(k, "-", "+", 10);
         EXPECT_TRUE(range_r.ok()) << range_r.error();
         if (range_r.ok())
+            {
             EXPECT_GE(range_r.result().size(), 1u);
+            }
         auto rev_r = co_await redis.xrevrange(k, "+", "-", 10);
         EXPECT_TRUE(rev_r.ok()) << rev_r.error();
         if (rev_r.ok())
+            {
             EXPECT_GE(rev_r.result().size(), 1u);
+            }
         done = true;
     });
     while (!done)
@@ -510,7 +518,9 @@ TEST_P(StreamProtocolModesTest, XDEL_INTEGER) {
         auto        r  = co_await redis.xdel(k, id);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), 1);
+            }
         done = true;
     });
     while (!done)

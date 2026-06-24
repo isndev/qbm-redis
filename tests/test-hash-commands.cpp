@@ -389,7 +389,9 @@ TEST_P(HashProtocolModesTest, HSET_HGET) {
         auto r = co_await redis.hget(k, "field");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok() && r.result())
+            {
             EXPECT_EQ(*r.result(), "value");
+            }
         done = true;
     });
     while (!done)
@@ -436,7 +438,9 @@ TEST_P(HashProtocolModesTest, HMGET_HEXISTS) {
         auto hexists_r = co_await redis.hexists(k, "f1");
         EXPECT_TRUE(hexists_r.ok()) << hexists_r.error();
         if (hexists_r.ok())
+            {
             EXPECT_TRUE(hexists_r.result());
+            }
         done = true;
     });
     while (!done)
@@ -452,7 +456,9 @@ TEST_P(HashProtocolModesTest, HINCRBY_INTEGER) {
         auto r = co_await redis.hincrby(k, "n", 3);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), 8);
+            }
         done = true;
     });
     while (!done)
@@ -469,7 +475,9 @@ TEST_P(HashProtocolModesTest, HDEL_INTEGER) {
         auto r = co_await redis.hdel(k, "a");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), 1);
+            }
         done = true;
     });
     while (!done)

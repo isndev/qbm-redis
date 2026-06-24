@@ -165,7 +165,9 @@ TEST_P(ModuleProtocolModesTest, MODULE_LIST_JSON) {
         try {
             auto r = co_await redis.module_list();
             if (r.ok())
+                {
                 EXPECT_TRUE(r.result().is_array());
+                }
         } catch (const std::exception &) {
             // MODULE not available on older Redis
         }
