@@ -1,49 +1,73 @@
 # List commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23 supported)
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> supported)
 
-Reference for the Redis List command group — head/tail pushes and pops, indexed access, range and trim operations, element moves between lists, blocking variants, and positional search — each with its exact signature, reply type, and a minimal `co_await` and callback snippet.
+Reference for the Redis List command group — head/tail pushes and pops, indexed access, range and trim operations,
+element moves between lists, blocking variants, and positional search — each with its exact signature, reply type, and a
+minimal `co_await` and callback snippet.
 
-**Prerequisites:** [Command API model](./commands_overview.md) · [Connection](./connection.md) — **See also:** [Key commands](./key_commands.md) · [String commands](./string_commands.md) · [Error handling](./error_handling.md) · [Pipelining and `await()`](./pipeline_and_await.md)
+**Prerequisites:** [Command API model](./commands_overview.md) · [Connection](./connection.md) — **See also:
+** [Key commands](./key_commands.md) · [String commands](./string_commands.md) · [Error handling](./error_handling.md) · [Pipelining and
+`await()`](./pipeline_and_await.md)
 
 ## Summary
 
-The list commands are defined by the `qb::redis::list_commands<Derived>` CRTP mixin (`list_commands.h:39`), which `qb::redis::tcp::client` inherits along with every other command group (`redis.h:600`, `redis.h:1439`). You call these methods directly on a connected client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to get a `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the client for chaining. The dispatch and the `Reply<T>` decoding contract are covered in [Command API model](./commands_overview.md); this page lists the methods.
+The list commands are defined by the `qb::redis::list_commands<Derived>` CRTP mixin (`list_commands.h:39`), which
+`qb::redis::tcp::client` inherits along with every other command group (`redis.h:600`, `redis.h:1439`). You call these
+methods directly on a connected client. Each command exists in two forms that share one method name: a **coroutine**
+form you `co_await` to get a `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument
+and returns the client for chaining. The dispatch and the `Reply<T>` decoding contract are covered
+in [Command API model](./commands_overview.md); this page lists the methods.
 
-Redis lists are doubly linked lists, so head/tail pushes and pops (`LPUSH`, `RPUSH`, `LPOP`, `RPOP`) are O(1), while index-based access (`LINDEX`) and range scans (`LRANGE`, `LPOS`) are O(N). This is a Redis storage property, not a property of this client.
+Redis lists are doubly linked lists, so head/tail pushes and pops (`LPUSH`, `RPUSH`, `LPOP`, `RPOP`) are O(1), while
+index-based access (`LINDEX`) and range scans (`LRANGE`, `LPOS`) are O(N). This is a Redis storage property, not a
+property of this client.
 
-One time-related note for this group: blocking commands take a `timeout` in **seconds**, which is the native Redis protocol unit. Each blocking command exposes both a raw `long long` (seconds) form and a `std::chrono::seconds` overload that forwards `.count()` (`list_commands.h:369`, `:431`). These are protocol seconds, **not** `qb::duration`; do not substitute qb time types here.
+One time-related note for this group: blocking commands take a `timeout` in **seconds**, which is the native Redis
+protocol unit. Each blocking command exposes both a raw `long long` (seconds) form and a `std::chrono::seconds` overload
+that forwards `.count()` (`list_commands.h:369`, `:431`). These are protocol seconds, **not** `qb::duration`; do not
+substitute qb time types here.
 
 ## Concepts
 
 ### Reply types you will see in this group
 
-| Reply `T` | Meaning | Commands |
-|-----------|---------|----------|
-| `long long` | a list length or a removed/insert count | `lpush`, `lpushx`, `rpush`, `rpushx`, `llen`, `linsert`, `lrem` |
-| `qb::redis::status` | a `+OK` status reply | `lset`, `ltrim` |
-| `std::optional<std::string>` | a single element, absent when the list is empty/missing | `lpop`/`rpop` (single-element form), `lindex`, `lmove`, `rpoplpush`, `blmove`, `brpoplpush` |
-| `std::vector<std::string>` | the popped or ranged elements | `lpop`/`rpop` (count form), `lrange` |
-| `std::vector<long long>` | matched positions | `lpos` |
-| `std::optional<std::pair<std::string, std::string>>` | `{key, element}` from a blocking pop | `blpop`, `brpop` |
-| `std::optional<std::pair<std::string, std::vector<std::string>>>` | `{key, elements}` from a multi-key pop | `lmpop`, `blmpop` |
+| Reply `T`                                                         | Meaning                                                 | Commands                                                                                    |
+|-------------------------------------------------------------------|---------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| `long long`                                                       | a list length or a removed/insert count                 | `lpush`, `lpushx`, `rpush`, `rpushx`, `llen`, `linsert`, `lrem`                             |
+| `qb::redis::status`                                               | a `+OK` status reply                                    | `lset`, `ltrim`                                                                             |
+| `std::optional<std::string>`                                      | a single element, absent when the list is empty/missing | `lpop`/`rpop` (single-element form), `lindex`, `lmove`, `rpoplpush`, `blmove`, `brpoplpush` |
+| `std::vector<std::string>`                                        | the popped or ranged elements                           | `lpop`/`rpop` (count form), `lrange`                                                        |
+| `std::vector<long long>`                                          | matched positions                                       | `lpos`                                                                                      |
+| `std::optional<std::pair<std::string, std::string>>`              | `{key, element}` from a blocking pop                    | `blpop`, `brpop`                                                                            |
+| `std::optional<std::pair<std::string, std::vector<std::string>>>` | `{key, elements}` from a multi-key pop                  | `lmpop`, `blmpop`                                                                           |
 
-`qb::redis::Reply<T>` (`reply.h:1052`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and an explicit `operator bool()`. Optional replies are tested with `reply.result().has_value()`. See [Command API model](./commands_overview.md) for the full reply surface.
+`qb::redis::Reply<T>` (`reply.h:1052`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+an explicit `operator bool()`. Optional replies are tested with `reply.result().has_value()`.
+See [Command API model](./commands_overview.md) for the full reply surface.
 
-> There is no `list_pop_result` or `list_move_result` type in this client. Multi-key pops decode to `std::optional<std::pair<std::string, std::vector<std::string>>>`; blocking single pops (`blpop`/`brpop`) decode to `std::optional<std::pair<std::string, std::string>>`. Treat the pair's `.first` as the key the element came from and `.second` as the element(s).
+> There is no `list_pop_result` or `list_move_result` type in this client. Multi-key pops decode to
+`std::optional<std::pair<std::string, std::vector<std::string>>>`; blocking single pops (`blpop`/`brpop`) decode to
+`std::optional<std::pair<std::string, std::string>>`. Treat the pair's `.first` as the key the element came from and
+`.second` as the element(s).
 
 ### Enums
 
 Two enums from `types.h` parameterize this group:
 
-- `qb::redis::InsertPosition` (`types.h:51`) — `BEFORE`, `AFTER` — selects where `linsert` places the element relative to the pivot.
-- `qb::redis::ListPosition` (`types.h:53`) — `LEFT`, `RIGHT` — selects the list end for `lmove`, `blmove`, `lmpop`, and `blmpop`.
+- `qb::redis::InsertPosition` (`types.h:51`) — `BEFORE`, `AFTER` — selects where `linsert` places the element relative
+  to the pivot.
+- `qb::redis::ListPosition` (`types.h:53`) — `LEFT`, `RIGHT` — selects the list end for `lmove`, `blmove`, `lmpop`, and
+  `blmpop`.
 
 Both are serialized to wire keywords through `to_string(...)` (`types.h:375`, `:376`); you pass the enum, not a string.
 
 ### Variadic pushes
 
-`lpush`, `lpushx`, `rpush`, and `rpushx` are variadic in both forms — you pass one or more elements as separate arguments (`list_commands.h:87`, `:118`, `:149`, `:180`). There is no separate "vector" overload and no single-value-only restriction; `rpushx("k", "a", "b", "c")` is valid.
+`lpush`, `lpushx`, `rpush`, and `rpushx` are variadic in both forms — you pass one or more elements as separate
+arguments (`list_commands.h:87`, `:118`, `:149`, `:180`). There is no separate "vector" overload and no
+single-value-only restriction; `rpushx("k", "a", "b", "c")` is valid.
 
 ## Setup for the examples
 
@@ -59,9 +83,11 @@ qb::redis::tcp::client redis{qb::io::uri{"tcp://localhost:6379"}};
 if (!co_await redis.connect())
     co_return;
 ```
+
 <!-- src: qbm/redis/readme/connection.md -->
 
-Each command below shows its coroutine signature, its callback overload, and a snippet. The callback form always returns `Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`list_commands.h:72`).
+Each command below shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
+`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`list_commands.h:72`).
 
 ## Length
 
@@ -75,6 +101,7 @@ auto llen(const std::string &key);                                  // -> Reply<
 // Callback
 template <typename Func> Derived &llen(Func &&, const std::string &key);
 ```
+
 <!-- src: qbm/redis/list_commands.h:56,71 -->
 
 ```cpp
@@ -87,7 +114,8 @@ if (r.ok())
 
 ### `lpush`, `rpush`
 
-`LPUSH key element [element ...]` / `RPUSH key element [element ...]` — prepend (`lpush`) or append (`rpush`) one or more elements, returning the list length after the push. Both are variadic.
+`LPUSH key element [element ...]` / `RPUSH key element [element ...]` — prepend (`lpush`) or append (`rpush`) one or
+more elements, returning the list length after the push. Both are variadic.
 
 ```cpp
 // Coroutine
@@ -97,6 +125,7 @@ template <typename... Args> auto rpush(const std::string &key, Args &&...args); 
 template <typename Func, typename... Args> Derived &lpush(Func &&, const std::string &key, Args &&...args);
 template <typename Func, typename... Args> Derived &rpush(Func &&, const std::string &key, Args &&...args);
 ```
+
 <!-- src: qbm/redis/list_commands.h:87,104,149,166 -->
 
 ```cpp
@@ -109,7 +138,8 @@ redis.lpush([](qb::redis::Reply<long long> &&r) { /* r.result() */ }, "queue", "
 
 ### `lpushx`, `rpushx`
 
-`LPUSHX key element [element ...]` / `RPUSHX key element [element ...]` — like `lpush`/`rpush`, but a no-op (returns 0) when the key does not already hold a list. Both are variadic in both the coroutine and callback forms.
+`LPUSHX key element [element ...]` / `RPUSHX key element [element ...]` — like `lpush`/`rpush`, but a no-op (returns 0)
+when the key does not already hold a list. Both are variadic in both the coroutine and callback forms.
 
 ```cpp
 // Coroutine
@@ -119,6 +149,7 @@ template <typename... Args> auto rpushx(const std::string &key, Args &&...args);
 template <typename Func, typename... Args> Derived &lpushx(Func &&, const std::string &key, Args &&...args);
 template <typename Func, typename... Args> Derived &rpushx(Func &&, const std::string &key, Args &&...args);
 ```
+
 <!-- src: qbm/redis/list_commands.h:118,135,180,197 -->
 
 ```cpp
@@ -130,7 +161,9 @@ auto r = co_await redis.rpushx("queue", "job4");
 
 ### `lpop`, `rpop`
 
-`LPOP key [count]` / `RPOP key [count]` — remove and return element(s) from the head (`lpop`) or tail (`rpop`). Each verb has two coroutine overloads and two matching callback overloads: a **single-element** form returning `std::optional<std::string>`, and a **count** form returning `std::vector<std::string>`.
+`LPOP key [count]` / `RPOP key [count]` — remove and return element(s) from the head (`lpop`) or tail (`rpop`). Each
+verb has two coroutine overloads and two matching callback overloads: a **single-element** form returning
+`std::optional<std::string>`, and a **count** form returning `std::vector<std::string>`.
 
 ```cpp
 // Coroutine — single element
@@ -146,6 +179,7 @@ template <typename Func> Derived &rpop(Func &&, const std::string &key);
 template <typename Func> Derived &lpop(Func &&, const std::string &key, long long count);
 template <typename Func> Derived &rpop(Func &&, const std::string &key, long long count);
 ```
+
 <!-- src: qbm/redis/list_commands.h:213,232,243,261,273,292,303,318 -->
 
 ```cpp
@@ -161,7 +195,8 @@ auto many = co_await redis.rpop("queue", 3);
 
 ### `lindex`
 
-`LINDEX key index` — the element at `index` (0-based; negative counts from the tail, `-1` is the last element). Absent when the index is out of range.
+`LINDEX key index` — the element at `index` (0-based; negative counts from the tail, `-1` is the last element). Absent
+when the index is out of range.
 
 ```cpp
 // Coroutine
@@ -169,6 +204,7 @@ auto lindex(const std::string &key, long long index);               // -> Reply<
 // Callback
 template <typename Func> Derived &lindex(Func &&, const std::string &key, long long index);
 ```
+
 <!-- src: qbm/redis/list_commands.h:462,478 -->
 
 ```cpp
@@ -178,7 +214,8 @@ auto r = co_await redis.lindex("queue", -1);
 
 ### `linsert`
 
-`LINSERT key BEFORE|AFTER pivot element` — insert `val` before or after the first occurrence of `pivot`. Returns the new length, `0` if the key is missing, or `-1` if the pivot is not found.
+`LINSERT key BEFORE|AFTER pivot element` — insert `val` before or after the first occurrence of `pivot`. Returns the new
+length, `0` if the key is missing, or `-1` if the pivot is not found.
 
 ```cpp
 // Coroutine
@@ -188,6 +225,7 @@ auto linsert(const std::string &key, InsertPosition position,
 template <typename Func> Derived &linsert(Func &&, const std::string &key, InsertPosition position,
                                           const std::string &pivot, const std::string &val);
 ```
+
 <!-- src: qbm/redis/list_commands.h:495,514 -->
 
 ```cpp
@@ -196,7 +234,8 @@ auto r = co_await redis.linsert("queue", qb::redis::InsertPosition::BEFORE, "job
 
 ### `lset`
 
-`LSET key index element` — overwrite the element at `index`. Returns a `status` (`+OK` on success). Errors if the index is out of range.
+`LSET key index element` — overwrite the element at `index`. Returns a `status` (`+OK` on success). Errors if the index
+is out of range.
 
 ```cpp
 // Coroutine
@@ -204,6 +243,7 @@ auto lset(const std::string &key, long long index, const std::string &val);   //
 // Callback
 template <typename Func> Derived &lset(Func &&, const std::string &key, long long index, const std::string &val);
 ```
+
 <!-- src: qbm/redis/list_commands.h:598,615 -->
 
 ```cpp
@@ -214,7 +254,8 @@ if (r.result())  // status converts to bool: true when "OK"
 
 ### `lrem`
 
-`LREM key count element` — remove occurrences of `val`. `count > 0` removes from head to tail, `count < 0` from tail to head, `count == 0` removes all. Returns the number removed.
+`LREM key count element` — remove occurrences of `val`. `count > 0` removes from head to tail, `count < 0` from tail to
+head, `count == 0` removes all. Returns the number removed.
 
 ```cpp
 // Coroutine
@@ -222,6 +263,7 @@ auto lrem(const std::string &key, long long count, const std::string &val);   //
 // Callback
 template <typename Func> Derived &lrem(Func &&, const std::string &key, long long count, const std::string &val);
 ```
+
 <!-- src: qbm/redis/list_commands.h:565,583 -->
 
 ```cpp
@@ -233,7 +275,8 @@ auto r = co_await redis.lrem("queue", 0, "done");
 
 ### `lrange`
 
-`LRANGE key start stop` — the elements between `start` and `stop` inclusive (both 0-based, negatives count from the tail). `0 -1` returns the whole list.
+`LRANGE key start stop` — the elements between `start` and `stop` inclusive (both 0-based, negatives count from the
+tail). `0 -1` returns the whole list.
 
 ```cpp
 // Coroutine
@@ -241,6 +284,7 @@ auto lrange(const std::string &key, long long start, long long stop);   // -> Re
 // Callback
 template <typename Func> Derived &lrange(Func &&, const std::string &key, long long start, long long stop);
 ```
+
 <!-- src: qbm/redis/list_commands.h:531,548 -->
 
 ```cpp
@@ -259,6 +303,7 @@ auto ltrim(const std::string &key, long long start, long long stop);   // -> Rep
 // Callback
 template <typename Func> Derived &ltrim(Func &&, const std::string &key, long long start, long long stop);
 ```
+
 <!-- src: qbm/redis/list_commands.h:630,647 -->
 
 ```cpp
@@ -270,7 +315,8 @@ auto r = co_await redis.ltrim("queue", -100, -1);
 
 ### `lmove`
 
-`LMOVE source destination LEFT|RIGHT LEFT|RIGHT` — atomically pop one element from a chosen end of `source` and push it onto a chosen end of `destination`, returning the moved element (`std::nullopt` if `source` is empty).
+`LMOVE source destination LEFT|RIGHT LEFT|RIGHT` — atomically pop one element from a chosen end of `source` and push it
+onto a chosen end of `destination`, returning the moved element (`std::nullopt` if `source` is empty).
 
 ```cpp
 // Coroutine
@@ -280,6 +326,7 @@ auto lmove(const std::string &source, const std::string &destination,
 template <typename Func> Derived &lmove(Func &&, const std::string &source, const std::string &destination,
                                         ListPosition wherefrom, ListPosition whereto);
 ```
+
 <!-- src: qbm/redis/list_commands.h:699,718 -->
 
 ```cpp
@@ -289,7 +336,8 @@ auto moved = co_await redis.lmove("pending", "processing", ListPosition::LEFT, L
 
 ### `rpoplpush`
 
-`RPOPLPUSH source destination` — atomically pop from the tail of `source` and push to the head of `destination`. Returns the moved element, or `std::nullopt` when `source` is empty.
+`RPOPLPUSH source destination` — atomically pop from the tail of `source` and push to the head of `destination`. Returns
+the moved element, or `std::nullopt` when `source` is empty.
 
 ```cpp
 // Coroutine
@@ -297,6 +345,7 @@ auto rpoplpush(const std::string &source, const std::string &destination);   // 
 // Callback
 template <typename Func> Derived &rpoplpush(Func &&, const std::string &source, const std::string &destination);
 ```
+
 <!-- src: qbm/redis/list_commands.h:664,681 -->
 
 ```cpp
@@ -305,7 +354,8 @@ auto moved = co_await redis.rpoplpush("pending", "processing");
 
 ### `lmpop`
 
-`LMPOP numkeys key [key ...] LEFT|RIGHT [COUNT count]` — pop up to `count` elements from the chosen end of the first non-empty list among `keys`. Returns `{key, elements}` or `std::nullopt` when all are empty.
+`LMPOP numkeys key [key ...] LEFT|RIGHT [COUNT count]` — pop up to `count` elements from the chosen end of the first
+non-empty list among `keys`. Returns `{key, elements}` or `std::nullopt` when all are empty.
 
 ```cpp
 // Coroutine
@@ -315,6 +365,7 @@ auto lmpop(const std::vector<std::string> &keys, ListPosition position, long lon
 template <typename Func> Derived &lmpop(Func &&, const std::vector<std::string> &keys,
                                         ListPosition position, long long count = 1);
 ```
+
 <!-- src: qbm/redis/list_commands.h:738,752 -->
 
 ```cpp
@@ -325,15 +376,21 @@ if (r.result().has_value()) {
 }
 ```
 
-> The callback overload returns the client immediately without issuing a command when `keys` is empty (`list_commands.h:759`), so the callback never fires. Guard against an empty key list yourself.
+> The callback overload returns the client immediately without issuing a command when `keys` is empty (
+`list_commands.h:759`), so the callback never fires. Guard against an empty key list yourself.
 
 ## Positional search
 
 ### `lpos`
 
-`LPOS key element [RANK rank] [COUNT count] [MAXLEN maxlen]` — find the index/indices of `element`. There is a single overload that always returns a vector of positions (`list_commands.h:921` always sends `COUNT`, defaulting to `0` = all matches when `count` is `std::nullopt`); for a single-position lookup, read `result().front()` after checking the vector is non-empty.
+`LPOS key element [RANK rank] [COUNT count] [MAXLEN maxlen]` — find the index/indices of `element`. There is a single
+overload that always returns a vector of positions (`list_commands.h:921` always sends `COUNT`, defaulting to `0` = all
+matches when `count` is `std::nullopt`); for a single-position lookup, read `result().front()` after checking the vector
+is non-empty.
 
-The optional arguments are, in order, `rank`, `count`, then `maxlen`, matching the wire order `[RANK] [COUNT] [MAXLEN]` shown above. `COUNT` is always emitted (defaulting to `0` = all matches when `count` is `std::nullopt`); `RANK` and `MAXLEN` are emitted only when supplied (`list_commands.h:927-936`).
+The optional arguments are, in order, `rank`, `count`, then `maxlen`, matching the wire order `[RANK] [COUNT] [MAXLEN]`
+shown above. `COUNT` is always emitted (defaulting to `0` = all matches when `count` is `std::nullopt`); `RANK` and
+`MAXLEN` are emitted only when supplied (`list_commands.h:927-936`).
 
 ```cpp
 // Coroutine
@@ -347,6 +404,7 @@ template <typename Func> Derived &lpos(Func &&, const std::string &key, const st
                                        std::optional<long long> count  = std::nullopt,
                                        std::optional<long long> maxlen = std::nullopt);
 ```
+
 <!-- src: qbm/redis/list_commands.h:882,904 -->
 
 ```cpp
@@ -358,15 +416,22 @@ if (r.ok() && !r.result().empty())
 auto all = co_await redis.lpos("queue", "job2", std::nullopt, 0, 1000);
 ```
 
-> Like `lmpop`, the callback overload no-ops (returns the client without invoking the callback) when `key` or `element` is empty (`list_commands.h:911`).
+> Like `lmpop`, the callback overload no-ops (returns the client without invoking the callback) when `key` or `element`
+> is empty (`list_commands.h:911`).
 
 ## Blocking operations
 
-Blocking commands park the *connection* until an element is available or the timeout elapses. The `timeout` is in **seconds** as a `long long`, with a `0` value meaning block indefinitely; each blocking pop also offers a `std::chrono::seconds` overload that forwards `.count()`. These are native Redis protocol seconds, not `qb::duration` — see [Connection](./connection.md) for how the framework's own connect/command timeouts (which *are* `qb::duration`) differ. Use the coroutine form so a blocked command suspends the actor's coroutine rather than stalling the event loop.
+Blocking commands park the *connection* until an element is available or the timeout elapses. The `timeout` is in *
+*seconds** as a `long long`, with a `0` value meaning block indefinitely; each blocking pop also offers a
+`std::chrono::seconds` overload that forwards `.count()`. These are native Redis protocol seconds, not `qb::duration` —
+see [Connection](./connection.md) for how the framework's own connect/command timeouts (which *are* `qb::duration`)
+differ. Use the coroutine form so a blocked command suspends the actor's coroutine rather than stalling the event loop.
 
 ### `blpop`, `brpop`
 
-`BLPOP key [key ...] timeout` / `BRPOP key [key ...] timeout` — block until an element can be popped from the head (`blpop`) or tail (`brpop`) of one of `keys`. Returns `{key, element}` identifying which list served the element, or `std::nullopt` on timeout.
+`BLPOP key [key ...] timeout` / `BRPOP key [key ...] timeout` — block until an element can be popped from the head (
+`blpop`) or tail (`brpop`) of one of `keys`. Returns `{key, element}` identifying which list served the element, or
+`std::nullopt` on timeout.
 
 ```cpp
 // Coroutine — seconds (0 = block forever)
@@ -380,6 +445,7 @@ auto brpop(const std::vector<std::string> &keys, const std::chrono::seconds &tim
 template <typename Func> Derived &blpop(Func &&, const std::vector<std::string> &keys, long long timeout);
 template <typename Func> Derived &blpop(Func &&, const std::vector<std::string> &keys, const std::chrono::seconds &timeout);
 ```
+
 <!-- src: qbm/redis/list_commands.h:335,356,369,385,397,418,431,448 -->
 
 ```cpp
@@ -394,7 +460,8 @@ if (r.result().has_value()) {
 
 ### `blmove`
 
-`BLMOVE source destination LEFT|RIGHT LEFT|RIGHT timeout` — the blocking variant of `lmove`. Returns the moved element, or `std::nullopt` on timeout. `timeout` is `long long` seconds.
+`BLMOVE source destination LEFT|RIGHT LEFT|RIGHT timeout` — the blocking variant of `lmove`. Returns the moved element,
+or `std::nullopt` on timeout. `timeout` is `long long` seconds.
 
 ```cpp
 // Coroutine
@@ -404,6 +471,7 @@ auto blmove(const std::string &source, const std::string &destination,
 template <typename Func> Derived &blmove(Func &&, const std::string &source, const std::string &destination,
                                          ListPosition wherefrom, ListPosition whereto, long long timeout);
 ```
+
 <!-- src: qbm/redis/list_commands.h:825,839 -->
 
 ```cpp
@@ -413,7 +481,8 @@ auto moved = co_await redis.blmove("pending", "processing", ListPosition::LEFT, 
 
 ### `blmpop`
 
-`BLMPOP timeout numkeys key [key ...] LEFT|RIGHT [COUNT count]` — the blocking variant of `lmpop`. Returns `{key, elements}` or `std::nullopt` on timeout. `timeout` is `long long` seconds.
+`BLMPOP timeout numkeys key [key ...] LEFT|RIGHT [COUNT count]` — the blocking variant of `lmpop`. Returns
+`{key, elements}` or `std::nullopt` on timeout. `timeout` is `long long` seconds.
 
 ```cpp
 // Coroutine
@@ -424,6 +493,7 @@ auto blmpop(const std::vector<std::string> &keys, ListPosition position,
 template <typename Func> Derived &blmpop(Func &&, const std::vector<std::string> &keys,
                                          ListPosition position, long long timeout, long long count = 1);
 ```
+
 <!-- src: qbm/redis/list_commands.h:781,795 -->
 
 ```cpp
@@ -434,7 +504,9 @@ auto r = co_await redis.blmpop({"q1", "q2"}, qb::redis::ListPosition::LEFT, 5, 2
 
 ### `brpoplpush` (deprecated)
 
-`BRPOPLPUSH source destination timeout` — the blocking variant of `rpoplpush`. **Deprecated in this client** in favor of `blmove` (`list_commands.h:851`); it remains in the surface for backward compatibility. Prefer `blmove` with `ListPosition::RIGHT, ListPosition::LEFT`.
+`BRPOPLPUSH source destination timeout` — the blocking variant of `rpoplpush`. **Deprecated in this client** in favor of
+`blmove` (`list_commands.h:851`); it remains in the surface for backward compatibility. Prefer `blmove` with
+`ListPosition::RIGHT, ListPosition::LEFT`.
 
 ```cpp
 // Coroutine (deprecated)
@@ -444,16 +516,25 @@ auto brpoplpush(const std::string &source, const std::string &destination, long 
 template <typename Func> Derived &brpoplpush(Func &&, const std::string &source,
                                              const std::string &destination, long long timeout);
 ```
+
 <!-- src: qbm/redis/list_commands.h:854,862 -->
 
 ## Pitfalls
 
-- **Pop result type depends on the overload.** `lpop(key)` / `rpop(key)` yield `Reply<std::optional<std::string>>`; `lpop(key, count)` / `rpop(key, count)` yield `Reply<std::vector<std::string>>`. Pick the overload by call shape, not by a flag.
-- **Blocking timeouts are protocol seconds, not `qb::duration`.** Pass `long long` seconds or `std::chrono::seconds`; a `0` timeout blocks forever. The framework's connect/command timeouts are a separate, `qb::duration`-typed concern documented in [Connection](./connection.md).
-- **Some callback overloads silently no-op.** `lmpop`, `blmpop`, and `lpos` return the client without issuing a command (so the callback never fires) when a required argument is empty (`list_commands.h:759`, `:802`, `:911`). Validate inputs before relying on the callback.
-- **`lpos` has no scalar overload.** It always returns `std::vector<long long>` because it always sends `COUNT` on the wire (`list_commands.h:921`). For a single position, read `result().front()` after checking the vector is non-empty.
+- **Pop result type depends on the overload.** `lpop(key)` / `rpop(key)` yield `Reply<std::optional<std::string>>`;
+  `lpop(key, count)` / `rpop(key, count)` yield `Reply<std::vector<std::string>>`. Pick the overload by call shape, not
+  by a flag.
+- **Blocking timeouts are protocol seconds, not `qb::duration`.** Pass `long long` seconds or `std::chrono::seconds`; a
+  `0` timeout blocks forever. The framework's connect/command timeouts are a separate, `qb::duration`-typed concern
+  documented in [Connection](./connection.md).
+- **Some callback overloads silently no-op.** `lmpop`, `blmpop`, and `lpos` return the client without issuing a
+  command (so the callback never fires) when a required argument is empty (`list_commands.h:759`, `:802`, `:911`).
+  Validate inputs before relying on the callback.
+- **`lpos` has no scalar overload.** It always returns `std::vector<long long>` because it always sends `COUNT` on the
+  wire (`list_commands.h:921`). For a single position, read `result().front()` after checking the vector is non-empty.
 - **`brpoplpush` is deprecated.** New code should use `blmove`.
-- **Blocking commands occupy the connection.** A pending `blpop`/`brpop`/`blmove`/`blmpop` ties up the client until it resolves; use a dedicated client for long-lived blocking reads rather than sharing one with latency-sensitive traffic.
+- **Blocking commands occupy the connection.** A pending `blpop`/`brpop`/`blmove`/`blmpop` ties up the client until it
+  resolves; use a dedicated client for long-lived blocking reads rather than sharing one with latency-sensitive traffic.
 
 ## See also
 

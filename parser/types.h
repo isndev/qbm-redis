@@ -27,7 +27,6 @@
 #include <cstring>
 #include <memory>
 #include <optional>
-#include <qb/utility/compat.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -37,6 +36,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <qb/utility/compat.h>
 
 namespace qb::redis {
 

@@ -47,9 +47,9 @@ set(REDIS_TESTS
 # Register each test
 foreach (TEST ${REDIS_TESTS})
     qb_register_module_test(
-        MODULE_NAME redis
-        TEST_NAME ${TEST}
-        SOURCES test-${TEST}.cpp
+            MODULE_NAME redis
+            TEST_NAME ${TEST}
+            SOURCES test-${TEST}.cpp
     )
 endforeach ()
 
@@ -65,10 +65,10 @@ set_tests_properties(${_qbm_redis_ctest_names} PROPERTIES RESOURCE_LOCK qb_redis
 # Suppress nodiscard warnings for cleanup/setup co_await calls in tests
 foreach (TEST ${REDIS_TESTS})
     set(test_target "qbm-redis-test-${TEST}")
-    if(TARGET ${test_target})
+    if (TARGET ${test_target})
         target_compile_options(${test_target} PRIVATE
-            $<$<CXX_COMPILER_ID:Clang>:-Wno-unused-result>
-            $<$<CXX_COMPILER_ID:GNU>:-Wno-unused-result>
+                $<$<CXX_COMPILER_ID:Clang>:-Wno-unused-result>
+                $<$<CXX_COMPILER_ID:GNU>:-Wno-unused-result>
         )
-    endif()
+    endif ()
 endforeach ()

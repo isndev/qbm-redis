@@ -29,16 +29,16 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <qb/json.h>
-#include <qb/system/allocator/pipe.h>
-#include <qb/system/container/unordered_map.h>
-#include <qb/utility/type_traits.h>
 #include <set>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <qb/json.h>
+#include <qb/system/allocator/pipe.h>
+#include <qb/system/container/unordered_map.h>
+#include <qb/utility/type_traits.h>
 
 // Include types first (which includes parser)
 #include "types.h"

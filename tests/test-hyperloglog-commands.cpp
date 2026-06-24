@@ -16,9 +16,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <thread>
 #include "../redis.h"
 #include "protocol_test_common.h"
 
@@ -141,10 +141,9 @@ TEST_P(HyperLogLogProtocolModesTest, PFADD_PFCOUNT) {
         (void) co_await redis.pfadd(k, "a", "b", "c");
         auto count_r = co_await redis.pfcount(k);
         EXPECT_TRUE(count_r.ok()) << count_r.error();
-        if (count_r.ok())
-            {
+        if (count_r.ok()) {
             EXPECT_EQ(count_r.result(), 3);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -162,10 +161,9 @@ TEST_P(HyperLogLogProtocolModesTest, PFMERGE_STATUS) {
         (void) co_await redis.pfadd(k2, "c", "d");
         auto r = co_await redis.pfmerge(dest, k1, k2);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_TRUE(r.result().ok());
-            }
+        }
         done = true;
     });
     while (!done)

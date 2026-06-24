@@ -3,11 +3,13 @@
 ## Contexte Technique
 
 Ce roadmap prend en compte l'évolution majeure du framework QB :
+
 - **C++23** : Transition du C++17 vers le C++23 moderne
 - **Coroutines** : Implémentation imminente des coroutines C++23 (`co_await`, `co_return`) en sous-jacent de `qb-io`
 - **Impact** : Simplification drastique des patterns async actuels (callbacks → coroutines)
 
-> **Note** : Certaines features seront implémentées en deux versions : une pour l'API actuelle callback-based, et une future version coroutine-optimized.
+> **Note** : Certaines features seront implémentées en deux versions : une pour l'API actuelle callback-based, et une
+> future version coroutine-optimized.
 
 ---
 
@@ -18,6 +20,7 @@ Ce roadmap prend en compte l'évolution majeure du framework QB :
 **Objectif** : Observabilité complète du module Redis pour le monitoring en production.
 
 **Métriques à implémenter** :
+
 - **Latence** : p50, p95, p99 par type de commande
 - **Throughput** : ops/sec global et par commande
 - **Erreurs** : Taux d'erreur réseau, timeout, parsing
@@ -73,6 +76,7 @@ public:
 ```
 
 **Intégration QB Actor** :
+
 ```cpp
 // Event pour le monitoring
 struct RedisMetricsEvent : qb::Event {
@@ -100,6 +104,7 @@ Reply<Ret> command(std::string const& name, Args&&... args) {
 ```
 
 **Migration vers Coroutines (Future)** :
+
 ```cpp
 // Avec C++23 coroutines, le monitoring devient trivial
 template <typename Ret, typename... Args>
@@ -122,6 +127,7 @@ task<Reply<Ret>> command(std::string const& name, Args&&... args) {
 **Objectif** : Réutilisation efficace des connexions pour les scénarios high-throughput.
 
 **Spécifications** :
+
 - Pool configurable (min/max connexions)
 - Health check automatique
 - Reconnexion transparente
@@ -182,6 +188,7 @@ private:
 ```
 
 **Utilisation** :
+
 ```cpp
 // Création du pool
 auto pool = qb::redis::ConnectionPool(
@@ -199,6 +206,7 @@ auto pool = qb::redis::ConnectionPool(
 ```
 
 **Version Future avec Coroutines** :
+
 ```cpp
 // Acquisition async non-bloquante
 task<std::unique_ptr<ClientType>> acquire_async();
@@ -216,6 +224,7 @@ co_await conn->hset_async("key", "field", "value");
 **Objectif** : Résilience automatique sur erreurs réseau temporaires.
 
 **Types d'erreurs à gérer** :
+
 - Timeout de connexion
 - Déconnexion brutale (RST)
 - Redis indisponible temporairement
@@ -278,6 +287,7 @@ inline std::chrono::milliseconds calculate_delay(
 ```
 
 **Intégration dans Redis Client** :
+
 ```cpp
 class Redis {
 public:
@@ -312,6 +322,7 @@ private:
 ```
 
 **Version Coroutine (Future)** :
+
 ```cpp
 task<Reply<Ret>> command_async(std::string name, Args... args) {
     int attempt = 0;
@@ -334,7 +345,8 @@ task<Reply<Ret>> command_async(std::string name, Args... args) {
 
 **Objectif** : Envoi batch de commandes pour maximiser le throughput.
 
-**Le Challenge** : Le parsing hiredis avec `redisReaderGetReply` retourne les réponses **une par une**, même en mode pipeline. L'implémentation doit donc accumuler les réponses.
+**Le Challenge** : Le parsing hiredis avec `redisReaderGetReply` retourne les réponses **une par une**, même en mode
+pipeline. L'implémentation doit donc accumuler les réponses.
 
 **Architecture Proposée** :
 
@@ -431,6 +443,7 @@ protected:
 ```
 
 **Utilisation** :
+
 ```cpp
 // Mode sync - batch de 100 SET
 qb::redis::Pipeline pipe(redis);
@@ -445,6 +458,7 @@ auto results = pipe.execute<std::string, std::string, ..., std::string>();  // 1
 ```
 
 **Version Coroutine Optimisée** :
+
 ```cpp
 // Le pipeline devient trivial avec coroutines
 task<std::vector<Reply<std::string>>> batch_set(
@@ -474,6 +488,7 @@ auto results = co_await batch_set(redis, data);
 ### Changements Architecturaux Majeurs
 
 **1. Simplification des Callbacks → Coroutines**
+
 ```cpp
 // AVANT (Callback hell)
 redis.hget([](auto&& reply) {
@@ -492,6 +507,7 @@ if (reply1.ok()) {
 ```
 
 **2. Nouvelle Architecture I/O**
+
 ```cpp
 // qb-io avec coroutines
 namespace qb::io::async {
@@ -504,6 +520,7 @@ task<void> connect_async(const uri& target);
 ```
 
 **3. Impact sur le Protocol Handler**
+
 ```cpp
 // Avant : callback-based
 void onMessage(std::size_t size) noexcept final {
@@ -521,13 +538,13 @@ task<void> process_messages() {
 
 ### Plan de Migration
 
-| Phase | Description | Timeline |
-|-------|-------------|----------|
-| **1** | qb-io coroutines foundation | Q1 2025 |
-| **2** | Redis protocol handler coroutinization | Q2 2025 |
-| **3** | Nouvelle API `*_async()` parallèle | Q2-Q3 2025 |
-| **4** | Deprecation ancienne API callback | Q4 2025 |
-| **5** | Full coroutines (v3.0) | 2026 |
+| Phase | Description                            | Timeline   |
+|-------|----------------------------------------|------------|
+| **1** | qb-io coroutines foundation            | Q1 2025    |
+| **2** | Redis protocol handler coroutinization | Q2 2025    |
+| **3** | Nouvelle API `*_async()` parallèle     | Q2-Q3 2025 |
+| **4** | Deprecation ancienne API callback      | Q4 2025    |
+| **5** | Full coroutines (v3.0)                 | 2026       |
 
 ### Compatibilité Durante Transition
 
@@ -552,24 +569,28 @@ public:
 ## 📋 Checklist Implémentation
 
 ### Monitoring & Metrics (P0)
+
 - [ ] Structure `CommandMetrics`
 - [ ] `MetricsCollector` lock-free
 - [ ] Intégration dans toutes les commandes
 - [ ] Tests de performance
 
 ### Connection Pool (P1)
+
 - [ ] `ConnectionPool` template
 - [ ] Health check mechanism
 - [ ] Stats export
 - [ ] Tests multi-thread
 
 ### Retry Policy (P1)
+
 - [ ] Enum `RetryStrategy`
 - [ ] `calculate_delay()` helpers
 - [ ] Intégration dans `command()`
 - [ ] Tests avec mocks réseau
 
 ### Pipelining (P2)
+
 - [ ] `Pipeline` context class
 - [ ] Mode pipeline dans Protocol Handler
 - [ ] Accumulation réponses
@@ -586,6 +607,7 @@ public:
 ## 🤝 Contribution
 
 Ce roadmap est évolutif. Les contributions sont bienvenues :
+
 - Proposer des designs via PR
 - Signaler des priorités manquantes
 - Partager des benchmarks

@@ -95,23 +95,23 @@ auto hello = Serializer::serialize_hello(ProtocolVersion::RESP3);
 
 ## RESP Type Reference
 
-| Type | Prefix | Example | C++ Type |
-|------|--------|---------|----------|
-| Simple String | `+` | `+OK\r\n` | `SimpleString` |
-| Simple Error | `-` | `-ERR msg\r\n` | `SimpleError` |
-| Integer | `:` | `:42\r\n` | `Integer` |
-| Bulk String | `$` | `$5\r\nhello\r\n` | `BulkString` |
-| Array | `*` | `*2\r\n...\r\n` | `Array` |
-| Null | `_` | `_\r\n` | `Null` |
-| Boolean | `#` | `#t\r\n` | `Boolean` |
-| Double | `,` | `,1.23\r\n` | `Double` |
-| Big Number | `(` | `(123...\r\n` | `BigNumber` |
-| Bulk Error | `!` | `!21\r\nERR...\r\n` | `BulkError` |
-| Verbatim String | `=` | `=15\r\ntxt:data\r\n` | `VerbatimString` |
-| Map | `%` | `%2\r\n+k\r\n:v\r\n` | `Map` |
-| Attribute | `\|` | `\|1\r\n...` | `Attribute` |
-| Set | `~` | `~3\r\n...` | `Set` |
-| Push | `>` | `>3\r\n...` | `Push` |
+| Type            | Prefix | Example               | C++ Type         |
+|-----------------|--------|-----------------------|------------------|
+| Simple String   | `+`    | `+OK\r\n`             | `SimpleString`   |
+| Simple Error    | `-`    | `-ERR msg\r\n`        | `SimpleError`    |
+| Integer         | `:`    | `:42\r\n`             | `Integer`        |
+| Bulk String     | `$`    | `$5\r\nhello\r\n`     | `BulkString`     |
+| Array           | `*`    | `*2\r\n...\r\n`       | `Array`          |
+| Null            | `_`    | `_\r\n`               | `Null`           |
+| Boolean         | `#`    | `#t\r\n`              | `Boolean`        |
+| Double          | `,`    | `,1.23\r\n`           | `Double`         |
+| Big Number      | `(`    | `(123...\r\n`         | `BigNumber`      |
+| Bulk Error      | `!`    | `!21\r\nERR...\r\n`   | `BulkError`      |
+| Verbatim String | `=`    | `=15\r\ntxt:data\r\n` | `VerbatimString` |
+| Map             | `%`    | `%2\r\n+k\r\n:v\r\n`  | `Map`            |
+| Attribute       | `\|`   | `\|1\r\n...`          | `Attribute`      |
+| Set             | `~`    | `~3\r\n...`           | `Set`            |
+| Push            | `>`    | `>3\r\n...`           | `Push`           |
 
 ## Performance
 
@@ -123,6 +123,7 @@ The parser is designed for high-performance scenarios:
 - **Memory efficient**: Ring buffer for streaming, minimal allocations
 
 Benchmarks (approximate, modern x86_64):
+
 - Small messages (< 1KB): ~100M ops/sec
 - Medium messages (1KB - 1MB): ~1-10GB/sec throughput
 - Large messages (> 1MB): ~100MB-1GB/sec throughput
@@ -139,6 +140,7 @@ make test-parser
 ```
 
 Test coverage includes:
+
 - All RESP2 types
 - All RESP3 types
 - Streaming scenarios

@@ -16,9 +16,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <thread>
 #include "../redis.h"
 #include "protocol_test_common.h"
 
@@ -453,10 +453,9 @@ TEST_P(StreamProtocolModesTest, XADD_XLEN) {
         EXPECT_TRUE(add_r.ok()) << add_r.error();
         auto len_r = co_await redis.xlen(k);
         EXPECT_TRUE(len_r.ok()) << len_r.error();
-        if (len_r.ok())
-            {
+        if (len_r.ok()) {
             EXPECT_EQ(len_r.result(), 1);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -472,10 +471,9 @@ TEST_P(StreamProtocolModesTest, XREAD_JSON) {
         (void) co_await redis.xadd(k, {{"f", "v2"}});
         auto r = co_await redis.xread(k, "0", 10);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_TRUE(r.result().is_object() || r.result().is_array());
-            }
+        }
         done = true;
     });
     while (!done)
@@ -491,16 +489,14 @@ TEST_P(StreamProtocolModesTest, XRANGE_XREVRANGE) {
         (void) co_await redis.xadd(k, {{"f", "v2"}});
         auto range_r = co_await redis.xrange(k, "-", "+", 10);
         EXPECT_TRUE(range_r.ok()) << range_r.error();
-        if (range_r.ok())
-            {
+        if (range_r.ok()) {
             EXPECT_GE(range_r.result().size(), 1u);
-            }
+        }
         auto rev_r = co_await redis.xrevrange(k, "+", "-", 10);
         EXPECT_TRUE(rev_r.ok()) << rev_r.error();
-        if (rev_r.ok())
-            {
+        if (rev_r.ok()) {
             EXPECT_GE(rev_r.result().size(), 1u);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -517,10 +513,9 @@ TEST_P(StreamProtocolModesTest, XDEL_INTEGER) {
         std::string id = std::to_string(add_r.result().timestamp) + "-" + std::to_string(add_r.result().sequence);
         auto        r  = co_await redis.xdel(k, id);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_EQ(r.result(), 1);
-            }
+        }
         done = true;
     });
     while (!done)

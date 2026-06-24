@@ -18,28 +18,28 @@
 project(qbm-redis)
 
 # Check if qb framework is available
-if(NOT QB_FOUND)
+if (NOT QB_FOUND)
     qb_status_message("qb framework not found, skipping Redis module")
     return()
-endif()
+endif ()
 
 # TCP client builds without SSL; qb::redis::tcp::ssl::* requires QB_HAS_SSL
-if(NOT QB_HAS_SSL)
+if (NOT QB_HAS_SSL)
     qb_status_message("Redis: building TCP-only (QB_HAS_SSL off — TLS aliases unavailable)")
-endif()
+endif ()
 
 # Register the Redis module using the new framework functions
 # Note: Uses the native parser instead of hiredis.
 qb_register_module(
-    NAME redis
-    VERSION 2.0.0
-    DEPENDS qb-core
-    SOURCES
+        NAME redis
+        VERSION 2.0.0
+        DEPENDS qb-core
+        SOURCES
         redis.cpp
         reply.cpp
-    INCLUDES
+        INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}
-    DEFINES
+        DEFINES
         QBM_REDIS_VERSION="2.0.0"
         QBM_REDIS_USE_NATIVE_PARSER=1
 )
@@ -48,6 +48,6 @@ qb_register_module(
 # qb_register_module above; no separate target_include_directories() needed.
 
 # Add tests if enabled
-if(QB_BUILD_TESTS)
+if (QB_BUILD_TESTS)
     add_subdirectory(tests)
-endif()
+endif ()

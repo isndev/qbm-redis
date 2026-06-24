@@ -16,9 +16,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <thread>
 #include "../redis.h"
 #include "protocol_test_common.h"
 
@@ -773,10 +773,9 @@ TEST_P(ListProtocolModesTest, CORO_LIST_COMMANDS_BLMOVE) {
         auto r = co_await redis.blmove(src, dst, qb::redis::ListPosition::RIGHT, qb::redis::ListPosition::LEFT, 1);
         EXPECT_TRUE(r.ok());
         EXPECT_TRUE(r.result().has_value());
-        if (r.result())
-            {
+        if (r.result()) {
             EXPECT_EQ(*r.result(), "x");
-            }
+        }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -797,10 +796,9 @@ TEST_P(ListProtocolModesTest, CORO_LIST_COMMANDS_BRPOPLPUSH) {
         auto r = co_await redis.brpoplpush(src, dst, 1);
         EXPECT_TRUE(r.ok());
         EXPECT_TRUE(r.result().has_value());
-        if (r.result())
-            {
+        if (r.result()) {
             EXPECT_EQ(*r.result(), "item");
-            }
+        }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -819,16 +817,14 @@ TEST_P(ListProtocolModesTest, LPUSH_LRANGE) {
         auto k      = protocol_key("list");
         auto push_r = co_await redis.lpush(k, "a", "b", "c");
         EXPECT_TRUE(push_r.ok()) << push_r.error();
-        if (push_r.ok())
-            {
+        if (push_r.ok()) {
             EXPECT_EQ(push_r.result(), 3);
-            }
+        }
         auto range_r = co_await redis.lrange(k, 0, -1);
         EXPECT_TRUE(range_r.ok()) << range_r.error();
-        if (range_r.ok())
-            {
+        if (range_r.ok()) {
             EXPECT_EQ(range_r.result(), (std::vector<std::string>{"c", "b", "a"}));
-            }
+        }
         done = true;
     });
     while (!done)
@@ -843,16 +839,14 @@ TEST_P(ListProtocolModesTest, RPUSH_LLEN_LINDEX) {
         (void) co_await redis.rpush(k, "x", "y", "z");
         auto len_r = co_await redis.llen(k);
         EXPECT_TRUE(len_r.ok()) << len_r.error();
-        if (len_r.ok())
-            {
+        if (len_r.ok()) {
             EXPECT_EQ(len_r.result(), 3);
-            }
+        }
         auto idx_r = co_await redis.lindex(k, 1);
         EXPECT_TRUE(idx_r.ok()) << idx_r.error();
-        if (idx_r.ok() && idx_r.result())
-            {
+        if (idx_r.ok() && idx_r.result()) {
             EXPECT_EQ(*idx_r.result(), "y");
-            }
+        }
         done = true;
     });
     while (!done)
@@ -903,10 +897,9 @@ TEST_P(ListProtocolModesTest, LREM_INTEGER) {
         (void) co_await redis.rpush(k, "a", "b", "a", "c");
         auto r = co_await redis.lrem(k, 1, "a");
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_EQ(r.result(), 1);
-            }
+        }
         done = true;
     });
     while (!done)

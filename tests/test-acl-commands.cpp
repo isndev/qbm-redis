@@ -349,10 +349,9 @@ TEST_P(AclProtocolModesTest, ACL_WHOAMI_STRING) {
         try {
             auto r = co_await redis.acl_whoami();
             EXPECT_TRUE(r.ok()) << r.error();
-            if (r.ok())
-                {
+            if (r.ok()) {
                 EXPECT_FALSE(r.result().empty());
-                }
+            }
         } catch (const std::exception &) {
             // ACL not available on older Redis
         }
@@ -368,10 +367,9 @@ TEST_P(AclProtocolModesTest, ACL_LIST_JSON) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r = co_await redis.acl_list();
-            if (r.ok())
-                {
+            if (r.ok()) {
                 EXPECT_TRUE(r.result().is_array());
-                }
+            }
         } catch (const std::exception &) {
             // ACL not available on older Redis
         }

@@ -1,4 +1,5 @@
 <!-- Verified-against: qbm-redis @ qb 2.0.0 (C++20 default, C++23 supported) -->
+
 # Contributing to qbm-redis
 
 qbm-redis is a module of the qb actor framework. General contribution guidelines — branch and pull-request
