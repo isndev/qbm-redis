@@ -142,7 +142,9 @@ TEST_P(HyperLogLogProtocolModesTest, PFADD_PFCOUNT) {
         auto count_r = co_await redis.pfcount(k);
         EXPECT_TRUE(count_r.ok()) << count_r.error();
         if (count_r.ok())
+            {
             EXPECT_EQ(count_r.result(), 3);
+            }
         done = true;
     });
     while (!done)
@@ -161,7 +163,9 @@ TEST_P(HyperLogLogProtocolModesTest, PFMERGE_STATUS) {
         auto r = co_await redis.pfmerge(dest, k1, k2);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_TRUE(r.result().ok());
+            }
         done = true;
     });
     while (!done)

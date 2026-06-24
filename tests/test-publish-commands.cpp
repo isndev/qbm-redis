@@ -294,7 +294,9 @@ TEST_P(PublishProtocolModesTest, PUBLISH_INTEGER) {
         auto r = co_await redis.publish(k, "msg");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_GE(r.result(), 0);
+            }
         done = true;
     });
     while (!done)

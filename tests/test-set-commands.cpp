@@ -429,11 +429,15 @@ TEST_P(SetProtocolModesTest, SADD_SMEMBERS) {
         auto add_r = co_await redis.sadd(k, "x", "y", "z");
         EXPECT_TRUE(add_r.ok()) << add_r.error();
         if (add_r.ok())
+            {
             EXPECT_EQ(add_r.result(), 3);
+            }
         auto members_r = co_await redis.smembers(k);
         EXPECT_TRUE(members_r.ok()) << members_r.error();
         if (members_r.ok())
+            {
             EXPECT_EQ(members_r.result().size(), 3u);
+            }
         done = true;
     });
     while (!done)
@@ -449,11 +453,15 @@ TEST_P(SetProtocolModesTest, SISMEMBER_BOOLEAN) {
         auto r = co_await redis.sismember(k, "a");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_TRUE(r.result());
+            }
         auto r2 = co_await redis.sismember(k, "b");
         EXPECT_TRUE(r2.ok());
         if (r2.ok())
+            {
             EXPECT_FALSE(r2.result());
+            }
         done = true;
     });
     while (!done)
@@ -471,7 +479,9 @@ TEST_P(SetProtocolModesTest, SINTER) {
         auto r = co_await redis.sinter({k1, k2});
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result().size(), 2u);
+            }
         done = true;
     });
     while (!done)
@@ -487,7 +497,9 @@ TEST_P(SetProtocolModesTest, SREM_INTEGER) {
         auto r = co_await redis.srem(k, "a");
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), 1);
+            }
         done = true;
     });
     while (!done)
@@ -503,7 +515,9 @@ TEST_P(SetProtocolModesTest, SCARD_INTEGER) {
         auto r = co_await redis.scard(k);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), 3);
+            }
         done = true;
     });
     while (!done)

@@ -275,7 +275,8 @@ TEST_P(SortedSetProtocolModesTest, CORO_SORTED_SET_COMMANDS_INCR) {
         std::string key = protocol_key("incr");
 
         // Setup sorted set
-        (void) co_await redis.zadd(key, {{10.0, "score"}});
+        std::vector<qb::redis::score_member> incr_members = {{10.0, "score"}};
+        (void) co_await redis.zadd(key, incr_members);
 
         // ZINCRBY test
         auto incr1 = co_await redis.zincrby(key, 5.0, "score");
@@ -311,9 +312,12 @@ TEST_P(SortedSetProtocolModesTest, CORO_SORTED_SET_COMMANDS_UNION_INTER) {
         std::string union_dest = protocol_key("union");
         std::string inter_dest = protocol_key("inter");
 
-        // Setup sets
-        (void) co_await redis.zadd(set1, {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}});
-        (void) co_await redis.zadd(set2, {{2.0, "b"}, {3.0, "c"}, {4.0, "d"}});
+        // Setup sets (named vectors: a braced-init-list passed inline through co_await
+        // trips a GCC-14 internal compiler error in gimplify, so hoist them).
+        std::vector<qb::redis::score_member> set1_members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}};
+        std::vector<qb::redis::score_member> set2_members = {{2.0, "b"}, {3.0, "c"}, {4.0, "d"}};
+        (void) co_await redis.zadd(set1, set1_members);
+        (void) co_await redis.zadd(set2, set2_members);
 
         // ZUNIONSTORE test
         auto union_reply = co_await redis.zunionstore(union_dest, {set1, set2});
@@ -467,8 +471,10 @@ TEST_P(SortedSetProtocolModesTest, CORO_SORTED_SET_COMMANDS_ZDIFF) {
         std::string set2 = protocol_key("zdiff2");
         std::string dest = protocol_key("zdiff_dest");
 
-        (void) co_await redis.zadd(set1, {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}});
-        (void) co_await redis.zadd(set2, {{2.0, "b"}, {3.0, "c"}, {4.0, "d"}});
+        std::vector<qb::redis::score_member> zdiff_set1_members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}};
+        std::vector<qb::redis::score_member> zdiff_set2_members = {{2.0, "b"}, {3.0, "c"}, {4.0, "d"}};
+        (void) co_await redis.zadd(set1, zdiff_set1_members);
+        (void) co_await redis.zadd(set2, zdiff_set2_members);
 
         // ZDIFF: first set minus others = elements in set1 not in set2 = {a}
         auto diff_r = co_await redis.zdiff({set1, set2});
@@ -507,8 +513,10 @@ TEST_P(SortedSetProtocolModesTest, CORO_SORTED_SET_COMMANDS_ZINTER) {
         std::string set1 = protocol_key("zinter1");
         std::string set2 = protocol_key("zinter2");
 
-        (void) co_await redis.zadd(set1, {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}});
-        (void) co_await redis.zadd(set2, {{2.0, "b"}, {3.0, "c"}, {4.0, "d"}});
+        std::vector<qb::redis::score_member> zinter_set1_members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}};
+        std::vector<qb::redis::score_member> zinter_set2_members = {{2.0, "b"}, {3.0, "c"}, {4.0, "d"}};
+        (void) co_await redis.zadd(set1, zinter_set1_members);
+        (void) co_await redis.zadd(set2, zinter_set2_members);
 
         // ZINTER
         auto inter_r = co_await redis.zinter({set1, set2});
@@ -542,7 +550,8 @@ TEST_P(SortedSetProtocolModesTest, CORO_SORTED_SET_COMMANDS_ZMPOP_ZMSCORE_ZRANDM
         std::string src = protocol_key("zrangestore_src");
         std::string dst = protocol_key("zrangestore_dst");
 
-        (void) co_await redis.zadd(key, {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}});
+        std::vector<qb::redis::score_member> zmpop_members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}};
+        (void) co_await redis.zadd(key, zmpop_members);
 
         // ZMPOP MIN
         auto pop_r = co_await redis.zmpop({key}, "MIN", 1);
@@ -553,7 +562,8 @@ TEST_P(SortedSetProtocolModesTest, CORO_SORTED_SET_COMMANDS_ZMPOP_ZMSCORE_ZRANDM
         EXPECT_EQ(pop_r.result()->second[0].member, "a");
 
         // ZMSCORE
-        (void) co_await redis.zadd(key, {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}});
+        std::vector<qb::redis::score_member> zmscore_members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}};
+        (void) co_await redis.zadd(key, zmscore_members);
         auto mscore_r = co_await redis.zmscore(key, {"a", "b", "nonexistent"});
         EXPECT_TRUE(mscore_r.ok());
         EXPECT_EQ(mscore_r.result().size(), 3u);
@@ -581,7 +591,8 @@ TEST_P(SortedSetProtocolModesTest, CORO_SORTED_SET_COMMANDS_ZMPOP_ZMSCORE_ZRANDM
         }
 
         // ZRANGESTORE
-        (void) co_await redis.zadd(src, {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}, {4.0, "d"}});
+        std::vector<qb::redis::score_member> rangestore_src_members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}, {4.0, "d"}};
+        (void) co_await redis.zadd(src, rangestore_src_members);
         auto rangestore_r = co_await redis.zrangestore(dst, src, "1", "3", {"BYSCORE"});
         EXPECT_TRUE(rangestore_r.ok());
         EXPECT_EQ(rangestore_r.result(), 3);
@@ -590,7 +601,8 @@ TEST_P(SortedSetProtocolModesTest, CORO_SORTED_SET_COMMANDS_ZMPOP_ZMSCORE_ZRANDM
         EXPECT_EQ(dst_card.result(), 3);
 
         // BZMPOP with timeout 1 and non-empty key (returns immediately)
-        (void) co_await redis.zadd(key, {{1.0, "x"}});
+        std::vector<qb::redis::score_member> bzmpop_members = {{1.0, "x"}};
+        (void) co_await redis.zadd(key, bzmpop_members);
         auto bzmpop_r = co_await redis.bzmpop({key}, 1, "MIN", 1);
         EXPECT_TRUE(bzmpop_r.ok());
         EXPECT_TRUE(bzmpop_r.result().has_value());
@@ -654,7 +666,9 @@ TEST_P(SortedSetProtocolModesTest, ZADD_ZRANGE) {
         auto                                 add_r = co_await redis.zadd(k, members);
         EXPECT_TRUE(add_r.ok()) << add_r.error();
         if (add_r.ok())
+            {
             EXPECT_EQ(add_r.result(), 3);
+            }
         auto range_r = co_await redis.zrange(k, 0, -1);
         EXPECT_TRUE(range_r.ok()) << range_r.error();
         if (range_r.ok()) {
@@ -675,15 +689,20 @@ TEST_P(SortedSetProtocolModesTest, ZSCORE_ZINCRBY_DOUBLE) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("zscore");
-        (void) co_await redis.zadd(k, {{1.0, "m"}});
+        std::vector<qb::redis::score_member> zscore_members = {{1.0, "m"}};
+        (void) co_await redis.zadd(k, zscore_members);
         auto score_r = co_await redis.zscore(k, "m");
         EXPECT_TRUE(score_r.ok()) << score_r.error();
         if (score_r.ok() && score_r.result())
+            {
             EXPECT_DOUBLE_EQ(*score_r.result(), 1.0);
+            }
         auto incr_r = co_await redis.zincrby(k, 0.5, "m");
         EXPECT_TRUE(incr_r.ok()) << incr_r.error();
         if (incr_r.ok())
+            {
             EXPECT_DOUBLE_EQ(incr_r.result(), 1.5);
+            }
         done = true;
     });
     while (!done)
@@ -695,15 +714,20 @@ TEST_P(SortedSetProtocolModesTest, ZRANK_ZCARD) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("zrank");
-        (void) co_await redis.zadd(k, {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}});
+        std::vector<qb::redis::score_member> zrank_members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}};
+        (void) co_await redis.zadd(k, zrank_members);
         auto rank_r = co_await redis.zrank(k, "b");
         EXPECT_TRUE(rank_r.ok()) << rank_r.error();
         if (rank_r.ok() && rank_r.result())
+            {
             EXPECT_EQ(*rank_r.result(), 1);
+            }
         auto card_r = co_await redis.zcard(k);
         EXPECT_TRUE(card_r.ok()) << card_r.error();
         if (card_r.ok())
+            {
             EXPECT_EQ(card_r.result(), 3);
+            }
         done = true;
     });
     while (!done)
@@ -716,16 +740,22 @@ TEST_P(SortedSetProtocolModesTest, ZDIFF_ZMSCORE) {
         PROTOCOL_ENSURE_RESP3();
         auto k1 = protocol_key("zdiff1");
         auto k2 = protocol_key("zdiff2");
-        (void) co_await redis.zadd(k1, {{1.0, "a"}, {2.0, "b"}});
-        (void) co_await redis.zadd(k2, {{2.0, "b"}});
+        std::vector<qb::redis::score_member> zdiff_k1_members = {{1.0, "a"}, {2.0, "b"}};
+        std::vector<qb::redis::score_member> zdiff_k2_members = {{2.0, "b"}};
+        (void) co_await redis.zadd(k1, zdiff_k1_members);
+        (void) co_await redis.zadd(k2, zdiff_k2_members);
         auto diff_r = co_await redis.zdiff({k1, k2});
         EXPECT_TRUE(diff_r.ok()) << diff_r.error();
         if (diff_r.ok())
+            {
             EXPECT_EQ(diff_r.result().size(), 1u);
+            }
         auto mscore_r = co_await redis.zmscore(k1, {"a", "b"});
         EXPECT_TRUE(mscore_r.ok()) << mscore_r.error();
         if (mscore_r.ok())
+            {
             EXPECT_EQ(mscore_r.result().size(), 2u);
+            }
         done = true;
     });
     while (!done)
@@ -737,11 +767,14 @@ TEST_P(SortedSetProtocolModesTest, ZREM_INTEGER) {
     qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3();
         auto k = protocol_key("zrem");
-        (void) co_await redis.zadd(k, {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}});
+        std::vector<qb::redis::score_member> zrem_members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}};
+        (void) co_await redis.zadd(k, zrem_members);
         auto r = co_await redis.zrem(k, std::vector<std::string>{"b"});
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), 1);
+            }
         done = true;
     });
     while (!done)

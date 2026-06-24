@@ -298,7 +298,9 @@ TEST_P(GeoProtocolModesTest, GEOADD_GEOPOS) {
         auto add_r = co_await redis.geoadd(k, 13.361389, 38.115556, "Palermo");
         EXPECT_TRUE(add_r.ok()) << add_r.error();
         if (add_r.ok())
+            {
             EXPECT_EQ(add_r.result(), 1);
+            }
         auto pos_r = co_await redis.geopos(k, "Palermo");
         EXPECT_TRUE(pos_r.ok()) << pos_r.error();
         if (pos_r.ok() && !pos_r.result().empty() && pos_r.result()[0]) {
@@ -338,7 +340,9 @@ TEST_P(GeoProtocolModesTest, GEODIST_DOUBLE) {
         auto r = co_await redis.geodist(k, "Palermo", "Catania", qb::redis::GeoUnit::KM);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok() && r.result())
+            {
             EXPECT_GT(*r.result(), 0.0);
+            }
         done = true;
     });
     while (!done)

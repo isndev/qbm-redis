@@ -276,7 +276,9 @@ TEST_P(BitmapProtocolModesTest, SETBIT_GETBIT) {
         auto get_r = co_await redis.getbit(k, 7);
         EXPECT_TRUE(get_r.ok()) << get_r.error();
         if (get_r.ok())
+            {
             EXPECT_EQ(get_r.result(), 1);
+            }
         done = true;
     });
     while (!done)
@@ -291,7 +293,9 @@ TEST_P(BitmapProtocolModesTest, BITFIELD_INTEGER) {
         auto r = co_await redis.bitfield(k, {"SET", "i32", "#0", "100"});
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_FALSE(r.result().empty());
+            }
         done = true;
     });
     while (!done)
@@ -326,7 +330,9 @@ TEST_P(BitmapProtocolModesTest, BITCOUNT_INTEGER) {
         auto r = co_await redis.bitcount(k);
         EXPECT_TRUE(r.ok()) << r.error();
         if (r.ok())
+            {
             EXPECT_EQ(r.result(), 3);
+            }
         done = true;
     });
     while (!done)
