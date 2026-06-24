@@ -1,36 +1,39 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/hyperloglog_commands.h
+ * @brief Redis HyperLogLog command mixin for the qb Redis module.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This header defines the CRTP command mixin exposing the Redis HyperLogLog
+ * family (PFADD, PFCOUNT, PFMERGE). HyperLogLog is a probabilistic data
+ * structure that estimates the cardinality of a set with a small, constant
+ * memory footprint, making it well suited to counting unique elements in very
+ * large datasets. Each command is offered both as a coroutine-awaitable form
+ * and as a callback-based asynchronous form.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_HYPERLOG_COMMANDS_H
 #define QBM_REDIS_HYPERLOG_COMMANDS_H
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
 /**
- * @class hyperlog_commands
+ * @class hyperloglog_commands
  * @brief Provides Redis HyperLogLog command implementations.
  *
- * This class implements Redis HyperLogLog commands for working with
- * probabilistic data structures that estimate the cardinality of a set
- * with minimal memory usage. HyperLogLog is excellent for counting unique
- * elements in very large datasets with a small constant memory footprint.
+ * This CRTP mixin implements the Redis HyperLogLog commands for working with
+ * probabilistic data structures that estimate the cardinality of a set with
+ * minimal memory usage. HyperLogLog is excellent for counting unique elements
+ * in very large datasets with a small, constant memory footprint.
  *
- * @tparam Derived The derived class type (CRTP pattern)
+ * Each command is exposed in two forms:
+ * - a coroutine-awaitable overload returning a @c redis_awaiter;
+ * - a callback-based asynchronous overload returning @c Derived& for chaining.
+ *
+ * @tparam Derived The derived class type (CRTP pattern).
  */
 template <typename Derived>
 class hyperloglog_commands {

@@ -1,20 +1,16 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/reply.cpp
+ * @brief Out-of-line definitions for Redis reply parsing.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Houses the non-template reply parsers (pub/sub messages, stream entries,
+ * geo/score/cluster/memory/JSON conversions, ...) declared in reply.h, plus
+ * the RESP type-name helper and the ReplyParseError diagnostic builder.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #include "reply.h"
 #include <charconv>
 #include <sstream>
@@ -29,6 +25,46 @@ ReplyParseError::_err_info(const std::string &type, const ReplyValue &reply) {
 }
 
 namespace reply {
+
+// ============================================================================
+// Type to string conversion
+// ============================================================================
+
+std::string
+type_to_string(const parser::Value &value) {
+    using namespace parser;
+    if (value.is_simple_string())
+        return "SIMPLE_STRING";
+    if (value.is_simple_error())
+        return "SIMPLE_ERROR";
+    if (value.is_bulk_string())
+        return "BULK_STRING";
+    if (value.is_error())
+        return "BULK_ERROR";
+    if (value.is_integer())
+        return "INTEGER";
+    if (value.is_double())
+        return "DOUBLE";
+    if (value.is_boolean())
+        return "BOOLEAN";
+    if (value.is_null())
+        return "NULL";
+    if (value.is_array())
+        return "ARRAY";
+    if (value.is_map())
+        return "MAP";
+    if (value.is_set())
+        return "SET";
+    if (value.is_push())
+        return "PUSH";
+    if (value.is_attribute())
+        return "ATTRIBUTE";
+    if (value.is_string())
+        return "VERBATIM_STRING";
+    if (value.is_big_number())
+        return "BIG_NUMBER";
+    return "UNKNOWN";
+}
 
 // ============================================================================
 // Complex type parsers

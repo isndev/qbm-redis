@@ -1,33 +1,14 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
- */
-
-#ifndef QBM_REDIS_PARSER_H
-#define QBM_REDIS_PARSER_H
-
 /**
- * @file parser.h
- * @brief Main include file for the QB Redis Protocol Parser
+ * @file qbm/redis/parser.h
+ * @brief Umbrella include for the qb Redis protocol parser (RESP2/RESP3)
  *
- * This is a world-class C++20/23 implementation of the Redis protocol (RESP2/RESP3).
- * It provides zero-copy parsing where possible, full RESP3 support, and seamless
- * integration with the QB actor framework.
+ * Aggregates the components of the Redis protocol parser: core types and
+ * protocol definitions, buffer management, the streaming parser, and the
+ * command serializer. Including this single header pulls in the full
+ * RESP2/RESP3 parsing and serialization surface.
  *
- * @author QB Team
- * @version 1.0.0
+ * The implementation provides zero-copy parsing where possible, full RESP3
+ * support, and integration with the qb actor framework.
  *
  * Features:
  * - Complete RESP2 support (Simple String, Error, Integer, Bulk String, Array)
@@ -35,8 +16,8 @@
  *   Verbatim String, Map, Attribute, Set, Push)
  * - Streaming parser for async I/O
  * - Zero-copy parsing from contiguous buffers
- * - Modern C++ features (qb::expected, std::variant, std::span)
- * - Full hiredis API compatibility for drop-in replacement
+ * - Modern C++ types (qb::expected, std::variant, std::span)
+ * - hiredis API compatibility for drop-in replacement
  *
  * Usage:
  * @code
@@ -57,7 +38,14 @@
  * cmd.arg("mykey").arg("myvalue").arg_if(true, "EX", "60");
  * auto serialized = cmd.build();  // returns RESP wire bytes
  * @endcode
+ *
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
+#ifndef QBM_REDIS_PARSER_H
+#define QBM_REDIS_PARSER_H
 
 // Core types and protocol definitions
 #include "parser/types.h"
@@ -79,7 +67,8 @@
 namespace qb::redis::parser {
 
 /**
- * @brief Get parser version string
+ * @brief Get the parser version as a human-readable string.
+ * @return Version string in "MAJOR.MINOR.PATCH" form (e.g. "1.0.0").
  */
 [[nodiscard]] inline constexpr const char *
 version() noexcept {
@@ -87,7 +76,9 @@ version() noexcept {
 }
 
 /**
- * @brief Get parser version number (encoded as 0x010000 for 1.0.0)
+ * @brief Get the parser version encoded as a single integer.
+ * @return Version packed as (MAJOR << 16) | (MINOR << 8) | PATCH
+ *         (e.g. 0x010000 for 1.0.0).
  */
 [[nodiscard]] inline constexpr uint32_t
 version_number() noexcept {
@@ -95,7 +86,8 @@ version_number() noexcept {
 }
 
 /**
- * @brief Check if RESP3 is supported
+ * @brief Query whether the RESP3 protocol is supported.
+ * @return Always @c true; this parser implements RESP3.
  */
 [[nodiscard]] inline constexpr bool
 supports_resp3() noexcept {
@@ -103,7 +95,9 @@ supports_resp3() noexcept {
 }
 
 /**
- * @brief Check if zero-copy parsing is available
+ * @brief Query whether zero-copy parsing is available.
+ * @return Always @c true; the parser supports zero-copy parsing from
+ *         contiguous buffers.
  */
 [[nodiscard]] inline constexpr bool
 supports_zero_copy() noexcept {

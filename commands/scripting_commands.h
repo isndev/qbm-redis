@@ -1,23 +1,23 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/scripting_commands.h
+ * @brief Redis Lua scripting command mixin for the qb Redis module.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Provides the @ref qb::redis::scripting_commands CRTP mixin exposing the Redis
+ * EVAL family (EVAL, EVALSHA, EVAL_RO, EVALSHA_RO) for running Lua scripts on the
+ * server, together with the SCRIPT management subcommands (EXISTS, FLUSH, KILL,
+ * LOAD, DEBUG). Each command is offered in both a coroutine-awaitable form and an
+ * asynchronous callback-based form.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
+ * SPDX-License-Identifier: Apache-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_SCRIPTING_COMMANDS_H
 #define QBM_REDIS_SCRIPTING_COMMANDS_H
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -30,10 +30,15 @@ namespace qb::redis {
  * to be performed atomically and can reduce network roundtrips.
  *
  * @tparam Derived The derived class type (CRTP pattern)
+ * @ingroup Redis
  */
 template <typename Derived>
 class scripting_commands {
 private:
+    /**
+     * @brief Access the CRTP-derived instance.
+     * @return Reference to the derived class.
+     */
     constexpr Derived &
     derived() {
         return static_cast<Derived &>(*this);
@@ -239,6 +244,14 @@ public:
 
     /**
      * @brief Asynchronous version of evalRo
+     *
+     * @tparam Ret Return type of the script execution
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param script Lua script to execute
+     * @param keys Vector of key names that the script will access
+     * @param args Vector of additional arguments to the script
+     * @return Reference to the Redis handler for chaining
      * @see https://redis.io/commands/eval_ro
      */
     template <typename Ret, typename Func>
@@ -266,6 +279,14 @@ public:
 
     /**
      * @brief Asynchronous version of evalshaRo
+     *
+     * @tparam Ret Return type of the script execution
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param sha1 SHA1 hash of the script previously loaded with SCRIPT LOAD
+     * @param keys Vector of key names that the script will access
+     * @param args Vector of additional arguments to the script
+     * @return Reference to the Redis handler for chaining
      * @see https://redis.io/commands/evalsha_ro
      */
     template <typename Ret, typename Func>
@@ -288,6 +309,11 @@ public:
 
     /**
      * @brief Asynchronous version of scriptDebug
+     *
+     * @tparam Func Callback function type
+     * @param func Callback function
+     * @param mode Debug mode: "YES", "SYNC", or "NO"
+     * @return Reference to the Redis handler for chaining
      * @see https://redis.io/commands/script-debug
      */
     template <typename Func>

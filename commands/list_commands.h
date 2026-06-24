@@ -1,25 +1,21 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/list_commands.h
+ * @brief Redis list command mixin for the qb Redis module.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Provides the @ref qb::redis::list_commands CRTP mixin, which exposes the
+ * Redis list command family (LPUSH/RPUSH, LPOP/RPOP, blocking pops, LMOVE,
+ * LMPOP, LPOS, ...) in both coroutine-awaitable and callback-based forms.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_LIST_COMMANDS_H
 #define QBM_REDIS_LIST_COMMANDS_H
 
 #include <chrono>
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -671,7 +667,13 @@ public:
     }
 
     /**
-     * @brief Asynchronous version of lmpop
+     * @brief Pop elements from the first non-empty list asynchronously.
+     * @param func Callback function to handle the result.
+     * @param keys List of keys to check.
+     * @param position Where to pop from (LEFT or RIGHT).
+     * @param count Number of elements to pop (optional, default 1).
+     * @return Reference to the derived class.
+     * @note If @p keys is empty the command is not issued and the callback is not invoked.
      * @see https://redis.io/commands/lmpop
      */
     template <typename Func>
@@ -694,9 +696,9 @@ public:
      * @param keys List of keys to check.
      * @param position Where to pop from (LEFT or RIGHT).
      * @param timeout Timeout in seconds. 0 means block forever.
-     * @param count Number of elements to pop (required). The single-element
-     *              overload (no count argument) returns std::optional<std::string>;
-     *              this count overload returns std::vector<std::string>.
+     * @param count Number of elements to pop (optional, default 1).
+     * @return redis_awaiter yielding
+     *         Reply<std::optional<std::pair<std::string, std::vector<std::string>>>>
      * @see https://redis.io/commands/blmpop
      */
     auto
@@ -706,7 +708,14 @@ public:
     }
 
     /**
-     * @brief Asynchronous version of blmpop
+     * @brief Blocking variant of LMPOP asynchronously.
+     * @param func Callback function to handle the result.
+     * @param keys List of keys to check.
+     * @param position Where to pop from (LEFT or RIGHT).
+     * @param timeout Timeout in seconds. 0 means block forever.
+     * @param count Number of elements to pop (optional, default 1).
+     * @return Reference to the derived class.
+     * @note If @p keys is empty the command is not issued and the callback is not invoked.
      * @see https://redis.io/commands/blmpop
      */
     template <typename Func>
@@ -742,7 +751,14 @@ public:
     }
 
     /**
-     * @brief Asynchronous version of blmove
+     * @brief Blocking variant of LMOVE asynchronously.
+     * @param func Callback function to handle the result.
+     * @param source Source list key.
+     * @param destination Destination list key.
+     * @param wherefrom Where to pop from (LEFT or RIGHT).
+     * @param whereto Where to push to (LEFT or RIGHT).
+     * @param timeout Timeout in seconds. 0 means block forever.
+     * @return Reference to the derived class.
      * @see https://redis.io/commands/blmove
      */
     template <typename Func>
@@ -754,7 +770,12 @@ public:
     }
 
     /**
-     * @brief Pop element from source list, push to destination, blocking (coroutine awaitable).
+     * @brief Pop the last element of a list and push it to another list, blocking
+     *        until an element is available or the timeout elapses (coroutine awaitable).
+     * @param source Key of the source list.
+     * @param destination Key of the destination list.
+     * @param timeout Timeout in seconds. 0 means block forever.
+     * @return redis_awaiter yielding Reply<std::optional<std::string>>
      * @deprecated Use blmove instead.
      * @see https://redis.io/commands/brpoplpush
      */
@@ -763,6 +784,17 @@ public:
         return derived().template make_coro_command<std::optional<std::string>>(
             [this, source, destination, timeout](auto &&callback) { this->brpoplpush(std::move(callback), source, destination, timeout); });
     }
+
+    /**
+     * @brief Blocking BRPOPLPUSH asynchronously.
+     * @param func Callback function to handle the result.
+     * @param source Key of the source list.
+     * @param destination Key of the destination list.
+     * @param timeout Timeout in seconds. 0 means block forever.
+     * @return Reference to the derived class.
+     * @deprecated Use blmove instead.
+     * @see https://redis.io/commands/brpoplpush
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     brpoplpush(Func &&func, const std::string &source, const std::string &destination, long long timeout) {

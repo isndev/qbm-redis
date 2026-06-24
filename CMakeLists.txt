@@ -37,6 +37,7 @@ qb_register_module(
         SOURCES
         redis.cpp
         reply.cpp
+        server_reply.cpp
         INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}
         DEFINES

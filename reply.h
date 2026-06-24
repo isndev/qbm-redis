@@ -1,24 +1,18 @@
 /**
- * @file reply.h
- * @brief Reply parsing, Reply<T> wrapper, and command serialization
+ * @file qbm/redis/reply.h
+ * @brief Reply parsing, Reply<T> wrapper, and command serialization for Redis.
+ *
+ * Defines the Redis error/exception hierarchy, the `reply::` parsing utilities
+ * that convert a native `parser::Value` (RESP2/RESP3) into strongly typed C++
+ * values, the `to_redis_string`/`redis_count`/`put_in_pipe` command
+ * serialization helpers, the typed `Reply<T>` result wrapper, and the
+ * `IReply`/`TReply` reply-handler interface.
+ *
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
- */
-
 #ifndef QBM_REDIS_REPLY_H
 #define QBM_REDIS_REPLY_H
 
@@ -296,6 +290,17 @@ is_status(const ReplyValue &reply) noexcept {
 // Main parse function template
 // ============================================================================
 
+/**
+ * @brief Parses a reply value into the requested C++ type @p T.
+ *
+ * Dispatches to the matching `parse(ParseTag<T>{}, ...)` overload via
+ * tag-based overload resolution.
+ *
+ * @tparam T Target C++ type to convert the reply into.
+ * @param reply The native reply value to parse.
+ * @return The parsed value of type @p T.
+ * @throws ReplyParseError / ProtoError if the reply does not match @p T.
+ */
 template <typename T>
 [[nodiscard]] inline T
 parse(const ReplyValue &reply) {
@@ -396,6 +401,13 @@ parse(ParseTag<qb::redis::status>, const ReplyValue &reply) {
 // Complex type parsers
 // ============================================================================
 
+/**
+ * @brief Out-of-line parsers for the rich Redis domain types.
+ *
+ * Each overload converts a `parser::Value` (RESP2 or RESP3 shape) into the
+ * named C++ type and throws ReplyParseError / ProtoError / CommandError when
+ * the reply does not match the expected structure. Bodies live in reply.cpp.
+ */
 [[nodiscard]] qb::redis::message                   parse(ParseTag<qb::redis::message>, const ReplyValue &reply);
 [[nodiscard]] qb::redis::pmessage                  parse(ParseTag<qb::redis::pmessage>, const ReplyValue &reply);
 [[nodiscard]] qb::redis::subscription              parse(ParseTag<qb::redis::subscription>, const ReplyValue &reply);
@@ -622,41 +634,14 @@ parse(ParseTag<scan<Out>>, const ReplyValue &reply) {
 // Type to string conversion
 // ============================================================================
 
-[[nodiscard]] inline std::string
-type_to_string(const parser::Value &value) {
-    using namespace parser;
-    if (value.is_simple_string())
-        return "SIMPLE_STRING";
-    if (value.is_simple_error())
-        return "SIMPLE_ERROR";
-    if (value.is_bulk_string())
-        return "BULK_STRING";
-    if (value.is_error())
-        return "BULK_ERROR";
-    if (value.is_integer())
-        return "INTEGER";
-    if (value.is_double())
-        return "DOUBLE";
-    if (value.is_boolean())
-        return "BOOLEAN";
-    if (value.is_null())
-        return "NULL";
-    if (value.is_array())
-        return "ARRAY";
-    if (value.is_map())
-        return "MAP";
-    if (value.is_set())
-        return "SET";
-    if (value.is_push())
-        return "PUSH";
-    if (value.is_attribute())
-        return "ATTRIBUTE";
-    if (value.is_string())
-        return "VERBATIM_STRING";
-    if (value.is_big_number())
-        return "BIG_NUMBER";
-    return "UNKNOWN";
-}
+/**
+ * @brief Returns the RESP type name of a reply value as an uppercase string.
+ * @param value The parser value to inspect.
+ * @return Human-readable type name (e.g. "BULK_STRING", "INTEGER", "MAP"), or
+ *         "UNKNOWN" if the type is not recognised. Used to build diagnostic
+ *         messages in ReplyParseError.
+ */
+[[nodiscard]] std::string type_to_string(const parser::Value &value);
 
 // ============================================================================
 // Status extraction

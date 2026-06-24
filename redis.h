@@ -1,24 +1,33 @@
 /**
- * @file redis.h
- * @brief Main Redis client, protocol, connector, and consumer types
+ * @file qbm/redis/redis.h
+ * @brief Native Redis client, RESP protocol, connector, and Pub/Sub consumers
+ *
+ * This header assembles the public Redis client surface of the qbm-redis module on
+ * top of the qb-io asynchronous runtime. It provides:
+ *
+ * - A native C++20/23 RESP2/RESP3 protocol codec (`qb::protocol::redis`) that feeds
+ *   the streaming parser from `parser.h` and dispatches fully-parsed replies.
+ * - A reusable CRTP TCP `connector` with connection lifecycle, optional TLS peer
+ *   verification, coroutine-awaitable `connect()`, and exponential-backoff
+ *   auto-reconnect (`RetryPolicy`).
+ * - The full-featured `Redis` client, which inherits every `*_commands` mixin and
+ *   exposes both callback and coroutine command APIs, pipelining, and an optional
+ *   connection-health command deadline.
+ * - Pub/Sub consumers: a callback consumer (`RedisCallbackConsumer`) and a
+ *   coroutine `receive()` consumer (`RedisCoroConsumer`).
+ *
+ * All public types here are class templates parameterized on the qb-io transport
+ * (e.g. `qb::io::transport::tcp` / `stcp`); the `qb::redis::tcp` aggregate provides
+ * ready-made aliases.
+ *
+ * @warning The `Redis` client is not thread-safe; drive it from a single qb-io event
+ *          loop / strand.
+ *
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
- */
-
 #ifndef QBM_REDIS_H
 #define QBM_REDIS_H
 
@@ -36,26 +45,26 @@
 #include "reply.h"
 
 // Command traits
-#include "acl_commands.h"
-#include "bitmap_commands.h"
-#include "cluster_commands.h"
-#include "connection_commands.h"
-#include "function_commands.h"
-#include "geo_commands.h"
-#include "hash_commands.h"
-#include "hyperloglog_commands.h"
-#include "key_commands.h"
-#include "list_commands.h"
-#include "module_commands.h"
-#include "publish_commands.h"
-#include "scripting_commands.h"
-#include "server_commands.h"
-#include "set_commands.h"
-#include "sorted_set_commands.h"
-#include "stream_commands.h"
-#include "string_commands.h"
-#include "subscription_commands.h"
-#include "transaction_commands.h"
+#include "commands/acl_commands.h"
+#include "commands/bitmap_commands.h"
+#include "commands/cluster_commands.h"
+#include "commands/connection_commands.h"
+#include "commands/function_commands.h"
+#include "commands/geo_commands.h"
+#include "commands/hash_commands.h"
+#include "commands/hyperloglog_commands.h"
+#include "commands/key_commands.h"
+#include "commands/list_commands.h"
+#include "commands/module_commands.h"
+#include "commands/publish_commands.h"
+#include "commands/scripting_commands.h"
+#include "commands/server_commands.h"
+#include "commands/set_commands.h"
+#include "commands/sorted_set_commands.h"
+#include "commands/stream_commands.h"
+#include "commands/string_commands.h"
+#include "commands/subscription_commands.h"
+#include "commands/transaction_commands.h"
 
 namespace qb::protocol {
 
@@ -451,6 +460,17 @@ public:
         _uri = std::move(uri);
     }
 
+    /**
+     * @brief Coroutine connect with exponential-backoff retry.
+     *
+     * Repeatedly attempts to connect to the current URI until success or the
+     * policy's attempt budget is exhausted, sleeping `RetryPolicy`-controlled
+     * (optionally jittered) delays between attempts. Liveness-safe: if the client
+     * is destroyed while suspended, the task exits cleanly without touching `*this`.
+     *
+     * @param policy Retry/backoff configuration (defaults: unlimited attempts).
+     * @return A task yielding `true` on a successful connection, `false` otherwise.
+     */
     qb::io::async::task<bool>
     connect_with_retry(RetryPolicy policy = RetryPolicy{}) {
         static thread_local std::mt19937 rng_{std::random_device{}()};
@@ -547,6 +567,16 @@ public:
         return _verify_peer;
     }
 
+    /**
+     * @brief Adopt an already-opened transport socket and start the protocol.
+     *
+     * Installs the RESP protocol and begins async I/O on `raw_io`. No-ops (returns
+     * `false`) if a connection is already active, guarding against double setup.
+     *
+     * @param uri    URI associated with this connection (stored).
+     * @param raw_io An opened transport socket to take ownership of.
+     * @return `true` if the connection was set up, `false` if already connected.
+     */
     bool
     setup_connection(qb::io::uri uri, typename QB_IO_::transport_io_type &&raw_io) {
         if (_connected_flag)
@@ -557,11 +587,16 @@ public:
         return true;
     }
 
+    /**
+     * @brief Enable automatic reconnection on unexpected disconnect.
+     * @param policy Retry/backoff policy used by the detached reconnect task.
+     */
     void
     enable_auto_reconnect(RetryPolicy policy = RetryPolicy{}) noexcept {
         _reconnect_policy = std::move(policy);
     }
 
+    /** @brief Disable automatic reconnection (in-flight reconnects still finish). */
     void
     disable_auto_reconnect() noexcept {
         _reconnect_policy.reset();
@@ -883,6 +918,21 @@ public:
     explicit Redis(qb::io::uri uri)
         : connector<QB_IO_, Redis<QB_IO_>>(std::move(uri)) {}
 
+    /**
+     * @brief Send a raw command with a callback invoked on its reply (callback API).
+     *
+     * Registers the reply handler before the bytes are written so a synchronous
+     * delivery cannot outrun handler registration, then enqueues the command on the
+     * outbound pipe. Multiple calls pipeline naturally (one handler + one request
+     * per call, FIFO). Drain with await() or your event loop.
+     *
+     * @tparam Ret  Expected decoded reply type for `Reply<Ret>`.
+     * @param func  Callback invoked with `Reply<Ret>&&` on success, Redis error, or
+     *              disconnect.
+     * @param name  Redis command verb (used for blocking-command detection).
+     * @param args  Command arguments, serialized in order.
+     * @return *this, for fluent chaining.
+     */
     template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
     Redis &
@@ -898,6 +948,14 @@ public:
         return *this;
     }
 
+    /**
+     * @brief Send a raw command and await its reply as a coroutine (co_await API).
+     *
+     * @tparam Ret  Expected decoded reply type for `Reply<Ret>`.
+     * @param name  Redis command verb.
+     * @param args  Command arguments, serialized in order.
+     * @return A redis_awaiter yielding `Reply<Ret>` when the command completes.
+     */
     template <typename Ret, typename... Args>
     auto
     command(std::string const &name, Args &&...args) {
@@ -1037,6 +1095,20 @@ public:
 // Redis Consumer (Pub/Sub)
 // ============================================================================
 
+/**
+ * @class RedisConsumer
+ * @brief CRTP base for Redis Pub/Sub consumers
+ *
+ * Drives the RESP message loop for subscription-style connections: it tracks
+ * predicted subscription state, reconciles the per-channel confirmation frames a
+ * single (P)SUBSCRIBE/(P)UNSUBSCRIBE produces, and routes out-of-band MESSAGE /
+ * PMESSAGE frames to the derived consumer. Concrete consumers
+ * (`RedisCallbackConsumer`, `RedisCoroConsumer`) derive from this via CRTP and
+ * implement the `on(message&&)` / `on(error&&)` / `on(disconnected&&)` sinks.
+ *
+ * @tparam QB_IO_   I/O transport type (e.g. qb::io::transport::tcp)
+ * @tparam Derived  CRTP derived consumer type
+ */
 template <typename QB_IO_, typename Derived>
 class RedisConsumer
     : public connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>

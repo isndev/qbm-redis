@@ -1,23 +1,20 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/geo_commands.h
+ * @brief Redis geospatial command mixin (GEOADD, GEODIST, GEOSEARCH, ...).
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Provides the geospatial command surface of the qbm-redis client as a CRTP
+ * mixin. Each command is exposed in two forms: a coroutine-awaitable overload
+ * that yields a typed @c Reply, and a callback overload that forwards directly
+ * to the underlying command pipeline.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_GEO_COMMANDS_H
 #define QBM_REDIS_GEO_COMMANDS_H
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -29,7 +26,9 @@ namespace qb::redis {
  * geospatial data in Redis. These commands allow for storing coordinates,
  * calculating distances, and performing radius searches.
  *
- * @tparam Derived The derived class type (CRTP pattern)
+ * @tparam Derived The derived client type (CRTP pattern); must expose
+ *                 @c command<T>() and @c make_coro_command<T>().
+ * @ingroup Redis
  */
 template <typename Derived>
 class geo_commands {

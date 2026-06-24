@@ -1,20 +1,19 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/redis.cpp
+ * @brief Non-template Redis helpers: interval bound formatting and enum stringizers
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Out-of-line definitions for the concrete (non-template) parts of the qbm-redis
+ * range/interval helpers declared in `reply.h` (the `double` / `std::string` full
+ * specializations of `UnboundedInterval`, `BoundedInterval`, `LeftBoundedInterval`,
+ * and `RightBoundedInterval`) together with the command-option `to_string`
+ * stringizers. Everything else in the module is header-only by design (CRTP command
+ * mixins and the transport-templated client/consumer classes in `redis.h`).
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #include "redis.h"
 #include <charconv>
 #include <cmath>

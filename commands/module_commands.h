@@ -1,23 +1,22 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/module_commands.h
+ * @brief Redis Modules management command mixin for the qb Redis module.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Provides the @ref qb::redis::module_commands CRTP mixin exposing the Redis
+ * MODULE management commands (LIST, LOAD, UNLOAD, HELP) for inspecting and
+ * controlling dynamically loaded Redis modules. Each command is offered in both
+ * a coroutine-awaitable form and an asynchronous callback-based form.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
+ * SPDX-License-Identifier: Apache-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_MODULE_COMMANDS_H
 #define QBM_REDIS_MODULE_COMMANDS_H
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -29,10 +28,15 @@ namespace qb::redis {
  * allowing management and inspection of loaded modules.
  *
  * @tparam Derived The derived class type (CRTP pattern)
+ * @ingroup Redis
  */
 template <typename Derived>
 class module_commands {
 private:
+    /**
+     * @brief Access the CRTP-derived instance.
+     * @return Reference to the derived class.
+     */
     constexpr Derived &
     derived() {
         return static_cast<Derived &>(*this);

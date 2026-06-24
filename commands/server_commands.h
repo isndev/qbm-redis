@@ -1,20 +1,21 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/server_commands.h
+ * @brief Redis server-administration command mixin (CLIENT, CONFIG, COMMAND,
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *        MEMORY, LATENCY, SLOWLOG, persistence, replication, ...)
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
+ * Defines the @ref qb::redis::server_commands CRTP mixin, which exposes the
+ * Redis server-management command family. Each command is offered in two forms:
+ * a coroutine-awaitable overload returning a @c redis_awaiter, and a callback
+ * overload returning a reference to the derived handler for chaining.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ *            SPDX-License-Identifier: Apache-2.0
+ *
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_SERVER_COMMANDS_H
 #define QBM_REDIS_SERVER_COMMANDS_H
 #include <charconv>
@@ -22,7 +23,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -1506,158 +1507,321 @@ public:
         return derived().template command<qb::json>(std::forward<Func>(func), "CLIENT", "TRACKINGINFO");
     }
 
-    // =============== New Server Commands (TODO_COMMANDS.md) ===============
+    // =============== Additional Server Commands ===============
 
+    /**
+     * @brief Gets documentation for Redis commands as JSON (coroutine awaitable)
+     *
+     * @param command_names Optional list of command names (all commands if empty)
+     * @return redis_awaiter yielding Reply<qb::json>
+     * @see https://redis.io/commands/command-docs
+     */
     auto
     command_docs(const std::vector<std::string> &command_names = {}) {
         return derived().template make_coro_command<qb::json>(
             [this, command_names](auto &&callback) { this->command_docs(std::move(callback), command_names); });
     }
+    /**
+     * @brief Asynchronous version of command_docs
+     * @see https://redis.io/commands/command-docs
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     command_docs(Func &&func, const std::vector<std::string> &command_names = {}) {
         return derived().template command<qb::json>(std::forward<Func>(func), "COMMAND", "DOCS", command_names);
     }
 
+    /**
+     * @brief Gets the keys and access flags from a command (coroutine awaitable)
+     *
+     * @param command_name Command to inspect
+     * @param args Command arguments
+     * @return redis_awaiter yielding Reply<qb::json>
+     * @see https://redis.io/commands/command-getkeysandflags
+     */
     auto
     command_getkeysandflags(const std::string &command_name, const std::vector<std::string> &args) {
         return derived().template make_coro_command<qb::json>(
             [this, command_name, args](auto &&callback) { this->command_getkeysandflags(std::move(callback), command_name, args); });
     }
+    /**
+     * @brief Asynchronous version of command_getkeysandflags
+     * @see https://redis.io/commands/command-getkeysandflags
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     command_getkeysandflags(Func &&func, const std::string &command_name, const std::vector<std::string> &args) {
         return derived().template command<qb::json>(std::forward<Func>(func), "COMMAND", "GETKEYSANDFLAGS", command_name, args);
     }
 
+    /**
+     * @brief Gets the list of command names, optionally filtered (coroutine awaitable)
+     *
+     * @param filter Optional filter tokens (e.g. MODULE, ACLCAT, PATTERN)
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/command-list
+     */
     auto
     command_list(const std::vector<std::string> &filter = {}) {
         return derived().template make_coro_command<std::vector<std::string>>(
             [this, filter](auto &&callback) { this->command_list(std::move(callback), filter); });
     }
+    /**
+     * @brief Asynchronous version of command_list
+     * @see https://redis.io/commands/command-list
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     command_list(Func &&func, const std::vector<std::string> &filter = {}) {
         return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "COMMAND", "LIST", filter);
     }
 
+    /**
+     * @brief Starts a coordinated failover to a replica (coroutine awaitable)
+     *
+     * @param options Optional failover modifiers (e.g. TO host port, FORCE, ABORT, TIMEOUT ms)
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/failover
+     */
     auto
     failover(const std::vector<std::string> &options = {}) {
         return derived().template make_coro_command<status>([this, options](auto &&callback) { this->failover(std::move(callback), options); });
     }
+    /**
+     * @brief Asynchronous version of failover
+     * @see https://redis.io/commands/failover
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     failover(Func &&func, const std::vector<std::string> &options = {}) {
         return derived().template command<status>(std::forward<Func>(func), "FAILOVER", options);
     }
 
+    /**
+     * @brief Gets a human-readable latency analysis report (coroutine awaitable)
+     *
+     * @return redis_awaiter yielding Reply<std::string>
+     * @see https://redis.io/commands/latency-doctor
+     */
     auto
     latency_doctor() {
         return derived().template make_coro_command<std::string>([this](auto &&callback) { this->latency_doctor(std::move(callback)); });
     }
+    /**
+     * @brief Asynchronous version of latency_doctor
+     * @see https://redis.io/commands/latency-doctor
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     latency_doctor(Func &&func) {
         return derived().template command<std::string>(std::forward<Func>(func), "LATENCY", "DOCTOR");
     }
 
+    /**
+     * @brief Gets an ASCII-art latency graph for an event (coroutine awaitable)
+     *
+     * @param event The event name to graph
+     * @return redis_awaiter yielding Reply<std::string>
+     * @see https://redis.io/commands/latency-graph
+     */
     auto
     latency_graph(const std::string &event) {
         return derived().template make_coro_command<std::string>(
             [this, event](auto &&callback) { this->latency_graph(std::move(callback), event); });
     }
+    /**
+     * @brief Asynchronous version of latency_graph
+     * @see https://redis.io/commands/latency-graph
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     latency_graph(Func &&func, const std::string &event) {
         return derived().template command<std::string>(std::forward<Func>(func), "LATENCY", "GRAPH", event);
     }
 
+    /**
+     * @brief Gets per-command latency histograms as JSON (coroutine awaitable)
+     *
+     * @param commands Optional list of command names (all commands if empty)
+     * @return redis_awaiter yielding Reply<qb::json>
+     * @see https://redis.io/commands/latency-histogram
+     */
     auto
     latency_histogram(const std::vector<std::string> &commands = {}) {
         return derived().template make_coro_command<qb::json>(
             [this, commands](auto &&callback) { this->latency_histogram(std::move(callback), commands); });
     }
+    /**
+     * @brief Asynchronous version of latency_histogram
+     * @see https://redis.io/commands/latency-histogram
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     latency_histogram(Func &&func, const std::vector<std::string> &commands = {}) {
         return derived().template command<qb::json>(std::forward<Func>(func), "LATENCY", "HISTOGRAM", commands);
     }
 
+    /**
+     * @brief Controls keys caching for the next command when tracking is on (coroutine awaitable)
+     *
+     * @param yes Whether the next read should be cached (YES) or not (NO)
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-caching
+     */
     auto
     client_caching(bool yes) {
         return derived().template make_coro_command<status>([this, yes](auto &&callback) { this->client_caching(std::move(callback), yes); });
     }
+    /**
+     * @brief Asynchronous version of client_caching
+     * @see https://redis.io/commands/client-caching
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_caching(Func &&func, bool yes) {
         return derived().template command<status>(std::forward<Func>(func), "CLIENT", "CACHING", yes ? "YES" : "NO");
     }
 
+    /**
+     * @brief Gets the client ID this connection redirects tracking notifications to (coroutine awaitable)
+     *
+     * @return redis_awaiter yielding Reply<long long>
+     * @see https://redis.io/commands/client-getredir
+     */
     auto
     client_getredir() {
         return derived().template make_coro_command<long long>([this](auto &&callback) { this->client_getredir(std::move(callback)); });
     }
+    /**
+     * @brief Asynchronous version of client_getredir
+     * @see https://redis.io/commands/client-getredir
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     client_getredir(Func &&func) {
         return derived().template command<long long>(std::forward<Func>(func), "CLIENT", "GETREDIR");
     }
 
+    /**
+     * @brief Gets information about the current connection (coroutine awaitable)
+     *
+     * @return redis_awaiter yielding Reply<std::string>
+     * @see https://redis.io/commands/client-info
+     */
     auto
     client_info() {
         return derived().template make_coro_command<std::string>([this](auto &&callback) { this->client_info(std::move(callback)); });
     }
+    /**
+     * @brief Asynchronous version of client_info
+     * @see https://redis.io/commands/client-info
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     client_info(Func &&func) {
         return derived().template command<std::string>(std::forward<Func>(func), "CLIENT", "INFO");
     }
 
+    /**
+     * @brief Enables or disables eviction for the current client (coroutine awaitable)
+     *
+     * @param on Whether to turn no-evict mode ON or OFF
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-no-evict
+     */
     auto
     client_no_evict(bool on) {
         return derived().template make_coro_command<status>([this, on](auto &&callback) { this->client_no_evict(std::move(callback), on); });
     }
+    /**
+     * @brief Asynchronous version of client_no_evict
+     * @see https://redis.io/commands/client-no-evict
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_no_evict(Func &&func, bool on) {
         return derived().template command<status>(std::forward<Func>(func), "CLIENT", "NO-EVICT", on ? "ON" : "OFF");
     }
 
+    /**
+     * @brief Controls whether commands update the last-access time (coroutine awaitable)
+     *
+     * @param on Whether to turn no-touch mode ON or OFF
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-no-touch
+     */
     auto
     client_no_touch(bool on) {
         return derived().template make_coro_command<status>([this, on](auto &&callback) { this->client_no_touch(std::move(callback), on); });
     }
+    /**
+     * @brief Asynchronous version of client_no_touch
+     * @see https://redis.io/commands/client-no-touch
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_no_touch(Func &&func, bool on) {
         return derived().template command<status>(std::forward<Func>(func), "CLIENT", "NO-TOUCH", on ? "ON" : "OFF");
     }
 
+    /**
+     * @brief Controls whether the server replies to commands (coroutine awaitable)
+     *
+     * @param mode Reply mode: "ON", "OFF", or "SKIP"
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-reply
+     */
     auto
     client_reply(const std::string &mode) {
         return derived().template make_coro_command<status>([this, mode](auto &&callback) { this->client_reply(std::move(callback), mode); });
     }
+    /**
+     * @brief Asynchronous version of client_reply
+     * @see https://redis.io/commands/client-reply
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_reply(Func &&func, const std::string &mode) {
         return derived().template command<status>(std::forward<Func>(func), "CLIENT", "REPLY", mode);
     }
 
+    /**
+     * @brief Sets a client attribute reported by CLIENT INFO/LIST (coroutine awaitable)
+     *
+     * @param attr Attribute name ("LIB-NAME" or "LIB-VER")
+     * @param value Attribute value
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-setinfo
+     */
     auto
     client_setinfo(const std::string &attr, const std::string &value) {
         return derived().template make_coro_command<status>(
             [this, attr, value](auto &&callback) { this->client_setinfo(std::move(callback), attr, value); });
     }
+    /**
+     * @brief Asynchronous version of client_setinfo
+     * @see https://redis.io/commands/client-setinfo
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_setinfo(Func &&func, const std::string &attr, const std::string &value) {
         return derived().template command<status>(std::forward<Func>(func), "CLIENT", "SETINFO", attr, value);
     }
 
+    /**
+     * @brief Resumes command processing for clients paused by CLIENT PAUSE (coroutine awaitable)
+     *
+     * @return redis_awaiter yielding Reply<status>
+     * @see https://redis.io/commands/client-unpause
+     */
     auto
     client_unpause() {
         return derived().template make_coro_command<status>([this](auto &&callback) { this->client_unpause(std::move(callback)); });
     }
+    /**
+     * @brief Asynchronous version of client_unpause
+     * @see https://redis.io/commands/client-unpause
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_unpause(Func &&func) {

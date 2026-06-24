@@ -1,23 +1,21 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/acl_commands.h
+ * @brief Redis ACL (Access Control List) command mixin for the qb Redis module.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Defines the @ref qb::redis::acl_commands CRTP mixin, which exposes the Redis
+ * ACL command family (LIST, LOG, CAT, GETUSER, USERS, WHOAMI, HELP, DELUSER,
+ * GENPASS, LOAD, SAVE, SETUSER, DRYRUN) for managing user permissions and
+ * inspecting access-control activity. Each command is offered in two forms: a
+ * coroutine-awaitable overload and an asynchronous callback overload.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_ACL_COMMANDS_H
 #define QBM_REDIS_ACL_COMMANDS_H
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -26,7 +24,13 @@ namespace qb::redis {
  * @brief Provides Redis ACL (Access Control List) command implementations.
  *
  * This class implements Redis commands for working with the Access Control List
- * system, allowing management of user permissions and access to Redis commands.
+ * system, allowing management of user permissions and inspection of access to
+ * Redis commands. Each command is available as a coroutine-awaitable overload
+ * (for @c co_await) and as an asynchronous callback overload.
+ *
+ * It is intended to be inherited via the CRTP pattern: the @c Derived type must
+ * provide the @c command<>() and @c make_coro_command<>() primitives used to
+ * dispatch requests to the Redis server.
  *
  * @tparam Derived The derived class type (CRTP pattern)
  */

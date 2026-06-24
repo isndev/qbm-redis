@@ -1,31 +1,29 @@
 /**
- * @file parser/buffer.h
- * @brief InputBuffer and ViewBuffer for streaming RESP parsing
+ * @file qbm/redis/parser/buffer.h
+ * @brief Streaming byte buffers for RESP parsing.
+ *
+ * Provides two complementary buffer types used by the RESP parser:
+ *   - @ref qb::redis::parser::InputBuffer : an owning circular (ring) buffer
+ *     that accumulates inbound bytes across socket reads and handles data that
+ *     wraps around the physical end of its storage.
+ *   - @ref qb::redis::parser::ViewBuffer : a non-owning cursor over contiguous
+ *     external memory, enabling zero-copy line/byte extraction.
+ *
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
- */
-
 #ifndef QBM_REDIS_PARSER_BUFFER_H
 #define QBM_REDIS_PARSER_BUFFER_H
 
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace qb::redis::parser {
@@ -36,40 +34,65 @@ namespace qb::redis::parser {
 
 /**
  * @class InputBuffer
- * @brief Circular buffer for streaming RESP data ingestion
+ * @brief Owning circular (ring) buffer for streaming RESP data ingestion.
  *
- * Supports append, consume, peek, extract_line, extract_bytes.
- * Handles wrapped data across buffer boundaries.
+ * Accumulates inbound bytes across multiple socket reads and exposes them for
+ * parsing through @ref readable_span / @ref readable_span_second, @ref peek,
+ * @ref find_crlf, @ref extract_line and @ref extract_bytes. Storage grows on
+ * demand up to @ref MAX_CAPACITY and may be reclaimed via @ref compact.
+ *
+ * Because the storage is circular, logically contiguous data may physically
+ * wrap around the end of the buffer; readers must therefore consult both
+ * @ref readable_span and @ref readable_span_second. The implementation
+ * deliberately keeps one sentinel slot free so a completely full buffer is
+ * never mistaken for an empty one (see @ref ensure_space and @ref compact).
+ *
+ * The type is move-only (non-copyable, movable).
  */
 class InputBuffer {
 public:
-    static constexpr size_t DEFAULT_CAPACITY = 16 * 1024;         // 16KB
-    static constexpr size_t MAX_CAPACITY     = 512 * 1024 * 1024; // 512MB
+    /// Default initial storage capacity, in bytes (16 KiB).
+    static constexpr size_t DEFAULT_CAPACITY = 16 * 1024;
+    /// Hard upper bound on storage capacity, in bytes (512 MiB).
+    static constexpr size_t MAX_CAPACITY = 512 * 1024 * 1024;
 
+    /**
+     * @brief Construct a buffer with the given initial storage capacity.
+     * @param initial_capacity Number of bytes to pre-allocate
+     *                         (defaults to @ref DEFAULT_CAPACITY).
+     */
     explicit InputBuffer(size_t initial_capacity = DEFAULT_CAPACITY)
         : _buffer(initial_capacity)
         , _read_pos(0)
         , _write_pos(0) {}
 
-    // Non-copyable but movable
     InputBuffer(const InputBuffer &)            = delete;
     InputBuffer &operator=(const InputBuffer &) = delete;
     InputBuffer(InputBuffer &&)                 = default;
     InputBuffer &operator=(InputBuffer &&)      = default;
 
-    // Reset buffer state
+    /**
+     * @brief Discard all buffered data without releasing storage.
+     */
     void
     reset() noexcept {
         _read_pos  = 0;
         _write_pos = 0;
     }
 
-    // Capacity management
+    /**
+     * @brief Total physical storage capacity, in bytes.
+     * @return Size of the underlying storage.
+     */
     [[nodiscard]] size_t
     capacity() const noexcept {
         return _buffer.size();
     }
 
+    /**
+     * @brief Number of bytes currently readable.
+     * @return Count of unconsumed bytes, accounting for ring wrap-around.
+     */
     [[nodiscard]] size_t
     size() const noexcept {
         if (_write_pos >= _read_pos) {
@@ -79,17 +102,30 @@ public:
         }
     }
 
+    /**
+     * @brief Whether the buffer holds no readable data.
+     * @return @c true if there is nothing to read.
+     */
     [[nodiscard]] bool
     empty() const noexcept {
         return _read_pos == _write_pos;
     }
 
+    /**
+     * @brief Free space available for appending without growing storage.
+     * @return Number of bytes that can be appended before a resize is needed.
+     */
     [[nodiscard]] size_t
     available() const noexcept {
         return capacity() - size();
     }
 
-    // Append data to buffer
+    /**
+     * @brief Append a block of bytes, growing or compacting storage as needed.
+     * @param data Bytes to copy into the buffer (may be empty).
+     * @return @c true on success; @c false if the required capacity would
+     *         exceed @ref MAX_CAPACITY.
+     */
     bool
     append(std::span<const char> data) {
         if (data.empty())
@@ -128,7 +164,15 @@ public:
         return true;
     }
 
-    // Get contiguous readable data (may need to call twice for wrapped data)
+    /**
+     * @brief First contiguous run of readable bytes.
+     *
+     * When buffered data wraps around the physical end of storage, this returns
+     * only the portion up to that end; call @ref readable_span_second for the
+     * remainder.
+     *
+     * @return A view over the leading contiguous readable bytes (possibly empty).
+     */
     [[nodiscard]] std::span<const char>
     readable_span() const noexcept {
         if (_read_pos <= _write_pos) {
@@ -138,7 +182,11 @@ public:
         }
     }
 
-    // Get second span if data wraps around
+    /**
+     * @brief Second contiguous run of readable bytes when data wraps.
+     * @return The wrapped-around portion of readable data, or an empty span if
+     *         the data is contiguous.
+     */
     [[nodiscard]] std::span<const char>
     readable_span_second() const noexcept {
         if (_read_pos > _write_pos && _write_pos > 0) {
@@ -147,7 +195,10 @@ public:
         return {};
     }
 
-    // Advance read position
+    /**
+     * @brief Advance the read position, discarding consumed bytes.
+     * @param bytes Number of bytes to consume; clamped to @ref size().
+     */
     void
     consume(size_t bytes) noexcept {
         if (bytes == 0)
@@ -159,7 +210,11 @@ public:
         _read_pos = (_read_pos + bytes) % _buffer.size();
     }
 
-    // Peek at byte without consuming
+    /**
+     * @brief Read a byte at the given offset without consuming it.
+     * @param offset Distance from the current read position (default 0).
+     * @return The byte, or @c std::nullopt if @p offset is out of range.
+     */
     [[nodiscard]] std::optional<char>
     peek(size_t offset = 0) const noexcept {
         if (offset >= size())
@@ -168,7 +223,11 @@ public:
         return _buffer[(_read_pos + offset) % _buffer.size()];
     }
 
-    // Find CRLF in buffer
+    /**
+     * @brief Locate the first CRLF (\\r\\n) sequence in the readable data.
+     * @return Offset of the CR relative to the read position, or
+     *         @c std::nullopt if no CRLF is present.
+     */
     [[nodiscard]] std::optional<size_t>
     find_crlf() const noexcept {
         size_t sz = size();
@@ -184,7 +243,11 @@ public:
         return std::nullopt;
     }
 
-    // Extract a line (up to and including CRLF)
+    /**
+     * @brief Extract one CRLF-terminated line, consuming it and its CRLF.
+     * @return The line contents without the trailing CRLF, or
+     *         @c std::nullopt if no complete line is buffered yet.
+     */
     [[nodiscard]] std::optional<std::string>
     extract_line() {
         auto crlf_pos = find_crlf();
@@ -205,7 +268,12 @@ public:
         return result;
     }
 
-    // Extract N bytes
+    /**
+     * @brief Extract exactly @p n bytes, consuming them.
+     * @param n Number of bytes to extract.
+     * @return The extracted bytes, or @c std::nullopt if fewer than @p n bytes
+     *         are buffered.
+     */
     [[nodiscard]] std::optional<std::string>
     extract_bytes(size_t n) {
         if (n > size())
@@ -222,12 +290,17 @@ public:
         return result;
     }
 
-    // Compact buffer - move data to the front and optionally shrink.
-    //
-    // Invariant maintained: _write_pos < _buffer.size() after this call.
-    // (A circular buffer where _write_pos == _buffer.size() would make
-    // consume() wrap _read_pos back to 0 without reaching _write_pos,
-    // causing empty() to return false after consuming all data.)
+    /**
+     * @brief Move buffered data to the front of storage and optionally shrink it.
+     *
+     * Relocates wrapped or offset data so it becomes contiguous from index 0,
+     * then reclaims storage when the buffer is substantially over-allocated.
+     *
+     * Invariant maintained: @c _write_pos < @c _buffer.size() after this call.
+     * (A circular buffer where @c _write_pos == @c _buffer.size() would make
+     * @ref consume() wrap @c _read_pos back to 0 without reaching @c _write_pos,
+     * causing @ref empty() to return false after consuming all data.)
+     */
     void
     compact() {
         if (empty()) {
@@ -266,6 +339,13 @@ public:
     }
 
 private:
+    /**
+     * @brief Ensure at least @p needed bytes of free space, compacting or
+     *        growing storage as required.
+     * @param needed Number of free bytes the caller needs.
+     * @return @c true if the space is now available; @c false if satisfying the
+     *         request would exceed @ref MAX_CAPACITY.
+     */
     bool
     ensure_space(size_t needed) {
         size_t current_available = available();
@@ -312,57 +392,95 @@ private:
 
 /**
  * @class ViewBuffer
- * @brief Non-owning view over contiguous data for zero-copy parsing
+ * @brief Non-owning cursor over contiguous data for zero-copy RESP parsing.
  *
- * Tracks read position, supports extract_line_view, extract_bytes_view,
- * skip_crlf. Does not copy data.
+ * Wraps an externally owned, contiguous byte range and tracks a read position
+ * within it. Line and byte extraction return @c std::string_view aliases into
+ * the underlying memory (no copy); convenience overloads producing owned
+ * @c std::string copies are also provided.
+ *
+ * The caller must keep the referenced memory alive for the lifetime of any view
+ * returned by this buffer.
  */
 class ViewBuffer {
 public:
+    /**
+     * @brief Construct a view over the given contiguous byte range.
+     * @param data Externally owned bytes to parse; must outlive this buffer.
+     */
     explicit ViewBuffer(std::span<const char> data) noexcept
         : _data(data)
         , _position(0) {}
 
-    // Reset view to new data
+    /**
+     * @brief Rebind the view to a new byte range and rewind to its start.
+     * @param data New externally owned bytes to parse.
+     */
     void
     reset(std::span<const char> data) noexcept {
         _data     = data;
         _position = 0;
     }
 
-    // Access
+    /**
+     * @brief The full underlying byte range.
+     * @return The complete span this view was constructed over.
+     */
     [[nodiscard]] std::span<const char>
     data() const noexcept {
         return _data;
     }
 
+    /**
+     * @brief Total size of the underlying data, in bytes.
+     * @return The size of the full span.
+     */
     [[nodiscard]] size_t
     size() const noexcept {
         return _data.size();
     }
 
+    /**
+     * @brief Number of bytes left to read from the current position.
+     * @return Count of unconsumed bytes.
+     */
     [[nodiscard]] size_t
     remaining() const noexcept {
         return _data.size() - _position;
     }
 
+    /**
+     * @brief Whether the cursor has reached the end of the data.
+     * @return @c true if no bytes remain.
+     */
     [[nodiscard]] bool
     empty() const noexcept {
         return _position >= _data.size();
     }
 
+    /**
+     * @brief Current read position (offset from the start of the data).
+     * @return The cursor offset.
+     */
     [[nodiscard]] size_t
     position() const noexcept {
         return _position;
     }
 
-    // Advance position
+    /**
+     * @brief Advance the cursor by @p bytes.
+     * @param bytes Number of bytes to skip; clamped to the end of the data.
+     */
     void
     consume(size_t bytes) noexcept {
         _position = std::min(_position + bytes, _data.size());
     }
 
-    // Peek at current byte.
+    /**
+     * @brief Read a byte at the given offset from the cursor without consuming.
+     * @param offset Distance from the current position (default 0).
+     * @return The byte, or @c std::nullopt if @p offset is out of range.
+     */
     // Bounds checks are written as `offset >= remaining` rather than
     // `_position + offset >= size` so a huge offset cannot overflow size_t and wrap
     // past the guard into an out-of-bounds index. `_position <= _data.size()` always
@@ -374,13 +492,22 @@ public:
         return _data[_position + offset];
     }
 
-    // Get current span
+    /**
+     * @brief View of all remaining bytes from the current position.
+     * @return A span over the unconsumed bytes.
+     */
     [[nodiscard]] std::span<const char>
     current() const noexcept {
         return _data.subspan(_position);
     }
 
-    // Get span of N bytes (overflow-safe bound: see peek()).
+    /**
+     * @brief View of the next @p n bytes without consuming them.
+     * @param n Number of bytes to view.
+     * @return A span over the next @p n bytes, or an empty span if fewer than
+     *         @p n bytes remain.
+     */
+    // Overflow-safe bound: see peek().
     [[nodiscard]] std::span<const char>
     get(size_t n) const noexcept {
         if (n > _data.size() - _position) {
@@ -389,7 +516,11 @@ public:
         return _data.subspan(_position, n);
     }
 
-    // Find CRLF from current position
+    /**
+     * @brief Locate the first CRLF (\\r\\n) at or after the current position.
+     * @return Offset of the CR relative to the current position, or
+     *         @c std::nullopt if no CRLF is found.
+     */
     [[nodiscard]] std::optional<size_t>
     find_crlf() const noexcept {
         for (size_t i = _position; i + 1 < _data.size(); ++i) {
@@ -400,7 +531,15 @@ public:
         return std::nullopt;
     }
 
-    // Extract string up to CRLF (excluding CRLF)
+    /**
+     * @brief Extract one CRLF-terminated line as a zero-copy view.
+     *
+     * On success the cursor is advanced past the line and its CRLF.
+     *
+     * @return A view of the line contents without the trailing CRLF, or
+     *         @c std::nullopt if no complete line is available. The view aliases
+     *         the underlying data and is valid only while that data lives.
+     */
     [[nodiscard]] std::optional<std::string_view>
     extract_line_view() {
         auto crlf_pos = find_crlf();
@@ -413,7 +552,11 @@ public:
         return std::string_view(result.data(), result.size());
     }
 
-    // Extract string (creates copy)
+    /**
+     * @brief Extract one CRLF-terminated line as an owned copy.
+     * @return The line contents without the trailing CRLF, or
+     *         @c std::nullopt if no complete line is available.
+     */
     [[nodiscard]] std::optional<std::string>
     extract_line() {
         auto view = extract_line_view();
@@ -422,7 +565,14 @@ public:
         return std::string(*view);
     }
 
-    // Extract N bytes as view (overflow-safe bound: see peek()).
+    /**
+     * @brief Extract exactly @p n bytes as a zero-copy view, advancing the cursor.
+     * @param n Number of bytes to extract.
+     * @return A view of the @p n bytes, or @c std::nullopt if fewer than @p n
+     *         bytes remain. The view aliases the underlying data and is valid
+     *         only while that data lives.
+     */
+    // Overflow-safe bound: see peek().
     [[nodiscard]] std::optional<std::string_view>
     extract_bytes_view(size_t n) {
         if (n > _data.size() - _position)
@@ -433,7 +583,11 @@ public:
         return std::string_view(result.data(), result.size());
     }
 
-    // Extract N bytes as string
+    /**
+     * @brief Extract exactly @p n bytes as an owned copy, advancing the cursor.
+     * @param n Number of bytes to extract.
+     * @return The @p n bytes, or @c std::nullopt if fewer than @p n bytes remain.
+     */
     [[nodiscard]] std::optional<std::string>
     extract_bytes(size_t n) {
         auto view = extract_bytes_view(n);
@@ -442,7 +596,11 @@ public:
         return std::string(*view);
     }
 
-    // Skip expected CRLF
+    /**
+     * @brief Consume a CRLF (\\r\\n) at the current position if present.
+     * @return @c true if a CRLF was found and consumed; @c false otherwise
+     *         (the cursor is left unchanged on failure).
+     */
     [[nodiscard]] bool
     skip_crlf() {
         if (_position + 2 > _data.size())

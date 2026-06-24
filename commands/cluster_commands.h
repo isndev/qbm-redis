@@ -1,23 +1,21 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/cluster_commands.h
+ * @brief Redis cluster command mixin for the qb Redis client.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Defines the @ref qb::redis::cluster_commands CRTP mixin, exposing the full
+ * `CLUSTER` command family (topology inspection, slot assignment and migration,
+ * node management, manual failover) plus the connection-scoped cluster commands
+ * (`ASKING`, `READONLY`, `READWRITE`). Each command is available both as a
+ * coroutine-awaitable form and as an asynchronous callback form.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_CLUSTER_COMMANDS_H
 #define QBM_REDIS_CLUSTER_COMMANDS_H
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -30,6 +28,7 @@ namespace qb::redis {
  * and managing cluster nodes.
  *
  * @tparam Derived The derived class type (CRTP pattern)
+ * @ingroup Redis
  */
 template <typename Derived>
 class cluster_commands {

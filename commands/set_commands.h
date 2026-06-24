@@ -1,25 +1,21 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/set_commands.h
+ * @brief Redis set command mixin (SADD, SMEMBERS, SINTER, SSCAN, ...).
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Provides the CRTP command mixin implementing the Redis set command family.
+ * Every command is exposed in two forms: a coroutine-awaitable overload and a
+ * callback-based asynchronous overload, both backed by the derived connection.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_SET_COMMANDS_H
 #define QBM_REDIS_SET_COMMANDS_H
 
 #include <qb/system/container/unordered_set.h> // for qb::unordered_set (previously picked up transitively via listener.h)
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -259,6 +255,15 @@ public:
         return derived().template command<long long>(std::forward<Func>(func), "SDIFFSTORE", destination, keys);
     }
 
+    /**
+     * @brief Returns the intersection of multiple sets (coroutine awaitable)
+     *
+     * @param keys Keys where the sets are stored
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @note Time complexity: O(N*M) where N is the cardinality of the smallest
+     *       set and M is the number of sets
+     * @see https://redis.io/commands/sinter
+     */
     auto
     sinter(const std::vector<std::string> &keys) {
         return derived().template make_coro_command<std::vector<std::string>>(

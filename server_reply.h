@@ -1,24 +1,23 @@
 /**
- * @file server_reply.h
- * @brief Server-side reply types, ValueExtractor, and AsyncResult
+ * @file qbm/redis/server_reply.h
+ * @brief Server-side reply types, value extraction, and coroutine result wrappers.
+ *
+ * Provides the building blocks used by server-side Redis handlers to inspect and
+ * consume parsed protocol values:
+ *  - @ref qb::redis::ServerReply, a lightweight success/value/error wrapper.
+ *  - @ref qb::redis::ValueExtractor, optional-based typed accessors over a
+ *    @ref qb::redis::parser::Value.
+ *  - @ref qb::redis::AsyncResult, an @c expected -based result type suited to
+ *    coroutine-style consumption.
+ *  - Free convenience helpers that extract common shapes (strings, integers,
+ *    string arrays/maps, stream ids, sorted-set score/member pairs) from a
+ *    parsed value.
+ *
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
- */
-
 #ifndef QBM_REDIS_SERVER_REPLY_H
 #define QBM_REDIS_SERVER_REPLY_H
 
@@ -28,6 +27,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <qb/system/container/unordered_map.h>
 #include "parser.h"
 #include "types.h"
 
@@ -101,12 +101,25 @@ class ValueExtractor {
     const parser::Value *_value;
 
 public:
+    /**
+     * @brief Construct from a parsed value reference.
+     * @param v The value to inspect; must outlive the extractor.
+     */
     explicit ValueExtractor(const parser::Value &v)
         : _value(&v) {}
+    /**
+     * @brief Construct from an owning pointer to a parsed value.
+     * @param v The value to inspect; the pointed-to value must outlive the
+     *          extractor. A null pointer yields an extractor that reports null.
+     */
     explicit ValueExtractor(const std::unique_ptr<parser::Value> &v)
         : _value(v.get()) {}
 
-    // String extraction
+    /**
+     * @brief Extract the value as a string view, without copying.
+     * @return The string view, or @c std::nullopt if the value is absent or not
+     *         a string.
+     */
     [[nodiscard]] std::optional<std::string_view>
     as_string_view() const noexcept {
         if (!_value || !_value->is_string())
@@ -114,6 +127,11 @@ public:
         return _value->as_string_view();
     }
 
+    /**
+     * @brief Extract the value as an owned string.
+     * @return The string copy, or @c std::nullopt if the value is absent or not
+     *         a string.
+     */
     [[nodiscard]] std::optional<std::string>
     as_string() const {
         auto sv = as_string_view();
@@ -122,7 +140,11 @@ public:
         return std::string(*sv);
     }
 
-    // Integer extraction
+    /**
+     * @brief Extract the value as a 64-bit integer.
+     * @return The integer, or @c std::nullopt if the value is absent or not an
+     *         integer.
+     */
     [[nodiscard]] std::optional<int64_t>
     as_integer() const noexcept {
         if (!_value || !_value->is_integer())
@@ -130,7 +152,12 @@ public:
         return _value->as_integer().value;
     }
 
-    // Double extraction
+    /**
+     * @brief Extract the value as a double.
+     * @return The double; integer values are widened to double. Returns
+     *         @c std::nullopt if the value is absent or neither a double nor an
+     *         integer.
+     */
     [[nodiscard]] std::optional<double>
     as_double() const noexcept {
         if (!_value)
@@ -142,7 +169,11 @@ public:
         return std::nullopt;
     }
 
-    // Boolean extraction
+    /**
+     * @brief Extract the value as a boolean.
+     * @return The boolean, or @c std::nullopt if the value is absent or not a
+     *         boolean.
+     */
     [[nodiscard]] std::optional<bool>
     as_bool() const noexcept {
         if (!_value || !_value->is_boolean())
@@ -150,13 +181,20 @@ public:
         return _value->as_boolean().value;
     }
 
-    // Null check
+    /**
+     * @brief Test whether the value is absent or a Redis null.
+     * @return @c true if there is no underlying value or it is null.
+     */
     [[nodiscard]] bool
     is_null() const noexcept {
         return !_value || _value->is_null();
     }
 
-    // Array iteration - returns span-like access
+    /**
+     * @brief Borrow the value as an array for iteration.
+     * @return A reference wrapper to the underlying array, or @c std::nullopt if
+     *         the value is absent or not an array.
+     */
     [[nodiscard]] std::optional<std::reference_wrapper<const parser::Array>>
     as_array() const noexcept {
         if (!_value || !_value->is_array())
@@ -164,7 +202,11 @@ public:
         return std::cref(_value->as_array());
     }
 
-    // Map iteration
+    /**
+     * @brief Borrow the value as a map for iteration.
+     * @return A reference wrapper to the underlying map, or @c std::nullopt if
+     *         the value is absent or not a map.
+     */
     [[nodiscard]] std::optional<std::reference_wrapper<const parser::Map>>
     as_map() const noexcept {
         if (!_value || !_value->is_map())
@@ -172,7 +214,11 @@ public:
         return std::cref(_value->as_map());
     }
 
-    // Set iteration
+    /**
+     * @brief Borrow the value as a set for iteration.
+     * @return A reference wrapper to the underlying set, or @c std::nullopt if
+     *         the value is absent or not a set.
+     */
     [[nodiscard]] std::optional<std::reference_wrapper<const parser::Set>>
     as_set() const noexcept {
         if (!_value || !_value->is_set())
@@ -180,12 +226,19 @@ public:
         return std::cref(_value->as_set());
     }
 
-    // Error check and message
+    /**
+     * @brief Test whether the value is a Redis error reply.
+     * @return @c true if there is an underlying value and it is an error.
+     */
     [[nodiscard]] bool
     is_error() const noexcept {
         return _value && _value->is_error();
     }
 
+    /**
+     * @brief Get the error message carried by the value.
+     * @return The error message, or "no value" if there is no underlying value.
+     */
     [[nodiscard]] std::string
     get_error_message() const {
         if (!_value)
@@ -193,7 +246,10 @@ public:
         return _value->get_error_message();
     }
 
-    // Raw access to underlying value
+    /**
+     * @brief Access the underlying parsed value.
+     * @return A pointer to the value, or @c nullptr if none.
+     */
     [[nodiscard]] const parser::Value *
     raw() const noexcept {
         return _value;
@@ -204,72 +260,37 @@ public:
 // Convenience helpers for common Redis patterns
 // ============================================================================
 
-// Extract string from reply
-[[nodiscard]] inline expected<std::string, std::string>
-extract_string(const parser::Value &value) {
-    if (value.is_null())
-        return unexpected("null value");
-    if (!value.is_string())
-        return unexpected("not a string");
-    return std::string(value.as_string_view());
-}
+/**
+ * @brief Extract a non-null string from a parsed value.
+ * @param value The value to inspect.
+ * @return The string on success, or an error message if the value is null or
+ *         not a string.
+ */
+[[nodiscard]] expected<std::string, std::string> extract_string(const parser::Value &value);
 
-// Extract integer from reply
-[[nodiscard]] inline expected<int64_t, std::string>
-extract_integer(const parser::Value &value) {
-    if (value.is_null())
-        return unexpected("null value");
-    if (!value.is_integer())
-        return unexpected("not an integer");
-    return value.as_integer().value;
-}
+/**
+ * @brief Extract a non-null integer from a parsed value.
+ * @param value The value to inspect.
+ * @return The integer on success, or an error message if the value is null or
+ *         not an integer.
+ */
+[[nodiscard]] expected<int64_t, std::string> extract_integer(const parser::Value &value);
 
-// Extract array of strings
-[[nodiscard]] inline expected<std::vector<std::string>, std::string>
-extract_string_array(const parser::Value &value) {
-    if (value.is_null())
-        return expected<std::vector<std::string>, std::string>{};
-    if (!value.is_array())
-        return unexpected("not an array");
+/**
+ * @brief Extract an array of strings from a parsed value.
+ * @param value The value to inspect.
+ * @return The vector of strings on success (empty for a null value), or an error
+ *         message if the value is not an array or contains a non-string element.
+ */
+[[nodiscard]] expected<std::vector<std::string>, std::string> extract_string_array(const parser::Value &value);
 
-    std::vector<std::string> result;
-    const auto              &arr = value.as_array();
-    result.reserve(arr.size());
-
-    for (const auto &elem : arr) {
-        if (!elem || !elem->is_string()) {
-            return unexpected("array contains non-string");
-        }
-        result.emplace_back(elem->as_string_view());
-    }
-
-    return result;
-}
-
-// Extract map of string to string
-[[nodiscard]] inline expected<qb::unordered_map<std::string, std::string>, std::string>
-extract_string_map(const parser::Value &value) {
-    if (value.is_null())
-        return qb::unordered_map<std::string, std::string>{};
-    if (!value.is_map())
-        return unexpected("not a map");
-
-    qb::unordered_map<std::string, std::string> result;
-    const auto                                 &map = value.as_map();
-    result.reserve(map.size());
-
-    for (const auto &entry : map) {
-        if (!entry.first || !entry.first->is_string()) {
-            return unexpected("map key is not a string");
-        }
-        if (!entry.second || !entry.second->is_string()) {
-            return unexpected("map value is not a string");
-        }
-        result.emplace(std::string(entry.first->as_string_view()), std::string(entry.second->as_string_view()));
-    }
-
-    return result;
-}
+/**
+ * @brief Extract a string-to-string map from a parsed value.
+ * @param value The value to inspect.
+ * @return The map on success (empty for a null value), or an error message if
+ *         the value is not a map or contains a non-string key or value.
+ */
+[[nodiscard]] expected<qb::unordered_map<std::string, std::string>, std::string> extract_string_map(const parser::Value &value);
 
 // ============================================================================
 // Async result wrapper for coroutines
@@ -366,59 +387,31 @@ public:
 // Stream ID helpers
 // ============================================================================
 
-[[nodiscard]] inline expected<stream_id, std::string>
-extract_stream_id(const parser::Value &value) {
-    if (!value.is_string())
-        return unexpected("stream id must be a string");
-
-    auto sv  = value.as_string_view();
-    auto pos = sv.find('-');
-    if (pos == std::string_view::npos) {
-        return unexpected("invalid stream id format");
-    }
-
-    try {
-        stream_id id;
-        id.timestamp = std::stoll(std::string(sv.substr(0, pos)));
-        id.sequence  = std::stoll(std::string(sv.substr(pos + 1)));
-        return id;
-    } catch (const std::exception &) {
-        return unexpected("invalid stream id values");
-    }
-}
+/**
+ * @brief Parse a Redis stream id ("<timestamp>-<sequence>") from a parsed value.
+ * @param value The value to inspect.
+ * @return The parsed stream id on success, or an error message if the value is
+ *         not a string, lacks the '-' separator, or has non-numeric components.
+ */
+[[nodiscard]] expected<stream_id, std::string> extract_stream_id(const parser::Value &value);
 
 // ============================================================================
 // Score member helpers (for sorted sets)
 // ============================================================================
 
-[[nodiscard]] inline expected<score_member, std::string>
-extract_score_member(const parser::Array &arr, size_t index) {
-    if (index + 1 >= arr.size()) {
-        return unexpected("not enough elements for score-member pair");
-    }
-
-    score_member sm;
-
-    // Member (string)
-    if (!arr[index] || !arr[index]->is_string()) {
-        return unexpected("member must be a string");
-    }
-    sm.member = std::string(arr[index]->as_string_view());
-
-    // Score (double or integer)
-    if (!arr[index + 1]) {
-        return unexpected("score is null");
-    }
-    if (arr[index + 1]->is_double()) {
-        sm.score = arr[index + 1]->as_double().value;
-    } else if (arr[index + 1]->is_integer()) {
-        sm.score = static_cast<double>(arr[index + 1]->as_integer().value);
-    } else {
-        return unexpected("score must be a number");
-    }
-
-    return sm;
-}
+/**
+ * @brief Extract a sorted-set score/member pair from an array.
+ *
+ * Reads the member (string) at @p index and its score (double or integer) at
+ * @p index + 1.
+ *
+ * @param arr   The array holding the flattened member/score elements.
+ * @param index The position of the member element.
+ * @return The score/member pair on success, or an error message if there are not
+ *         enough elements, the member is not a string, or the score is null or
+ *         not a number.
+ */
+[[nodiscard]] expected<score_member, std::string> extract_score_member(const parser::Array &arr, size_t index);
 
 } // namespace qb::redis
 
