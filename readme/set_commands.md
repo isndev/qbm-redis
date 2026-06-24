@@ -1,50 +1,76 @@
 # Set commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23 supported)
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> supported)
 
-Reference for the Redis set command group exposed by `qb::redis::set_commands<Derived>` — unordered collections of unique strings, with each command listed by its exact signature, arguments, reply type, and a minimal coroutine and callback snippet.
+Reference for the Redis set command group exposed by `qb::redis::set_commands<Derived>` — unordered collections of
+unique strings, with each command listed by its exact signature, arguments, reply type, and a minimal coroutine and
+callback snippet.
 
-**Prerequisites:** [../README.md](../README.md) (install, `qb_load_modules`, `qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) — **See also:** [sorted_set_commands.md](./sorted_set_commands.md), [hash_commands.md](./hash_commands.md), [key_commands.md](./key_commands.md), [error_handling.md](./error_handling.md), [pipeline_and_await.md](./pipeline_and_await.md)
+**Prerequisites:** [../README.md](../README.md) (install, `qb_load_modules`,
+`qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) — **See also:
+** [sorted_set_commands.md](./sorted_set_commands.md), [hash_commands.md](./hash_commands.md), [key_commands.md](./key_commands.md), [error_handling.md](./error_handling.md), [pipeline_and_await.md](./pipeline_and_await.md)
 
 ---
 
 ## Summary
 
-A Redis set is an unordered collection of unique strings — the natural shape for membership tests, tag sets, and the algebraic operations (difference, intersection, union) on top of them. The commands here are defined in `qbm/redis/set_commands.h` as a CRTP mixin (`set_commands<Derived>`) that the client inherits, so you call them directly on a connected `qb::redis::tcp::client`: `redis.sadd(...)`, `redis.smembers(...)`, and so on. There is no `_async` suffix and no separate sync/async class — the overload you pick is what selects the calling style.
+A Redis set is an unordered collection of unique strings — the natural shape for membership tests, tag sets, and the
+algebraic operations (difference, intersection, union) on top of them. The commands here are defined in
+`qbm/redis/set_commands.h` as a CRTP mixin (`set_commands<Derived>`) that the client inherits, so you call them directly
+on a connected `qb::redis::tcp::client`: `redis.sadd(...)`, `redis.smembers(...)`, and so on. There is no `_async`
+suffix and no separate sync/async class — the overload you pick is what selects the calling style.
 
 Each command exposes two overloads:
 
-- a **coroutine** form (no callback argument) that returns an awaiter yielding `Reply<T>` — drive it with `co_await` inside a `qb::io::async::task<...>`, or with `qb::io::async::run_sync(...)` from synchronous code;
-- a **callback** form whose **first** argument is the handler and which returns `Derived&` for chaining. Your callback must be invocable with `Reply<T>&&` for the command's `T` (a `Reply<T>&&`, `const Reply<T>&`, or `auto&&` parameter all qualify). Every callback overload carries an explicit `std::enable_if_t<std::is_invocable_v<Func, Reply<T>&&>, Derived&>` return type, so the compiler can tell the callback overload apart from the coroutine overload — including for the variadic and multi-arg commands (`sadd`, `srem`, `smismember`, `sdiff`, `sinter`, `sunion`, `sscan`, …).
+- a **coroutine** form (no callback argument) that returns an awaiter yielding `Reply<T>` — drive it with `co_await`
+  inside a `qb::io::async::task<...>`, or with `qb::io::async::run_sync(...)` from synchronous code;
+- a **callback** form whose **first** argument is the handler and which returns `Derived&` for chaining. Your callback
+  must be invocable with `Reply<T>&&` for the command's `T` (a `Reply<T>&&`, `const Reply<T>&`, or `auto&&` parameter
+  all qualify). Every callback overload carries an explicit
+  `std::enable_if_t<std::is_invocable_v<Func, Reply<T>&&>, Derived&>` return type, so the compiler can tell the callback
+  overload apart from the coroutine overload — including for the variadic and multi-arg commands (`sadd`, `srem`,
+  `smismember`, `sdiff`, `sinter`, `sunion`, `sscan`, …).
 
 <!-- src: qbm/redis/set_commands.h:139-167 -->
 
-One operation is **callback-only** and has no coroutine form: the auto-iterating `sscan(func, key, pattern)` that walks every page internally. It is covered below.
+One operation is **callback-only** and has no coroutine form: the auto-iterating `sscan(func, key, pattern)` that walks
+every page internally. It is covered below.
 
-**No time-unit boundary applies to this group.** Set commands carry no TTL or expiry arguments, so none of the `std::chrono` / `qb::duration` unit concerns from the key and string groups apply here. (Connect and command deadlines remain `qb::duration` at the client level — see [connection.md](./connection.md).) Counts and cardinalities are native `long long`.
+**No time-unit boundary applies to this group.** Set commands carry no TTL or expiry arguments, so none of the
+`std::chrono` / `qb::duration` unit concerns from the key and string groups apply here. (Connect and command deadlines
+remain `qb::duration` at the client level — see [connection.md](./connection.md).) Counts and cardinalities are native
+`long long`.
 
 ---
 
 ## Reply types at a glance
 
-`Reply<T>` is the uniform envelope (`qbm/redis/reply.h:1052`): `reply.ok()` reports success, `reply.result()` (alias `reply.value()`) holds the parsed payload, `reply.error()` holds the server error string, and `Reply<T>` is contextually convertible to `bool` (explicit). Container payloads use **qb-core** containers, not `std::`.
+`Reply<T>` is the uniform envelope (`qbm/redis/reply.h:1052`): `reply.ok()` reports success, `reply.result()` (alias
+`reply.value()`) holds the parsed payload, `reply.error()` holds the server error string, and `Reply<T>` is contextually
+convertible to `bool` (explicit). Container payloads use **qb-core** containers, not `std::`.
 
-| Command(s) | Reply payload `T` |
-|---|---|
-| `sadd`, `srem`, `scard`, `sdiffstore`, `sinterstore`, `sunionstore`, `sintercard` | `long long` |
-| `sismember`, `smove` | `bool` |
-| `smismember` | `std::vector<bool>` |
-| `smembers` | `qb::unordered_set<std::string>` |
-| `sdiff`, `sinter`, `sunion` | `std::vector<std::string>` |
-| `spop(key)`, `srandmember(key)` | `std::optional<std::string>` |
-| `spop(key, count)`, `srandmember(key, count)` | `std::vector<std::string>` |
-| `sscan` (cursor form) | `qb::redis::scan<Out>`, `Out` defaults to `std::vector<std::string>` |
+| Command(s)                                                                        | Reply payload `T`                                                    |
+|-----------------------------------------------------------------------------------|----------------------------------------------------------------------|
+| `sadd`, `srem`, `scard`, `sdiffstore`, `sinterstore`, `sunionstore`, `sintercard` | `long long`                                                          |
+| `sismember`, `smove`                                                              | `bool`                                                               |
+| `smismember`                                                                      | `std::vector<bool>`                                                  |
+| `smembers`                                                                        | `qb::unordered_set<std::string>`                                     |
+| `sdiff`, `sinter`, `sunion`                                                       | `std::vector<std::string>`                                           |
+| `spop(key)`, `srandmember(key)`                                                   | `std::optional<std::string>`                                         |
+| `spop(key, count)`, `srandmember(key, count)`                                     | `std::vector<std::string>`                                           |
+| `sscan` (cursor form)                                                             | `qb::redis::scan<Out>`, `Out` defaults to `std::vector<std::string>` |
 
 <!-- src: qbm/redis/set_commands.h:141, 177, 214, 251, 281, 319, 362, 400, 439, 476, 514, 551, 587, 624, 661, 700, 742, 807, 847; qbm/redis/types.h:355 -->
 
-> **`smembers` yields a set, not a vector.** The reply payload is `qb::unordered_set<std::string>` (`set_commands.h:476`), iterable but unordered with no index access. The `sdiff` / `sinter` / `sunion` family return `std::vector<std::string>` instead. `spop(key, count)` and `srandmember(key, count)` return a **`std::vector<std::string>`** — not a vector of `std::optional`. The single-member `spop(key)` / `srandmember(key)` return `std::optional<std::string>` because the source set may be empty.
+> **`smembers` yields a set, not a vector.** The reply payload is `qb::unordered_set<std::string>` (
+`set_commands.h:476`), iterable but unordered with no index access. The `sdiff` / `sinter` / `sunion` family return
+`std::vector<std::string>` instead. `spop(key, count)` and `srandmember(key, count)` return a *
+*`std::vector<std::string>`** — not a vector of `std::optional`. The single-member `spop(key)` / `srandmember(key)`
+> return `std::optional<std::string>` because the source set may be empty.
 
-The `scan<Out>` struct has two fields — `cursor` (a `std::size_t`; `0` means iteration is complete) and `items` (the `Out` page, here `std::vector<std::string>`).
+The `scan<Out>` struct has two fields — `cursor` (a `std::size_t`; `0` means iteration is complete) and `items` (the
+`Out` page, here `std::vector<std::string>`).
 
 <!-- src: qbm/redis/types.h:355-359 -->
 
@@ -62,7 +88,8 @@ The snippets assume a connected client inside a coroutine; see [connection.md](.
 
 ### `SADD key member [member ...]` — `sadd`
 
-Adds one or more members to the set at `key`. Returns the number of members **actually added** (members already present do not count).
+Adds one or more members to the set at `key`. Returns the number of members **actually added** (members already present
+do not count).
 
 ```cpp
 template <typename... Members>
@@ -72,7 +99,8 @@ template <typename Func, typename... Members>
 Derived &sadd(Func &&func, const std::string &key, Members &&...members);       // callback
 ```
 
-The members are forwarded straight into the wire command, so any type the codec serializes works (typically `std::string` / string literals).
+The members are forwarded straight into the wire command, so any type the codec serializes works (typically
+`std::string` / string literals).
 
 ```cpp
 auto added = co_await redis.sadd("tags:42", "red", "green");
@@ -106,7 +134,8 @@ if (n.ok()) std::cout << n.result() << " members\n";
 
 ### `SREM key member [member ...]` — `srem`
 
-Removes one or more members from the set at `key`. Returns the number of members **actually removed** (members not present do not count).
+Removes one or more members from the set at `key`. Returns the number of members **actually removed** (members not
+present do not count).
 
 ```cpp
 template <typename... Members>
@@ -142,7 +171,8 @@ if (present.ok() && present.result()) { /* member exists */ }
 
 ### `SMISMEMBER key member [member ...]` — `smismember`
 
-Tests several members at once. Returns a `std::vector<bool>` positionally aligned with the members you passed — `true` for present, `false` for absent.
+Tests several members at once. Returns a `std::vector<bool>` positionally aligned with the members you passed — `true`
+for present, `false` for absent.
 
 ```cpp
 template <typename... Members>
@@ -183,7 +213,8 @@ if (members.ok())
 
 ### `SMOVE source destination member` — `smove`
 
-Atomically moves `member` from set `source` to set `destination`. Returns `true` if the member was moved, `false` if it was not a member of `source`.
+Atomically moves `member` from set `source` to set `destination`. Returns `true` if the member was moved, `false` if it
+was not a member of `source`.
 
 ```cpp
 auto smove(const std::string &source, const std::string &destination,
@@ -202,7 +233,8 @@ if (moved.ok() && moved.result()) { /* relocated */ }
 
 ### `SPOP key` / `SPOP key count` — `spop`
 
-Removes and returns random members. The single-member form returns `std::optional<std::string>` (`std::nullopt` when the set is empty); the count form returns a `std::vector<std::string>` of up to `count` removed members.
+Removes and returns random members. The single-member form returns `std::optional<std::string>` (`std::nullopt` when the
+set is empty); the count form returns a `std::vector<std::string>` of up to `count` removed members.
 
 ```cpp
 auto spop(const std::string &key);                                             // coroutine, single
@@ -213,7 +245,8 @@ template <typename Func>
 Derived &spop(Func &&func, const std::string &key, long long count);            // callback, count
 ```
 
-A `count < 1` is rejected by the callback form (it returns `Derived&` without issuing the command — see [Pitfalls](#pitfalls)).
+A `count < 1` is rejected by the callback form (it returns `Derived&` without issuing the command —
+see [Pitfalls](#pitfalls)).
 
 ```cpp
 auto one = co_await redis.spop("deck");
@@ -228,7 +261,9 @@ if (hand.ok()) std::cout << hand.result().size() << " cards\n";  // up to 2
 
 ### `SRANDMEMBER key` / `SRANDMEMBER key count` — `srandmember`
 
-Returns random members **without** removing them. The single form returns `std::optional<std::string>`; the count form returns a `std::vector<std::string>`. A negative `count` allows repeats and a result longer than the set (standard Redis semantics).
+Returns random members **without** removing them. The single form returns `std::optional<std::string>`; the count form
+returns a `std::vector<std::string>`. A negative `count` allows repeats and a result longer than the set (standard Redis
+semantics).
 
 ```cpp
 auto srandmember(const std::string &key);                                      // coroutine, single
@@ -269,7 +304,8 @@ if (only_in_a.ok()) { /* only_in_a.result() */ }
 
 ### `SDIFFSTORE destination key [key ...]` — `sdiffstore`
 
-Computes the same difference and stores it in `destination` (overwriting it). Returns the cardinality of the stored set as `long long`.
+Computes the same difference and stores it in `destination` (overwriting it). Returns the cardinality of the stored set
+as `long long`.
 
 ```cpp
 auto sdiffstore(const std::string &destination, const std::vector<std::string> &keys); // coroutine
@@ -317,7 +353,10 @@ Derived &sinterstore(Func &&func, const std::string &destination,
 
 ### `SINTERCARD numkeys key [key ...] [LIMIT limit]` — `sintercard`
 
-Returns the cardinality of the intersection **without** materializing it. When you pass a `limit`, the client appends `LIMIT <limit>` so the server can stop counting early; pass `std::nullopt` (the default) to omit the clause. The client emits the clause whenever the optional holds a value — it does **not** special-case `0` — so leave `limit` unset rather than passing `0LL` when you want no cap. The number of keys is supplied to the server automatically.
+Returns the cardinality of the intersection **without** materializing it. When you pass a `limit`, the client appends
+`LIMIT <limit>` so the server can stop counting early; pass `std::nullopt` (the default) to omit the clause. The client
+emits the clause whenever the optional holds a value — it does **not** special-case `0` — so leave `limit` unset rather
+than passing `0LL` when you want no cap. The number of keys is supplied to the server automatically.
 
 ```cpp
 auto sintercard(const std::vector<std::string> &keys,
@@ -369,7 +408,9 @@ Derived &sunionstore(Func &&func, const std::string &destination,
 
 ### `SSCAN key cursor [MATCH pattern] [COUNT count]` — `sscan`
 
-Incrementally iterates the members of one set. Returns `Reply<scan<>>`, whose `result().cursor` is the next cursor (`0` ends iteration) and `result().items` is the page (`std::vector<std::string>`). `pattern` defaults to `"*"` and `count` (a server hint, not a hard page size) defaults to `10`.
+Incrementally iterates the members of one set. Returns `Reply<scan<>>`, whose `result().cursor` is the next cursor (`0`
+ends iteration) and `result().items` is the page (`std::vector<std::string>`). `pattern` defaults to `"*"` and `count` (
+a server hint, not a hard page size) defaults to `10`.
 
 ```cpp
 auto sscan(const std::string &key, long long cursor,
@@ -395,7 +436,10 @@ do {
 
 ### `SSCAN` (auto-iterating, callback-only) — `sscan(func, key, pattern)`
 
-A convenience overload that walks **every** page internally and fires your callback **once** with the fully collected result. It has **no coroutine form** — it is a callback-only entry point. Internally it spins a `shared_ptr`-managed `scanner` that keeps itself alive across the cursor round-trips, and it hardcodes a per-page `COUNT` of `100` (you cannot tune the page size on this overload).
+A convenience overload that walks **every** page internally and fires your callback **once** with the fully collected
+result. It has **no coroutine form** — it is a callback-only entry point. Internally it spins a `shared_ptr`-managed
+`scanner` that keeps itself alive across the cursor round-trips, and it hardcodes a per-page `COUNT` of `100` (you
+cannot tune the page size on this overload).
 
 ```cpp
 template <typename Func>
@@ -415,15 +459,29 @@ redis.sscan([](qb::redis::Reply<qb::redis::scan<>> &&all) {
 
 ## Pitfalls
 
-- **Empty arguments silently no-op the callback form.** The callback overloads return `Derived&` *without issuing a command* — so your callback never fires — when required arguments are empty: `sadd` / `srem` / `smismember` when `key` is empty or no members are passed; `sismember` when `key` or `member` is empty; `smove` when any of `source` / `destination` / `member` is empty; `scard` / `smembers` / `spop` / `srandmember` / `sscan` when `key` is empty; `sdiff` / `sinter` / `sunion` and the `*store` / `sintercard` variants when the key list is empty (and the `*store` ones when `destination` is empty); `spop(key, count)` when `count < 1`. Do not assume your callback always runs — validate inputs first. <!-- src: qbm/redis/set_commands.h:162-164, 196, 234, 272-274, 301, 340, 383-385, 420, 460-462, 496, 536, 571, 608, 644, 682, 721-723, 765 -->
+- **Empty arguments silently no-op the callback form.** The callback overloads return `Derived&` *without issuing a
+  command* — so your callback never fires — when required arguments are empty: `sadd` / `srem` / `smismember` when `key`
+  is empty or no members are passed; `sismember` when `key` or `member` is empty; `smove` when any of `source` /
+  `destination` / `member` is empty; `scard` / `smembers` / `spop` / `srandmember` / `sscan` when `key` is empty;
+  `sdiff` / `sinter` / `sunion` and the `*store` / `sintercard` variants when the key list is empty (and the `*store`
+  ones when `destination` is empty); `spop(key, count)` when `count < 1`. Do not assume your callback always runs —
+  validate inputs
+  first. <!-- src: qbm/redis/set_commands.h:162-164, 196, 234, 272-274, 301, 340, 383-385, 420, 460-462, 496, 536, 571, 608, 644, 682, 721-723, 765 -->
 
-- **`smembers` returns a set, the algebra returns vectors.** `smembers` yields `qb::unordered_set<std::string>` (no index access, unordered); `sdiff` / `sinter` / `sunion` yield `std::vector<std::string>`. Pick the right container in your callback signature or the overload will not match. <!-- src: qbm/redis/set_commands.h:476, 214, 281, 807 -->
+- **`smembers` returns a set, the algebra returns vectors.** `smembers` yields `qb::unordered_set<std::string>` (no
+  index access, unordered); `sdiff` / `sinter` / `sunion` yield `std::vector<std::string>`. Pick the right container in
+  your callback signature or the overload will not match. <!-- src: qbm/redis/set_commands.h:476, 214, 281, 807 -->
 
-- **`spop`/`srandmember` count forms return `std::vector<std::string>`, not optionals.** Only the single-member forms return `std::optional<std::string>`. Reaching for `std::vector<std::optional<std::string>>` (as older docs showed) will fail to compile. <!-- src: qbm/redis/set_commands.h:587, 661, 551, 624 -->
+- **`spop`/`srandmember` count forms return `std::vector<std::string>`, not optionals.** Only the single-member forms
+  return `std::optional<std::string>`. Reaching for `std::vector<std::optional<std::string>>` (as older docs showed)
+  will fail to compile. <!-- src: qbm/redis/set_commands.h:587, 661, 551, 624 -->
 
-- **The auto-iterating `sscan` is callback-only and fixes `COUNT` at 100.** There is no `co_await` form of the no-cursor `sscan`, and its page size is not user-tunable. For a tunable page size or a coroutine flow, drive the cursor-form `sscan` yourself. <!-- src: qbm/redis/set_commands.h:786-794, 88, 106 -->
+- **The auto-iterating `sscan` is callback-only and fixes `COUNT` at 100.** There is no `co_await` form of the no-cursor
+  `sscan`, and its page size is not user-tunable. For a tunable page size or a coroutine flow, drive the cursor-form
+  `sscan` yourself. <!-- src: qbm/redis/set_commands.h:786-794, 88, 106 -->
 
-- **`smembers` materializes the whole set.** On a large set this builds one bulk reply server-side; iterate with `sscan` instead to bound memory and avoid stalling the server.
+- **`smembers` materializes the whole set.** On a large set this builds one bulk reply server-side; iterate with `sscan`
+  instead to bound memory and avoid stalling the server.
 
 ---
 

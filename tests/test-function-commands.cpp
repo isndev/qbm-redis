@@ -322,10 +322,9 @@ TEST_P(FunctionProtocolModesTest, FUNCTION_LIST_JSON) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r = co_await redis.function_list();
-            if (r.ok())
-                {
+            if (r.ok()) {
                 EXPECT_TRUE(r.result().is_array());
-                }
+            }
         } catch (const std::exception &) {
             // FUNCTION not available on older Redis
         }

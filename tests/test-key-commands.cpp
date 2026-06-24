@@ -639,22 +639,19 @@ TEST_P(KeyProtocolModesTest, EXISTS_DEL) {
         (void) co_await redis.set(k, "x");
         auto exists_r = co_await redis.exists(k);
         EXPECT_TRUE(exists_r.ok()) << exists_r.error();
-        if (exists_r.ok())
-            {
+        if (exists_r.ok()) {
             EXPECT_EQ(exists_r.result(), 1);
-            }
+        }
         auto del_r = co_await redis.del(k);
         EXPECT_TRUE(del_r.ok()) << del_r.error();
-        if (del_r.ok())
-            {
+        if (del_r.ok()) {
             EXPECT_EQ(del_r.result(), 1);
-            }
+        }
         auto exists2_r = co_await redis.exists(k);
         EXPECT_TRUE(exists2_r.ok()) << exists2_r.error();
-        if (exists2_r.ok())
-            {
+        if (exists2_r.ok()) {
             EXPECT_EQ(exists2_r.result(), 0);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -670,16 +667,14 @@ TEST_P(KeyProtocolModesTest, SETEX_TTL_TYPE) {
         EXPECT_TRUE(setex_r.ok()) << setex_r.error();
         auto ttl_r = co_await redis.ttl(k);
         EXPECT_TRUE(ttl_r.ok()) << ttl_r.error();
-        if (ttl_r.ok())
-            {
+        if (ttl_r.ok()) {
             EXPECT_GE(ttl_r.result(), 55);
-            }
+        }
         auto type_r = co_await redis.type(k);
         EXPECT_TRUE(type_r.ok()) << type_r.error();
-        if (type_r.ok())
-            {
+        if (type_r.ok()) {
             EXPECT_EQ(type_r.result(), "string");
-            }
+        }
         done = true;
     });
     while (!done)
@@ -694,17 +689,15 @@ TEST_P(KeyProtocolModesTest, EXPIRE_RENAME) {
         (void) co_await redis.set(k, "x");
         auto exp_r = co_await redis.expire(k, 120);
         EXPECT_TRUE(exp_r.ok()) << exp_r.error();
-        if (exp_r.ok())
-            {
+        if (exp_r.ok()) {
             EXPECT_TRUE(exp_r.result());
-            }
+        }
         auto rename_r = co_await redis.rename(k, std::string(k) + ":renamed");
         EXPECT_TRUE(rename_r.ok()) << rename_r.error();
         auto get_r = co_await redis.get(std::string(k) + ":renamed");
-        if (get_r.ok() && get_r.result())
-            {
+        if (get_r.ok() && get_r.result()) {
             EXPECT_EQ(*get_r.result(), "x");
-            }
+        }
         done = true;
     });
     while (!done)
@@ -717,10 +710,9 @@ TEST_P(KeyProtocolModesTest, SCAN) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.scan(0, "*", 10);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_GE(r.result().items.size(), 0u);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -753,10 +745,9 @@ TEST_P(KeyProtocolModesTest, PTTL_INTEGER) {
         (void) co_await redis.setex(k, 60, "v");
         auto r = co_await redis.pttl(k);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_GT(r.result(), 0);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -771,10 +762,9 @@ TEST_P(KeyProtocolModesTest, COPY_EXPIRETIME) {
         (void) co_await redis.set(k, "x");
         auto copy_r = co_await redis.copyKey(k, std::string(k) + ":dst");
         EXPECT_TRUE(copy_r.ok()) << copy_r.error();
-        if (copy_r.ok())
-            {
+        if (copy_r.ok()) {
             EXPECT_TRUE(copy_r.result());
-            }
+        }
         auto et_r = co_await redis.expiretime(k);
         EXPECT_TRUE(et_r.ok()) << et_r.error();
         done = true;
@@ -791,10 +781,9 @@ TEST_P(KeyProtocolModesTest, PERSIST_BOOLEAN) {
         (void) co_await redis.setex(k, 60, "v");
         auto r = co_await redis.persist(k);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_TRUE(r.result());
-            }
+        }
         done = true;
     });
     while (!done)

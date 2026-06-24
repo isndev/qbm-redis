@@ -16,9 +16,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <thread>
 #include "../redis.h"
 #include "protocol_test_common.h"
 
@@ -726,10 +726,9 @@ TEST_P(ServerProtocolModesTest, DBSIZE) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.dbsize();
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_GE(r.result(), 0);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -758,10 +757,9 @@ TEST_P(ServerProtocolModesTest, CLIENT_ID_INTEGER) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.client_id();
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_GE(r.result(), 0);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -774,10 +772,9 @@ TEST_P(ServerProtocolModesTest, INFO_JSON) {
         PROTOCOL_ENSURE_RESP3();
         auto r = co_await redis.info();
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_TRUE(r.result().is_object() || r.result().is_string());
-            }
+        }
         done = true;
     });
     while (!done)
@@ -790,16 +787,14 @@ TEST_P(ServerProtocolModesTest, FLUSHDB_FLUSHALL) {
         PROTOCOL_ENSURE_RESP3();
         auto r1 = co_await redis.flushdb();
         EXPECT_TRUE(r1.ok()) << r1.error();
-        if (r1.ok())
-            {
+        if (r1.ok()) {
             EXPECT_TRUE(r1.result().ok());
-            }
+        }
         auto r2 = co_await redis.flushall();
         EXPECT_TRUE(r2.ok()) << r2.error();
-        if (r2.ok())
-            {
+        if (r2.ok()) {
             EXPECT_TRUE(r2.result().ok());
-            }
+        }
         done = true;
     });
     while (!done)

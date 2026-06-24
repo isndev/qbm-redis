@@ -16,9 +16,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <thread>
 #include "../redis.h"
 #include "protocol_test_common.h"
 
@@ -297,10 +297,9 @@ TEST_P(GeoProtocolModesTest, GEOADD_GEOPOS) {
         auto k     = protocol_key("geo");
         auto add_r = co_await redis.geoadd(k, 13.361389, 38.115556, "Palermo");
         EXPECT_TRUE(add_r.ok()) << add_r.error();
-        if (add_r.ok())
-            {
+        if (add_r.ok()) {
             EXPECT_EQ(add_r.result(), 1);
-            }
+        }
         auto pos_r = co_await redis.geopos(k, "Palermo");
         EXPECT_TRUE(pos_r.ok()) << pos_r.error();
         if (pos_r.ok() && !pos_r.result().empty() && pos_r.result()[0]) {
@@ -339,10 +338,9 @@ TEST_P(GeoProtocolModesTest, GEODIST_DOUBLE) {
         (void) co_await redis.geoadd(k, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
         auto r = co_await redis.geodist(k, "Palermo", "Catania", qb::redis::GeoUnit::KM);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok() && r.result())
-            {
+        if (r.ok() && r.result()) {
             EXPECT_GT(*r.result(), 0.0);
-            }
+        }
         done = true;
     });
     while (!done)

@@ -16,9 +16,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <thread>
 #include "../redis.h"
 #include "protocol_test_common.h"
 
@@ -275,10 +275,9 @@ TEST_P(BitmapProtocolModesTest, SETBIT_GETBIT) {
         (void) co_await redis.setbit(k, 7, true);
         auto get_r = co_await redis.getbit(k, 7);
         EXPECT_TRUE(get_r.ok()) << get_r.error();
-        if (get_r.ok())
-            {
+        if (get_r.ok()) {
             EXPECT_EQ(get_r.result(), 1);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -292,10 +291,9 @@ TEST_P(BitmapProtocolModesTest, BITFIELD_INTEGER) {
         auto k = protocol_key("bitfield");
         auto r = co_await redis.bitfield(k, {"SET", "i32", "#0", "100"});
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_FALSE(r.result().empty());
-            }
+        }
         done = true;
     });
     while (!done)
@@ -329,10 +327,9 @@ TEST_P(BitmapProtocolModesTest, BITCOUNT_INTEGER) {
         (void) co_await redis.setbit(k, 2, true);
         auto r = co_await redis.bitcount(k);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_EQ(r.result(), 3);
-            }
+        }
         done = true;
     });
     while (!done)

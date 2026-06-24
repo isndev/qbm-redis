@@ -16,9 +16,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <thread>
 #include "../redis.h"
 #include "protocol_test_common.h"
 

@@ -13,10 +13,10 @@
 
 #include <atomic>
 #include <gtest/gtest.h>
-#include <qb/io/async.h>
-#include <qb/io/async/coroutine.h>
 #include <string>
 #include <vector>
+#include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include "../redis.h"
 #include "protocol_test_common.h"
 

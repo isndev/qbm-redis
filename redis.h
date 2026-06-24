@@ -24,12 +24,12 @@
 
 #include <deque>
 #include <functional>
-#include <qb/io/async.h>
-#include <qb/io/async/tcp/connector.h>
-#include <qb/system/container/unordered_set.h>
 #include <queue>
 #include <random>
 #include <utility>
+#include <qb/io/async.h>
+#include <qb/io/async/tcp/connector.h>
+#include <qb/system/container/unordered_set.h>
 
 // Native Redis Protocol Parser (C++20/23)
 #include "parser.h"

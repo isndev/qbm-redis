@@ -25,8 +25,8 @@
 // socket layer (platform socket headers + the socket_type alias and closesocket()
 // shim) so it builds on POSIX and Windows; Winsock is initialised by qb-io's global
 // ws2_32 guard, linked in via the qb-io / qb-redis sockets this test uses.
-#include <qb/io/system/sys__socket.h>
 #include <string>
+#include <qb/io/system/sys__socket.h>
 
 #define REDIS_URI {"tcp://localhost:6379"}
 #define BAD_REDIS_URI {"tcp://localhost:19999"}
@@ -309,10 +309,9 @@ TEST_P(ReconnectProtocolModesTest, RECONNECT_THEN_PING) {
         }
         auto r = co_await redis.ping();
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_EQ(r.result(), "PONG");
-            }
+        }
         done = true;
     });
     while (!done)

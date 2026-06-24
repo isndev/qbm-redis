@@ -1,50 +1,73 @@
 # Key commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23 supported)
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> supported)
 
-Reference for the generic key-management command group — existence, deletion, expiry, type inspection, renaming, scanning, dumping/restoring, copying, sorting, and replication waits — each with its exact signature, reply type, and a minimal `co_await` and callback snippet.
+Reference for the generic key-management command group — existence, deletion, expiry, type inspection, renaming,
+scanning, dumping/restoring, copying, sorting, and replication waits — each with its exact signature, reply type, and a
+minimal `co_await` and callback snippet.
 
-**Prerequisites:** [Command API model](./commands_overview.md) · [Connection](./connection.md) — **See also:** [String commands](./string_commands.md) · [Error handling](./error_handling.md) · [Pipelining and `await()`](./pipeline_and_await.md)
+**Prerequisites:** [Command API model](./commands_overview.md) · [Connection](./connection.md) — **See also:
+** [String commands](./string_commands.md) · [Error handling](./error_handling.md) · [Pipelining and
+`await()`](./pipeline_and_await.md)
 
 ## Summary
 
-The key commands are defined by the `qb::redis::key_commands<Derived>` CRTP mixin (`key_commands.h:39`), which `qb::redis::tcp::client` inherits along with every other command group. You call these methods directly on a connected client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to get a `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the client for chaining. The dispatch and the `Reply<T>` decoding contract are covered in [Command API model](./commands_overview.md); this page lists the methods.
+The key commands are defined by the `qb::redis::key_commands<Derived>` CRTP mixin (`key_commands.h:39`), which
+`qb::redis::tcp::client` inherits along with every other command group. You call these methods directly on a connected
+client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to get a
+`qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the client for
+chaining. The dispatch and the `Reply<T>` decoding contract are covered in [Command API model](./commands_overview.md);
+this page lists the methods.
 
 Two unit boundaries apply here and are deliberate, not accidental:
 
-- **Relative expiry** — `EXPIRE` and the chrono overload of `expire(...)` take **seconds**; `PEXPIRE` and the chrono overload of `pexpire(...)` take **milliseconds**. This is the native Redis protocol unit per command, surfaced through `std::chrono`-unit overloads. It is **not** a `qb::duration` boundary — do not substitute qb time types here.
-- **TTL replies are plain integers** — `ttl()`/`expiretime()` return seconds, `pttl()`/`pexpiretime()` return milliseconds, all as `Reply<long long>`. The unit lives in the method name; the value carries no unit tag.
+- **Relative expiry** — `EXPIRE` and the chrono overload of `expire(...)` take **seconds**; `PEXPIRE` and the chrono
+  overload of `pexpire(...)` take **milliseconds**. This is the native Redis protocol unit per command, surfaced through
+  `std::chrono`-unit overloads. It is **not** a `qb::duration` boundary — do not substitute qb time types here.
+- **TTL replies are plain integers** — `ttl()`/`expiretime()` return seconds, `pttl()`/`pexpiretime()` return
+  milliseconds, all as `Reply<long long>`. The unit lives in the method name; the value carries no unit tag.
 
-(The retired tokens `qb::Timestamp`, `qb::Duration`, `qb::TimePoint`, `to_timestamp(...)`, and `to_time_point(...)` do **not** appear in this API and must not be used — they were removed from the framework. The `std::chrono`-unit overloads below are the correct way to express expiry.)
+(The retired tokens `qb::Timestamp`, `qb::Duration`, `qb::TimePoint`, `to_timestamp(...)`, and `to_time_point(...)` do *
+*not** appear in this API and must not be used — they were removed from the framework. The `std::chrono`-unit overloads
+below are the correct way to express expiry.)
 
 ## Concepts
 
 ### Reply types you will see in this group
 
-| Reply `T` | Meaning | Commands |
-|-----------|---------|----------|
-| `long long` | a count or a TTL/timestamp integer | `del`, `exists`, `touch`, `unlink`, `ttl`, `pttl`, `expiretime`, `pexpiretime`, `wait`, `waitaof`, `sortKeyStore` |
-| `bool` | success/failure of a keyed mutation | `expire`, `expireat`, `pexpire`, `pexpireat`, `persist`, `move`, `renamenx`, `copyKey` |
-| `qb::redis::status` | a `+OK` status reply | `rename`, `restore`, `migrate` |
-| `std::string` | the type name | `type` |
-| `std::optional<std::string>` | a possibly-absent key/value | `dump`, `randomkey`, `objectEncoding` |
-| `std::optional<long long>` | a possibly-absent metadata integer | `objectFreq`, `objectIdletime`, `objectRefcount` |
-| `std::vector<std::string>` | a key/value list | `keys`, `sortKey`, `sortKeyRo` |
-| `qb::redis::scan<>` | one SCAN round-trip: `{cursor, items}` | `scan` |
+| Reply `T`                    | Meaning                                | Commands                                                                                                          |
+|------------------------------|----------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| `long long`                  | a count or a TTL/timestamp integer     | `del`, `exists`, `touch`, `unlink`, `ttl`, `pttl`, `expiretime`, `pexpiretime`, `wait`, `waitaof`, `sortKeyStore` |
+| `bool`                       | success/failure of a keyed mutation    | `expire`, `expireat`, `pexpire`, `pexpireat`, `persist`, `move`, `renamenx`, `copyKey`                            |
+| `qb::redis::status`          | a `+OK` status reply                   | `rename`, `restore`, `migrate`                                                                                    |
+| `std::string`                | the type name                          | `type`                                                                                                            |
+| `std::optional<std::string>` | a possibly-absent key/value            | `dump`, `randomkey`, `objectEncoding`                                                                             |
+| `std::optional<long long>`   | a possibly-absent metadata integer     | `objectFreq`, `objectIdletime`, `objectRefcount`                                                                  |
+| `std::vector<std::string>`   | a key/value list                       | `keys`, `sortKey`, `sortKeyRo`                                                                                    |
+| `qb::redis::scan<>`          | one SCAN round-trip: `{cursor, items}` | `scan`                                                                                                            |
 
-`qb::redis::Reply<T>` (`reply.h:1052`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and an explicit `operator bool()`. Reads of TTL/count replies go through `reply.result()`; optional replies are tested with `reply.result().has_value()`. See [Command API model](./commands_overview.md) for the full reply surface.
+`qb::redis::Reply<T>` (`reply.h:1052`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+an explicit `operator bool()`. Reads of TTL/count replies go through `reply.result()`; optional replies are tested with
+`reply.result().has_value()`. See [Command API model](./commands_overview.md) for the full reply surface.
 
 ### `qb::redis::status`
 
-`status` (`types.h:334`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
+`status` (`types.h:334`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
 
 ### `qb::redis::scan<Out>`
 
-`scan<Out>` (`types.h:356`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`. `SCAN` returns one of these per round-trip; a returned `cursor` of `0` signals the iteration is complete. You loop on the cursor yourself (see [`scan`](#scan) below).
+`scan<Out>` (`types.h:356`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
+`SCAN` returns one of these per round-trip; a returned `cursor` of `0` signals the iteration is complete. You loop on
+the cursor yourself (see [`scan`](#scan) below).
 
 ### Method-name renames
 
-Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:836`), `SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:1073`, `:1105`, `:1137`). Note that `move()` is the Redis `MOVE` command (`key_commands.h:339`) and does not collide with the `std::move` you use in callbacks. Every other method matches its Redis verb in lowercase.
+Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:836`),
+`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:1073`, `:1105`, `:1137`). Note that `move()` is the Redis
+`MOVE` command (`key_commands.h:339`) and does not collide with the `std::move` you use in callbacks. Every other method
+matches its Redis verb in lowercase.
 
 ## Setup for the examples
 
@@ -60,15 +83,18 @@ qb::redis::tcp::client redis{qb::io::uri{"tcp://localhost:6379"}};
 if (!co_await redis.connect())
     co_return;
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp; qbm/redis/readme/connection.md -->
 
-Each command shows its coroutine signature, its callback overload, and a snippet. The callback form always returns `Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:150`).
+Each command shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
+`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:150`).
 
 ## Existence and deletion
 
 ### `del`
 
-`DEL key [key ...]` — remove keys, returning how many were actually removed. Variadic: pass individual keys or a container.
+`DEL key [key ...]` — remove keys, returning how many were actually removed. Variadic: pass individual keys or a
+container.
 
 ```cpp
 // Coroutine
@@ -85,11 +111,13 @@ if (r.ok())
 // Callback form
 redis.del([](qb::redis::Reply<long long> &&r) { /* r.result() */ }, "k1");
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_DEL) -->
 
 ### `unlink`
 
-`UNLINK key [key ...]` — non-blocking deletion; reclaims memory on a background thread. Same shape as `del`, returns the count unlinked.
+`UNLINK key [key ...]` — non-blocking deletion; reclaims memory on a background thread. Same shape as `del`, returns the
+count unlinked.
 
 ```cpp
 template <typename... Keys> auto unlink(Keys &&...keys);              // -> Reply<long long>
@@ -113,6 +141,7 @@ template <typename Func, typename... Keys> Derived &exists(Func &&, Keys &&...);
 auto r = co_await redis.exists("k1", "k2", "k3");
 // r.result() == number present
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXISTS) -->
 
 ### `touch`
@@ -127,15 +156,21 @@ template <typename Func, typename... Keys> Derived &touch(Func &&, Keys &&...);
 ```cpp
 auto r = co_await redis.touch("k1", "k2", "k3");
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_TOUCH) -->
 
 ## Expiration
 
-> **Unit boundary.** `EXPIRE`/`EXPIREAT` work in **seconds**; `PEXPIRE`/`PEXPIREAT` work in **milliseconds**. The chrono overloads enforce this at the type level: `expire`/`expireat` accept only `std::chrono::seconds`, `pexpire`/`pexpireat` accept only `std::chrono::milliseconds`, each forwarding `.count()` to the `long long` form (`key_commands.h:241`, `:416`, `:288`, `:464`). The raw `long long` overloads bypass the check, so prefer the chrono overloads for self-documenting code. These are `std::chrono` protocol values, **not** `qb::duration`.
+> **Unit boundary.** `EXPIRE`/`EXPIREAT` work in **seconds**; `PEXPIRE`/`PEXPIREAT` work in **milliseconds**. The chrono
+> overloads enforce this at the type level: `expire`/`expireat` accept only `std::chrono::seconds`, `pexpire`/`pexpireat`
+> accept only `std::chrono::milliseconds`, each forwarding `.count()` to the `long long` form (`key_commands.h:241`,
+`:416`, `:288`, `:464`). The raw `long long` overloads bypass the check, so prefer the chrono overloads for
+> self-documenting code. These are `std::chrono` protocol values, **not** `qb::duration`.
 
 ### `expire`
 
-`EXPIRE key seconds` — set a relative timeout in seconds. Returns `true` if the timeout was set, `false` if the key does not exist.
+`EXPIRE key seconds` — set a relative timeout in seconds. Returns `true` if the timeout was set, `false` if the key does
+not exist.
 
 ```cpp
 // Coroutine
@@ -150,6 +185,7 @@ template <typename Func> Derived &expire(Func &&, const std::string &key, const 
 auto r = co_await redis.expire("session", 30s);   // seconds
 if (r.ok() && r.result()) { /* timeout applied */ }
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT: expire(key, std::chrono::seconds{30})) -->
 
 ### `pexpire`
@@ -166,6 +202,7 @@ template <typename Func> Derived &pexpire(Func &&, const std::string &key, const
 ```cpp
 auto r = co_await redis.pexpire("session", 30000ms);   // milliseconds
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT: pexpire(key, std::chrono::milliseconds{30000})) -->
 
 ### `expireat`
@@ -186,6 +223,7 @@ long long now_s = std::chrono::duration_cast<std::chrono::seconds>(
                       std::chrono::system_clock::now().time_since_epoch()).count();
 auto r = co_await redis.expireat("session", now_s + 60);   // expire 60s from now
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT) -->
 
 ### `pexpireat`
@@ -206,6 +244,7 @@ long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                        std::chrono::system_clock::now().time_since_epoch()).count();
 auto r = co_await redis.pexpireat("session", now_ms + 60000);
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT) -->
 
 ### `persist`
@@ -223,7 +262,8 @@ auto r = co_await redis.persist("session");
 
 ### `ttl`
 
-`TTL key` — remaining time to live in **seconds**. Reply is a plain `long long` (no unit tag): a positive value is the TTL, `-1` means no expiry, `-2` means the key is absent.
+`TTL key` — remaining time to live in **seconds**. Reply is a plain `long long` (no unit tag): a positive value is the
+TTL, `-1` means no expiry, `-2` means the key is absent.
 
 ```cpp
 auto ttl(const std::string &key);                                      // -> Reply<long long>  (seconds)
@@ -234,6 +274,7 @@ template <typename Func> Derived &ttl(Func &&, const std::string &key);
 auto r = co_await redis.ttl("session");
 if (r.ok() && r.result() > 0) { /* r.result() seconds left */ }
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT: ttl after expireat) -->
 
 ### `pttl`
@@ -251,7 +292,8 @@ auto r = co_await redis.pttl("session");   // milliseconds
 
 ### `expiretime` / `pexpiretime`
 
-`EXPIRETIME key` / `PEXPIRETIME key` (Redis 7.0+) — the absolute Unix expiry timestamp of a key, in seconds / milliseconds respectively. `Reply<long long>`; `-1` means no expiry, `-2` means absent.
+`EXPIRETIME key` / `PEXPIRETIME key` (Redis 7.0+) — the absolute Unix expiry timestamp of a key, in seconds /
+milliseconds respectively. `Reply<long long>`; `-1` means no expiry, `-2` means absent.
 
 ```cpp
 auto expiretime(const std::string &key);                               // -> Reply<long long>  (seconds)
@@ -268,7 +310,8 @@ auto r = co_await redis.pexpiretime("session");   // unix ms, or -1 / -2
 
 ### `type`
 
-`TYPE key` — the value's type name (`"string"`, `"list"`, `"set"`, `"zset"`, `"hash"`, `"stream"`), or `"none"` if the key is absent.
+`TYPE key` — the value's type name (`"string"`, `"list"`, `"set"`, `"zset"`, `"hash"`, `"stream"`), or `"none"` if the
+key is absent.
 
 ```cpp
 auto type(const std::string &key);                                     // -> Reply<std::string>
@@ -279,6 +322,7 @@ template <typename Func> Derived &type(Func &&, const std::string &key);
 auto r = co_await redis.type("mylist");
 // r.result() == "list"
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_TYPE) -->
 
 ### `randomkey`
@@ -295,11 +339,14 @@ auto r = co_await redis.randomkey();
 if (r.ok() && r.result().has_value())
     qb::io::cout() << *r.result() << '\n';
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_RANDOMKEY) -->
 
 ### `objectEncoding` / `objectFreq` / `objectIdletime` / `objectRefcount`
 
-`OBJECT ENCODING|FREQ|IDLETIME|REFCOUNT key` — internal object metadata. `objectEncoding` yields an optional string (e.g. `"embstr"`, `"listpack"`); the other three yield `std::optional<long long>` (empty when the key is absent). `objectIdletime` is in **seconds**.
+`OBJECT ENCODING|FREQ|IDLETIME|REFCOUNT key` — internal object metadata. `objectEncoding` yields an optional string (
+e.g. `"embstr"`, `"listpack"`); the other three yield `std::optional<long long>` (empty when the key is absent).
+`objectIdletime` is in **seconds**.
 
 ```cpp
 auto objectEncoding(const std::string &key);   // -> Reply<std::optional<std::string>>
@@ -321,7 +368,8 @@ if (enc.ok() && enc.result().has_value())
 
 `KEYS pattern` — every key matching a glob pattern (default `"*"`). Returns the full list in one reply.
 
-> **Pitfall.** `KEYS` scans the whole keyspace synchronously inside Redis and can stall the server. Use [`scan`](#scan) on production instances.
+> **Pitfall.** `KEYS` scans the whole keyspace synchronously inside Redis and can stall the server. Use [`scan`](#scan)
+> on production instances.
 
 ```cpp
 auto keys(const std::string &pattern = "*");                           // -> Reply<std::vector<std::string>>
@@ -332,11 +380,14 @@ template <typename Func> Derived &keys(Func &&, const std::string &pattern = "*"
 auto r = co_await redis.keys("user:*");
 for (auto const &k : r.result()) { /* ... */ }
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_KEYS) -->
 
 ### `scan`
 
-`SCAN cursor [MATCH pattern] [COUNT count]` — cursor-based incremental iteration. The default (explicit-cursor) overload performs **one** round-trip and returns a `qb::redis::scan<>` of `{cursor, items}`; you drive the loop until the returned cursor is `0`.
+`SCAN cursor [MATCH pattern] [COUNT count]` — cursor-based incremental iteration. The default (explicit-cursor) overload
+performs **one** round-trip and returns a `qb::redis::scan<>` of `{cursor, items}`; you drive the loop until the
+returned cursor is `0`.
 
 ```cpp
 // Single-iteration coroutine
@@ -357,9 +408,15 @@ do {
     all.insert(all.end(), r.result().items.begin(), r.result().items.end());
 } while (cursor != 0);
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_SCAN) -->
 
-> **Pitfalls for the auto-iterating callback overload `scan(func, pattern)`.** It accumulates the **entire** matched keyspace in memory and invokes `func` exactly once after the cursor returns to `0` (`key_commands.h:97-117`, `:662`) — it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:88`, `:109`). And if your callback throws, the scanner catches `std::exception` and only logs a warning (`key_commands.h:111`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer the explicit-cursor loop above.
+> **Pitfalls for the auto-iterating callback overload `scan(func, pattern)`.** It accumulates the **entire** matched
+> keyspace in memory and invokes `func` exactly once after the cursor returns to `0` (`key_commands.h:97-117`, `:662`) —
+> it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:88`,
+`:109`). And if your callback throws, the scanner catches `std::exception` and only logs a warning (
+`key_commands.h:111`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer
+> the explicit-cursor loop above.
 
 ## Renaming and copying
 
@@ -376,6 +433,7 @@ template <typename Func> Derived &rename(Func &&, const std::string &key, const 
 auto r = co_await redis.rename("old", "new");
 if (r.ok() && r.result()) { /* "OK" */ }
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_RENAME_RENAMENX) -->
 
 ### `renamenx`
@@ -390,11 +448,13 @@ template <typename Func> Derived &renamenx(Func &&, const std::string &key, cons
 ```cpp
 auto r = co_await redis.renamenx("old", "new");   // r.result() == false if "new" existed
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_RENAME_RENAMENX) -->
 
 ### `copyKey`
 
-`COPY source destination [DB db] [REPLACE]` (Redis 6.2+) — copy a value. `db` optionally targets another database; `replace` overwrites an existing destination. Returns `true` when the copy succeeded.
+`COPY source destination [DB db] [REPLACE]` (Redis 6.2+) — copy a value. `db` optionally targets another database;
+`replace` overwrites an existing destination. Returns `true` when the copy succeeded.
 
 ```cpp
 auto copyKey(const std::string &source, const std::string &destination,
@@ -408,11 +468,13 @@ template <typename Func> Derived &copyKey(Func &&, const std::string &source,
 auto r = co_await redis.copyKey("src", "dst");
 auto r2 = co_await redis.copyKey("src", "dst", std::nullopt, /*replace=*/true);
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_COPY) -->
 
 ### `move`
 
-`MOVE key db` — move a key into another database index on the same instance. Returns `true` when moved (false if the key was absent or already present in the target).
+`MOVE key db` — move a key into another database index on the same instance. Returns `true` when moved (false if the key
+was absent or already present in the target).
 
 ```cpp
 auto move(const std::string &key, long long destination_db);           // -> Reply<bool>
@@ -422,13 +484,15 @@ template <typename Func> Derived &move(Func &&, const std::string &key, long lon
 ```cpp
 auto r = co_await redis.move("session", 1LL);
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_MOVE) -->
 
 ## Serialization and migration
 
 ### `dump`
 
-`DUMP key` — RDB-serialized representation of the value, or an empty optional if the key is absent. Pair with `restore`. The blob is binary and not human-readable.
+`DUMP key` — RDB-serialized representation of the value, or an empty optional if the key is absent. Pair with `restore`.
+The blob is binary and not human-readable.
 
 ```cpp
 auto dump(const std::string &key);                                     // -> Reply<std::optional<std::string>>
@@ -439,11 +503,13 @@ template <typename Func> Derived &dump(Func &&, const std::string &key);
 auto d = co_await redis.dump("k");
 if (d.ok() && d.result().has_value()) { /* *d.result() is the blob */ }
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_DUMP) -->
 
 ### `restore`
 
-`RESTORE key ttl serialized-value [REPLACE]` — recreate a key from a `dump` blob. `ttl` is in **milliseconds** (`0` means no expiry). Set `replace = true` to overwrite an existing key.
+`RESTORE key ttl serialized-value [REPLACE]` — recreate a key from a `dump` blob. `ttl` is in **milliseconds** (`0`
+means no expiry). Set `replace = true` to overwrite an existing key.
 
 ```cpp
 auto restore(const std::string &key, const std::string &val, long long ttl,
@@ -456,11 +522,14 @@ template <typename Func> Derived &restore(Func &&, const std::string &key,
 auto d = co_await redis.dump("k");
 auto r = co_await redis.restore("k_copy", *d.result(), /*ttl_ms=*/0);
 ```
+
 <!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_DUMP) -->
 
 ### `migrate`
 
-`MIGRATE host port key destination-db timeout [COPY] [REPLACE] [AUTH password]` — atomically transfer a key to another Redis instance. `timeout` is in **milliseconds**. Returns a `status` (`"OK"`, or `"NOKEY"` when the source key is absent).
+`MIGRATE host port key destination-db timeout [COPY] [REPLACE] [AUTH password]` — atomically transfer a key to another
+Redis instance. `timeout` is in **milliseconds**. Returns a `status` (`"OK"`, or `"NOKEY"` when the source key is
+absent).
 
 ```cpp
 auto migrate(const std::string &host, int port, const std::string &key, long long db,
@@ -477,7 +546,8 @@ auto r = co_await redis.migrate("10.0.0.2", 6379, "k", /*db=*/0, /*timeout_ms=*/
 
 ## Sorting
 
-`SORT` is exposed under three names to avoid colliding with `std::sort`. `options` is a raw token list appended verbatim — e.g. `{"LIMIT", "0", "10", "ALPHA", "DESC"}` or `{"BY", "weight_*", "GET", "data_*"}`.
+`SORT` is exposed under three names to avoid colliding with `std::sort`. `options` is a raw token list appended
+verbatim — e.g. `{"LIMIT", "0", "10", "ALPHA", "DESC"}` or `{"BY", "weight_*", "GET", "data_*"}`.
 
 ### `sortKey` / `sortKeyRo`
 
@@ -514,7 +584,9 @@ auto r = co_await redis.sortKeyStore("mylist", "sorted_out", {"ALPHA"});
 
 ### `wait`
 
-`WAIT numreplicas timeout` — block until the prior writes are acknowledged by at least `numreplicas` replicas, or the timeout elapses. `timeout` is in **milliseconds** (`0` = wait forever). Returns the number of replicas that acknowledged (may be fewer than requested if the timeout hits).
+`WAIT numreplicas timeout` — block until the prior writes are acknowledged by at least `numreplicas` replicas, or the
+timeout elapses. `timeout` is in **milliseconds** (`0` = wait forever). Returns the number of replicas that
+acknowledged (may be fewer than requested if the timeout hits).
 
 ```cpp
 auto wait(long long num_slaves, long long timeout);                                       // -> Reply<long long>
@@ -530,7 +602,8 @@ auto r = co_await redis.wait(1, 1000ms);   // wait up to 1s for 1 replica
 
 ### `waitaof`
 
-`WAITAOF numlocal numreplicas timeout` (Redis 7.2+) — block until the prior writes are fsynced to the AOF locally and on `numreplicas` replicas. `timeout` is in **milliseconds**. Returns a count reply.
+`WAITAOF numlocal numreplicas timeout` (Redis 7.2+) — block until the prior writes are fsynced to the AOF locally and on
+`numreplicas` replicas. `timeout` is in **milliseconds**. Returns a count reply.
 
 ```cpp
 auto waitaof(long long num_local, long long num_replicas, long long timeout);   // -> Reply<long long>
@@ -544,12 +617,23 @@ auto r = co_await redis.waitaof(1, 0, 1000);   // local fsync, 1s timeout (ms)
 
 ## Pitfalls
 
-- **Seconds vs milliseconds is per command, by design.** `expire`/`expireat`/`ttl`/`expiretime`/`objectIdletime` are seconds; `pexpire`/`pexpireat`/`pttl`/`pexpiretime`/`restore` ttl/`migrate` timeout/`wait`/`waitaof` are milliseconds. The chrono overloads (`std::chrono::seconds` vs `std::chrono::milliseconds`) make the unit explicit and reject the wrong one at compile time — prefer them over the raw `long long` overloads. These are Redis-protocol units, not `qb::duration`; do not convert them through qb time types.
-- **TTL replies are integers with sentinels.** `ttl`/`pttl`/`expiretime`/`pexpiretime` return `Reply<long long>`: `-1` (no expiry) and `-2` (key absent) are valid values, not errors. Always check `r.result()` against these before treating it as a duration.
-- **`keys()` can block the server.** Use the explicit-cursor `scan(cursor, pattern, count)` loop for production keyspaces.
-- **The auto-iterating `scan(func, pattern)` buffers everything and swallows callback exceptions.** It calls back once at the end, not per batch, uses no `COUNT` hint, and logs (does not propagate) a throwing callback. Prefer the cursor loop when memory or error visibility matters.
-- **`del`/`exists`/`touch`/`unlink` are variadic but reply with one integer.** They return the count, not a per-key list. Use `exists` with a single key to get a 0/1 presence check.
-- **Renamed verbs.** Reach for `copyKey` (not `copy`) and `sortKey`/`sortKeyRo`/`sortKeyStore` (not `sort`); `move` is the Redis `MOVE` command.
+- **Seconds vs milliseconds is per command, by design.** `expire`/`expireat`/`ttl`/`expiretime`/`objectIdletime` are
+  seconds; `pexpire`/`pexpireat`/`pttl`/`pexpiretime`/`restore` ttl/`migrate` timeout/`wait`/`waitaof` are milliseconds.
+  The chrono overloads (`std::chrono::seconds` vs `std::chrono::milliseconds`) make the unit explicit and reject the
+  wrong one at compile time — prefer them over the raw `long long` overloads. These are Redis-protocol units, not
+  `qb::duration`; do not convert them through qb time types.
+- **TTL replies are integers with sentinels.** `ttl`/`pttl`/`expiretime`/`pexpiretime` return `Reply<long long>`: `-1` (
+  no expiry) and `-2` (key absent) are valid values, not errors. Always check `r.result()` against these before treating
+  it as a duration.
+- **`keys()` can block the server.** Use the explicit-cursor `scan(cursor, pattern, count)` loop for production
+  keyspaces.
+- **The auto-iterating `scan(func, pattern)` buffers everything and swallows callback exceptions.** It calls back once
+  at the end, not per batch, uses no `COUNT` hint, and logs (does not propagate) a throwing callback. Prefer the cursor
+  loop when memory or error visibility matters.
+- **`del`/`exists`/`touch`/`unlink` are variadic but reply with one integer.** They return the count, not a per-key
+  list. Use `exists` with a single key to get a 0/1 presence check.
+- **Renamed verbs.** Reach for `copyKey` (not `copy`) and `sortKey`/`sortKeyRo`/`sortKeyStore` (not `sort`); `move` is
+  the Redis `MOVE` command.
 
 ## See also
 

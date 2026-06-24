@@ -646,10 +646,9 @@ TEST_P(StringProtocolModesTest, SET_GET) {
         auto r = co_await redis.get(k);
         EXPECT_TRUE(r.ok()) << r.error();
         EXPECT_TRUE(r.result().has_value());
-        if (r.result())
-            {
+        if (r.result()) {
             EXPECT_EQ(*r.result(), "val");
-            }
+        }
         done = true;
     });
     while (!done)
@@ -683,14 +682,12 @@ TEST_P(StringProtocolModesTest, MSET_MGET) {
         if (v.size() >= 2) {
             EXPECT_TRUE(v[0].has_value());
             EXPECT_TRUE(v[1].has_value());
-            if (v[0])
-                {
+            if (v[0]) {
                 EXPECT_EQ(*v[0], "a");
-                }
-            if (v[1])
-                {
+            }
+            if (v[1]) {
                 EXPECT_EQ(*v[1], "b");
-                }
+            }
         }
         done = true;
     });
@@ -754,10 +751,9 @@ TEST_P(StringProtocolModesTest, STRLEN_INTEGER) {
         (void) co_await redis.set(k, "hello");
         auto r = co_await redis.strlen(k);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_EQ(r.result(), 5);
-            }
+        }
         done = true;
     });
     while (!done)
@@ -771,10 +767,9 @@ TEST_P(StringProtocolModesTest, SETEX_STATUS) {
         auto k = protocol_key("setex");
         auto r = co_await redis.setex(k, 60, "val");
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_TRUE(r.result().ok());
-            }
+        }
         done = true;
     });
     while (!done)
@@ -789,10 +784,9 @@ TEST_P(StringProtocolModesTest, GETRANGE_STRING) {
         (void) co_await redis.set(k, "hello");
         auto r = co_await redis.getrange(k, 0, 2);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_EQ(r.result(), "hel");
-            }
+        }
         done = true;
     });
     while (!done)
@@ -807,10 +801,9 @@ TEST_P(StringProtocolModesTest, SUBSTR_STRING) {
         (void) co_await redis.set(k, "HelloWorld");
         auto r = co_await redis.substr(k, 0, 4);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_EQ(r.result(), "Hello");
-            }
+        }
         done = true;
     });
     while (!done)
@@ -825,10 +818,9 @@ TEST_P(StringProtocolModesTest, DECR_INTEGER) {
         (void) co_await redis.set(k, "10");
         auto r = co_await redis.decr(k);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (r.ok())
-            {
+        if (r.ok()) {
             EXPECT_EQ(r.result(), 9);
-            }
+        }
         done = true;
     });
     while (!done)

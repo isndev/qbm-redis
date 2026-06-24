@@ -414,30 +414,25 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_SLOT_MANAGEMENT) {
                    || e.find("ERR") != std::string::npos;
         };
         auto r1 = co_await redis.cluster_addslots(0);
-        if (!r1.ok())
-            {
+        if (!r1.ok()) {
             EXPECT_TRUE(check_cluster_err(r1));
-            }
+        }
         auto r2 = co_await redis.cluster_addslotsrange({{1, 2}});
-        if (!r2.ok())
-            {
+        if (!r2.ok()) {
             EXPECT_TRUE(check_cluster_err(r2));
-            }
+        }
         auto r3 = co_await redis.cluster_delslots(0);
-        if (!r3.ok())
-            {
+        if (!r3.ok()) {
             EXPECT_TRUE(check_cluster_err(r3));
-            }
+        }
         auto r4 = co_await redis.cluster_delslotsrange({{1, 2}});
-        if (!r4.ok())
-            {
+        if (!r4.ok()) {
             EXPECT_TRUE(check_cluster_err(r4));
-            }
+        }
         auto r5 = co_await redis.cluster_flushslots();
-        if (!r5.ok())
-            {
+        if (!r5.ok()) {
             EXPECT_TRUE(check_cluster_err(r5));
-            }
+        }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -459,40 +454,33 @@ TEST_P(ClusterProtocolModesTest, CORO_CLUSTER_COMMANDS_INFO_EXT) {
         };
         std::string dummy_id = "0000000000000000000000000000000000000000";
         auto        r1       = co_await redis.cluster_count_failure_reports(dummy_id);
-        if (!r1.ok())
-            {
+        if (!r1.ok()) {
             EXPECT_TRUE(check_cluster_err(r1));
-            }
+        }
         auto r2 = co_await redis.cluster_links();
-        if (!r2.ok())
-            {
+        if (!r2.ok()) {
             EXPECT_TRUE(check_cluster_err(r2));
-            }
+        }
         auto r3 = co_await redis.cluster_myshardid();
-        if (!r3.ok())
-            {
+        if (!r3.ok()) {
             EXPECT_TRUE(check_cluster_err(r3));
-            }
+        }
         auto r4 = co_await redis.cluster_replicas(dummy_id);
-        if (!r4.ok())
-            {
+        if (!r4.ok()) {
             EXPECT_TRUE(check_cluster_err(r4));
-            }
+        }
         auto r5 = co_await redis.cluster_setslot(0, "NODE", dummy_id);
-        if (!r5.ok())
-            {
+        if (!r5.ok()) {
             EXPECT_TRUE(check_cluster_err(r5));
-            }
+        }
         auto r6 = co_await redis.cluster_shards();
-        if (!r6.ok())
-            {
+        if (!r6.ok()) {
             EXPECT_TRUE(check_cluster_err(r6));
-            }
+        }
         auto r7 = co_await redis.cluster_slaves(dummy_id);
-        if (!r7.ok())
-            {
+        if (!r7.ok()) {
             EXPECT_TRUE(check_cluster_err(r7));
-            }
+        }
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -506,10 +494,9 @@ TEST_P(ClusterProtocolModesTest, CLUSTER_INFO_JSON) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r = co_await redis.cluster_info();
-            if (r.ok())
-                {
+            if (r.ok()) {
                 EXPECT_TRUE(r.result().is_object() || r.result().is_string());
-                }
+            }
         } catch (const std::exception &) {
             // CLUSTER not available on older Redis
         }
@@ -525,15 +512,13 @@ TEST_P(ClusterProtocolModesTest, CLUSTER_NODES_SLOTS) {
         PROTOCOL_ENSURE_RESP3();
         try {
             auto r1 = co_await redis.cluster_nodes();
-            if (r1.ok())
-                {
+            if (r1.ok()) {
                 EXPECT_TRUE(r1.result().is_string() || r1.result().is_array() || r1.result().is_object());
-                }
+            }
             auto r2 = co_await redis.cluster_slots();
-            if (r2.ok())
-                {
+            if (r2.ok()) {
                 EXPECT_TRUE(r2.result().is_array());
-                }
+            }
         } catch (const std::exception &) {
             // CLUSTER not available on standalone Redis
         }

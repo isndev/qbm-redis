@@ -20,10 +20,10 @@
 
 #include <chrono>
 #include <gtest/gtest.h>
-#include <qb/io/async.h>
-#include <qb/io/async/coroutine.h>
 #include <string>
 #include <thread>
+#include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include "../redis.h"
 
 #if defined(_WIN32)

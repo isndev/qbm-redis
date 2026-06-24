@@ -1,23 +1,38 @@
 # ACL commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23 supported)
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> supported)
 
-Reference for the Access Control List command group — the `ACL` subcommands that create, modify, inspect, and delete Redis users, list command categories, audit denied commands, and generate passwords.
+Reference for the Access Control List command group — the `ACL` subcommands that create, modify, inspect, and delete
+Redis users, list command categories, audit denied commands, and generate passwords.
 
-**Prerequisites:** [../README.md](../README.md) (install, `qb_load_modules`, `qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) (the `Reply<T>` model, `status`, coroutine vs. callback forms) — **See also:** [server_commands.md](./server_commands.md) (`CONFIG`, `CLIENT`, server administration), [connection.md](./connection.md) (`AUTH`, which authenticates as an ACL user), [error_handling.md](./error_handling.md)
+**Prerequisites:** [../README.md](../README.md) (install, `qb_load_modules`,
+`qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) (the `Reply<T>` model,
+`status`, coroutine vs. callback forms) — **See also:** [server_commands.md](./server_commands.md) (`CONFIG`, `CLIENT`,
+server administration), [connection.md](./connection.md) (`AUTH`, which authenticates as an ACL
+user), [error_handling.md](./error_handling.md)
 
 ---
 
 ## Summary
 
-Redis ACLs are the server's per-user authorization model: each user has a set of rules that decide which commands it may run, which keys it may touch, and which pub/sub channels it may use. The `acl_commands<Derived>` mixin wraps the `ACL` command family so you can administer those users from a `qb::redis` client — `ACL SETUSER` to create or amend a user, `ACL GETUSER`/`ACL LIST`/`ACL USERS` to read the current state, `ACL DELUSER` to remove users, `ACL CAT` to enumerate command categories, `ACL LOG` to audit denials, `ACL DRYRUN` to test a permission before granting it, and `ACL GENPASS`/`ACL WHOAMI`/`ACL HELP`/`ACL LOAD`/`ACL SAVE` for the remaining housekeeping.
+Redis ACLs are the server's per-user authorization model: each user has a set of rules that decide which commands it may
+run, which keys it may touch, and which pub/sub channels it may use. The `acl_commands<Derived>` mixin wraps the `ACL`
+command family so you can administer those users from a `qb::redis` client — `ACL SETUSER` to create or amend a user,
+`ACL GETUSER`/`ACL LIST`/`ACL USERS` to read the current state, `ACL DELUSER` to remove users, `ACL CAT` to enumerate
+command categories, `ACL LOG` to audit denials, `ACL DRYRUN` to test a permission before granting it, and `ACL GENPASS`/
+`ACL WHOAMI`/`ACL HELP`/`ACL LOAD`/`ACL SAVE` for the remaining housekeeping.
 
-The `acl_commands<Derived>` mixin is one of the command groups inherited by `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). Every command is exposed in two forms, both fully asynchronous:
+The `acl_commands<Derived>` mixin is one of the command groups inherited by `qb::redis::tcp::client` (and
+`qb::redis::tcp::ssl::client`). Every command is exposed in two forms, both fully asynchronous:
 
 - a **coroutine** form (`auto`-returning) that yields a `Reply<T>` you `co_await`;
 - a **callback** form that takes your handler first and returns `Derived&` for chaining.
 
-There is no blocking variant — this module has never shipped "Sync" signatures. None of these commands carry a `qb::duration`: ACL is a configuration surface with no client-side timeout argument and no time-valued reply. The `qb::duration` / native-unit boundary documented for `EXPIRE` in [commands_overview.md](./commands_overview.md) does **not** apply here.
+There is no blocking variant — this module has never shipped "Sync" signatures. None of these commands carry a
+`qb::duration`: ACL is a configuration surface with no client-side timeout argument and no time-valued reply. The
+`qb::duration` / native-unit boundary documented for `EXPIRE` in [commands_overview.md](./commands_overview.md) does *
+*not** apply here.
 
 ```cpp
 #include <redis/redis.h>
@@ -38,31 +53,37 @@ qb::io::async::task<void> who_am_i(qb::redis::tcp::client &redis) {
 
 ### Reply types by command
 
-ACL replies do not share a single shape. Three reply payloads cover the whole group, and the right one is wired in per command — you never name it yourself except when you reach for the generic `command<T>(...)` escape hatch.
+ACL replies do not share a single shape. Three reply payloads cover the whole group, and the right one is wired in per
+command — you never name it yourself except when you reach for the generic `command<T>(...)` escape hatch.
 
-| Command method | Wire command | `Reply<T>` payload |
-| --- | --- | --- |
-| `acl_list` | `ACL LIST` | `qb::json` (array of rule lines) |
-| `acl_getuser` | `ACL GETUSER` | `qb::json` (object) |
-| `acl_log` | `ACL LOG [count]` | `qb::json` (array of entries) |
-| `acl_dryrun` | `ACL DRYRUN` | `qb::json` (`"OK"` string, or the denial message) |
-| `acl_cat` | `ACL CAT [category]` | `std::vector<std::string>` |
-| `acl_users` | `ACL USERS` | `std::vector<std::string>` |
-| `acl_help` | `ACL HELP` | `std::vector<std::string>` |
-| `acl_whoami` | `ACL WHOAMI` | `std::string` |
-| `acl_genpass` | `ACL GENPASS [bits]` | `std::string` |
-| `acl_deluser` | `ACL DELUSER` | `long long` (users deleted) |
-| `acl_setuser` | `ACL SETUSER` | `status` |
-| `acl_load` | `ACL LOAD` | `status` |
-| `acl_save` | `ACL SAVE` | `status` |
+| Command method | Wire command         | `Reply<T>` payload                                |
+|----------------|----------------------|---------------------------------------------------|
+| `acl_list`     | `ACL LIST`           | `qb::json` (array of rule lines)                  |
+| `acl_getuser`  | `ACL GETUSER`        | `qb::json` (object)                               |
+| `acl_log`      | `ACL LOG [count]`    | `qb::json` (array of entries)                     |
+| `acl_dryrun`   | `ACL DRYRUN`         | `qb::json` (`"OK"` string, or the denial message) |
+| `acl_cat`      | `ACL CAT [category]` | `std::vector<std::string>`                        |
+| `acl_users`    | `ACL USERS`          | `std::vector<std::string>`                        |
+| `acl_help`     | `ACL HELP`           | `std::vector<std::string>`                        |
+| `acl_whoami`   | `ACL WHOAMI`         | `std::string`                                     |
+| `acl_genpass`  | `ACL GENPASS [bits]` | `std::string`                                     |
+| `acl_deluser`  | `ACL DELUSER`        | `long long` (users deleted)                       |
+| `acl_setuser`  | `ACL SETUSER`        | `status`                                          |
+| `acl_load`     | `ACL LOAD`           | `status`                                          |
+| `acl_save`     | `ACL SAVE`           | `status`                                          |
 
-A `status` reply (`qb::redis::status`, [types.h:334](../types.h)) wraps the server's simple-string acknowledgement; it is truthy when the server answered `OK`. `Reply<status>` itself is truthy when the command did not error, so check both layers if you need to distinguish a transport error from a non-`OK` server answer — see [error_handling.md](./error_handling.md).
+A `status` reply (`qb::redis::status`, [types.h:334](../types.h)) wraps the server's simple-string acknowledgement; it
+is truthy when the server answered `OK`. `Reply<status>` itself is truthy when the command did not error, so check both
+layers if you need to distinguish a transport error from a non-`OK` server answer —
+see [error_handling.md](./error_handling.md).
 
 <!-- src: qbm/redis/reply.h:1062 (Reply::operator bool), types.h:334 (status) -->
 
 ### Structured replies decode to `qb::json`
 
-`ACL LIST`, `ACL GETUSER`, `ACL LOG`, and `ACL DRYRUN` return structured data that the module decodes into `qb::json` rather than flattening to strings. Inspect the value with the usual `qb::json` accessors — `is_array()`, `is_object()`, `contains(key)`, `operator[]`, and `get<T>()`:
+`ACL LIST`, `ACL GETUSER`, `ACL LOG`, and `ACL DRYRUN` return structured data that the module decodes into `qb::json`
+rather than flattening to strings. Inspect the value with the usual `qb::json` accessors — `is_array()`, `is_object()`,
+`contains(key)`, `operator[]`, and `get<T>()`:
 
 ```cpp
 // <!-- src: qbm/redis/tests/test-acl-commands.cpp:107-124 -->
@@ -76,29 +97,43 @@ if (reply) {
 }
 ```
 
-`qb::json` is the framework JSON type (defined outside this module and used by `reply.h`); this page does not restate its API.
+`qb::json` is the framework JSON type (defined outside this module and used by `reply.h`); this page does not restate
+its API.
 
 ### `ACL SETUSER` forwards rule tokens verbatim
 
-`acl_setuser` is variadic. The `username` is the first argument; every argument after it is appended to the command as one ACL rule token — `on`/`off`, a password directive such as `>password` or `#<sha256>`, a key pattern like `~user:*` or `allkeys`, a channel pattern like `&channel:*`, and command grants like `+@all`, `+get`, or `-@dangerous`. The module does not parse or validate these tokens; it forwards them to the server, which is the single source of truth for ACL grammar. A malformed rule is rejected by Redis, surfacing as a non-`OK` `status` (or an error on the `Reply`), not at compile time.
+`acl_setuser` is variadic. The `username` is the first argument; every argument after it is appended to the command as
+one ACL rule token — `on`/`off`, a password directive such as `>password` or `#<sha256>`, a key pattern like `~user:*`
+or `allkeys`, a channel pattern like `&channel:*`, and command grants like `+@all`, `+get`, or `-@dangerous`. The module
+does not parse or validate these tokens; it forwards them to the server, which is the single source of truth for ACL
+grammar. A malformed rule is rejected by Redis, surfacing as a non-`OK` `status` (or an error on the `Reply`), not at
+compile time.
 
 <!-- src: qbm/redis/acl_commands.h:401-424 -->
 
 ### `ACL DRYRUN` tests a grant without applying it
 
-`acl_dryrun(username, command, args)` asks the server whether `username` *would* be permitted to run `command` with `args`, without executing it. The reply decodes to `qb::json`: the string `"OK"` when the user would be allowed, or an explanation when it would be denied (a string on most servers, occasionally a structured object on newer ones — test for both, as the test suite does). Use it to validate a rule set before you rely on it.
+`acl_dryrun(username, command, args)` asks the server whether `username` *would* be permitted to run `command` with
+`args`, without executing it. The reply decodes to `qb::json`: the string `"OK"` when the user would be allowed, or an
+explanation when it would be denied (a string on most servers, occasionally a structured object on newer ones — test for
+both, as the test suite does). Use it to validate a rule set before you rely on it.
 
 <!-- src: qbm/redis/tests/test-acl-commands.cpp:177-195 -->
 
 ### Availability
 
-The whole group requires a server with ACL support (Redis 6.0+); `ACL DRYRUN` requires 7.0+. On an older server the command comes back as an `unknown command` error rather than a parse failure — handle it the same way you handle any per-command error (the test suite guards each call in a `try`/`catch` for exactly this reason).
+The whole group requires a server with ACL support (Redis 6.0+); `ACL DRYRUN` requires 7.0+. On an older server the
+command comes back as an `unknown command` error rather than a parse failure — handle it the same way you handle any
+per-command error (the test suite guards each call in a `try`/`catch` for exactly this reason).
 
 ---
 
 ## Commands
 
-All signatures below are the public methods of `acl_commands<Derived>` (header `qbm/redis/acl_commands.h`). The callback overloads are SFINAE-gated on `std::is_invocable_v<Func, Reply<T>&&>` for that command's `T`; a handler with the wrong `Reply<T>` signature drops out of overload resolution, so a mismatch fails to compile rather than misbehaving at runtime. The callback handler is invoked with an rvalue `Reply<T>&&`.
+All signatures below are the public methods of `acl_commands<Derived>` (header `qbm/redis/acl_commands.h`). The callback
+overloads are SFINAE-gated on `std::is_invocable_v<Func, Reply<T>&&>` for that command's `T`; a handler with the wrong
+`Reply<T>` signature drops out of overload resolution, so a mismatch fails to compile rather than misbehaving at
+runtime. The callback handler is invoked with an rvalue `Reply<T>&&`.
 
 ### `acl_setuser` — create or modify a user
 
@@ -214,7 +249,9 @@ Derived &acl_deluser(Func &&func, const std::string &username);
 
 <!-- src: qbm/redis/acl_commands.h:276-296 -->
 
-Removes `username` and terminates its open connections. Returns the number of users actually deleted (`0` if the name did not exist). This overload deletes a single user; to delete several in one round trip, drop to the generic escape hatch: `redis.command<long long>(cb, "ACL", "DELUSER", "u1", "u2", "u3")`.
+Removes `username` and terminates its open connections. Returns the number of users actually deleted (`0` if the name
+did not exist). This overload deletes a single user; to delete several in one round trip, drop to the generic escape
+hatch: `redis.command<long long>(cb, "ACL", "DELUSER", "u1", "u2", "u3")`.
 
 ```cpp
 // coroutine
@@ -244,7 +281,8 @@ Derived &acl_whoami(Func &&func);
 
 <!-- src: qbm/redis/acl_commands.h:217-236 -->
 
-Returns the user name this connection is authenticated as (`default` until you `AUTH` as someone else; see [connection.md](./connection.md)).
+Returns the user name this connection is authenticated as (`default` until you `AUTH` as someone else;
+see [connection.md](./connection.md)).
 
 ```cpp
 // coroutine — <!-- src: qbm/redis/tests/test-acl-commands.cpp:270-274 -->
@@ -266,7 +304,9 @@ Derived &acl_cat(Func &&func, const std::string &category = "");
 
 <!-- src: qbm/redis/acl_commands.h:121-145 -->
 
-With no argument, returns every ACL command category (`string`, `keyspace`, `read`, `write`, `dangerous`, …). With a `category`, returns the command names in it. The module decodes both forms to `std::vector<std::string>`; if you want the raw structured form a newer server may return, reach for `redis.command<qb::json>("ACL", "CAT", category)`.
+With no argument, returns every ACL command category (`string`, `keyspace`, `read`, `write`, `dangerous`, …). With a
+`category`, returns the command names in it. The module decodes both forms to `std::vector<std::string>`; if you want
+the raw structured form a newer server may return, reach for `redis.command<qb::json>("ACL", "CAT", category)`.
 
 ```cpp
 // coroutine — <!-- src: qbm/redis/tests/test-acl-commands.cpp:48-65 -->
@@ -300,7 +340,9 @@ Derived &acl_log(Func &&func, std::optional<long long> count = std::nullopt);
 
 <!-- src: qbm/redis/acl_commands.h:83-109 -->
 
-Returns the security log — a `qb::json` array of recent ACL denials, each entry naming the offending command, the user, the client address, and a reason. Pass `count` to cap the number of entries. To clear the log, use the generic form `redis.command<qb::json>("ACL", "LOG", "RESET")`.
+Returns the security log — a `qb::json` array of recent ACL denials, each entry naming the offending command, the user,
+the client address, and a reason. Pass `count` to cap the number of entries. To clear the log, use the generic form
+`redis.command<qb::json>("ACL", "LOG", "RESET")`.
 
 ```cpp
 // coroutine — <!-- src: qbm/redis/tests/test-acl-commands.cpp:204-215 -->
@@ -323,7 +365,8 @@ Derived &acl_genpass(Func &&func, std::optional<long long> bits = std::nullopt);
 
 <!-- src: qbm/redis/acl_commands.h:307-331 -->
 
-Asks the server to generate a cryptographically secure random password, returned as a hex string. With no argument the server uses its default entropy (256 bits); pass `bits` to request a specific strength.
+Asks the server to generate a cryptographically secure random password, returned as a hex string. With no argument the
+server uses its default entropy (256 bits); pass `bits` to request a specific strength.
 
 ```cpp
 // coroutine — <!-- src: qbm/redis/tests/test-acl-commands.cpp:329-339 -->
@@ -349,7 +392,8 @@ Derived &acl_dryrun(Func &&func, const std::string &username,
 
 <!-- src: qbm/redis/acl_commands.h:437-463 -->
 
-Returns `"OK"` (as a `qb::json` string) if `username` would be allowed to run `command` with `args`, or a denial message otherwise. The command is never executed. Requires Redis 7.0+.
+Returns `"OK"` (as a `qb::json` string) if `username` would be allowed to run `command` with `args`, or a denial message
+otherwise. The command is never executed. Requires Redis 7.0+.
 
 ```cpp
 // coroutine — <!-- src: qbm/redis/tests/test-acl-commands.cpp:182-185 -->
@@ -397,7 +441,9 @@ template <typename Func> Derived &acl_save(Func &&func);
 
 <!-- src: qbm/redis/acl_commands.h:341-389 -->
 
-`acl_load` reloads the rule set from the server's configured ACL file, discarding in-memory changes; `acl_save` writes the current in-memory rules back to that file. Both return `status` (`OK`). Both require the server to be configured with an external ACL file (`aclfile` in `redis.conf`); without one, the server returns an error rather than `OK`.
+`acl_load` reloads the rule set from the server's configured ACL file, discarding in-memory changes; `acl_save` writes
+the current in-memory rules back to that file. Both return `status` (`OK`). Both require the server to be configured
+with an external ACL file (`aclfile` in `redis.conf`); without one, the server returns an error rather than `OK`.
 
 ```cpp
 // coroutine
@@ -409,19 +455,34 @@ if (saved && saved.result()) { /* rules persisted to disk */ }
 
 ## Pitfalls
 
-- **`Reply<status>` truthiness is two layers, not one.** `if (reply)` only tells you the command did not error in transit; the server's `OK`/non-`OK` answer lives in `reply.result()` (a `status`, truthy on `OK`). For `acl_setuser`, `acl_load`, and `acl_save`, check `reply && reply.result()` to confirm the operation actually succeeded. See [error_handling.md](./error_handling.md).
-- **`acl_setuser` rules are not validated client-side.** Tokens are forwarded verbatim; a typo like `+@reed` is accepted by the API and rejected by the server, surfacing as a non-`OK` `status`. Use `acl_dryrun` to confirm the resulting grant matches your intent.
-- **`acl_deluser` takes exactly one user.** The convenience overload deletes a single name. For batch deletes, use `redis.command<long long>(..., "ACL", "DELUSER", u1, u2, ...)`; the return value is the count actually removed, which may be less than the number you passed.
-- **`acl_load`/`acl_save` need an `aclfile`.** On a server with no external ACL file configured these return a server error, not `OK`. They are not a substitute for `CONFIG REWRITE`.
-- **The group is version-gated.** ACL needs Redis 6.0+ and `acl_dryrun` needs 7.0+. On an older server you get an `unknown command` error on the `Reply`, not a parse exception — branch on `reply.ok()` instead of assuming the call lands.
-- **`acl_log(count)` caps, it does not page.** There is no cursor; you always get the most recent `count` entries (or all of them with no argument). To clear the log, send `ACL LOG RESET` via the generic `command` escape hatch.
+- **`Reply<status>` truthiness is two layers, not one.** `if (reply)` only tells you the command did not error in
+  transit; the server's `OK`/non-`OK` answer lives in `reply.result()` (a `status`, truthy on `OK`). For `acl_setuser`,
+  `acl_load`, and `acl_save`, check `reply && reply.result()` to confirm the operation actually succeeded.
+  See [error_handling.md](./error_handling.md).
+- **`acl_setuser` rules are not validated client-side.** Tokens are forwarded verbatim; a typo like `+@reed` is accepted
+  by the API and rejected by the server, surfacing as a non-`OK` `status`. Use `acl_dryrun` to confirm the resulting
+  grant matches your intent.
+- **`acl_deluser` takes exactly one user.** The convenience overload deletes a single name. For batch deletes, use
+  `redis.command<long long>(..., "ACL", "DELUSER", u1, u2, ...)`; the return value is the count actually removed, which
+  may be less than the number you passed.
+- **`acl_load`/`acl_save` need an `aclfile`.** On a server with no external ACL file configured these return a server
+  error, not `OK`. They are not a substitute for `CONFIG REWRITE`.
+- **The group is version-gated.** ACL needs Redis 6.0+ and `acl_dryrun` needs 7.0+. On an older server you get an
+  `unknown command` error on the `Reply`, not a parse exception — branch on `reply.ok()` instead of assuming the call
+  lands.
+- **`acl_log(count)` caps, it does not page.** There is no cursor; you always get the most recent `count` entries (or
+  all of them with no argument). To clear the log, send `ACL LOG RESET` via the generic `command` escape hatch.
 
 ---
 
 ## See also
 
-- [commands_overview.md](./commands_overview.md) — the `Reply<T>` model, `status`, the coroutine/callback duality, and the `qb::duration` vs. native-unit boundary.
-- [connection.md](./connection.md) — `AUTH`, which authenticates the connection as an ACL user; `acl_whoami` reports the result.
+- [commands_overview.md](./commands_overview.md) — the `Reply<T>` model, `status`, the coroutine/callback duality, and
+  the `qb::duration` vs. native-unit boundary.
+- [connection.md](./connection.md) — `AUTH`, which authenticates the connection as an ACL user; `acl_whoami` reports the
+  result.
 - [server_commands.md](./server_commands.md) — `CONFIG`, `CLIENT`, and the rest of the server-administration surface.
-- [error_handling.md](./error_handling.md) — distinguishing transport errors, server errors, and non-`OK` status replies.
-- [Redis ACL documentation](https://redis.io/docs/management/security/acl/) — the authoritative reference for rule-token grammar.
+- [error_handling.md](./error_handling.md) — distinguishing transport errors, server errors, and non-`OK` status
+  replies.
+- [Redis ACL documentation](https://redis.io/docs/management/security/acl/) — the authoritative reference for rule-token
+  grammar.
