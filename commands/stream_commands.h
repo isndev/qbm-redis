@@ -1,23 +1,23 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/stream_commands.h
+ * @brief Redis stream command mixin for the qb Redis module.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Provides the @ref qb::redis::stream_commands CRTP mixin implementing the Redis
+ * stream command family (XADD, XREAD, XRANGE, XGROUP, XCLAIM, XPENDING, ...).
+ * Every command is exposed both as a coroutine-awaitable form and as a
+ * callback-based async form that returns a reference to the derived handler for
+ * chaining.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
+ *            See accompanying file LICENSE or http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_STREAM_COMMANDS_H
 #define QBM_REDIS_STREAM_COMMANDS_H
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -435,6 +435,16 @@ public:
         return derived().template command<qb::json>(std::forward<Func>(func), "XREADGROUP", args, "STREAMS", keys, ids);
     }
 
+    /**
+     * @brief Read entries from a single stream
+     *
+     * @param key Stream key
+     * @param id ID to read from ("$" for new messages only, "0" for all messages)
+     * @param count Optional maximum number of entries to read
+     * @param block Optional timeout in milliseconds to block waiting for new messages
+     * @return qb::json structured representation of stream entries
+     * @see https://redis.io/commands/xread
+     */
     auto
     xread(const std::string &key, const std::string &id, std::optional<long long> count = std::nullopt,
           std::optional<long long> block = std::nullopt) {
@@ -669,8 +679,6 @@ public:
         return derived().template command<qb::json>(std::forward<Func>(func), "XPENDING", args);
     }
 
-    // =============== New Stream Commands (TODO_COMMANDS.md) ===============
-
     /**
      * @brief Read a range of entries from a stream (coroutine awaitable)
      *
@@ -797,7 +805,16 @@ public:
     }
 
     /**
-     * @brief Automatically claim idle pending messages.
+     * @brief Automatically claim idle pending messages (coroutine awaitable)
+     *
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param consumer Consumer name claiming the messages
+     * @param min_idle_time Minimum idle time in milliseconds
+     * @param start ID from which to start scanning for pending messages
+     * @param count Optional maximum number of messages to attempt to claim
+     * @param justid If true, return only message IDs without their fields
+     * @return qb::json structured representation of the claimed messages
      * @see https://redis.io/commands/xautoclaim
      */
     auto
@@ -808,6 +825,22 @@ public:
                 this->xautoclaim(std::move(callback), key, group, consumer, min_idle_time, start, count, justid);
             });
     }
+
+    /**
+     * @brief Asynchronous version of xautoclaim
+     *
+     * @tparam Func Callback function type that accepts a Reply<qb::json>
+     * @param func Callback function to handle the result
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param consumer Consumer name claiming the messages
+     * @param min_idle_time Minimum idle time in milliseconds
+     * @param start ID from which to start scanning for pending messages
+     * @param count Optional maximum number of messages to attempt to claim
+     * @param justid If true, return only message IDs without their fields
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xautoclaim
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xautoclaim(Func &&func, const std::string &key, const std::string &group, const std::string &consumer, long long min_idle_time,
@@ -824,7 +857,13 @@ public:
     }
 
     /**
-     * @brief Set the last delivered ID of a consumer group.
+     * @brief Set the last delivered ID of a consumer group (coroutine awaitable)
+     *
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param id The new last-delivered ID for the group
+     * @param entries_read Optional number of entries already read by the group
+     * @return status object indicating success or failure
      * @see https://redis.io/commands/xgroup-setid
      */
     auto
@@ -832,6 +871,19 @@ public:
         return derived().template make_coro_command<status>(
             [this, key, group, id, entries_read](auto &&callback) { this->xgroupSetid(std::move(callback), key, group, id, entries_read); });
     }
+
+    /**
+     * @brief Asynchronous version of xgroupSetid
+     *
+     * @tparam Func Callback function type that accepts a Reply<status>
+     * @param func Callback function to handle the result
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param id The new last-delivered ID for the group
+     * @param entries_read Optional number of entries already read by the group
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xgroup-setid
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     xgroupSetid(Func &&func, const std::string &key, const std::string &group, const std::string &id,
@@ -845,7 +897,12 @@ public:
     }
 
     /**
-     * @brief Create a consumer in a consumer group.
+     * @brief Create a consumer in a consumer group (coroutine awaitable)
+     *
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param consumer Name of the consumer to create
+     * @return true if the consumer was created, false if it already existed
      * @see https://redis.io/commands/xgroup-createconsumer
      */
     auto
@@ -853,6 +910,18 @@ public:
         return derived().template make_coro_command<bool>(
             [this, key, group, consumer](auto &&callback) { this->xgroupCreateconsumer(std::move(callback), key, group, consumer); });
     }
+
+    /**
+     * @brief Asynchronous version of xgroupCreateconsumer
+     *
+     * @tparam Func Callback function type that accepts a Reply<bool>
+     * @param func Callback function to handle the result
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param consumer Name of the consumer to create
+     * @return Reference to the derived class
+     * @see https://redis.io/commands/xgroup-createconsumer
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     xgroupCreateconsumer(Func &&func, const std::string &key, const std::string &group, const std::string &consumer) {

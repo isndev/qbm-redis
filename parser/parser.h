@@ -1,24 +1,25 @@
 /**
- * @file parser/parser.h
- * @brief RespParser - streaming RESP2/RESP3 parser
+ * @file qbm/redis/parser/parser.h
+ * @brief Streaming RESP2/RESP3 wire-protocol parser.
+ *
+ * Defines @ref qb::redis::parser::RespParser, an incremental parser that turns a
+ * byte stream of RESP2/RESP3 data into typed @ref qb::redis::parser::Value
+ * objects. Data is appended with @ref qb::redis::parser::RespParser::feed and
+ * decoded with @ref qb::redis::parser::RespParser::parse (one value) or @ref
+ * qb::redis::parser::RespParser::parse_all (every buffered value). Parsing is
+ * non-destructive: incomplete input is retained and re-parsed once more bytes
+ * arrive, so the parser is safe to drive from an async I/O loop that delivers
+ * partial frames. Also provides @ref qb::redis::parser::ParserConfig (limits and
+ * protocol selection) and the one-shot convenience entry point @ref
+ * qb::redis::parser::parse.
+ *
+ *            SPDX-License-Identifier: Apache-2.0
+ *
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
- */
-
 #ifndef QBM_REDIS_PARSER_PARSER_H
 #define QBM_REDIS_PARSER_PARSER_H
 
@@ -31,27 +32,32 @@ namespace qb::redis::parser {
 // Parser configuration
 // ============================================================================
 
-/** @brief Parser limits and options */
+/**
+ * @brief Parser limits and protocol options.
+ *
+ * The size limits guard against hostile or corrupt input that would otherwise
+ * cause unbounded allocation while decoding a single frame.
+ */
 struct ParserConfig {
-    ProtocolVersion protocol_version  = ProtocolVersion::RESP3;
-    size_t          max_nesting_depth = 64;                // Max aggregate nesting
-    size_t          max_bulk_size     = 512 * 1024 * 1024; // 512MB
-    size_t          max_array_size    = 1'000'000;         // Max array elements
-    bool            strict_mode       = false;             // Reject trailing data after parse
+    ProtocolVersion protocol_version  = ProtocolVersion::RESP3; ///< Wire protocol to accept.
+    size_t          max_nesting_depth = 64;                     ///< Max aggregate nesting depth.
+    size_t          max_bulk_size     = 512 * 1024 * 1024;      ///< Max bulk payload bytes (512MB).
+    size_t          max_array_size    = 1'000'000;              ///< Max aggregate element count.
+    bool            strict_mode       = false;                  ///< Reject trailing data after a parse.
 };
 
 // ============================================================================
 // Parser state
 // ============================================================================
 
-/** @brief Internal parser state machine states */
+/** @brief Internal parser state-machine states. */
 enum class State {
-    READY,             // Waiting for type byte
-    PARSING_LENGTH,    // Parsing length line (for bulk/aggregate types)
-    PARSING_SIMPLE,    // Parsing simple type data
-    PARSING_BULK,      // Parsing bulk data
-    PARSING_AGGREGATE, // Parsing aggregate elements
-    COMPLETE,          // Have complete value
+    READY,             ///< Waiting for a type byte.
+    PARSING_LENGTH,    ///< Parsing the length line (bulk/aggregate types).
+    PARSING_SIMPLE,    ///< Parsing simple-type data.
+    PARSING_BULK,      ///< Parsing bulk data.
+    PARSING_AGGREGATE, ///< Parsing aggregate elements.
+    COMPLETE,          ///< A complete value is available.
     /** Parser hit a fatal error (not `ERROR` — Windows headers define that macro). */
     FAULT
 };
@@ -62,19 +68,29 @@ enum class State {
 
 /**
  * @class RespParser
- * @brief Streaming RESP2/RESP3 parser for async I/O
+ * @brief Streaming RESP2/RESP3 parser for async I/O.
  *
- * Feed data with feed(), parse complete values with parse() or parse_all().
- * Supports zero-copy parsing from contiguous buffers.
+ * Append bytes with @ref feed(), then decode buffered values with @ref parse()
+ * (a single value) or @ref parse_all() (every complete value). Parsing is
+ * non-destructive: incomplete frames are retained and re-parsed when more bytes
+ * arrive, and a fatal protocol error faults the parser (see @ref has_error) so
+ * the connection can be torn down rather than spinning on corrupt input. Decoded
+ * scalars and strings reference the contiguous internal buffer where possible
+ * (zero-copy), with owning copies materialized into the resulting @ref Value.
  */
 class RespParser {
 public:
+    /**
+     * @brief Construct a parser with the given configuration.
+     * @param config Limits and protocol options (defaults to RESP3 with the
+     *               default size limits).
+     */
     explicit RespParser(const ParserConfig &config = {})
         : _config(config)
         , _state(State::READY)
         , _current_depth(0) {}
 
-    // Reset parser state
+    /** @brief Reset the parser to its initial state and discard buffered bytes. */
     void
     reset() {
         _state         = State::READY;
@@ -82,29 +98,38 @@ public:
         _buffer.reset();
     }
 
-    // Get current state
+    /** @brief Current state-machine state. */
     [[nodiscard]] State
     state() const noexcept {
         return _state;
     }
+    /** @brief @return `true` if the parser is idle, awaiting a new value. */
     [[nodiscard]] bool
     is_ready() const noexcept {
         return _state == State::READY;
     }
+    /** @brief @return `true` if a complete value is available. */
     [[nodiscard]] bool
     is_complete() const noexcept {
         return _state == State::COMPLETE;
     }
+    /** @brief @return `true` if the parser has faulted on a protocol error. */
     [[nodiscard]] bool
     has_error() const noexcept {
         return _state == State::FAULT;
     }
+    /** @brief @return `true` while a value is being decoded (mid-frame). */
     [[nodiscard]] bool
     is_parsing() const noexcept {
         return _state != State::READY && _state != State::COMPLETE && _state != State::FAULT;
     }
 
-    // Feed data to parser (string_view version)
+    /**
+     * @brief Append raw wire bytes to the internal buffer.
+     * @param data Bytes to buffer.
+     * @return `true` on success, `false` if the parser has faulted or the
+     *         buffer could not grow.
+     */
     bool
     feed(std::string_view data) {
         if (has_error())
@@ -112,7 +137,17 @@ public:
         return _buffer.append(std::span<const char>(data.data(), data.size()));
     }
 
-    // Feed span data to parser - explicit template to avoid ambiguity
+    /**
+     * @brief Append raw wire bytes to the internal buffer (span overload).
+     *
+     * Explicitly constrained to `std::span<const char>` to avoid ambiguity with
+     * the @ref feed(std::string_view) overload.
+     *
+     * @tparam T Must be `std::span<const char>`.
+     * @param data Bytes to buffer.
+     * @return `true` on success, `false` if the parser has faulted or the
+     *         buffer could not grow.
+     */
     template <typename T>
     requires std::same_as<T, std::span<const char>>
     bool
@@ -122,15 +157,17 @@ public:
         return _buffer.append(data);
     }
 
-    // Try to parse a complete value
-    // Returns:
-    //   - value if complete value parsed
-    //   - ParseError with INCOMPLETE_DATA if need more data
-    //   - ParseError with other code if parse error
-    //
-    // compact() first guarantees the buffered bytes are contiguous, so the
-    // non-destructive view pass covers every case: on INCOMPLETE_DATA nothing
-    // is consumed and the same bytes are retried once more data is fed.
+    /**
+     * @brief Try to parse a single complete value from buffered bytes.
+     *
+     * @ref compact() first guarantees the buffered bytes are contiguous, so the
+     * non-destructive view pass covers every case: on @c INCOMPLETE_DATA nothing
+     * is consumed and the same bytes are retried once more data is fed.
+     *
+     * @return The parsed @ref Value on success; a @ref ParseError with
+     *         @c INCOMPLETE_DATA if more bytes are required; or a @ref ParseError
+     *         with another code on a protocol error.
+     */
     [[nodiscard]] ParseResult<Value>
     parse() {
         if (has_error()) {
@@ -140,13 +177,21 @@ public:
         return try_parse_from_view();
     }
 
-    // Parse all complete values from the internal buffer.
-    //
-    // Uses a non-destructive ViewBuffer over the compacted (contiguous) buffer.
-    // On INCOMPLETE_DATA the ViewBuffer position is simply not committed, so no
-    // bytes are lost and the next call re-parses from the same starting point
-    // once more data has been fed in.  This correctly handles every RESP type
-    // including arbitrarily nested arrays, maps, sets and push messages.
+    /**
+     * @brief Parse every complete value currently buffered.
+     *
+     * Uses a non-destructive ViewBuffer over the compacted (contiguous) buffer.
+     * On @c INCOMPLETE_DATA the ViewBuffer position is simply not committed, so
+     * no bytes are lost and the next call re-parses from the same starting point
+     * once more data has been fed in. Any other error code is a fatal protocol
+     * error: the parser is faulted (see @ref has_error) so the driver tears the
+     * connection down instead of spinning on the same corrupt byte forever. This
+     * correctly handles every RESP type, including arbitrarily nested arrays,
+     * maps, sets and push messages.
+     *
+     * @return The values decoded in this call (possibly empty); trailing
+     *         incomplete bytes remain buffered for a later call.
+     */
     [[nodiscard]] std::vector<Value>
     parse_all() {
         std::vector<Value> results;
@@ -180,9 +225,16 @@ public:
         return results;
     }
 
-    // Returns true when the internal buffer appears to contain at least one
-    // complete top-level value.  Used only as a fast-path pre-check; the
-    // definitive answer comes from parse_all().
+    /**
+     * @brief Fast pre-check for at least one complete top-level value.
+     *
+     * Used only as an optimization hint; the definitive answer comes from
+     * @ref parse_all(). For simple scalar types a single CRLF is sufficient to
+     * confirm completeness; for bulk and aggregate types a full trial parse is
+     * attempted.
+     *
+     * @return `true` if a complete top-level value appears to be buffered.
+     */
     [[nodiscard]] bool
     has_complete_value() const {
         if (_buffer.empty())
@@ -208,13 +260,13 @@ public:
         return result.has_value();
     }
 
-    // Get unparsed data in buffer
+    /** @brief @return A view of the bytes buffered but not yet consumed. */
     [[nodiscard]] std::span<const char>
     unparsed_data() const {
         return _buffer.readable_span();
     }
 
-    // Compact internal buffer
+    /** @brief Coalesce buffered bytes into a single contiguous region. */
     void
     compact() {
         _buffer.compact();

@@ -1,24 +1,20 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/bitmap_commands.h
+ * @brief Redis bitmap command mixin (BITCOUNT, BITFIELD, BITOP, BITPOS, GETBIT,
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *        SETBIT, BITFIELD_RO) providing both coroutine and callback interfaces.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
+ *            SPDX-License-Identifier: Apache-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_BITMAP_COMMANDS_H
 #define QBM_REDIS_BITMAP_COMMANDS_H
 
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 

@@ -1,25 +1,23 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/sorted_set_commands.h
+ * @brief Redis sorted set command mixin for the qb Redis module.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Provides the @c sorted_set_commands CRTP mixin, exposing the full Redis
+ * sorted-set command family (ZADD, ZRANGE, ZRANGEBYSCORE, ZPOP*, ZSCAN,
+ * set-algebra such as ZUNIONSTORE/ZINTER/ZDIFF, and the blocking BZ* variants).
+ * Each command is offered both as a coroutine-awaitable form and as a
+ * callback-based asynchronous form for the qb actor event loop.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_SORTED_SET_COMMANDS_H
 #define QBM_REDIS_SORTED_SET_COMMANDS_H
 #include <chrono>
 #include <utility>
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -38,6 +36,10 @@ namespace qb::redis {
 template <typename Derived>
 class sorted_set_commands {
 private:
+    /**
+     * @brief Returns the derived handler via the CRTP downcast.
+     * @return Reference to the @c Derived instance.
+     */
     constexpr Derived &
     derived() {
         return static_cast<Derived &>(*this);
@@ -151,6 +153,13 @@ public:
                                                                                                        keys, timeout);
     }
 
+    /**
+     * @brief Coroutine-awaitable BZPOPMAX accepting a std::chrono timeout.
+     *
+     * @param keys Keys where sorted sets are stored.
+     * @param timeout Blocking timeout; 0 means block forever.
+     * @return Awaiter yielding an optional tuple of (key, member, score).
+     */
     auto
     bzpopmax(const std::vector<std::string> &keys, const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
         return bzpopmax(keys, timeout.count());
@@ -201,6 +210,13 @@ public:
                                                                                                        keys, timeout);
     }
 
+    /**
+     * @brief Coroutine-awaitable BZPOPMIN accepting a std::chrono timeout.
+     *
+     * @param keys Keys where sorted sets are stored.
+     * @param timeout Blocking timeout; 0 means block forever.
+     * @return Awaiter yielding an optional tuple of (key, member, score).
+     */
     auto
     bzpopmin(const std::vector<std::string> &keys, const std::chrono::seconds &timeout = std::chrono::seconds{0}) {
         return bzpopmin(keys, timeout.count());
@@ -221,6 +237,15 @@ public:
         return bzpopmin(std::forward<Func>(func), keys, timeout.count());
     }
 
+    /**
+     * @brief Adds one or more scored members to a sorted set (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param members Vector of score_member objects to add.
+     * @param type Update policy (ALWAYS, EXIST, or NOT_EXIST).
+     * @param changed If true, return the number of changed members rather than only new ones.
+     * @return Awaiter yielding the number of added (or changed) members.
+     */
     auto
     zadd(const std::string &key, const std::vector<score_member> &members, UpdateType type = UpdateType::ALWAYS, bool changed = false) {
         return derived().template make_coro_command<long long>(
@@ -309,6 +334,14 @@ public:
         return derived().template command<long long>(std::forward<Func>(func), "ZCOUNT", key, interval.lower(), interval.upper());
     }
 
+    /**
+     * @brief Increments the score of a sorted set member (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param increment Amount to add to the member's score.
+     * @param member Member whose score is incremented.
+     * @return Awaiter yielding the member's new score.
+     */
     auto
     zincrby(const std::string &key, double increment, const std::string &member) {
         return derived().template make_coro_command<double>(
@@ -331,6 +364,15 @@ public:
         return derived().template command<double>(std::forward<Func>(func), "ZINCRBY", key, increment, member);
     }
 
+    /**
+     * @brief Unions multiple sorted sets and stores the result (coroutine awaitable).
+     *
+     * @param destination Key where the resulting sorted set is stored.
+     * @param keys Keys of the source sorted sets.
+     * @param weights Optional per-set score multipliers.
+     * @param type Aggregation applied to combined scores (SUM, MIN, or MAX).
+     * @return Awaiter yielding the number of members in the resulting set.
+     */
     auto
     zunionstore(const std::string &destination, const std::vector<std::string> &keys, const std::vector<double> &weights = {},
                 Aggregation type = Aggregation::SUM) {
@@ -400,6 +442,14 @@ public:
                                                      "AGGREGATE", to_string(type));
     }
 
+    /**
+     * @brief Counts members within a lexicographical range (coroutine awaitable).
+     *
+     * @tparam Interval Type exposing lower() and upper() bound accessors.
+     * @param key Key where the sorted set is stored.
+     * @param interval Lexicographical interval to count over.
+     * @return Awaiter yielding the number of matching members.
+     */
     template <typename Interval>
     auto
     zlexcount(const std::string &key, const Interval &interval) {
@@ -423,6 +473,13 @@ public:
         return derived().template command<long long>(std::forward<Func>(func), "ZLEXCOUNT", key, interval.lower(), interval.upper());
     }
 
+    /**
+     * @brief Removes and returns members with the highest scores (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param count Number of members to pop (default 1).
+     * @return Awaiter yielding the removed score_member objects.
+     */
     auto
     zpopmax(const std::string &key, long long count = 1) {
         return derived().template make_coro_command<std::vector<score_member>>(
@@ -472,6 +529,14 @@ public:
         return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZPOPMIN", key, count);
     }
 
+    /**
+     * @brief Returns a range of members by index, with scores (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param start Start index (0-based; negative counts from the end).
+     * @param stop Stop index, inclusive (negative counts from the end).
+     * @return Awaiter yielding the member-score pairs in the range.
+     */
     auto
     zrange(const std::string &key, long long start, long long stop) {
         return derived().template make_coro_command<std::vector<score_member>>(
@@ -494,6 +559,15 @@ public:
         return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZRANGE", key, start, stop, "WITHSCORES");
     }
 
+    /**
+     * @brief Returns members within a lexicographical range (coroutine awaitable).
+     *
+     * @tparam Interval Type exposing lower() and upper() bound accessors.
+     * @param key Key where the sorted set is stored.
+     * @param interval Lexicographical interval to query.
+     * @param opts Limit options for pagination.
+     * @return Awaiter yielding the matching members.
+     */
     template <typename Interval>
     auto
     zrangebylex(const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
@@ -556,6 +630,13 @@ public:
             opts.offset >= 0 ? std::to_string(opts.offset) : "", opts.offset >= 0 ? std::to_string(opts.count) : "", "WITHSCORES");
     }
 
+    /**
+     * @brief Returns the rank of a member, low to high (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param member Member whose rank is requested.
+     * @return Awaiter yielding the 0-based rank, or nullopt if the member is absent.
+     */
     auto
     zrank(const std::string &key, const std::string &member) {
         return derived().template make_coro_command<std::optional<long long>>(
@@ -577,6 +658,13 @@ public:
         return derived().template command<std::optional<long long>>(std::forward<Func>(func), "ZRANK", key, member);
     }
 
+    /**
+     * @brief Removes one or more members from a sorted set (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param members Members to remove.
+     * @return Awaiter yielding the number of members removed.
+     */
     auto
     zrem(const std::string &key, const std::vector<std::string> &members) {
         return derived().template make_coro_command<long long>(
@@ -598,6 +686,14 @@ public:
         return derived().template command<long long>(std::forward<Func>(func), "ZREM", key, members);
     }
 
+    /**
+     * @brief Removes members within a lexicographical range (coroutine awaitable).
+     *
+     * @tparam Interval Type exposing lower() and upper() bound accessors.
+     * @param key Key where the sorted set is stored.
+     * @param interval Lexicographical interval to remove.
+     * @return Awaiter yielding the number of members removed.
+     */
     template <typename Interval>
     auto
     zremrangebylex(const std::string &key, Interval const &interval) {
@@ -651,6 +747,14 @@ public:
         return derived().template command<long long>(std::forward<Func>(func), "ZREMRANGEBYRANK", key, start, stop);
     }
 
+    /**
+     * @brief Removes members within a score range (coroutine awaitable).
+     *
+     * @tparam Interval Type exposing lower() and upper() bound accessors.
+     * @param key Key where the sorted set is stored.
+     * @param interval Score interval to remove.
+     * @return Awaiter yielding the number of members removed.
+     */
     template <typename Interval>
     auto
     zremrangebyscore(const std::string &key, Interval const &interval) {
@@ -674,6 +778,14 @@ public:
         return derived().template command<long long>(std::forward<Func>(func), "ZREMRANGEBYSCORE", key, interval.lower(), interval.upper());
     }
 
+    /**
+     * @brief Returns a range of members by index, high to low (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param start Start index (0-based; negative counts from the end).
+     * @param stop Stop index, inclusive (negative counts from the end).
+     * @return Awaiter yielding the member-score pairs in descending order.
+     */
     auto
     zrevrange(const std::string &key, long long start, long long stop) {
         return derived().template make_coro_command<std::vector<score_member>>(
@@ -731,6 +843,15 @@ public:
                                                                     interval.lower(), "LIMIT", opt.offset, opt.count);
     }
 
+    /**
+     * @brief Returns members within a score range, high to low (coroutine awaitable).
+     *
+     * @tparam Interval Type exposing lower() and upper() bound accessors.
+     * @param key Key where the sorted set is stored.
+     * @param interval Score interval to query.
+     * @param opt Limit options for pagination.
+     * @return Awaiter yielding the member-score pairs in descending order.
+     */
     template <typename Interval>
     auto
     zrevrangebyscore(const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
@@ -756,6 +877,13 @@ public:
                                                                      interval.lower(), "WITHSCORES", "LIMIT", opt.offset, opt.count);
     }
 
+    /**
+     * @brief Returns the rank of a member, high to low (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param member Member whose rank is requested.
+     * @return Awaiter yielding the 0-based reverse rank, or nullopt if absent.
+     */
     auto
     zrevrank(const std::string &key, const std::string &member) {
         return derived().template make_coro_command<std::optional<long long>>(
@@ -777,6 +905,15 @@ public:
         return derived().template command<std::optional<long long>>(std::forward<Func>(func), "ZREVRANK", key, member);
     }
 
+    /**
+     * @brief Incrementally iterates sorted set members (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param cursor Cursor position to resume iteration from (0 to start).
+     * @param pattern Glob pattern used to filter members.
+     * @param count Hint for the number of elements returned per call.
+     * @return Awaiter yielding the next cursor and the matched member-score map.
+     */
     auto
     zscan(const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
         return derived().template make_coro_command<qb::redis::scan<qb::unordered_map<std::string, double>>>(
@@ -823,6 +960,13 @@ public:
         return derived();
     }
 
+    /**
+     * @brief Returns the score of a sorted set member (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param member Member whose score is requested.
+     * @return Awaiter yielding the score, or nullopt if the member is absent.
+     */
     auto
     zscore(const std::string &key, const std::string &member) {
         return derived().template make_coro_command<std::optional<double>>(
@@ -844,7 +988,7 @@ public:
         return derived().template command<std::optional<double>>(std::forward<Func>(func), "ZSCORE", key, member);
     }
 
-    // =============== New Sorted Set Commands (TODO_COMMANDS.md) ===============
+    // =============== Set-algebra and extended sorted set commands ===============
 
     /**
      * @brief Return the difference between the first and successive sorted sets (coroutine awaitable)
@@ -1010,7 +1154,11 @@ public:
     }
 
     /**
-     * @brief Return the cardinality of the intersection of sorted sets.
+     * @brief Returns the cardinality of the intersection of sorted sets (coroutine awaitable).
+     *
+     * @param keys Keys of the source sorted sets.
+     * @param limit Optional cap on the cardinality to compute (nullopt for no limit).
+     * @return Awaiter yielding the intersection cardinality.
      * @see https://redis.io/commands/zintercard
      */
     auto
@@ -1018,6 +1166,16 @@ public:
         return derived().template make_coro_command<long long>(
             [this, keys, limit](auto &&callback) { this->zintercard(std::move(callback), keys, limit); });
     }
+    /**
+     * @brief Asynchronous version of zintercard.
+     *
+     * @tparam Func Callback function type.
+     * @param func Callback function to handle the result.
+     * @param keys Keys of the source sorted sets.
+     * @param limit Optional cap on the cardinality to compute (nullopt for no limit).
+     * @return Reference to the derived class.
+     * @see https://redis.io/commands/zintercard
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zintercard(Func &&func, const std::vector<std::string> &keys, std::optional<long long> limit = std::nullopt) {
@@ -1030,10 +1188,13 @@ public:
     }
 
     /**
-     * @brief Pop members with lowest/highest scores from the first non-empty sorted set.
-     * @param keys Keys to check.
-     * @param min_or_max "MIN" or "MAX".
-     * @param count Number of members to pop.
+     * @brief Pops members with the lowest/highest scores from the first non-empty
+     * sorted set (coroutine awaitable).
+     *
+     * @param keys Keys to check, in order.
+     * @param min_or_max "MIN" or "MAX" selecting which end to pop.
+     * @param count Number of members to pop (default 1).
+     * @return Awaiter yielding an optional pair of (key, popped members).
      * @see https://redis.io/commands/zmpop
      */
     auto
@@ -1041,6 +1202,17 @@ public:
         return derived().template make_coro_command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
             [this, keys, min_or_max, count](auto &&callback) { this->zmpop(std::move(callback), keys, min_or_max, count); });
     }
+    /**
+     * @brief Asynchronous version of zmpop.
+     *
+     * @tparam Func Callback function type.
+     * @param func Callback function to handle the result.
+     * @param keys Keys to check, in order.
+     * @param min_or_max "MIN" or "MAX" selecting which end to pop.
+     * @param count Number of members to pop (default 1).
+     * @return Reference to the derived class.
+     * @see https://redis.io/commands/zmpop
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
     zmpop(Func &&func, const std::vector<std::string> &keys, const std::string &min_or_max, long long count = 1) {
@@ -1056,7 +1228,11 @@ public:
     }
 
     /**
-     * @brief Get scores of multiple members.
+     * @brief Gets the scores of multiple members (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @param members Members whose scores are requested.
+     * @return Awaiter yielding one optional score per member (nullopt if absent).
      * @see https://redis.io/commands/zmscore
      */
     auto
@@ -1064,6 +1240,16 @@ public:
         return derived().template make_coro_command<std::vector<std::optional<double>>>(
             [this, key, members](auto &&callback) { this->zmscore(std::move(callback), key, members); });
     }
+    /**
+     * @brief Asynchronous version of zmscore.
+     *
+     * @tparam Func Callback function type.
+     * @param func Callback function to handle the result.
+     * @param key Key where the sorted set is stored.
+     * @param members Members whose scores are requested.
+     * @return Reference to the derived class.
+     * @see https://redis.io/commands/zmscore
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<double>>> &&>, Derived &>
     zmscore(Func &&func, const std::string &key, const std::vector<std::string> &members) {
@@ -1071,7 +1257,10 @@ public:
     }
 
     /**
-     * @brief Get a random member from a sorted set (coroutine awaitable).
+     * @brief Gets a single random member from a sorted set (coroutine awaitable).
+     *
+     * @param key Key where the sorted set is stored.
+     * @return Awaiter yielding a random member, or nullopt if the set is empty.
      * @see https://redis.io/commands/zrandmember
      */
     auto
@@ -1079,6 +1268,15 @@ public:
         return derived().template make_coro_command<std::optional<std::string>>(
             [this, key](auto &&callback) { this->zrandmember(std::move(callback), key); });
     }
+    /**
+     * @brief Asynchronous version of zrandmember.
+     *
+     * @tparam Func Callback function type.
+     * @param func Callback function to handle the result.
+     * @param key Key where the sorted set is stored.
+     * @return Reference to the derived class.
+     * @see https://redis.io/commands/zrandmember
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     zrandmember(Func &&func, const std::string &key) {
@@ -1133,7 +1331,15 @@ public:
     }
 
     /**
-     * @brief Store a range of members from a sorted set into another key.
+     * @brief Stores a range of members from one sorted set into another key
+     * (coroutine awaitable).
+     *
+     * @param dst Destination key for the resulting sorted set.
+     * @param src Source key to read the range from.
+     * @param min Lower bound of the range (index or score/lex bound per options).
+     * @param max Upper bound of the range (index or score/lex bound per options).
+     * @param options Additional ZRANGESTORE options (e.g. BYSCORE, BYLEX, REV, LIMIT).
+     * @return Awaiter yielding the number of members stored.
      * @see https://redis.io/commands/zrangestore
      */
     auto
@@ -1142,6 +1348,19 @@ public:
         return derived().template make_coro_command<long long>(
             [this, dst, src, min, max, options](auto &&callback) { this->zrangestore(std::move(callback), dst, src, min, max, options); });
     }
+    /**
+     * @brief Asynchronous version of zrangestore.
+     *
+     * @tparam Func Callback function type.
+     * @param func Callback function to handle the result.
+     * @param dst Destination key for the resulting sorted set.
+     * @param src Source key to read the range from.
+     * @param min Lower bound of the range (index or score/lex bound per options).
+     * @param max Upper bound of the range (index or score/lex bound per options).
+     * @param options Additional ZRANGESTORE options (e.g. BYSCORE, BYLEX, REV, LIMIT).
+     * @return Reference to the derived class.
+     * @see https://redis.io/commands/zrangestore
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zrangestore(Func &&func, const std::string &dst, const std::string &src, const std::string &min, const std::string &max,
@@ -1152,7 +1371,13 @@ public:
     }
 
     /**
-     * @brief Blocking variant of ZMPOP.
+     * @brief Blocking variant of ZMPOP (coroutine awaitable).
+     *
+     * @param keys Keys to check, in order.
+     * @param timeout Blocking timeout in seconds; 0 means block forever.
+     * @param min_or_max "MIN" or "MAX" selecting which end to pop.
+     * @param count Number of members to pop (default 1).
+     * @return Awaiter yielding an optional pair of (key, popped members).
      * @see https://redis.io/commands/bzmpop
      */
     auto
@@ -1160,6 +1385,18 @@ public:
         return derived().template make_coro_command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
             [this, keys, timeout, min_or_max, count](auto &&callback) { this->bzmpop(std::move(callback), keys, timeout, min_or_max, count); });
     }
+    /**
+     * @brief Asynchronous version of bzmpop.
+     *
+     * @tparam Func Callback function type.
+     * @param func Callback function to handle the result.
+     * @param keys Keys to check, in order.
+     * @param timeout Blocking timeout in seconds; 0 means block forever.
+     * @param min_or_max "MIN" or "MAX" selecting which end to pop.
+     * @param count Number of members to pop (default 1).
+     * @return Reference to the derived class.
+     * @see https://redis.io/commands/bzmpop
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
     bzmpop(Func &&func, const std::vector<std::string> &keys, long long timeout, const std::string &min_or_max, long long count = 1) {

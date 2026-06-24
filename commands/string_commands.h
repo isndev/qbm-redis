@@ -1,24 +1,23 @@
-/*
- * qb - C++ Actor Framework
- * Copyright (C) 2011-2026 isndev (cpp.actor). All rights reserved.
+/**
+ * @file qbm/redis/commands/string_commands.h
+ * @brief Redis string command mixin for the qb Redis module.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Provides the @ref qb::redis::string_commands CRTP mixin, which exposes the
+ * Redis string command family (GET/SET, APPEND, INCR/DECR family, GETRANGE,
+ * MGET/MSET, GETDEL, GETEX, LCS, ...) in both coroutine-awaitable and
+ * callback-based forms. Every command is available as a coroutine-awaitable
+ * form for co_await and as a callback-based async form that returns a reference
+ * to the derived handler for chaining.
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- *         limitations under the License.
+ * @author qb - C++ Actor Framework
+ * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
+ * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+ * @ingroup Redis
  */
-
 #ifndef QBM_REDIS_STRING_COMMANDS_H
 #define QBM_REDIS_STRING_COMMANDS_H
 #include <bitset>
-#include "reply.h"
+#include "../reply.h"
 
 namespace qb::redis {
 
@@ -216,6 +215,17 @@ public:
         return derived().template make_coro_command<std::string>(
             [this, key, start, end](auto &&callback) { this->substr(std::move(callback), key, start, end); });
     }
+
+    /**
+     * @brief Asynchronous version of the SUBSTR command (deprecated alias for GETRANGE).
+     *
+     * @param func Callback function to be invoked when the operation completes
+     * @param key The key storing the string value
+     * @param start Start offset (inclusive), 0-based
+     * @param end End offset (inclusive)
+     * @return Reference to the derived Redis client for method chaining
+     * @see https://redis.io/commands/substr
+     */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     substr(Func &&func, const std::string &key, long long start, long long end) {
