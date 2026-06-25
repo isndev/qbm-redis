@@ -38,9 +38,12 @@ set(REDIS_TESTS
         module-commands
         cluster-commands
         json-parse
+        interval
         reconnect
         parser
+        parser-units
         pipeline
+        reply
         server-api
 )
 

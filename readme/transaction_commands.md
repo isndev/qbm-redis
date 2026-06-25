@@ -87,7 +87,8 @@ command, in order.
 > **Time units:** No method in this group takes a time argument. Connect and command timeouts and the `RetryPolicy`
 > delays are `qb::duration` and live on the client, not here. Redis command arguments that *do* carry time (for example
 `EXPIRE` in seconds, `PEXPIRE` in milliseconds) keep their native units when queued inside a transaction, exactly as
-> they do outside one — see [key_commands.md](./key_commands.md). That native-unit split is a documented boundary, not an
+> they do outside one — see [key_commands.md](./key_commands.md). That native-unit split is a documented boundary, not
+> an
 > inconsistency.
 
 ---
@@ -159,7 +160,8 @@ qb::io::async::task<void> run_tx(qb::redis::tcp::client &redis) {
 
 > **Per-command sub-replies.** `exec<Result>()` decodes the EXEC array into a homogeneous `std::vector<Result>`, which
 > is the right shape when every queued command returns the same type. When the queued commands return *different* types,
-> prefer the pipeline path and read the raw EXEC array through `Reply<pipeline_result>.raw()`: per-command `parser::Value`
+> prefer the pipeline path and read the raw EXEC array through `Reply<pipeline_result>.raw()`: per-command
+`parser::Value`
 > results are move-only and are not cloned into a typed vector. See [pipeline_and_await.md](./pipeline_and_await.md). (
 `qbm/redis/types.h:286-297`, `qbm/redis/reply.cpp:405-407`.)
 

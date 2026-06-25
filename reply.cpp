@@ -662,22 +662,6 @@ parse(ParseTag<qb::json>, const ReplyValue &reply) {
     throw ProtoError("Unsupported type for JSON conversion");
 }
 
-std::vector<std::pair<std::string, double>>
-parse(ParseTag<std::vector<std::pair<std::string, double>>>, const ReplyValue &reply) {
-    if (!is_array(reply)) {
-        throw ReplyParseError("ARRAY", reply);
-    }
-
-    std::vector<std::pair<std::string, double>> result;
-    result.reserve(reply.as_array().size() / 2);
-
-    for (size_t i = 0; i + 1 < reply.as_array().size(); i += 2) {
-        result.emplace_back(parse<std::string>(*reply.as_array()[i]), parse<double>(*reply.as_array()[i + 1]));
-    }
-
-    return result;
-}
-
 } // namespace reply
 
 } // namespace qb::redis

@@ -457,6 +457,17 @@ parse(ParseTag<std::pair<T, U>>, const ReplyValue &reply) {
     return std::make_pair(parse<std::remove_cvref_t<T>>(*arr[0]), parse<std::remove_cvref_t<U>>(*arr[1]));
 }
 
+// Helper for the std::tuple parse overload below. It MUST be declared before
+// that overload: the overload calls `parse_tuple<Args...>(...)` with explicit
+// template arguments, which ordinary unqualified lookup must resolve at the
+// definition point — ADL cannot find it, because its arguments live in
+// qb::redis::parser / std, not qb::redis::reply.
+template <typename... Args, size_t... Is>
+[[nodiscard]] std::tuple<Args...>
+parse_tuple(const parser::Array &arr, std::index_sequence<Is...>) {
+    return std::make_tuple(parse<Args>(*arr[Is])...);
+}
+
 template <typename... Args>
 [[nodiscard]] std::tuple<Args...>
 parse(ParseTag<std::tuple<Args...>>, const ReplyValue &reply) {
@@ -473,12 +484,6 @@ parse(ParseTag<std::tuple<Args...>>, const ReplyValue &reply) {
     }
 
     return parse_tuple<Args...>(arr, std::make_index_sequence<size>{});
-}
-
-template <typename... Args, size_t... Is>
-[[nodiscard]] std::tuple<Args...>
-parse_tuple(const parser::Array &arr, std::index_sequence<Is...>) {
-    return std::make_tuple(parse<Args>(*arr[Is])...);
 }
 
 // ============================================================================
