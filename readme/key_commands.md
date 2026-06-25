@@ -162,7 +162,8 @@ auto r = co_await redis.touch("k1", "k2", "k3");
 ## Expiration
 
 > **Unit boundary.** `EXPIRE`/`EXPIREAT` work in **seconds**; `PEXPIRE`/`PEXPIREAT` work in **milliseconds**. The chrono
-> overloads enforce this at the type level: `expire`/`expireat` accept only `std::chrono::seconds`, `pexpire`/`pexpireat`
+> overloads enforce this at the type level: `expire`/`expireat` accept only `std::chrono::seconds`, `pexpire`/
+`pexpireat`
 > accept only `std::chrono::milliseconds`, each forwarding `.count()` to the `long long` form (`key_commands.h:241`,
 `:416`, `:288`, `:464`). The raw `long long` overloads bypass the check, so prefer the chrono overloads for
 > self-documenting code. These are `std::chrono` protocol values, **not** `qb::duration`.

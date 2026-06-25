@@ -1584,12 +1584,16 @@ public:
      * @brief Receive the next pub/sub message (coroutine awaitable).
      * @return std::optional<message> - has value when a message arrived,
      *         nullopt when the channel is closed (disconnected).
+     *
+     * Direct coroutine member (NOT an immediately-invoked lambda `[this]{...}()`):
+     * the lambda closure would be a temporary destroyed at the end of this call,
+     * leaving the coroutine frame referencing freed memory for `this`
+     * (dangling-closure UAF — ASan-blind stack corruption that crashes under some
+     * compilers' frame layouts). The consumer object owns the coroutine's `this`.
      */
-    [[nodiscard]] auto
+    [[nodiscard]] qb::io::async::task<std::optional<qb::redis::message>>
     receive() {
-        return [this]() -> qb::io::async::task<std::optional<qb::redis::message>> {
-            co_return co_await _msg_channel.recv();
-        }();
+        co_return co_await _msg_channel.recv();
     }
 
     ~RedisCoroConsumer() {

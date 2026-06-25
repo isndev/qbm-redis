@@ -360,8 +360,10 @@ client.enable_auto_reconnect(qb::redis::RetryPolicy{}
 lands. The retry runs on the same I/O loop — there is no extra thread.
 
 > **Auto-reconnect re-dials, it does not restore session state.** A reconnected socket is a *fresh* connection. It
-> defaults to RESP2 (call `hello(3)` again if you need RESP3), it is unauthenticated (re-issue `auth(...)`), it is back on
-> database 0 (re-issue `select(...)`), and any prior subscriptions are gone (re-`subscribe(...)`). In-flight commands are
+> defaults to RESP2 (call `hello(3)` again if you need RESP3), it is unauthenticated (re-issue `auth(...)`), it is back
+> on
+> database 0 (re-issue `select(...)`), and any prior subscriptions are gone (re-`subscribe(...)`). In-flight commands
+> are
 **not** replayed — they were already failed at disconnect (next section). Treat reconnection as a re-handshake you must
 > complete yourself.
 

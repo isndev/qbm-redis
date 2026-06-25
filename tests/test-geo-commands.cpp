@@ -163,8 +163,11 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEORADIUS) {
         EXPECT_TRUE(std::find(results.begin(), results.end(), "Palermo") != results.end());
 
         // Test with options
-        auto reply2 =
-            co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, std::vector<std::string>{"WITHDIST", "WITHCOORD"});
+        // NOTE: option vectors are hoisted into named locals (not passed as
+        // temporaries inside the co_await) to work around a GCC 14.2 coroutine
+        // ICE (gimple_add_tmp_var) on materializing a temporary in an await.
+        std::vector<std::string> opts{"WITHDIST", "WITHCOORD"};
+        auto reply2 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, opts);
         EXPECT_TRUE(reply2.ok());
         EXPECT_FALSE(reply2.result().empty());
 
@@ -237,17 +240,22 @@ TEST_P(GeoProtocolModesTest, CORO_GEO_COMMANDS_GEORADIUS_OPTIONS) {
         (void) co_await redis.geoadd(key, 13.361389, 38.115556, "Palermo", 15.087269, 37.502669, "Catania");
 
         // Test with WITHDIST option
-        auto reply1 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, std::vector<std::string>{"WITHDIST"});
+        // NOTE: option vectors hoisted into named locals — see GCC 14.2 coroutine
+        // ICE workaround note above.
+        std::vector<std::string> opts1{"WITHDIST"};
+        auto reply1 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, opts1);
         EXPECT_TRUE(reply1.ok());
         EXPECT_FALSE(reply1.result().empty());
 
         // Test with COUNT option
-        auto reply2 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, std::vector<std::string>{"COUNT", "1"});
+        std::vector<std::string> opts2{"COUNT", "1"};
+        auto reply2 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, opts2);
         EXPECT_TRUE(reply2.ok());
         EXPECT_LE(reply2.result().size(), 1);
 
         // Test with SORT option
-        auto reply3 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, std::vector<std::string>{"ASC"});
+        std::vector<std::string> opts3{"ASC"};
+        auto reply3 = co_await redis.georadius(key, 13.361389, 38.115556, 200, qb::redis::GeoUnit::KM, opts3);
         EXPECT_TRUE(reply3.ok());
         EXPECT_FALSE(reply3.result().empty());
 
