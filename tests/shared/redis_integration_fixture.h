@@ -33,9 +33,16 @@
 #include <thread>
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include "../../redis.h"
 
-namespace qbm::redis::test {
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
+namespace qb::redis::test {
 
 /// Exact phrase CTest's SKIP_REGULAR_EXPRESSION matches (set by `REQUIRES live`) to mark a
 /// daemon-down binary as Skipped. Keep in sync with qb/cmake/qbFunctions.cmake.
@@ -105,6 +112,139 @@ protected:
     }
 };
 
-} // namespace qbm::redis::test
+namespace detail {
+[[nodiscard]] inline int
+process_id_for_keys() noexcept {
+#if defined(_WIN32)
+    return static_cast<int>(_getpid());
+#else
+    return static_cast<int>(getpid());
+#endif
+}
+} // namespace detail
+
+/// RESP wire protocol the parameterized suites exercise.
+enum class ProtocolMode { RESP2, RESP3 };
+
+/**
+ * @brief Base fixture for RESP2/RESP3 parameterized integration suites.
+ *
+ * Same API as the legacy `protocol_test_common.h` `ProtocolModesTestBase`, but built on the
+ * shared skip-not-throw + env-overridable contract: SetUp connects-or-`GTEST_SKIP`s (it never
+ * throws, so a daemon-down run reports Skipped not Failed). Derive, add
+ * `INSTANTIATE_PROTOCOL_MODES(SuiteName)`, and use `protocol_key()` for per-mode/per-pid keys.
+ */
+class ProtocolModesTestBase : public ::testing::TestWithParam<ProtocolMode> {
+protected:
+    qb::redis::tcp::client redis{redis_test_uri()};
+
+    void
+    SetUp() override {
+        if (!redis_try_connect(redis))
+            GTEST_SKIP() << kDaemonUnreachableSentinel << " (redis at " << redis_test_uri()
+                         << " not reachable)";
+    }
+
+    void
+    TearDown() override {
+        (void) qb::io::async::run_sync(redis.flushall());
+    }
+
+    /// Per-mode, per-pid key so concurrent ctest workers against one daemon never collide.
+    std::string
+    protocol_key(const char *base) const {
+        return std::string(base) + (GetParam() == ProtocolMode::RESP3 ? ":resp3" : ":resp2") + ":pid"
+               + std::to_string(detail::process_id_for_keys());
+    }
+};
+
+} // namespace qb::redis::test
+
+// ── Legacy public-API surface ───────────────────────────────────────────────
+// The pre-restructure protocol_test_common.h exposed these names at global scope.
+// Re-export them so integration files migrated from that header compile unchanged
+// (e.g. `class Foo : public ProtocolModesTestBase`, `GetParam() == ProtocolMode::RESP3`).
+using ::qb::redis::test::ProtocolMode;
+using ::qb::redis::test::ProtocolModesTestBase;
+using ::qb::redis::test::RedisIntegrationTest;
+
+/// Back-compat for the legacy `protocol_test_common.h` brace-init form
+/// `qb::redis::tcp::client{REDIS_URI_PROTOCOL}`. Env-aware (honors `REDIS_URI`).
+#define REDIS_URI_PROTOCOL                                                     \
+    { ::qb::redis::test::redis_test_uri() }
+
+/** Suppress nodiscard for cleanup/setup calls where the result is intentionally ignored. */
+#define CO_IGNORE(expr) (void) (expr)
+
+/**
+ * @brief Pump the event loop until `completed` or a watchdog deadline expires.
+ *
+ * Replaces the unsafe `while (!completed) run(EVRUN_NOWAIT)` busy-spin (no diagnostic on hang).
+ * The watchdog is a `scoped_callback`: destroying it at function exit stops the timer. Do NOT
+ * use `async::callback` — it self-deletes only after fire, so a lambda capturing `&timed_out`
+ * could run after `timed_out` left scope on an early finish → UB near the deadline.
+ */
+inline void
+run_coro_test_until(const bool &completed, qb::duration timeout = std::chrono::seconds(30)) {
+    bool timed_out = false;
+    auto watchdog  = qb::io::async::scoped_callback([&timed_out]() noexcept { timed_out = true; }, timeout);
+    (void) watchdog;
+    while (!completed && !timed_out) {
+        qb::io::async::run(EVRUN_NOWAIT);
+    }
+    if (!completed) {
+        ADD_FAILURE() << "Redis coroutine test exceeded " << qb::detail::to_ev_seconds(timeout)
+                      << "s watchdog — likely a hung await.";
+    }
+}
+
+#define PROTOCOL_ENSURE_RESP3()                               \
+    if (GetParam() == ::qb::redis::test::ProtocolMode::RESP3) { \
+        auto _h = co_await redis.hello(3);                    \
+        EXPECT_TRUE(_h.ok()) << _h.error();                  \
+        if (!_h.ok()) {                                      \
+            done = true;                                     \
+            co_return;                                       \
+        }                                                    \
+    }
+
+#define PROTOCOL_ENSURE_RESP3_VAR(done_var)                  \
+    if (GetParam() == ::qb::redis::test::ProtocolMode::RESP3) { \
+        auto _h = co_await redis.hello(3);                    \
+        EXPECT_TRUE(_h.ok()) << _h.error();                  \
+        if (!_h.ok()) {                                      \
+            done_var = true;                                 \
+            co_return;                                       \
+        }                                                    \
+    }
+
+#define PROTOCOL_ENSURE_RESP3_CONSUMER(consumer_var, done_var)  \
+    if (GetParam() == ::qb::redis::test::ProtocolMode::RESP3) { \
+        auto _h = co_await consumer_var.hello(3);               \
+        EXPECT_TRUE(_h.ok()) << _h.error();                     \
+        if (!_h.ok()) {                                         \
+            done_var = true;                                    \
+            co_return;                                          \
+        }                                                       \
+    }
+
+#define PROTOCOL_ENSURE_RESP3_CLIENT(client_var, done_var)      \
+    if (GetParam() == ::qb::redis::test::ProtocolMode::RESP3) { \
+        auto _h = co_await client_var.hello(3);                 \
+        EXPECT_TRUE(_h.ok()) << _h.error();                     \
+        if (!_h.ok()) {                                         \
+            done_var = true;                                    \
+            co_return;                                          \
+        }                                                       \
+    }
+
+#define INSTANTIATE_PROTOCOL_MODES(SuiteName)                                                              \
+    INSTANTIATE_TEST_SUITE_P(                                                                              \
+        Resp2AndResp3, SuiteName,                                                                          \
+        ::testing::Values(::qb::redis::test::ProtocolMode::RESP2,                                         \
+                          ::qb::redis::test::ProtocolMode::RESP3),                                        \
+        [](const ::testing::TestParamInfo<::qb::redis::test::ProtocolMode> &info) {                       \
+            return info.param == ::qb::redis::test::ProtocolMode::RESP3 ? "RESP3" : "RESP2";              \
+        })
 
 #endif // QBM_REDIS_TESTS_SHARED_REDIS_INTEGRATION_FIXTURE_H
