@@ -376,7 +376,7 @@ public:
     auto
     acl_setuser(const std::string &username, Args &&...rules) {
         return derived().template make_coro_command<status>([this, username, ... rules = std::forward<Args>(rules)](auto &&callback) mutable {
-            this->acl_setuser(std::move(callback), username, std::forward<Args>(rules)...);
+            this->acl_setuser(std::move(callback), username, std::forward<decltype(rules)>(rules)...);
         });
     }
 

@@ -494,12 +494,21 @@ template <typename T>
 requires is_sequence_container<T>::value
 [[nodiscard]] T
 parse(ParseTag<T>, const ReplyValue &reply) {
-    if (!is_array(reply) && !is_set(reply)) {
-        throw ReplyParseError("ARRAY or SET", reply);
+    if (!is_array(reply) && !is_set(reply) && !is_map(reply)) {
+        throw ReplyParseError("ARRAY, SET, or MAP", reply);
     }
 
     T container;
-    if (is_array(reply)) {
+    if (is_map(reply)) {
+        // RESP3 returns several flat-array RESP2 replies as a MAP (`%`) instead — e.g.
+        // CONFIG GET (param=>value), CLIENT INFO fields, XPENDING summaries. Flatten the
+        // map into the RESP2 [key, value, key, value, ...] sequence so a `std::vector<…>`
+        // target sees an identical result across both protocol versions.
+        for (const auto &entry : reply.as_map()) {
+            container.push_back(parse<typename T::value_type>(*entry.first));
+            container.push_back(parse<typename T::value_type>(*entry.second));
+        }
+    } else if (is_array(reply)) {
         for (const auto &elem : reply.as_array()) {
             container.push_back(parse<typename T::value_type>(*elem));
         }
