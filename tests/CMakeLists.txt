@@ -14,64 +14,88 @@
 # See the License for the specific language governing permissions and
 #         limitations under the License.
 #
+# -----------------------------------------------------------------------------
+# qbm-redis tiered test suite (unit / system / integration / benchmark).
+#   unit/        pure RESP/reply/type logic, daemon-free, parallel-safe (no lock)
+#   system/      in-process loopback socket, no external daemon (reconnect UAF)
+#   integration/ needs live redis:6379 — REQUIRES live (skip-not-fail), shares the
+#                qb_redis_integration RESOURCE_LOCK (serialized FLUSHALL against one DB)
+#   benchmark/   google-benchmark; RESP parse + reply codec (daemon-free)
+# Includes resolve "../redis.h" / "../../shared/*.h" via INCLUDES=tests dir.
+# -----------------------------------------------------------------------------
 
-# Define test files and their corresponding test names
-set(REDIS_TESTS
-        connection-commands
-        server-commands
-        key-commands
-        string-commands
-        bitmap-commands
-        list-commands
-        hash-commands
-        transaction-commands
-        set-commands
-        sorted-set-commands
-        hyperloglog-commands
-        geo-commands
-        scripting-commands
-        subscription-commands
-        publish-commands
-        stream-commands
-        acl-commands
-        function-commands
-        module-commands
-        cluster-commands
-        json-parse
-        interval
-        reconnect
-        parser
-        parser-units
-        pipeline
-        reply
-        server-api
-)
-
-# Register each test
-foreach (TEST ${REDIS_TESTS})
+function(qredis_test TIER NAME RELPATH)
+    cmake_parse_arguments(T "" "" "REQUIRES;EXTRA_LABELS" ${ARGN})
     qb_register_module_test(
-            MODULE_NAME redis
-            TEST_NAME ${TEST}
-            SOURCES test-${TEST}.cpp
-    )
-endforeach ()
+        MODULE_NAME redis TIER ${TIER} TEST_NAME ${NAME}
+        SOURCES ${RELPATH}
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        LABELS module:qbm-redis tier:${TIER} ${T_EXTRA_LABELS}
+        REQUIRES ${T_REQUIRES})
+endfunction()
 
-# Integration tests share tcp://localhost:6379 and call FLUSHALL in the fixture.
-# Without a lock, parallel ctest (-j N) runs multiple binaries at once and they
-# destroy each other's data (false failures, occasional crashes).
-set(_qbm_redis_ctest_names "")
-foreach (TEST ${REDIS_TESTS})
-    list(APPEND _qbm_redis_ctest_names "qbm-redis-test-${TEST}")
-endforeach ()
-set_tests_properties(${_qbm_redis_ctest_names} PROPERTIES RESOURCE_LOCK qb_redis_integration)
+function(qredis_itest NAME RELPATH)
+    cmake_parse_arguments(T "" "" "REQUIRES;EXTRA_LABELS" ${ARGN})
+    qb_register_module_test(
+        MODULE_NAME redis TIER integration TEST_NAME ${NAME}
+        SOURCES ${RELPATH}
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        LABELS module:qbm-redis tier:integration coroutine ${T_EXTRA_LABELS}
+        REQUIRES live ${T_REQUIRES}
+        RESOURCE_LOCK qb_redis_integration)
+endfunction()
 
-# Suppress nodiscard warnings for cleanup/setup co_await calls in tests
-foreach (TEST ${REDIS_TESTS})
-    set(test_target "qbm-redis-test-${TEST}")
-    if (TARGET ${test_target})
-        target_compile_options(${test_target} PRIVATE
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-unused-result>
-                $<$<CXX_COMPILER_ID:GNU>:-Wno-unused-result>
-        )
-    endif ()
-endforeach ()
+function(qredis_bench NAME RELPATH)
+    qb_register_module_benchmark(
+        MODULE_NAME redis BENCH_NAME ${NAME}
+        SOURCES ${RELPATH}
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        LABELS module:qbm-redis bench parser)
+endfunction()
+
+# UNIT — pure logic, parallel-safe, no lock
+qredis_test(unit resp-codec                  unit/parser/resp-codec.cpp                 EXTRA_LABELS parser)
+qredis_test(unit resp-buffer                 unit/parser/resp-buffer.cpp                EXTRA_LABELS parser)
+qredis_test(unit resp-types                  unit/parser/resp-types.cpp                 EXTRA_LABELS parser)
+qredis_test(unit reply-parse                 unit/reply/reply-parse.cpp                 EXTRA_LABELS reply)
+qredis_test(unit reply-serialize             unit/reply/reply-serialize.cpp             EXTRA_LABELS reply)
+qredis_test(unit reply-wrapper               unit/reply/reply-wrapper.cpp               EXTRA_LABELS reply)
+qredis_test(unit reply-extractors            unit/reply/reply-extractors.cpp            EXTRA_LABELS reply)
+qredis_test(unit reply-json-decode           unit/reply/reply-json-decode.cpp           EXTRA_LABELS reply)
+qredis_test(unit interval-formatting         unit/types/interval-formatting.cpp         EXTRA_LABELS types)
+qredis_test(unit transaction-args-validation unit/commands/transaction-args-validation.cpp EXTRA_LABELS commands)
+
+# SYSTEM — loopback, no daemon
+qredis_test(system reconnect-lifetime-uaf    system/connection/reconnect-lifetime-uaf.cpp EXTRA_LABELS coroutine)
+
+# INTEGRATION — live redis:6379 (REQUIRES live, RESOURCE_LOCK)
+qredis_itest(connection-commands   integration/connection/connection-commands.cpp)
+qredis_itest(pipeline              integration/connection/pipeline.cpp)
+qredis_itest(reconnect-resilience  integration/connection/reconnect-resilience.cpp  EXTRA_LABELS slow)
+qredis_itest(string-commands       integration/string/string-commands.cpp)
+qredis_itest(key-commands          integration/key/key-commands.cpp)
+qredis_itest(bitmap-commands       integration/bitmap/bitmap-commands.cpp)
+qredis_itest(list-commands         integration/list/list-commands.cpp)
+qredis_itest(hash-commands         integration/hash/hash-commands.cpp)
+qredis_itest(set-commands          integration/set/set-commands.cpp)
+qredis_itest(sorted-set-commands   integration/sorted-set/sorted-set-commands.cpp)
+qredis_itest(hyperloglog-commands  integration/hyperloglog/hyperloglog-commands.cpp)
+qredis_itest(geo-commands          integration/geo/geo-commands.cpp)
+qredis_itest(stream-commands       integration/stream/stream-commands.cpp)
+qredis_itest(transaction-multi-exec integration/transaction/transaction-multi-exec.cpp)
+qredis_itest(scripting-commands    integration/scripting/scripting-commands.cpp)
+qredis_itest(eval-json             integration/scripting/eval-json.cpp)
+qredis_itest(pubsub-fanout         integration/pubsub/pubsub-fanout.cpp)
+qredis_itest(pubsub-subscribe      integration/pubsub/pubsub-subscribe.cpp)
+qredis_itest(pubsub-coconsumer-receive integration/pubsub/pubsub-coconsumer-receive.cpp)
+qredis_itest(pubsub-pipeline-desync integration/pubsub/pubsub-pipeline-desync.cpp)
+qredis_itest(server-admin-commands integration/server/server-admin-commands.cpp)
+qredis_itest(server-introspection  integration/server/server-introspection.cpp)
+qredis_itest(acl-commands          integration/admin/acl-commands.cpp)
+qredis_itest(cluster-commands      integration/admin/cluster-commands.cpp)
+qredis_itest(function-commands     integration/admin/function-commands.cpp)
+qredis_itest(module-commands       integration/admin/module-commands.cpp)
+
+# BENCHMARK — RESP parse + reply codec (daemon-free)
+qredis_bench(resp-parse   benchmark/parser/resp-parse.bench.cpp)
+qredis_bench(reply-codec  benchmark/parser/reply-codec.bench.cpp)
