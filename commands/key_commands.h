@@ -1029,16 +1029,21 @@ public:
     }
 
     /**
-     * @brief Wait for the specified number of replicas to acknowledge persisting to AOF (coroutine awaitable).
-     * @param num_local Number of local replicas.
-     * @param num_replicas Number of replicas to wait for.
-     * @param timeout Timeout in milliseconds.
-     * @return redis_awaiter yielding Reply<long long>
+     * @brief Block until the local server and the given number of replicas persist the
+     *        AOF, returning the reached counts (coroutine awaitable).
+     * @param num_local Number of local (this server) AOF fsyncs to wait for (0 or 1).
+     * @param num_replicas Number of replicas that must persist to their AOF.
+     * @param timeout Timeout in milliseconds (0 = block forever).
+     * @return redis_awaiter yielding Reply<std::vector<long long>>
+     * @note WAITAOF replies with a two-element integer array `[numlocal, numreplicas]`
+     *       (NOT a single integer like WAIT) — the count of local fsyncs and the number
+     *       of replicas that acknowledged the AOF. Confirmed against Redis 7.2+/8.x in
+     *       both RESP2 and RESP3.
      * @see https://redis.io/commands/waitaof
      */
     auto
     waitaof(long long num_local, long long num_replicas, long long timeout) {
-        return derived().template make_coro_command<long long>([this, num_local, num_replicas, timeout](auto &&callback) {
+        return derived().template make_coro_command<std::vector<long long>>([this, num_local, num_replicas, timeout](auto &&callback) {
             this->waitaof(std::move(callback), num_local, num_replicas, timeout);
         });
     }
@@ -1048,9 +1053,9 @@ public:
      * @see https://redis.io/commands/waitaof
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<long long>> &&>, Derived &>
     waitaof(Func &&func, long long num_local, long long num_replicas, long long timeout) {
-        return derived().template command<long long>(std::forward<Func>(func), "WAITAOF", num_local, num_replicas, timeout);
+        return derived().template command<std::vector<long long>>(std::forward<Func>(func), "WAITAOF", num_local, num_replicas, timeout);
     }
 };
 

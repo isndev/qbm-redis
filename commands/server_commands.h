@@ -827,14 +827,23 @@ public:
     // =============== Role Commands ===============
 
     /**
-     * @brief Gets the role of the server
+     * @brief Gets the replication role of the server (coroutine awaitable).
      *
-     * @return Server role information
+     * @return redis_awaiter yielding Reply<qb::json>
+     * @note ROLE replies with a HETEROGENEOUS array whose shape depends on the role —
+     *       it is NOT a flat string list:
+     *         - master:  ["master",  <repl_offset:int>, [[ip, port, offset], ...]]
+     *         - replica: ["slave",   <master_ip>, <master_port:int>, <state>, <offset:int>]
+     *         - sentinel:["sentinel", [<master_name>, ...]]
+     *       Because elements mix string / integer / nested-array, the typed result is a
+     *       `qb::json` (mirrors INFO/COMMAND/SLOWLOG). Index [0] is the role token; the
+     *       remaining elements are role-specific. Parsing it as std::vector<std::string>
+     *       throws on the integer offset ("expect STRING ... got ARRAY/INTEGER").
      * @see https://redis.io/commands/role
      */
     auto
     role() {
-        return derived().template make_coro_command<std::vector<std::string>>([this](auto &&callback) { this->role(std::move(callback)); });
+        return derived().template make_coro_command<qb::json>([this](auto &&callback) { this->role(std::move(callback)); });
     }
 
     /**
@@ -845,9 +854,9 @@ public:
      * @see https://redis.io/commands/role
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     role(Func &&func) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ROLE");
+        return derived().template command<qb::json>(std::forward<Func>(func), "ROLE");
     }
 
     // =============== Shutdown Commands ===============

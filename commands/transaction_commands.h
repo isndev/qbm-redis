@@ -71,7 +71,14 @@ public:
     multi(Func &&func) {
         return derived().template command<status>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
-                in_multi_ = reply.ok();
+                // Only a SUCCESSFUL MULTI opens a transaction. A failed MULTI must NOT
+                // clear the hint: the dominant failure mode is a *nested* MULTI ("ERR
+                // MULTI calls can not be nested"), which Redis rejects while leaving the
+                // already-open transaction intact (the queue survives and EXEC still
+                // runs it). Clobbering in_multi_ to false here would desync the hint
+                // from the server, falsely reporting the connection as out of MULTI.
+                if (reply.ok())
+                    in_multi_ = true;
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
             "MULTI");

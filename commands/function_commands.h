@@ -93,7 +93,9 @@ public:
     auto
     function_load(const std::string &code, Args &&...options) {
         return derived().template make_coro_command<status>([this, code, ... options = std::forward<Args>(options)](auto &&callback) mutable {
-            this->function_load(std::move(callback), code, std::forward<Args>(options)...);
+            // forward the CAPTURED copies (decltype), not the original Args&& — re-applying the
+            // original reference type to the value-captured pack is ill-formed (see acl_setuser).
+            this->function_load(std::move(callback), code, std::forward<decltype(options)>(options)...);
         });
     }
 
