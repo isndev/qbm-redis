@@ -63,6 +63,7 @@ qredis_test(unit reply-wrapper               unit/reply/reply-wrapper.cpp       
 qredis_test(unit reply-extractors            unit/reply/reply-extractors.cpp            EXTRA_LABELS reply)
 qredis_test(unit reply-json-decode           unit/reply/reply-json-decode.cpp           EXTRA_LABELS reply)
 qredis_test(unit interval-formatting         unit/types/interval-formatting.cpp         EXTRA_LABELS types)
+qredis_test(unit value-domain-types          unit/types/value-domain-types.cpp          EXTRA_LABELS types)
 qredis_test(unit transaction-args-validation unit/commands/transaction-args-validation.cpp EXTRA_LABELS commands)
 
 # SYSTEM — loopback, no daemon
