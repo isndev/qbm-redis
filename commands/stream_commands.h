@@ -17,6 +17,7 @@
  */
 #ifndef QBM_REDIS_STREAM_COMMANDS_H
 #define QBM_REDIS_STREAM_COMMANDS_H
+#include <qb/system/parse.h>
 #include "../reply.h"
 
 namespace qb::redis {
@@ -82,15 +83,16 @@ public:
      */
     static stream_id
     parse_stream_id(const std::string &id_str) {
-        stream_id result{};
-        auto      pos = id_str.find('-');
-        if (pos != std::string::npos) {
-            try {
-                result.timestamp = std::stoll(id_str.substr(0, pos));
-                result.sequence  = std::stoll(id_str.substr(pos + 1));
-            } catch (const std::exception &) {
-                // In case of parsing error, return default values
-            }
+        stream_id        result{};
+        std::string_view sv  = id_str;
+        auto             pos = sv.find('-');
+        if (pos != std::string_view::npos) {
+            // The timestamp and sequence are each a whole numeric field after
+            // splitting on '-', so parse them strictly. Parsing is best effort:
+            // on any malformed component the field is left at its default 0,
+            // matching the original catch-all-and-return-defaults behaviour.
+            result.timestamp = qb::to_number<long long>(sv.substr(0, pos)).value_or(0);
+            result.sequence  = qb::to_number<long long>(sv.substr(pos + 1)).value_or(0);
         }
         return result;
     }

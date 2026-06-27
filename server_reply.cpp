@@ -7,6 +7,7 @@
  * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
  * @ingroup Redis
  */
+#include <qb/system/parse.h>
 #include "server_reply.h"
 
 namespace qb::redis {
@@ -85,14 +86,16 @@ extract_stream_id(const parser::Value &value) {
         return unexpected("invalid stream id format");
     }
 
-    try {
-        stream_id id;
-        id.timestamp = std::stoll(std::string(sv.substr(0, pos)));
-        id.sequence  = std::stoll(std::string(sv.substr(pos + 1)));
-        return id;
-    } catch (const std::exception &) {
+    auto ts  = qb::to_number<long long>(sv.substr(0, pos));
+    auto seq = qb::to_number<long long>(sv.substr(pos + 1));
+    if (!ts || !seq) {
         return unexpected("invalid stream id values");
     }
+
+    stream_id id;
+    id.timestamp = *ts;
+    id.sequence  = *seq;
+    return id;
 }
 
 expected<score_member, std::string>
