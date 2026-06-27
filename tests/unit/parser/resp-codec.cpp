@@ -459,6 +459,36 @@ TEST_F(Resp3ParserTest, Attribute_ValueIsDecoded) {
     EXPECT_EQ(attr.value->as_integer().value, 42);
 }
 
+// Regression: a RESP3 attribute legally decorates another value, so a CHAIN of
+// attributes is nesting and must be bounded by max_nesting_depth. The decorated
+// reply was previously parsed at the SAME depth, so an attribute chain bypassed
+// the depth guard and exhausted the stack (DoS from a hostile / MITM'd server).
+// A chain well beyond the limit must now be rejected with NESTING_TOO_DEEP — and,
+// above all, must not crash.
+TEST_F(Resp3ParserTest, Attribute_ChainIsDepthBoundedNotStackOverflow) {
+    // Each unit is a 1-pair attribute whose decorated value is the next unit.
+    const auto chain = [](std::size_t n) {
+        std::string s;
+        s.reserve(n * 12 + 4);
+        for (std::size_t i = 0; i < n; ++i)
+            s += "|1\r\n+k\r\n+v\r\n";
+        s += ":1\r\n"; // terminal decorated value
+        return s;
+    };
+
+    // A shallow chain (under the depth limit) still decodes as nested attributes.
+    {
+        auto shallow = parse(chain(8), config);
+        ASSERT_TRUE(shallow.has_value());
+        EXPECT_TRUE(shallow->is_attribute());
+    }
+
+    // A chain far beyond max_nesting_depth (default 64) is rejected, not crashed.
+    auto deep = parse(chain(5000), config);
+    ASSERT_FALSE(deep.has_value());
+    EXPECT_EQ(deep.error().code(), ParseErrorCode::NESTING_TOO_DEEP);
+}
+
 TEST_F(Resp3ParserTest, Attribute_BulkValueIsDecoded) {
     auto result = parse("|1\r\n+ttl\r\n:3600\r\n$5\r\ndata!\r\n", config);
     ASSERT_TRUE(result.has_value());

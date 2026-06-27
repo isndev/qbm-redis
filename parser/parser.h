@@ -764,8 +764,13 @@ private:
             result.data.entries.emplace_back(std::make_unique<Value>(std::move(*key)), std::make_unique<Value>(std::move(*val)));
         }
 
-        // Parse the actual reply that the attribute decorates
-        auto actual = parse_value(view, depth);
+        // Parse the actual reply that the attribute decorates. Recurse at depth+1
+        // (like the key/value entries above): a RESP3 attribute legally decorates
+        // another value, so a chain of attributes is nesting and MUST be bounded by
+        // max_nesting_depth. Recursing at the same depth here let an attribute chain
+        // bypass the depth guard entirely and exhaust the stack (DoS from a hostile
+        // or MITM'd server).
+        auto actual = parse_value(view, depth + 1);
         if (!actual.has_value())
             return actual;
         result.value = std::make_unique<Value>(std::move(*actual));
