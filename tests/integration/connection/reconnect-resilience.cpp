@@ -21,18 +21,24 @@
  *        RESP2 and RESP3.
  *
  * Integration tier — needs a live redis (env `REDIS_URI`, default tcp://localhost:6379).
- * Tagged `slow` (the DEBUG-SLEEP stall cases hold the single-threaded server busy for a
- * couple of seconds). The lifetime/UAF case (`DestroyDuringInflightReconnectNoUAF`) was
- * promoted to the system tier (system/connection/reconnect-lifetime-uaf.cpp) since it only
- * needs a loopback listener, not a live daemon.
+ * Tagged `slow` (the server-stall cases hold the single-threaded server busy for a fraction of
+ * a second via a Lua EVAL busy-loop — see `server_busy_loop_script` below). The lifetime/UAF case
+ * (`DestroyDuringInflightReconnectNoUAF`) was promoted to the system tier
+ * (system/connection/reconnect-lifetime-uaf.cpp) since it only needs a loopback listener, not a
+ * live daemon.
  *
- * Determinism fixes vs the legacy test-reconnect.cpp:
+ * Determinism vs the legacy test-reconnect.cpp:
  *   - `EXHAUSTS_ATTEMPTS` now asserts the observer fired EXACTLY twice (== 2), not >= 1.
- *   - the 80M-iteration EVAL busy-loops (CPU-speed-dependent) were replaced with
- *     `DEBUG SLEEP <n>`, which freezes the server for a deterministic wall-clock window so
- *     a short client deadline / disconnect wins the race reproducibly.
- *   - the fixed `run_until([]{return false;}, 1200ms)` post-test recovery sleeps were
- *     removed — the server frees itself when DEBUG SLEEP returns, and the shared fixture's
+ *   - The server stall is a bounded CPU busy-loop inside a single Lua `EVAL`, NOT `DEBUG SLEEP`:
+ *     DEBUG is gated behind the immutable `enable-debug-command` config (off by default, cannot be
+ *     toggled at runtime), so `DEBUG SLEEP` returns an immediate "DEBUG command not allowed" error
+ *     on a stock server — no stall, no race to win. The EVAL loop fully occupies the
+ *     single-threaded server for a finite, sub-second window (sized in `kStallIterations`), and
+ *     EVAL is not in the client's blocking-command exemption set, so the client-side command
+ *     deadline genuinely applies. See the block comment on `server_busy_loop_script` for the
+ *     iteration-count sizing rationale.
+ *   - The fixed `run_until([]{return false;}, 1200ms)` post-test recovery sleeps were removed: the
+ *     EVAL loop is finite so the server frees itself when it returns, and the shared fixture's
  *     bounded connect-retry already tolerates a transiently-busy server for the next test.
  */
 
@@ -293,8 +299,9 @@ TEST_P(ReconnectProtocolModesTest, RECONNECT_THEN_PING) {
 
 // ============================================================================
 // 7. Disconnect while a slow command is in flight: the pending command must fail
-//    gracefully ("disconnected"), no crash, no desync. DEBUG SLEEP freezes the
-//    server deterministically so the reply arrives well after the disconnect.
+//    gracefully ("disconnected"), no crash, no desync. A Lua EVAL CPU busy-loop
+//    (NOT DEBUG SLEEP — disabled by default) occupies the single-threaded server
+//    for a fixed window so its reply cannot return before the disconnect.
 // ============================================================================
 TEST_P(ReconnectProtocolModesTest, DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT) {
     qb::redis::tcp::client client{qb::io::uri{redis_test_uri()}};
@@ -318,7 +325,13 @@ TEST_P(ReconnectProtocolModesTest, DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT) {
         ok     = r.ok();
         done   = true;
     });
-    (void) run_until([] { return false; }, 50ms); // let the EVAL get sent
+    // Bounded send-flush settle: pump the loop briefly so the queued EVAL bytes are written to
+    // the socket BEFORE we disconnect — otherwise the disconnect could race ahead of the send and
+    // we'd be testing "command never left the client" instead of "in-flight command is dropped".
+    // This is NOT one of the post-test recovery sleeps the docstring removed; the client exposes no
+    // public "bytes flushed" signal to convert this into a deterministic predicate, and 50ms is a
+    // generous ceiling for flushing a single small EVAL over loopback.
+    (void) run_until([] { return false; }, 50ms);
     client.disconnect();
     // The disconnect should fail the pending command promptly (not wait out the full stall).
     ASSERT_TRUE(run_until([&] { return done; }, 3000ms));
@@ -328,7 +341,8 @@ TEST_P(ReconnectProtocolModesTest, DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT) {
 // ============================================================================
 // 8. Command timeout: a non-blocking command with no reply within the deadline drops
 //    the connection and fails the pending command with "timed out"; auto-reconnect then
-//    restores the connection. DEBUG SLEEP provides the deterministic no-reply window.
+//    restores the connection. A Lua EVAL CPU busy-loop (NOT DEBUG SLEEP — disabled by
+//    default) provides the deterministic no-reply window.
 // ============================================================================
 TEST_P(ReconnectProtocolModesTest, COMMAND_TIMEOUT_DROPS_CONNECTION) {
     qb::redis::tcp::client client{qb::io::uri{redis_test_uri()}};

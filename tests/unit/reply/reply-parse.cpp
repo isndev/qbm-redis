@@ -844,6 +844,22 @@ TEST(ReplySequence, NonArrayNonSetThrows) {
     EXPECT_THROW(do_parse<std::vector<std::string>>(v), qb::redis::ProtoError);
 }
 
+// ADD: a RESP3 Map target parsed into a SEQUENCE container (vector) must flatten
+// to the RESP2 [k, v, k, v, ...] order (reply.h sequence parser, is_map branch).
+// RESP3 returns CONFIG GET / CLIENT INFO / XPENDING summaries as a `%` map; a
+// std::vector<std::string> target must see the identical flat sequence it would
+// in RESP2, in insertion order.
+TEST(ReplySequence, FromRespMapFlattens) {
+    std::vector<std::pair<std::unique_ptr<Value>, std::unique_ptr<Value>>> entries;
+    entries.push_back(std::make_pair(mk_bulk("k1"), mk_bulk("v1")));
+    entries.push_back(std::make_pair(mk_bulk("k2"), mk_bulk("v2")));
+    Value v = make_map(std::move(entries));
+
+    auto out = do_parse<std::vector<std::string>>(v);
+    ASSERT_EQ(out.size(), 4u);
+    EXPECT_EQ(out, (std::vector<std::string>{"k1", "v1", "k2", "v2"}));
+}
+
 // ============================================================================
 // 20. pair + tuple + short-array/non-array throws
 // ============================================================================

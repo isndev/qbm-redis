@@ -123,6 +123,52 @@ TEST(ValueExtractor, AsDoubleWidensInteger) {
     EXPECT_DOUBLE_EQ(*ex.as_double(), 7.0);
 }
 
+// ADD: as_bool() — previously ZERO coverage. Matches only the RESP3 native
+// Boolean; true and false survive, and a non-boolean (or absent) value is
+// reported as nullopt (NOT coerced from an integer the way as_double widens).
+TEST(ValueExtractor, AsBoolMatchesNativeBoolean) {
+    Value                     vt(qb::redis::parser::Boolean{true});
+    Value                     vf(qb::redis::parser::Boolean{false});
+    qb::redis::ValueExtractor et(vt);
+    qb::redis::ValueExtractor ef(vf);
+    ASSERT_TRUE(et.as_bool().has_value());
+    EXPECT_TRUE(*et.as_bool());
+    ASSERT_TRUE(ef.as_bool().has_value());
+    EXPECT_FALSE(*ef.as_bool());
+}
+
+TEST(ValueExtractor, AsBoolRejectsNonBoolean) {
+    Value                     vi(Integer{1}); // not coerced to true
+    qb::redis::ValueExtractor ei(vi);
+    EXPECT_FALSE(ei.as_bool().has_value());
+
+    std::unique_ptr<Value>    vnull; // absent
+    qb::redis::ValueExtractor en(vnull);
+    EXPECT_FALSE(en.as_bool().has_value());
+}
+
+// ADD: as_set() — previously ZERO coverage. Borrows a RESP3 native Set for
+// iteration; a non-set value yields nullopt.
+TEST(ValueExtractor, AsSetBorrowsNativeSet) {
+    qb::redis::parser::Set set;
+    set.elements.push_back(heap(Value(BulkString{"a"})));
+    set.elements.push_back(heap(Value(BulkString{"b"})));
+    Value                     val(std::move(set));
+    qb::redis::ValueExtractor ex(val);
+
+    auto s = ex.as_set();
+    ASSERT_TRUE(s.has_value());
+    ASSERT_EQ(s->get().elements.size(), 2u);
+    EXPECT_EQ(s->get().elements[0]->as_string_view(), "a");
+    EXPECT_EQ(s->get().elements[1]->as_string_view(), "b");
+}
+
+TEST(ValueExtractor, AsSetRejectsNonSet) {
+    Value                     val(Array{}); // an array is not a set
+    qb::redis::ValueExtractor ex(val);
+    EXPECT_FALSE(ex.as_set().has_value());
+}
+
 TEST(ValueExtractor, UniquePtrConstructor) {
     auto                      val = std::make_unique<Value>(BulkString{"hello world"});
     qb::redis::ValueExtractor ex(val);
@@ -329,6 +375,18 @@ TEST(ExtractStringMap, NonStringValueIsError) {
     EXPECT_EQ(r.error(), "map value is not a string");
 }
 
+// ADD: a non-string KEY must fail the whole extraction (the "map key is not a
+// string" branch was previously untested despite the file's failure-path banner).
+TEST(ExtractStringMap, NonStringKeyIsError) {
+    Map map;
+    map.entries.push_back(std::make_pair(heap(Value(Integer{1})), heap(Value(BulkString{"v"}))));
+    Value val(std::move(map));
+
+    auto r = qb::redis::extract_string_map(val);
+    EXPECT_FALSE(r.has_value());
+    EXPECT_EQ(r.error(), "map key is not a string");
+}
+
 // ============================================================================
 // extract_stream_id — parametrized edge table
 // ============================================================================
@@ -417,6 +475,33 @@ TEST(ExtractScoreMember, NonNumericScoreIsError) {
     auto r = qb::redis::extract_score_member(val.as_array(), 0);
     EXPECT_FALSE(r.has_value());
     EXPECT_EQ(r.error(), "score must be a number");
+}
+
+// ADD: a non-string MEMBER must fail with "member must be a string" (this named
+// branch was untested despite the file's failure-path banner).
+TEST(ExtractScoreMember, NonStringMemberIsError) {
+    Array arr;
+    arr.elements.push_back(heap(Value(Integer{7}))); // member must be a string
+    arr.elements.push_back(heap(Value(qb::redis::parser::Double{1.0})));
+    Value val(std::move(arr));
+
+    auto r = qb::redis::extract_score_member(val.as_array(), 0);
+    EXPECT_FALSE(r.has_value());
+    EXPECT_EQ(r.error(), "member must be a string");
+}
+
+// ADD: a null (empty unique_ptr) score element must fail with "score is null".
+// Note this is distinct from a Null *Value* — the extractor's guard tests the
+// owning unique_ptr, so the element pointer itself must be empty.
+TEST(ExtractScoreMember, NullScoreIsError) {
+    Array arr;
+    arr.elements.push_back(heap(Value(BulkString{"m"})));
+    arr.elements.push_back(std::unique_ptr<Value>{}); // empty pointer, not a Null Value
+    Value val(std::move(arr));
+
+    auto r = qb::redis::extract_score_member(val.as_array(), 0);
+    EXPECT_FALSE(r.has_value());
+    EXPECT_EQ(r.error(), "score is null");
 }
 
 // ============================================================================

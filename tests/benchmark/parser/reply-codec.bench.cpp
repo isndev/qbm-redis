@@ -9,7 +9,9 @@
  *       ZRANGE-WITHSCORES array  — the inbound typed-decode the sorted-set
  *       command surface drives.
  *   (b) reply::parse<map_stream_entry_list> over a multi-stream XREAD reply —
- *       the most deeply structured inbound decode (map -> entry list -> field map).
+ *       the most deeply structured inbound decode (array of [stream, entry-list]
+ *       pairs -> per-stream entry list -> field map; the RESP2 XREAD wire shape
+ *       this typed converter accepts).
  *   (c) to_redis_string + put_in_pipe for a large multi-bulk command — the
  *       outbound serialization every command emit drives.
  *   (d) reply::parse<qb::json> over a wide flat RESP3 map — the JSON-reconstruction
@@ -145,12 +147,18 @@ BM_ReplyParse_ScoreMemberVector(benchmark::State &state) {
 }
 
 // ---------------------------------------------------------------------------
-// (b) Multi-stream XREAD reply: map { stream -> [entry, entry, ...] }
+// (b) Multi-stream XREAD reply. The typed `map_stream_entry_list` converter
+// (reply.cpp parse(ParseTag<map_stream_entry_list>,…)) decodes the RESP2 XREAD
+// wire shape: an ARRAY of [streamName, [entry, entry, …]] pairs — NOT a RESP3
+// map. (Confirmed against live redis-cli: RESP2 XREAD = array-of-pairs; the
+// converter throws ReplyParseError("ARRAY", …) on a top-level Map.) Mirror the
+// exact tree the unit test pins (reply-parse.cpp ReplyMapStreamEntryList.*).
 // ---------------------------------------------------------------------------
 
 Value
 make_xread_reply(int streams, int entries_per_stream) {
-    std::vector<std::pair<std::unique_ptr<Value>, std::unique_ptr<Value>>> map_entries;
+    std::vector<std::unique_ptr<Value>> outer;
+    outer.reserve(static_cast<std::size_t>(streams));
     for (int s = 0; s < streams; ++s) {
         std::vector<std::unique_ptr<Value>> entry_list;
         for (int e = 0; e < entries_per_stream; ++e) {
@@ -158,10 +166,13 @@ make_xread_reply(int streams, int entries_per_stream) {
                 std::to_string(e + 1) + "-0",
                 {{"field", "value:" + std::to_string(e)}, {"seq", std::to_string(e)}}));
         }
-        map_entries.emplace_back(mk_bulk("stream:" + std::to_string(s)),
-                                 std::make_unique<Value>(make_array(std::move(entry_list))));
+        // [ "stream:<s>", [ entry, entry, … ] ]
+        std::vector<std::unique_ptr<Value>> stream_pair;
+        stream_pair.push_back(mk_bulk("stream:" + std::to_string(s)));
+        stream_pair.push_back(std::make_unique<Value>(make_array(std::move(entry_list))));
+        outer.push_back(std::make_unique<Value>(make_array(std::move(stream_pair))));
     }
-    return make_map(std::move(map_entries));
+    return make_array(std::move(outer));
 }
 
 void

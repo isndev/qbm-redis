@@ -297,6 +297,18 @@ TEST_P(KeyProtocolModesTest, UNLINK) {
 
 // EXPIRE/PEXPIRE/EXPIREAT/PEXPIREAT + PERSIST lifecycle (folds in the deleted
 // SETEX_TTL_TYPE / EXPIRE_RENAME / PERSIST_BOOLEAN / PTTL coverage).
+//
+// FLAKE NOTE (investigated 2026-06): a -2 from TTL/PTTL here ("key absent") right after a
+// successful EXPIREAT/PEXPIREAT is NOT a TTL race or a client reply-desync. It is a test-isolation
+// violation: the shared fixture's SetUp/TearDown issue a *global* FLUSHALL, so if a second
+// integration binary runs against the same daemon CONCURRENTLY (outside CTest's resource
+// scheduler) its FLUSHALL wipes this key mid-test and the EXPIREAT we just confirmed (result()==true)
+// is followed by a -2 TTL. Reproduced 7/16 by launching two key-commands EXPIRE_LIFECYCLE processes
+// in parallel; ZERO failures when serialized. The real guard is the `RESOURCE_LOCK
+// qb_redis_integration` on every integration target (tests/CMakeLists.txt) — under `ctest` these
+// binaries never overlap. Do NOT "fix" this with a sleep or a unique key (FLUSHALL is global): run
+// the integration tier through CTest, never as bare parallel processes (see
+// redis_integration_fixture.h::protocol_key).
 TEST_P(KeyProtocolModesTest, EXPIRE_LIFECYCLE) {
     bool completed = false;
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
