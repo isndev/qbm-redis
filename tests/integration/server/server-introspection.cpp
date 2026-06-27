@@ -23,9 +23,21 @@
  * Shape is asserted EXACTLY (the client's `command<qb::json>` parser yields a deterministic
  * json kind for each command in both RESP modes — INFO is always a json string, SLOWLOG GET an
  * array, MEMORY STATS an object — so the old `is_object()||is_array()||!is_null()` polymorphic
- * gates are replaced with exact checks). The 3 ex-`DISABLED_` suites (SYNC / PERSISTENCE /
- * LATENCY) are re-enabled behind `destructive`/`persistence` labels. The async-flush case polls
- * `dbsize()` to 0 instead of a fixed 100ms sleep.
+ * gates are replaced with exact checks). The async-flush case polls `dbsize()` to 0 instead of a
+ * fixed 100ms sleep.
+ *
+ * DISABLED vs. enabled — honest state of the three replication/persistence probes:
+ *   - `LatencyLatestHistoryReset` is ENABLED and runs by default. LATENCY LATEST/HISTORY are
+ *     read-only and LATENCY RESET only clears the shared latency-monitor samples (no user-data
+ *     risk) — verified via `redis-cli LATENCY RESET/LATEST/HISTORY` on Redis 8.8. It carries NO
+ *     extra label: it is no more destructive than the SLOWLOG RESET this same binary already runs
+ *     unconditionally above, and CTest labels are per-binary (a `destructive` label here would
+ *     wrongly exclude the safe INFO/TIME/ROLE/SLOWLOG/MEMORY/DATABASE cases too).
+ *   - `DISABLED_SyncPsyncResolve` stays DISABLED_: SYNC/PSYNC are replication commands that stream
+ *     an RDB / change replication state, genuinely risky on a shared daemon. Requires manual
+ *     `--gtest_also_run_disabled_tests`; never auto-run.
+ *   - `DISABLED_PersistenceBgsaveLastsave` stays DISABLED_: BGSAVE/BGREWRITEAOF fork the server and
+ *     write RDB/AOF to disk — disruptive on a shared daemon. Requires manual enable; never auto-run.
  */
 
 #include <gtest/gtest.h>
@@ -264,9 +276,10 @@ TEST_P(ServerIntrospectionTest, DbsizeFlushSyncAndAsync) {
     run_coro_test_until(completed);
 }
 
-// =============== SYNC (re-enabled, destructive replication probe) ===============
+// =============== SYNC (DISABLED_ — destructive replication probe) ===============
 // SYNC/PSYNC are replication commands; on a standalone server they either stream an RDB or error.
 // Either way the call must not throw out of the reply handler — assert the request resolves.
+// Kept DISABLED_ (risky on a shared daemon): run manually with --gtest_also_run_disabled_tests.
 
 TEST_P(ServerIntrospectionTest, DISABLED_SyncPsyncResolve) {
     bool completed = false;
@@ -287,7 +300,9 @@ TEST_P(ServerIntrospectionTest, DISABLED_SyncPsyncResolve) {
     run_coro_test_until(completed);
 }
 
-// =============== PERSISTENCE (re-enabled, persistence label) ===============
+// =============== PERSISTENCE (DISABLED_ — forks + writes to disk) ===============
+// BGSAVE/BGREWRITEAOF fork the server and write RDB/AOF to disk — disruptive on a shared daemon.
+// Kept DISABLED_: run manually with --gtest_also_run_disabled_tests.
 
 TEST_P(ServerIntrospectionTest, DISABLED_PersistenceBgsaveLastsave) {
     bool completed = false;
@@ -314,9 +329,13 @@ TEST_P(ServerIntrospectionTest, DISABLED_PersistenceBgsaveLastsave) {
     run_coro_test_until(completed);
 }
 
-// =============== LATENCY (re-enabled, persistence/destructive-adjacent) ===============
+// =============== LATENCY (ENABLED — diagnostic only, no label) ===============
+// LATENCY LATEST/HISTORY are read-only; LATENCY RESET only clears the shared latency-monitor
+// samples (no user-data risk). Verified safe via `redis-cli LATENCY RESET/LATEST/HISTORY` on
+// Redis 8.8. Runs by default with no extra label — it is no more destructive than the SLOWLOG
+// RESET this binary already runs unconditionally, and CTest labels are per-binary.
 
-TEST_P(ServerIntrospectionTest, DISABLED_LatencyLatestHistoryReset) {
+TEST_P(ServerIntrospectionTest, LatencyLatestHistoryReset) {
     bool completed = false;
     qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);

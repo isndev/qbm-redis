@@ -150,7 +150,14 @@ protected:
         (void) qb::io::async::run_sync(redis.flushall());
     }
 
-    /// Per-mode, per-pid key so concurrent ctest workers against one daemon never collide.
+    /// Per-mode, per-pid key (e.g. "base:resp3:pid12345"). NOTE: this does NOT by itself make
+    /// concurrent runs safe — SetUp/TearDown issue a *global* FLUSHALL that would wipe a sibling
+    /// process's keys regardless of how unique they are. The real isolation is the
+    /// `RESOURCE_LOCK qb_redis_integration` set on every integration target in tests/CMakeLists.txt,
+    /// which serializes these binaries under CTest so only one touches the shared daemon at a time.
+    /// The per-pid suffix is belt-and-suspenders (keeps keys distinct in logs / if a stray run
+    /// overlaps); it is NOT a substitute for the lock. Running two integration binaries as bare
+    /// parallel processes (outside CTest's resource scheduler) IS unsafe — their FLUSHALLs collide.
     std::string
     protocol_key(const char *base) const {
         return std::string(base) + (GetParam() == ProtocolMode::RESP3 ? ":resp3" : ":resp2") + ":pid"

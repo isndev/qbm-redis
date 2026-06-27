@@ -306,8 +306,12 @@ TEST_P(ServerAdminTest, CommandGetkeysDocsList) {
 }
 
 // =============== DEBUG ===============
-// Re-enabled from the legacy DISABLED_ block, gated behind the `destructive` label (DEBUG OBJECT
-// touches server internals; DEBUG SLEEP freezes the single-threaded server briefly).
+// Runs by default with NO extra label. On a stock server DEBUG is disabled by default
+// (`enable-debug-command no`, confirmed via `redis-cli CONFIG GET enable-debug-command` on
+// Redis 8.8), so DEBUG OBJECT / DEBUG SLEEP return an immediate "DEBUG command not allowed" error
+// — the test tolerates that outcome and only asserts the diagnostic shape when DEBUG happens to be
+// enabled. It is therefore non-destructive on a stock daemon and needs no `destructive` label (and
+// CTest labels are per-binary, so labeling here would wrongly exclude the whole admin binary).
 
 TEST_P(ServerAdminTest, DebugObjectAndSleep) {
     bool completed = false;
