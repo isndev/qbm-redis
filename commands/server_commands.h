@@ -23,6 +23,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <qb/system/parse.h>
 #include "../reply.h"
 
 namespace qb::redis {
@@ -57,6 +58,15 @@ private:
         std::string            line;
 
         while (std::getline(iss, line)) {
+            // Redis INFO is CRLF-terminated, but std::getline only strips the
+            // '\n'; drop the trailing '\r' so each field value is the clean whole
+            // token. Otherwise "1048576\r" fails a strict numeric parse — the old
+            // std::stoull silently tolerated the stray '\r' by stopping at the
+            // first non-digit; stripping it keeps strict parsing exact instead.
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+
             // Skip empty lines and comments
             if (line.empty() || line[0] == '#') {
                 continue;
@@ -68,54 +78,55 @@ private:
                 std::string key = line.substr(0, pos);
                 std::string val = line.substr(pos + 1);
 
-                try {
-                    if (key == "used_memory") {
-                        info.used_memory = std::stoull(val);
-                    } else if (key == "used_memory_peak") {
-                        info.used_memory_peak = std::stoull(val);
-                    } else if (key == "used_memory_lua") {
-                        info.used_memory_lua = std::stoull(val);
-                    } else if (key == "used_memory_scripts") {
-                        info.used_memory_scripts = std::stoull(val);
-                    } else if (key == "connected_clients") {
-                        info.number_of_connected_clients = std::stoull(val);
-                    } else if (key == "connected_slaves") {
-                        info.number_of_slaves   = std::stoull(val);
-                        info.number_of_replicas = std::stoull(val);
-                    } else if (key == "total_commands_processed") {
-                        info.total_commands_processed     = std::stoull(val);
-                        info.number_of_commands_processed = std::stoull(val);
-                    } else if (key == "total_connections_received") {
-                        info.total_connections_received = std::stoull(val);
-                    } else if (key == "instantaneous_ops_per_sec") {
-                        info.instantaneous_ops_per_sec = std::stoull(val);
-                    } else if (key == "total_net_input_bytes") {
-                        info.total_net_input_bytes = std::stoull(val);
-                    } else if (key == "total_net_output_bytes") {
-                        info.total_net_output_bytes = std::stoull(val);
-                    } else if (key == "instantaneous_input_kbps") {
-                        info.instantaneous_input_kbps = std::stoull(val);
-                    } else if (key == "instantaneous_output_kbps") {
-                        info.instantaneous_output_kbps = std::stoull(val);
-                    } else if (key.find("db") == 0 && key.length() > 2) {
-                        // Extract number of keys from db0:keys=1,expires=0,avg_ttl=0
-                        size_t key_pos = val.find("keys=");
-                        if (key_pos != std::string::npos) {
-                            size_t      comma_pos  = val.find(',', key_pos);
-                            std::string keys_count = val.substr(key_pos + 5, comma_pos - (key_pos + 5));
-                            info.number_of_keys += std::stoull(keys_count);
-                        }
-
-                        // Extract number of expires from db0:keys=1,expires=0,avg_ttl=0
-                        size_t expires_pos = val.find("expires=");
-                        if (expires_pos != std::string::npos) {
-                            size_t      comma_pos     = val.find(',', expires_pos);
-                            std::string expires_count = val.substr(expires_pos + 8, comma_pos - (expires_pos + 8));
-                            info.number_of_expires += std::stoull(expires_count);
-                        }
+                // INFO values are best-effort whole numeric fields: a missing or
+                // malformed field defaults to 0 (struct members are 0-initialized),
+                // it never aborts parsing of the rest of the report. qb::to_number is
+                // strict (whole field, no trailing data) and noexcept, so the former
+                // try/catch swallow of std::stoull is no longer needed.
+                if (key == "used_memory") {
+                    info.used_memory = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "used_memory_peak") {
+                    info.used_memory_peak = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "used_memory_lua") {
+                    info.used_memory_lua = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "used_memory_scripts") {
+                    info.used_memory_scripts = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "connected_clients") {
+                    info.number_of_connected_clients = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "connected_slaves") {
+                    info.number_of_slaves   = qb::to_number<unsigned long long>(val).value_or(0);
+                    info.number_of_replicas = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "total_commands_processed") {
+                    info.total_commands_processed     = qb::to_number<unsigned long long>(val).value_or(0);
+                    info.number_of_commands_processed = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "total_connections_received") {
+                    info.total_connections_received = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "instantaneous_ops_per_sec") {
+                    info.instantaneous_ops_per_sec = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "total_net_input_bytes") {
+                    info.total_net_input_bytes = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "total_net_output_bytes") {
+                    info.total_net_output_bytes = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "instantaneous_input_kbps") {
+                    info.instantaneous_input_kbps = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key == "instantaneous_output_kbps") {
+                    info.instantaneous_output_kbps = qb::to_number<unsigned long long>(val).value_or(0);
+                } else if (key.find("db") == 0 && key.length() > 2) {
+                    // Extract number of keys from db0:keys=1,expires=0,avg_ttl=0
+                    size_t key_pos = val.find("keys=");
+                    if (key_pos != std::string::npos) {
+                        size_t      comma_pos  = val.find(',', key_pos);
+                        std::string keys_count = val.substr(key_pos + 5, comma_pos - (key_pos + 5));
+                        info.number_of_keys += qb::to_number<unsigned long long>(keys_count).value_or(0);
                     }
-                } catch (const std::exception &) {
-                    // Ignore conversion errors
+
+                    // Extract number of expires from db0:keys=1,expires=0,avg_ttl=0
+                    size_t expires_pos = val.find("expires=");
+                    if (expires_pos != std::string::npos) {
+                        size_t      comma_pos     = val.find(',', expires_pos);
+                        std::string expires_count = val.substr(expires_pos + 8, comma_pos - (expires_pos + 8));
+                        info.number_of_expires += qb::to_number<unsigned long long>(expires_count).value_or(0);
+                    }
                 }
             }
         }

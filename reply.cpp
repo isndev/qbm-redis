@@ -15,6 +15,7 @@
 #include <charconv>
 #include <sstream>
 #include <stdexcept>
+#include <qb/system/parse.h>
 #include "types.h"
 
 namespace qb::redis {
@@ -178,12 +179,13 @@ parse(ParseTag<qb::redis::stream_id>, const ReplyValue &reply) {
     }
 
     qb::redis::stream_id id;
-    try {
-        id.timestamp = std::stoll(std::string(sv.substr(0, pos)));
-        id.sequence  = std::stoll(std::string(sv.substr(pos + 1)));
-    } catch (const std::exception &) {
+    auto ts  = qb::to_number<long long>(sv.substr(0, pos));
+    auto seq = qb::to_number<long long>(sv.substr(pos + 1));
+    if (!ts || !seq) {
         throw ProtoError("Invalid stream ID values");
     }
+    id.timestamp = *ts;
+    id.sequence  = *seq;
 
     return id;
 }
@@ -351,11 +353,11 @@ parse(ParseTag<qb::redis::cluster_node>, const ReplyValue &reply) {
     size_t      at_pos   = token.find('@', colon_pos);
     std::string port_str = (at_pos != std::string::npos) ? token.substr(colon_pos + 1, at_pos - colon_pos - 1) : token.substr(colon_pos + 1);
 
-    try {
-        node.port = std::stoi(port_str);
-    } catch (...) {
+    auto port = qb::to_number<int>(port_str);
+    if (!port) {
         throw ProtoError("Invalid port");
     }
+    node.port = *port;
 
     // Flags
     if (!(iss >> token)) {
@@ -415,11 +417,8 @@ parse(ParseTag<qb::redis::memory_info>, const ReplyValue &reply) {
         auto it = info_map.find(key);
         if (it == info_map.end())
             return 0;
-        try {
-            return std::stoull(it->second);
-        } catch (...) {
-            return 0;
-        }
+        return static_cast<size_t>(
+            qb::to_number_prefix<unsigned long long>(it->second).value_or(0));
     };
 
     info.used_memory                  = get_size_t("used_memory");
