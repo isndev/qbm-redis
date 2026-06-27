@@ -177,8 +177,10 @@ The exception hierarchy (all in `reply.h`, all deriving from `qb::redis::Error :
 
 Because the dispatcher catches `const Error&`, these names matter for *reading the message text*, not for `catch` blocks
 in your code. The one place an exception can still escape the parse path is a non-`qb::redis::Error` thrown by a custom
-parser; in practice the parsers convert standard exceptions (e.g. an out-of-range `std::stoll` in stream-id decoding)
-into `ProtoError` before they reach the boundary (`reply.h:1153`, `reply.cpp` stream-id path).
+parser; in practice the parsers avoid throwing standard exceptions at all (e.g. stream-id decoding parses each half with
+`qb::to_number<long long>`, which returns `std::nullopt` rather than throwing on an out-of-range or malformed value, and
+the parser folds that `nullopt` into a `ProtoError`) before anything reaches the boundary (`reply.h:1153`, `reply.cpp`
+stream-id path).
 
 ### Numeric-parse strictness
 
