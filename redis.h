@@ -310,8 +310,7 @@ private:
 
     void
     start_async() {
-        if (this->protocol())
-            this->clear_protocols();
+        this->clear_protocols(); // idempotent: drops any prior protocol, resets to the NoProtocol sentinel
         this->reset_io_state();
         this->template switch_protocol<redis_protocol>(*this);
         this->start();
