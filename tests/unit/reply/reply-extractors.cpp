@@ -536,8 +536,51 @@ TEST(AsyncResult, ArrowOperator) {
 TEST(AsyncResult, VoidSuccessAndError) {
     qb::redis::AsyncResult<void> ok;
     EXPECT_TRUE(ok.is_ok());
+    EXPECT_FALSE(ok.has_error());        // void specialization has_error()
+    EXPECT_TRUE(static_cast<bool>(ok));  // operator bool() success path
 
     qb::redis::AsyncResult<void> err(std::string("void error"));
     EXPECT_FALSE(err.is_ok());
+    EXPECT_TRUE(err.has_error());        // has_error() error path
+    EXPECT_FALSE(static_cast<bool>(err)); // operator bool() error path
     EXPECT_EQ(err.error(), "void error");
+}
+
+// ============================================================================
+// ValueExtractor negative / non-matching accessor branches (the success arms
+// are covered above; these pin the nullopt / wrong-type / null-pointer returns).
+// ============================================================================
+
+TEST(ValueExtractor, AsDoubleNativeDoubleAndRejectsNonNumeric) {
+    Value                     vd(qb::redis::parser::Double{2.5});
+    qb::redis::ValueExtractor ed(vd);
+    ASSERT_TRUE(ed.as_double().has_value());
+    EXPECT_DOUBLE_EQ(*ed.as_double(), 2.5); // native Double (not integer-widened)
+
+    Value                     vs(BulkString{"x"});
+    qb::redis::ValueExtractor es(vs);
+    EXPECT_FALSE(es.as_double().has_value()); // non-numeric -> nullopt
+
+    std::unique_ptr<Value>    n; // null
+    qb::redis::ValueExtractor en(n);
+    EXPECT_FALSE(en.as_double().has_value()); // null pointer -> nullopt
+}
+
+TEST(ValueExtractor, AsStringRejectsNonString) {
+    Value                     v(Integer{1});
+    qb::redis::ValueExtractor ex(v);
+    EXPECT_FALSE(ex.as_string().has_value());
+}
+
+TEST(ValueExtractor, AsArrayAndAsMapRejectWrongType) {
+    Value                     v(Integer{1});
+    qb::redis::ValueExtractor ex(v);
+    EXPECT_FALSE(ex.as_array().has_value());
+    EXPECT_FALSE(ex.as_map().has_value());
+}
+
+TEST(ValueExtractor, GetErrorMessageOnNullIsNoValue) {
+    std::unique_ptr<Value>    n; // null
+    qb::redis::ValueExtractor ex(n);
+    EXPECT_EQ(ex.get_error_message(), "no value");
 }

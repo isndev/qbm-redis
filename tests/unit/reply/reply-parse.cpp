@@ -439,6 +439,92 @@ TEST(ReplyVectorChar, NonStringThrows) {
 }
 
 // ============================================================================
+// 8. cluster_node truncated-line throws — each missing field, in order, raises
+//    ProtoError. A CLUSTER NODES line is space-delimited; cutting it short after
+//    each successive field exercises every "Failed to parse <field>" guard.
+// ============================================================================
+
+TEST(ReplyClusterNode, TruncatedLineThrowsAtEachField) {
+    const char *truncated[] = {
+        "theid",                                     // no address token
+        "theid 127.0.0.1:7000@17000",                // no flags token
+        "theid 127.0.0.1:7000@17000 myflags",        // no master field
+        "theid 127.0.0.1:7000@17000 myflags -",      // no ping-sent field
+        "theid 127.0.0.1:7000@17000 myflags - 0",    // no pong-recv field
+        "theid 127.0.0.1:7000@17000 myflags - 0 0",  // no epoch field
+        "theid 127.0.0.1:7000@17000 myflags - 0 0 0" // no link-state field
+    };
+    for (const char *line : truncated) {
+        Value v(BulkString{line});
+        EXPECT_THROW(do_parse<qb::redis::cluster_node>(v), qb::redis::ProtoError) << "line: " << line;
+    }
+}
+
+// ============================================================================
+// 9. score_member shape guards not reachable via the vector parser.
+// ============================================================================
+
+// Direct parse<score_member> on a non-array (the vector parser only ever calls
+// it on validated 2-element sub-arrays, so this guard is otherwise untested).
+TEST(ReplyScoreMember, NonArrayThrowsDirect) {
+    Value v(Integer{1});
+    EXPECT_THROW(do_parse<qb::redis::score_member>(v), qb::redis::ProtoError);
+}
+
+// RESP3 nested form ([[m,s],...]) with a null sub-element: a valid first pair
+// selects the nested branch, then the null trips the per-element guard.
+TEST(ReplyScoreMemberVector, NullElementInNestedThrows) {
+    std::vector<std::unique_ptr<Value>> pair0;
+    pair0.push_back(mk_bulk("alice"));
+    pair0.push_back(mk_dbl(1.5));
+    std::vector<std::unique_ptr<Value>> outer;
+    outer.push_back(std::make_unique<Value>(make_array(std::move(pair0))));
+    outer.push_back(std::unique_ptr<Value>{}); // null element
+    Value v = make_array(std::move(outer));
+    EXPECT_THROW(do_parse<std::vector<qb::redis::score_member>>(v), qb::redis::ProtoError);
+}
+
+// map_stream_entry_list on a non-array reply.
+TEST(ReplyMapStreamEntryList, NonArrayThrows) {
+    Value v(Integer{1});
+    EXPECT_THROW(do_parse<qb::redis::map_stream_entry_list>(v), qb::redis::ProtoError);
+}
+
+// ============================================================================
+// 10. pub/sub message/pmessage/subscription null-element guards. An array of the
+//     correct length but with a null payload pointer trips the "Invalid …
+//     format" throw (distinct from the too-short-array size check).
+// ============================================================================
+
+TEST(ReplyPubSubMessage, NullElementThrows) {
+    std::vector<std::unique_ptr<Value>> e;
+    e.push_back(mk_bulk("message"));
+    e.push_back(std::unique_ptr<Value>{}); // null channel (index 1)
+    e.push_back(mk_bulk("payload"));
+    Value v = make_array(std::move(e));
+    EXPECT_THROW(do_parse<qb::redis::message>(v), qb::redis::ProtoError);
+}
+
+TEST(ReplyPubSubPMessage, NullElementThrows) {
+    std::vector<std::unique_ptr<Value>> e;
+    e.push_back(mk_bulk("pmessage"));
+    e.push_back(std::unique_ptr<Value>{}); // null pattern (index 1)
+    e.push_back(mk_bulk("ch"));
+    e.push_back(mk_bulk("payload"));
+    Value v = make_array(std::move(e));
+    EXPECT_THROW(do_parse<qb::redis::pmessage>(v), qb::redis::ProtoError);
+}
+
+TEST(ReplyPubSubSubscription, NullElementThrows) {
+    std::vector<std::unique_ptr<Value>> e;
+    e.push_back(mk_bulk("subscribe"));
+    e.push_back(std::unique_ptr<Value>{}); // null channel (index 1)
+    e.push_back(mk_int(1));
+    Value v = make_array(std::move(e));
+    EXPECT_THROW(do_parse<qb::redis::subscription>(v), qb::redis::ProtoError);
+}
+
+// ============================================================================
 // 8. parse<std::chrono::milliseconds> and <seconds>
 // ============================================================================
 

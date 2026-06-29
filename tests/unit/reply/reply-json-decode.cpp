@@ -374,3 +374,39 @@ TEST(ReplyJsonValue, MapToObject) {
     ASSERT_NE(it, obj.end());
     EXPECT_EQ(it->second.type, qb::redis::json_value::Type::String);
 }
+
+// ============================================================================
+// 5. RESP3 Attribute: out-of-band metadata precedes the real reply. Both JSON
+//    targets must transparently UNWRAP the attribute and decode its inner value,
+//    and map an attribute carrying no inner value to JSON null.
+// ============================================================================
+
+TEST(ReplyJsonValue, AttributeUnwrapsInnerValue) {
+    qb::redis::parser::Attribute attr;
+    attr.value = mk_bulk("hi"); // the actual reply behind the metadata
+    Value v(std::move(attr));
+    auto  jv = do_parse<qb::redis::json_value>(v);
+    EXPECT_EQ(jv.type, qb::redis::json_value::Type::String);
+    EXPECT_EQ(std::get<std::string>(jv.data), "hi");
+}
+
+TEST(ReplyJsonValue, AttributeWithNoInnerValueIsNull) {
+    Value v(qb::redis::parser::Attribute{}); // attr.value == nullptr
+    auto  jv = do_parse<qb::redis::json_value>(v);
+    EXPECT_EQ(jv.type, qb::redis::json_value::Type::Null);
+}
+
+TEST(ReplyJsonScalar, AttributeUnwrapsInnerValue) {
+    qb::redis::parser::Attribute attr;
+    attr.value = mk_bulk("hi");
+    Value v(std::move(attr));
+    auto  j = do_parse<qb::json>(v);
+    ASSERT_TRUE(j.is_string());
+    EXPECT_EQ(j.get<std::string>(), "hi");
+}
+
+TEST(ReplyJsonScalar, AttributeWithNoInnerValueIsNull) {
+    Value v(qb::redis::parser::Attribute{});
+    auto  j = do_parse<qb::json>(v);
+    EXPECT_TRUE(j.is_null());
+}
