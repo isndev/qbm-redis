@@ -1,6 +1,6 @@
 # Pub/Sub subscriptions
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 How to subscribe to Redis channels and patterns with the dedicated consumers — `qb::redis::tcp::cb_consumer` (callback
@@ -28,6 +28,27 @@ Both inherit the same `subscribe` / `unsubscribe` / `psubscribe` / `punsubscribe
 like a client: `connect()` returns an awaiter, not a blocking `bool`. Under `QB_HAS_SSL` the `rediss://` variants are
 `qb::redis::tcp::ssl::cb_consumer` and `qb::redis::tcp::ssl::co_consumer`.
 
+| Aspect | `cb_consumer` | `co_consumer` |
+|---|---|---|
+| Delivery | push to `on_message(void(message&&))` | pull via `co_await receive()` → `optional<message>` |
+| Backpressure | none — callback fires per message | internal queue (default 8192 = `DEFAULT_MSG_CAPACITY`); overflow drops + `on_message_dropped` |
+| Closed signal | `on_disconnected` callback | `receive()` yields `std::nullopt` |
+| Error hook | `on_error(void(error&&))` | via `Reply` / disconnect |
+| Subscription commands | `subscribe`/`unsubscribe`/`psubscribe`/`punsubscribe` | same (shared base) |
+| SSL alias | `tcp::ssl::cb_consumer` | `tcp::ssl::co_consumer` |
+
+```mermaid
+sequenceDiagram
+    participant P as Publisher (client)
+    participant S as Redis server
+    participant Co as cb_consumer / co_consumer
+    Co->>S: SUBSCRIBE channel — connection enters subscribe mode
+    S-->>Co: subscribe confirmation
+    P->>S: PUBLISH channel, payload
+    S-->>Co: message(channel, payload) — server push
+    Note over Co: delivered via on_message(cb)<br/>or co_await consumer.receive()
+```
+
 ```cpp
 #include <redis/redis.h>            // namespace qb::redis
 #include <qb/io/async.h>
@@ -50,7 +71,7 @@ qb::io::async::task<void> example() {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-subscription-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp -->
 
 > A consumer is **not thread-safe.** Drive it from a single I/O thread, like any other `qb::redis` object.
 
@@ -117,7 +138,7 @@ There is no `channel_or_pattern` field and no `num_subscriptions` field — the 
 ### How a subscription command resolves
 
 `subscribe`, `unsubscribe`, `psubscribe`, and `punsubscribe` come from `qb::redis::subscription_commands` ([
-`subscription_commands.h`](../subscription_commands.h)) and are inherited by both consumers. Each has two forms:
+`subscription_commands.h`](../commands/subscription_commands.h)) and are inherited by both consumers. Each has two forms:
 
 - **Coroutine:** `co_await consumer.subscribe(channel)` yields `Reply<qb::redis::subscription>`.
 - **Callback:** `consumer.subscribe(func, channel)` registers `func` and returns the consumer reference for chaining;
@@ -167,7 +188,7 @@ qb::io::async::task<void> run(qb::redis::tcp::cb_consumer &consumer) {
 }
 ```
 
-<!-- src: qbm/redis/redis.h (RedisCallbackConsumer), qbm/redis/tests/test-subscription-commands.cpp -->
+<!-- src: qbm/redis/redis.h (RedisCallbackConsumer), qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:96-154 -->
 
 The callback signatures are fixed by the consumer:
 
@@ -207,7 +228,7 @@ qb::io::async::task<void> consume() {
 }
 ```
 
-<!-- src: qbm/redis/redis.h (RedisCoroConsumer::receive), qbm/redis/tests/test-subscription-commands.cpp -->
+<!-- src: qbm/redis/redis.h (RedisCoroConsumer::receive), qbm/redis/tests/integration/pubsub/pubsub-coconsumer-receive.cpp:73-113 -->
 
 The queue holds `DEFAULT_MSG_CAPACITY` (8192) messages by default. Pass a larger capacity to the URI constructor —
 `co_consumer{uri, capacity}` — if bursty traffic can outpace your `receive()` loop, and register
@@ -246,7 +267,7 @@ consumer.subscribe(
     "news");
 ```
 
-<!-- src: qbm/redis/tests/test-subscription-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:96-154 -->
 
 ### `UNSUBSCRIBE [channel [channel ...]]`
 
@@ -266,7 +287,7 @@ auto all = co_await consumer.unsubscribe("");                // every channel
 EXPECT_EQ(all.result().num, 0);
 ```
 
-<!-- src: qbm/redis/tests/test-subscription-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:307-331 -->
 
 ### `PSUBSCRIBE pattern [pattern ...]`
 
@@ -285,7 +306,7 @@ EXPECT_TRUE(reply.result().channel.has_value());
 EXPECT_EQ(*reply.result().channel, "news.*");   // confirmation echoes the pattern
 ```
 
-<!-- src: qbm/redis/tests/test-subscription-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:158-207 -->
 
 ### `PUNSUBSCRIBE [pattern [pattern ...]]`
 
@@ -305,7 +326,7 @@ auto all = co_await consumer.punsubscribe("");   // every pattern
 EXPECT_EQ(all.result().num, 0);
 ```
 
-<!-- src: qbm/redis/tests/test-subscription-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:333-357 -->
 
 ---
 
@@ -328,7 +349,7 @@ EXPECT_TRUE(pub.ok());                       // Reply<long long>: subscriber cou
 co_await qb::io::async::sleep(std::chrono::milliseconds(100));   // let on_message run
 ```
 
-<!-- src: qbm/redis/tests/test-subscription-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-coconsumer-receive.cpp:161-195 -->
 
 `qb::io::async::sleep(...)` takes a `std::chrono` duration. Connect and command timeouts elsewhere in the client are
 `qb::duration`; Redis command *arguments* that carry time (such as `EXPIRE` seconds versus `PEXPIRE` milliseconds) keep

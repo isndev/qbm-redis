@@ -1,6 +1,6 @@
 # Geospatial commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the geospatial command group — `GEOADD`, `GEODIST`, `GEOHASH`, `GEOPOS`, `GEORADIUS`, `GEORADIUSBYMEMBER`,
@@ -57,7 +57,7 @@ qb::io::async::task<void> geo_demo(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-geo-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/geo/geo-commands.cpp -->
 
 ---
 
@@ -137,7 +137,7 @@ co_await redis.georadius(key, 13.361389, 38.115556, 200,
                          std::vector<std::string>{"ASC"});
 ```
 
-<!-- src: qbm/redis/geo_commands.h:240, qbm/redis/reply.h:857 -->
+<!-- src: qbm/redis/commands/geo_commands.h:226, qbm/redis/reply.h:857 -->
 
 You own the spelling and ordering of these tokens. The same vector reaches `geosearch` too — its callback overload
 appends `options` after the `BYRADIUS <radius> <unit>` tokens, so `COUNT`/`ASC`/`WITH*` are forwarded there as well.
@@ -169,7 +169,7 @@ template <typename Func, typename... Members>  // Func invocable with Reply<long
 Derived &geoadd(Func &&func, const std::string &key, Members &&...members);
 ```
 
-<!-- src: qbm/redis/geo_commands.h:52,72 -->
+<!-- src: qbm/redis/commands/geo_commands.h:53,73 -->
 
 Adds one or more points to the sorted set at `key`. Members are passed as flat `(longitude, latitude, name)` triplets —
 the parameter pack is forwarded verbatim, so you supply the triplets directly rather than building any struct. The reply
@@ -184,7 +184,7 @@ auto r2 = co_await redis.geoadd(key, 15.087269, 37.502669, "Catania",
 // r2.result() == 2
 ```
 
-<!-- src: qbm/redis/tests/test-geo-commands.cpp:CORO_GEO_COMMANDS_GEOADD -->
+<!-- src: qbm/redis/tests/integration/geo/geo-commands.cpp:62-85 -->
 
 ### `geodist` — distance between two members
 
@@ -199,7 +199,7 @@ Derived &geodist(Func &&func, const std::string &key, const std::string &member1
                  const std::string &member2, GeoUnit unit = GeoUnit::M);
 ```
 
-<!-- src: qbm/redis/geo_commands.h:89,110 -->
+<!-- src: qbm/redis/commands/geo_commands.h:88,107 -->
 
 Returns the distance between `member1` and `member2` in `unit` (default meters). The result is `std::nullopt` when
 either member is missing from the index, so test `.has_value()` before dereferencing.
@@ -214,7 +214,7 @@ auto missing = co_await redis.geodist(key, "NonExistent1", "NonExistent2");
 // missing.ok() == true, missing.result().has_value() == false
 ```
 
-<!-- src: qbm/redis/tests/test-geo-commands.cpp:CORO_GEO_COMMANDS_GEODIST -->
+<!-- src: qbm/redis/tests/integration/geo/geo-commands.cpp:88-123 -->
 
 ### `geohash` — geohash strings
 
@@ -228,7 +228,7 @@ template <typename Func, typename... Members>  // Func invocable with Reply<std:
 Derived &geohash(Func &&func, const std::string &key, Members &&...members);
 ```
 
-<!-- src: qbm/redis/geo_commands.h:128,148 -->
+<!-- src: qbm/redis/commands/geo_commands.h:122,142 -->
 
 Returns the standard geohash string for each requested member, in request order. An element is `std::nullopt` when that
 member is absent.
@@ -242,7 +242,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-geo-commands.cpp:CORO_GEO_COMMANDS_GEOHASH -->
+<!-- src: qbm/redis/tests/integration/geo/geo-commands.cpp:126-154 -->
 
 ### `geopos` — decoded coordinates
 
@@ -256,7 +256,7 @@ template <typename Func, typename... Members>  // Func invocable with Reply<std:
 Derived &geopos(Func &&func, const std::string &key, Members &&...members);
 ```
 
-<!-- src: qbm/redis/geo_commands.h:166,186 -->
+<!-- src: qbm/redis/commands/geo_commands.h:158,178 -->
 
 Returns the `{longitude, latitude}` of each requested member, in request order. An element is `std::nullopt` when that
 member is absent. Note Redis re-encodes the stored geohash, so the returned coordinates differ slightly from the values
@@ -272,7 +272,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-geo-commands.cpp:GEOADD_GEOPOS -->
+<!-- src: qbm/redis/tests/integration/geo/geo-commands.cpp:157-185 -->
 
 ### `georadius` — search by coordinate
 
@@ -288,7 +288,7 @@ Derived &georadius(Func &&func, const std::string &key, double longitude, double
                    const std::vector<std::string> &options = {});
 ```
 
-<!-- src: qbm/redis/geo_commands.h:209,233 -->
+<!-- src: qbm/redis/commands/geo_commands.h:198,223 -->
 
 Returns the names of all members within `radius` (in `unit`) of the `(longitude, latitude)` center. The reply is member
 names only; pass raw `options` tokens for `WITHDIST` / `COUNT` / `ASC` / `DESC` as shown
@@ -303,7 +303,7 @@ if (reply.ok())
         qb::io::cout() << name << std::endl;
 ```
 
-<!-- src: qbm/redis/tests/test-geo-commands.cpp:CORO_GEO_COMMANDS_GEORADIUS -->
+<!-- src: qbm/redis/tests/integration/geo/geo-commands.cpp:188-228 -->
 
 ### `georadiusbymember` — search by existing member
 
@@ -319,7 +319,7 @@ Derived &georadiusbymember(Func &&func, const std::string &key, const std::strin
                            const std::vector<std::string> &options = {});
 ```
 
-<!-- src: qbm/redis/geo_commands.h:257,280 -->
+<!-- src: qbm/redis/commands/geo_commands.h:243,266 -->
 
 Same as `georadius`, but the center is the position of an existing `member` rather than an explicit coordinate. The
 member itself is included in the result.
@@ -332,7 +332,7 @@ if (reply.ok())
         qb::io::cout() << name << std::endl;
 ```
 
-<!-- src: qbm/redis/tests/test-geo-commands.cpp:CORO_GEO_COMMANDS_GEORADIUSBYMEMBER -->
+<!-- src: qbm/redis/tests/integration/geo/geo-commands.cpp:231-260 -->
 
 ### `geosearch` — radius search from a member
 
@@ -348,7 +348,7 @@ Derived &geosearch(Func &&func, const std::string &key, const std::string &membe
                    const std::vector<std::string> &options = {});
 ```
 
-<!-- src: qbm/redis/geo_commands.h:303,326 -->
+<!-- src: qbm/redis/commands/geo_commands.h:285,308 -->
 
 Emits `GEOSEARCH key FROMMEMBER <member> BYRADIUS <radius> <unit>` followed by any `options` tokens, and returns the
 member names within that circle. This is a deliberately narrow wrapper over the full `GEOSEARCH`: the center is always
@@ -364,7 +364,7 @@ if (reply.ok())
         qb::io::cout() << name << std::endl;
 ```
 
-<!-- src: qbm/redis/tests/test-geo-commands.cpp:CORO_GEO_COMMANDS_GEOSEARCH -->
+<!-- src: qbm/redis/tests/integration/geo/geo-commands.cpp:263-293 -->
 
 ---
 

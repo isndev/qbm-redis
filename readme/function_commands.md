@@ -1,6 +1,6 @@
 # Function commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the Redis Functions command group — `FUNCTION LOAD`/`LIST`/`DELETE`/`FLUSH`/`KILL`/`STATS`/`DUMP`/
@@ -23,7 +23,16 @@ in the keyspace, is named rather than addressed by SHA1, and is enumerable (`FUN
 `FUNCTION DUMP`/`RESTORE`). The administrative subcommands manage the library set; `FCALL`/`FCALL_RO` run an individual
 function.
 
-The `function_commands<Derived>` mixin (header [`qbm/redis/function_commands.h`](../function_commands.h)) is one of the
+```mermaid
+flowchart LR
+    LIB["Lua library<br/>redis.register_function(name, fn)"] -- "FUNCTION LOAD (once)" --> KS["server keyspace<br/>durable, named library"]
+    KS -- "FCALL name / FCALL_RO name" --> RUN["run the registered function → Reply&lt;Ret&gt;"]
+    KS -. "FUNCTION LIST" .-> I["qb::json descriptors"]
+    KS -. "FUNCTION DUMP / RESTORE" .-> S["serialize / reload"]
+    KS -. "FUNCTION DELETE / FLUSH" .-> D["remove"]
+```
+
+The `function_commands<Derived>` mixin (header [`qbm/redis/commands/function_commands.h`](../commands/function_commands.h)) is one of the
 command groups inherited by `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). Every command is exposed in
 two forms, both fully asynchronous:
 
@@ -42,7 +51,7 @@ happens inside the Lua body in whatever unit you write. The `qb::duration` / nat
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
-// <!-- src: qbm/redis/tests/test-function-commands.cpp:41-57 -->
+// <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:92-94 -->
 qb::io::async::task<void> functions_demo(qb::redis::tcp::client &redis) {
     auto reply = co_await redis.function_list();   // Reply<qb::json>
     if (reply.ok()) {                              // Reply<T> is contextually bool (== ok())
@@ -63,12 +72,12 @@ Function commands decode into three reply shapes:
 - **`qb::json`** (`= nlohmann::json`, defined in `qb/json.h`) — the structured introspection commands: `function_list`,
   `function_stats`, and `function_dump`. `FUNCTION LIST` decodes to a JSON array of library objects; `FUNCTION STATS` to
   a JSON object; `FUNCTION DUMP` to a JSON value wrapping the serialized payload (a string or binary
-  blob). <!-- src: qbm/redis/function_commands.h:52,216,246 -->
+  blob). <!-- src: qbm/redis/commands/function_commands.h:52,216,246 -->
 - **`qb::redis::status`** — the mutating/administrative commands that reply with a simple line: `function_load` (returns
   the library name), `function_delete`, `function_flush`, `function_kill`, and `function_restore`. `status` is
   contextually `bool` (`true` iff the reply text is exactly `"OK"`) and converts to
   `std::string`. <!-- src: qbm/redis/types.h:334-352 -->
-- **`std::vector<std::string>`** — `function_help` only. <!-- src: qbm/redis/function_commands.h:309 -->
+- **`std::vector<std::string>`** — `function_help` only. <!-- src: qbm/redis/commands/function_commands.h:309 -->
 - **`Ret` (caller-chosen)** — `fcall<Ret>` / `fcallRo<Ret>` decode the function's return value into whatever type you
   name, exactly like `eval<Ret>` in [scripting_commands.md](./scripting_commands.md).
 
@@ -81,14 +90,14 @@ server that predates Redis 7.0, the whole group returns an `unknown command` err
 The wire form is `FUNCTION LOAD [REPLACE] <code>`. This module passes the variadic `options...` **ahead of** the `code`
 payload, matching the protocol. Pass option flags (such as `"REPLACE"`) as the variadic arguments — do **not** embed
 them inside the `code` string, and do **not** append them after the code. A client ported from another library that
-appends flags after the body would build a malformed command here. <!-- src: qbm/redis/function_commands.h:112-113 -->
+appends flags after the body would build a malformed command here. <!-- src: qbm/redis/commands/function_commands.h:112-113 -->
 
 ### `fcall`/`fcallRo` compute `numkeys` for you — never pass it
 
 The wire form of `FCALL` is `FCALL <name> <numkeys> <key...> <arg...>`. This module fills in `<numkeys>` automatically
 from `keys.size()`. You pass the `keys` and `args` vectors separately and the library emits the count between them. If
 you migrate code from a raw client and *also* pass a `numkeys` argument, the command is malformed. The same rule applies
-to `fcallRo`. <!-- src: qbm/redis/function_commands.h:370,413 -->
+to `fcallRo`. <!-- src: qbm/redis/commands/function_commands.h:347,384 -->
 
 ### `function_list` filters by library, not by `WITHCODE`
 
@@ -104,7 +113,7 @@ auto scoped = co_await redis.template command<qb::json>(
     "FUNCTION", "LIST", "LIBRARYNAME", "mylib", "WITHCODE");
 ```
 
-<!-- src: qbm/redis/function_commands.h:70-78 -->
+<!-- src: qbm/redis/commands/function_commands.h:70-78 -->
 
 ### Subcommand strings are passed straight through
 
@@ -112,7 +121,7 @@ auto scoped = co_await redis.template command<qb::json>(
 verbatim with no client-side validation. A typo such as `function_flush("ASYNCH")` or
 `function_restore(payload, "MERGE")` is not caught at the call site — it reaches Redis and fails there. Valid values:
 flush mode `"SYNC"` (default) or `"ASYNC"`; restore policy `"APPEND"` (default), `"FLUSH"`, or
-`"REPLACE"`. <!-- src: qbm/redis/function_commands.h:156,278 -->
+`"REPLACE"`. <!-- src: qbm/redis/commands/function_commands.h:156,278 -->
 
 ### This is server-side code execution
 
@@ -126,7 +135,7 @@ see [acl_commands.md](./acl_commands.md)), not by this module.
 ## Command reference
 
 All signatures below are the public methods of `function_commands<Derived>` (header [
-`qbm/redis/function_commands.h`](../function_commands.h)). The callback overloads are SFINAE-gated on
+`qbm/redis/commands/function_commands.h`](../commands/function_commands.h)). The callback overloads are SFINAE-gated on
 `std::is_invocable_v<Func, Reply<T>&&>` for that command's `T`; a handler with the wrong `Reply<T>` signature drops out
 of overload resolution, so a mismatch fails to compile rather than misbehaving at runtime. The callback handler is
 invoked with an rvalue `Reply<T>&&`.
@@ -143,7 +152,7 @@ template <typename Func, typename... Args>
 Derived &function_load(Func &&func, const std::string &code, Args &&...options);
 ```
 
-<!-- src: qbm/redis/function_commands.h:91-114 -->
+<!-- src: qbm/redis/commands/function_commands.h:91-114 -->
 
 Loads a Lua library `code` (which must call `redis.register_function(...)` at least once). `options` are forwarded *
 *before** the code on the wire — pass `"REPLACE"` to overwrite an existing library of the same name. On success the
@@ -174,7 +183,7 @@ redis.function_load(
 ```
 
 Invalid code yields an error reply (it does not throw across the coroutine
-boundary). <!-- src: qbm/redis/tests/test-function-commands.cpp:78-90 -->
+boundary). <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:146-162 -->
 
 ### `function_list` — enumerate libraries and functions
 
@@ -187,14 +196,14 @@ template <typename Func>
 Derived &function_list(Func &&func, const std::optional<std::string> &library = std::nullopt);
 ```
 
-<!-- src: qbm/redis/function_commands.h:52-78 -->
+<!-- src: qbm/redis/commands/function_commands.h:52-78 -->
 
 Returns a JSON array of library descriptors; each describes the library name, the engine, and its registered functions.
 Pass `library` to restrict the listing to one library name (`FUNCTION LIST LIBRARYNAME <library>`). `WITHCODE` is not a
 parameter — see [the concept above](#function_list-filters-by-library-not-by-withcode).
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:46-57 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:92-94 -->
 auto reply = co_await redis.function_list();           // Reply<qb::json>
 if (reply.ok()) {
     const qb::json &functions = reply.result();
@@ -219,13 +228,13 @@ template <typename Func>
 Derived &function_delete(Func &&func, const std::string &library);
 ```
 
-<!-- src: qbm/redis/function_commands.h:125-145 -->
+<!-- src: qbm/redis/commands/function_commands.h:125-145 -->
 
 Deletes the named library and every function it registered. Deleting a library that does not exist returns a
 `Library not found` error reply.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:101-114 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:164-176 -->
 auto reply = co_await redis.function_delete("mylib");   // Reply<status>
 if (!reply.ok())
     qb::io::cout() << "delete failed: " << reply.error() << std::endl;
@@ -242,13 +251,13 @@ template <typename Func>
 Derived &function_flush(Func &&func, const std::string &mode = "SYNC");
 ```
 
-<!-- src: qbm/redis/function_commands.h:156-176 -->
+<!-- src: qbm/redis/commands/function_commands.h:156-176 -->
 
 Deletes **every** library. `mode` is `"SYNC"` (default, reclaim memory before replying) or `"ASYNC"` (reclaim in the
 background); the string is not validated client-side.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:125-134 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:118-142 -->
 auto reply = co_await redis.function_flush();           // Reply<status>; "OK" on success
 // or asynchronous reclamation:
 auto async_flush = co_await redis.function_flush("ASYNC");
@@ -265,14 +274,14 @@ template <typename Func>
 Derived &function_kill(Func &&func);
 ```
 
-<!-- src: qbm/redis/function_commands.h:187-206 -->
+<!-- src: qbm/redis/commands/function_commands.h:187-206 -->
 
 Kills the function currently executing — **provided it has not yet performed a write**. With nothing running, the call
 returns a `NOTBUSY` / `No scripts in execution` error reply, exactly like `script_kill` (
 see [scripting_commands.md](./scripting_commands.md)).
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:196-209 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:178-190 -->
 auto reply = co_await redis.function_kill();            // Reply<status>
 // NOTBUSY error when no function is running
 ```
@@ -288,13 +297,13 @@ template <typename Func>
 Derived &function_stats(Func &&func);
 ```
 
-<!-- src: qbm/redis/function_commands.h:216-235 -->
+<!-- src: qbm/redis/commands/function_commands.h:216-235 -->
 
 Returns a JSON object describing the function runtime — the currently running script (if any) and the registered
 engines.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:220-230 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:97-101 -->
 auto reply = co_await redis.function_stats();           // Reply<qb::json>
 if (reply.ok()) {
     const qb::json &stats = reply.result();
@@ -314,14 +323,14 @@ template <typename Func>
 Derived &function_dump(Func &&func);
 ```
 
-<!-- src: qbm/redis/function_commands.h:246-265 -->
+<!-- src: qbm/redis/commands/function_commands.h:246-265 -->
 
 Returns a serialized payload representing every loaded library, suitable for `function_restore`. Redis replies with a
 binary bulk string; this module wraps it in a `qb::json` value, so `result().is_string()` or `result().is_binary()`
 holds. Treat the payload as opaque.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:251-260 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:118-142 -->
 auto reply = co_await redis.function_dump();            // Reply<qb::json>
 if (reply.ok()) {
     const qb::json &dump = reply.result();
@@ -342,7 +351,7 @@ Derived &function_restore(Func &&func, const std::string &payload,
                           const std::string &policy = "APPEND");
 ```
 
-<!-- src: qbm/redis/function_commands.h:278-299 -->
+<!-- src: qbm/redis/commands/function_commands.h:278-299 -->
 
 Restores libraries from a `payload` produced by `function_dump`. `policy` controls how the restore merges with what is
 already loaded: `"APPEND"` (default — add, error on a name clash), `"FLUSH"` (clear first, then load), or `"REPLACE"` (
@@ -350,7 +359,7 @@ overwrite name clashes). The string is not validated client-side. A corrupt payl
 `payload version or checksum are wrong` error reply.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:281-293 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:192-208 -->
 auto reply = co_await redis.function_restore(saved_payload, "REPLACE");   // Reply<status>
 if (!reply.ok())
     qb::io::cout() << "restore failed: " << reply.error() << std::endl;
@@ -367,12 +376,12 @@ template <typename Func>
 Derived &function_help(Func &&func);
 ```
 
-<!-- src: qbm/redis/function_commands.h:309-328 -->
+<!-- src: qbm/redis/commands/function_commands.h:309-328 -->
 
 Returns the server's `FUNCTION HELP` lines, one `std::string` per line.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:305-318 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:210-229 -->
 auto reply = co_await redis.function_help();            // Reply<std::vector<std::string>>
 if (reply.ok())
     for (const auto &line : reply.result())
@@ -395,7 +404,7 @@ Derived &fcall(Func &&func, const std::string &name,
                const std::vector<std::string> &args = {});
 ```
 
-<!-- src: qbm/redis/function_commands.h:342-371 -->
+<!-- src: qbm/redis/commands/function_commands.h:342-371 -->
 
 Calls the function registered under `name` (e.g. `"myfunc"`, registered by `function_load`). `keys` become the Lua
 `keys` table (and supply `numkeys` automatically); `args` become the extra arguments. Decode type `Ret` is required,
@@ -403,7 +412,7 @@ exactly as for `eval<Ret>` — pick a type that matches what the function return
 parse mismatch surfaces as an error on the `Reply`, not a thrown exception.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:155-167 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:82-84 -->
 auto reply = co_await redis.fcall<qb::json>("myfunc", {"mykey"}, {"arg1"});  // Reply<qb::json>
 if (reply.ok())
     EXPECT_TRUE(reply.result().is_object() || reply.result().is_array());
@@ -438,14 +447,14 @@ Derived &fcallRo(Func &&func, const std::string &name,
                  const std::vector<std::string> &args = {});
 ```
 
-<!-- src: qbm/redis/function_commands.h:385-414 -->
+<!-- src: qbm/redis/commands/function_commands.h:350-385 -->
 
 Same contract as `fcall`, mapped to `FCALL_RO`. The function must have been registered with the `no-writes` flag; the
 server rejects any write it attempts, which makes the call safe to route to a read replica. Use it for read-only
 functions both as a correctness guard and to let a cluster load-balance reads.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/test-function-commands.cpp:175-187 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:87-89 -->
 auto reply = co_await redis.fcallRo<qb::json>("readonly_func", {"mykey"}, {});  // Reply<qb::json>
 if (reply.ok())
     EXPECT_TRUE(reply.result().is_object() || reply.result().is_array());
@@ -460,17 +469,17 @@ if (reply.ok())
   earlier versions of this page listed such overloads in error. Always `co_await` the result or pass a handler.
 - **`function_load` options come *before* the code.** Pass `"REPLACE"` as a variadic option argument — the library emits
   `FUNCTION LOAD [options...] <code>`. Appending flags after the code (as some other clients do) builds a malformed
-  command. <!-- src: qbm/redis/function_commands.h:112-113 -->
+  command. <!-- src: qbm/redis/commands/function_commands.h:112-113 -->
 - **Never pass `numkeys` to `fcall`/`fcallRo`.** The library derives it from `keys.size()`. Passing it yourself produces
-  a malformed command. <!-- src: qbm/redis/function_commands.h:370,413 -->
+  a malformed command. <!-- src: qbm/redis/commands/function_commands.h:347,384 -->
 - **`Ret` is mandatory for `fcall`/`fcallRo` and must match.** These methods cannot deduce the return type; supply it as
   `fcall<Ret>(...)`. If the function returns a shape `Ret` cannot represent, you get a parse error on the `Reply`, not a
   thrown exception. For dynamic shapes decode into `qb::json`.
 - **Subcommand strings are unvalidated.** `function_flush(mode)`, `function_restore(payload, policy)`, and the
   `function_load` options reach the server verbatim. A typo fails Redis-side, not at the call site. Valid: flush `SYNC`/
-  `ASYNC`; restore `APPEND`/`FLUSH`/`REPLACE`. <!-- src: qbm/redis/function_commands.h:156,278 -->
+  `ASYNC`; restore `APPEND`/`FLUSH`/`REPLACE`. <!-- src: qbm/redis/commands/function_commands.h:156,278 -->
 - **`WITHCODE` is not exposed.** `function_list` only filters by `LIBRARYNAME`. For `WITHCODE`, use the generic
-  `command<qb::json>("FUNCTION", "LIST", "WITHCODE")`. <!-- src: qbm/redis/function_commands.h:70-78 -->
+  `command<qb::json>("FUNCTION", "LIST", "WITHCODE")`. <!-- src: qbm/redis/commands/function_commands.h:70-78 -->
 - **`function_kill` cannot stop a writing function.** Like `script_kill`, it works only before the function's first
   write; past that point you must restart the node. With nothing running it returns a `NOTBUSY` error.
 - **Pre-7.0 servers.** The entire group (including `FCALL`) returns an `unknown command` error reply on Redis older than

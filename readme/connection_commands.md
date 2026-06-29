@@ -1,6 +1,6 @@
 # Connection commands reference
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the connection command group — `HELLO`, `AUTH`, `ECHO`, `PING`, `QUIT`, `SELECT`, `SWAPDB`, and `RESET` —
@@ -38,7 +38,7 @@ qb::io::async::task<void> example(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:106-117 -->
 
 This command group carries **no time arguments** — none of its parameters are durations, so the seconds-vs-milliseconds
 boundary documented for key-expiry commands does not apply here. Connect and command *deadlines* (which are
@@ -87,7 +87,7 @@ if (r.ok() && r.result().ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:185-197 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-223 -->
 
 ---
 
@@ -135,7 +135,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:79-96 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:147-163 -->
 
 ### `auth` — authentication
 
@@ -168,7 +168,7 @@ if (!a)
 // co_await redis.auth("s3cr3t");
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:45-49 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:52-62 -->
 
 ### `echo` — round-trip check
 
@@ -190,7 +190,7 @@ if (r.ok())
     assert(r.result() == "hello");
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:257-260 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:92-104 -->
 
 ### `ping` — liveness probe
 
@@ -219,7 +219,7 @@ if (r.ok())
     assert(r.result() == "PONG");
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:148-152 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:106-117 -->
 
 Callback form:
 
@@ -229,7 +229,7 @@ redis.ping([](qb::redis::Reply<std::string> &&reply) {
 });
 ```
 
-<!-- src: qbm/redis/connection_commands.h:193-197 -->
+<!-- src: qbm/redis/commands/connection_commands.h:193-197 -->
 
 ### `quit` — close the connection
 
@@ -252,7 +252,7 @@ auto r = co_await redis.quit();
 // r.ok() && r.result().ok(); the server closes the link afterward.
 ```
 
-<!-- src: qbm/redis/connection_commands.h:236-256 -->
+<!-- src: qbm/redis/commands/connection_commands.h:236-256 -->
 
 ### `select` — switch logical database
 
@@ -275,7 +275,7 @@ auto r = co_await redis.select(1);
 assert(r.ok() && r.result().ok());
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:185-197 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-223 -->
 
 ### `swapdb` — swap two databases
 
@@ -297,7 +297,7 @@ auto r = co_await redis.swapdb(0, 1);
 assert(r.ok() && r.result().ok());
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:211-219 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:225-239 -->
 
 ### `reset` — reset connection state
 
@@ -323,7 +323,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:124-138 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:187-204 -->
 
 > Three unrelated APIs share the name `reset`/`reset_*` in this module — the protocol parser's `redis<IO_>::reset()` (
 `redis.h:185`), the transaction mixin's internal `reset_transaction_state()` (`redis.h:803`), and this user-facing
@@ -360,7 +360,7 @@ qb::io::async::task<void> handshake(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: composed from qbm/redis/connection_commands.h + tests/test-connection-commands.cpp:101-120 (HELLO+PING) -->
+<!-- src: composed from qbm/redis/commands/connection_commands.h + qbm/redis/tests/integration/connection/connection-commands.cpp:166-183 (HELLO+PING) -->
 
 ### Callback chaining
 
@@ -378,7 +378,7 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/connection_commands.h:193-197 -->
+<!-- src: qbm/redis/commands/connection_commands.h:193-197 -->
 
 ---
 

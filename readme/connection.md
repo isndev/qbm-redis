@@ -1,6 +1,6 @@
 # Connecting to Redis
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 How `qb::redis::tcp::client` (and, under `QB_HAS_SSL`, `qb::redis::tcp::ssl::client`) parses a connection URI, opens an
@@ -21,7 +21,17 @@ callback-style code. The awaiter resolves to `true` once the socket is open and 
 on failure or timeout.
 
 The client opens the connection but does **not** authenticate, select a database, or switch to RESP3 for you. Those are
-ordinary commands you issue after `connect()` resolves: `auth(...)`, `select(...)`, `hello(3)`. Connect timeouts, the
+ordinary commands you issue after `connect()` resolves: `auth(...)`, `select(...)`, `hello(3)`.
+
+```mermaid
+flowchart LR
+    C["co_await connect()"] --> A["you call auth(user, pass)"]
+    A --> S["you call select(db)"]
+    S --> H["you call hello(3) — opt into RESP3"]
+    H --> R["ready for commands"]
+```
+
+None of these are automatic, and **none are replayed across an auto-reconnect** — re-run them in your own post-reconnect flow. Connect timeouts, the
 `RetryPolicy` backoff delays, and the optional command-deadline watchdog are all expressed in **`qb::duration`** (
 `std::chrono`-backed). Redis command *arguments* that carry time (for example `EXPIRE` seconds) keep their native
 units — that boundary is covered in [commands_overview.md](./commands_overview.md), not here.
@@ -45,7 +55,7 @@ qb::io::async::task<void> example() {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:106-117 -->
 
 > The client is **not thread-safe.** Use one client from a single I/O thread / strand (one concurrent accessor). The
 > reply queue and outbound pipe are unsynchronized.
@@ -141,6 +151,24 @@ Note the boundary: this is distinct from Redis *command arguments* that carry ti
 takes milliseconds, exposed through native-unit `std::chrono` overloads on the command APIs; those are intentionally *
 *not** `qb::duration`. See [commands_overview.md](./commands_overview.md). Reply TTL values come back as plain integers.
 
+The connection lifecycle, including how `RetryPolicy` drives auto-reconnect:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Connecting: connect()
+    Connecting --> Connected: handshake ok
+    Connecting --> Backoff: failure
+    Connected --> Reconnecting: link drops
+    Reconnecting --> Connected: retry succeeds
+    Reconnecting --> Backoff: retry fails
+    Backoff --> Reconnecting: wait RetryPolicy delay<br/>(100 ms, ×2 … capped 30 s, jittered)
+    Connected --> [*]: disconnect()
+    note right of Reconnecting
+        in-flight commands and active
+        subscriptions are NOT replayed
+    end note
+```
+
 ---
 
 ## Connecting
@@ -169,7 +197,7 @@ qb::io::async::task<void> open_and_use() {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp -->
 
 ### Synchronous connect (tests, bootstrap code)
 
@@ -187,7 +215,7 @@ if (!qb::io::async::run_sync(client->connect()))
     throw std::runtime_error("connection failed");
 ```
 
-<!-- src: qbm/redis/tests/test-reconnect.cpp:91-92 -->
+<!-- src: qbm/redis/tests/system/connection/reconnect-lifetime-uaf.cpp:118-119 -->
 
 ### Callback connect
 
@@ -228,7 +256,7 @@ if (!a)                                       // Reply<status> is contextually b
 // co_await redis.auth("s3cr3t");
 ```
 
-<!-- src: qbm/redis/connection_commands.h:83-138 -->
+<!-- src: qbm/redis/commands/connection_commands.h:83-138 -->
 
 `auth(...)` yields `Reply<status>`. A rejected credential resolves with `ok() == false` and the server message in
 `error()` (for example `WRONGPASS`); it does **not** throw and does **not** close the connection — you decide whether to
@@ -306,7 +334,7 @@ auto policy = qb::redis::RetryPolicy{}
     });
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:337-392 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:281-295 -->
 
 The backoff is exponential: the delay starts at `initial_delay`, multiplies by `multiplier` after each failed attempt,
 and is capped at `max_delay`. With `jitter` on, each delay is randomized by ±25% to avoid thundering herds. The math
@@ -331,7 +359,7 @@ bool connected = co_await client.connect_with_retry(
 // co_await client.connect_with_retry(qb::io::uri{"tcp://..."}, policy);
 ```
 
-<!-- src: qbm/redis/tests/test-connection-commands.cpp:332-419 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:246-310 -->
 
 ### `enable_auto_reconnect` — re-dial on drop
 
@@ -354,7 +382,7 @@ client.enable_auto_reconnect(qb::redis::RetryPolicy{}
 // is_connected() returns true again once a retry succeeds.
 ```
 
-<!-- src: qbm/redis/tests/test-reconnect.cpp:91-100 -->
+<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:103-150 -->
 
 `is_reconnecting()` is `true` for the lifetime of the retry loop; `is_connected()` flips back to `true` when an attempt
 lands. The retry runs on the same I/O loop — there is no extra thread.

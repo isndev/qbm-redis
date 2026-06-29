@@ -1,6 +1,6 @@
 # Cluster commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the Redis Cluster command group — topology inspection (`CLUSTER INFO/NODES/SLOTS/SHARDS`), node
@@ -73,6 +73,16 @@ A Redis Cluster partitions the key space into **16384 hash slots** (0–16383). 
 `cluster_delslots`, `cluster_setslot`, `cluster_keyslot`, `cluster_countkeysinslot`, `cluster_getkeysinslot`) operate on
 slot integers. `cluster_keyslot(key)` returns the slot a given key maps to.
 
+```mermaid
+flowchart TD
+    K["key"] -- "cluster_keyslot(key)" --> S["hash slot — one of 16384 (0–16383)"]
+    S --> N["the node that owns that slot range"]
+    N -- "key not served here" --> R["server replies -MOVED slot host:port (or -ASK during migration)"]
+    R --> C["this client does NOT auto-follow the redirect:<br/>Reply.ok() == false, target in error() — re-issue against the right node<br/>(asking() first for an -ASK)"]
+```
+
+Redirect handling is manual — see [Error handling](./error_handling.md) and the redirect verbs below.
+
 ### Per-connection redirect verbs
 
 `asking()`, `readonly()`, and `readwrite()` are top-level Redis commands, not `CLUSTER` subcommands (
@@ -93,7 +103,7 @@ if (!co_await redis.connect())
     co_return;
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp; qbm/redis/readme/connection.md -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp; qbm/redis/readme/connection.md -->
 
 Each command shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
 `Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (
@@ -123,7 +133,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_INFO) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:153-156 -->
 
 ### `cluster_nodes`
 
@@ -142,7 +152,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_NODES) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:171-174 -->
 
 ### `cluster_slots`
 
@@ -160,7 +170,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_SLOTS) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:167-169 -->
 
 ### `cluster_shards`
 
@@ -175,7 +185,7 @@ template <typename Func> Derived &cluster_shards(Func &&);
 auto reply = co_await redis.cluster_shards();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_INFO_EXT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:67 -->
 
 ### `cluster_links`
 
@@ -190,7 +200,7 @@ template <typename Func> Derived &cluster_links(Func &&);
 auto reply = co_await redis.cluster_links();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_INFO_EXT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:72 -->
 
 ### `cluster_myid`
 
@@ -207,7 +217,7 @@ if (reply.ok() && !reply.result().empty())
     ; // reply.result() is a 40-char node ID
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MYID) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:158-160 -->
 
 ### `cluster_myshardid`
 
@@ -222,7 +232,7 @@ template <typename Func> Derived &cluster_myshardid(Func &&);
 auto reply = co_await redis.cluster_myshardid();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_INFO_EXT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:73 -->
 
 ### `cluster_replicas`
 
@@ -237,7 +247,7 @@ template <typename Func> Derived &cluster_replicas(Func &&, const std::string &n
 auto reply = co_await redis.cluster_replicas(master_node_id);
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_INFO_EXT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:107 -->
 
 ### `cluster_slaves`
 
@@ -253,7 +263,7 @@ template <typename Func> Derived &cluster_slaves(Func &&, const std::string &nod
 auto reply = co_await redis.cluster_slaves(master_node_id);
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_INFO_EXT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:109 -->
 
 ### `cluster_count_failure_reports`
 
@@ -271,7 +281,7 @@ if (reply.ok())
     long long reports = reply.result();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_INFO_EXT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:106 -->
 
 ## Slot inspection
 
@@ -291,7 +301,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_KEYSLOT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:162-165 -->
 
 ### `cluster_countkeysinslot`
 
@@ -308,7 +318,7 @@ if (reply.ok())
     long long count = reply.result();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_COUNTKEYSINSLOT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:176-178 -->
 
 ### `cluster_getkeysinslot`
 
@@ -326,7 +336,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_GETKEYSINSLOT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:71 -->
 
 ## Node membership
 
@@ -347,7 +357,7 @@ if (!reply.ok())
     ; // e.g. cluster support disabled on a standalone server
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MODIFICATION) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:93 -->
 
 ### `cluster_forget`
 
@@ -362,7 +372,7 @@ template <typename Func> Derived &cluster_forget(Func &&, const std::string &nod
 auto reply = co_await redis.cluster_forget(node_id);
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MODIFICATION) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:94 -->
 
 ### `cluster_replicate`
 
@@ -377,7 +387,7 @@ template <typename Func> Derived &cluster_replicate(Func &&, const std::string &
 auto reply = co_await redis.cluster_replicate(master_node_id);
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MODIFICATION) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:97 -->
 
 ### `cluster_failover`
 
@@ -395,7 +405,7 @@ auto reply = co_await redis.cluster_failover();          // coordinated
 // auto reply = co_await redis.cluster_failover("FORCE");
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MODIFICATION) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:96 -->
 
 ### `cluster_reset`
 
@@ -412,7 +422,7 @@ auto reply = co_await redis.cluster_reset();             // SOFT
 // auto reply = co_await redis.cluster_reset("HARD");
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MODIFICATION) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:95 -->
 
 ### `cluster_saveconfig`
 
@@ -427,7 +437,7 @@ template <typename Func> Derived &cluster_saveconfig(Func &&);
 auto reply = co_await redis.cluster_saveconfig();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MODIFICATION) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:98 -->
 
 ### `cluster_set_config_epoch`
 
@@ -442,7 +452,7 @@ template <typename Func> Derived &cluster_set_config_epoch(Func &&, long long ep
 auto reply = co_await redis.cluster_set_config_epoch(1);
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MODIFICATION) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:99 -->
 
 ### `cluster_bumpepoch`
 
@@ -459,7 +469,7 @@ if (!reply.ok())
     ; // cluster support disabled / unknown command on a standalone server
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_MODIFICATION) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:100 -->
 
 ## Slot administration
 
@@ -480,7 +490,7 @@ Derived &cluster_addslots(Func &&, Slots &&...slots);
 auto reply = co_await redis.cluster_addslots(0, 1, 2);
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_SLOT_MANAGEMENT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:101 -->
 
 ### `cluster_addslotsrange`
 
@@ -497,7 +507,7 @@ Derived &cluster_addslotsrange(Func &&, const std::vector<std::pair<int, int>> &
 auto reply = co_await redis.cluster_addslotsrange({{0, 5000}, {5001, 10000}});
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_SLOT_MANAGEMENT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:102 -->
 
 ### `cluster_delslots`
 
@@ -513,7 +523,7 @@ Derived &cluster_delslots(Func &&, Slots &&...slots);
 auto reply = co_await redis.cluster_delslots(0, 1, 2);
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_SLOT_MANAGEMENT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:103 -->
 
 ### `cluster_delslotsrange`
 
@@ -530,7 +540,7 @@ Derived &cluster_delslotsrange(Func &&, const std::vector<std::pair<int, int>> &
 auto reply = co_await redis.cluster_delslotsrange({{0, 5000}});
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_SLOT_MANAGEMENT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:104 -->
 
 ### `cluster_flushslots`
 
@@ -545,7 +555,7 @@ template <typename Func> Derived &cluster_flushslots(Func &&);
 auto reply = co_await redis.cluster_flushslots();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_SLOT_MANAGEMENT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:105 -->
 
 ### `cluster_setslot`
 
@@ -565,7 +575,7 @@ Derived &cluster_setslot(Func &&, int slot, const std::string &subcommand,
 auto reply = co_await redis.cluster_setslot(0, "NODE", target_node_id);
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_INFO_EXT) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:108 -->
 
 ## Per-connection redirect verbs
 
@@ -585,7 +595,7 @@ template <typename Func> Derived &asking(Func &&);
 auto reply = co_await redis.asking();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_ASKING_READONLY_READWRITE) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:129 -->
 
 ### `readonly`
 
@@ -600,7 +610,7 @@ template <typename Func> Derived &readonly(Func &&);
 auto reply = co_await redis.readonly();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_ASKING_READONLY_READWRITE) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:130 -->
 
 ### `readwrite`
 
@@ -615,7 +625,7 @@ template <typename Func> Derived &readwrite(Func &&);
 auto reply = co_await redis.readwrite();
 ```
 
-<!-- src: qbm/redis/tests/test-cluster-commands.cpp (CORO_CLUSTER_COMMANDS_ASKING_READONLY_READWRITE) -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:131 -->
 
 ## Callback form
 
@@ -629,7 +639,7 @@ redis.cluster_keyslot([](qb::redis::Reply<long long> &&r) {
 }, "user:1000");
 ```
 
-<!-- src: qbm/redis/cluster_commands.h:441-445 -->
+<!-- src: qbm/redis/commands/cluster_commands.h:441-445 -->
 
 The callback overload returns the client (`Derived&`), so calls chain. Drain enqueued handlers with `redis.await()` or
 your own event loop — see [Pipelining and `await()`](./pipeline_and_await.md) via

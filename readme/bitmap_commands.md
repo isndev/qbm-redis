@@ -1,6 +1,6 @@
 # Bitmap commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the bitmap command group — `BITCOUNT`, `BITFIELD`, `BITFIELD_RO`, `BITOP`, `BITPOS`, `GETBIT`, and
@@ -48,7 +48,7 @@ qb::io::async::task<void> bitmap_demo(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-bitmap-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/bitmap/bitmap-commands.cpp -->
 
 ---
 
@@ -120,7 +120,7 @@ Derived &bitcount(Func &&func, const std::string &key,
                   long long start = 0, long long end = -1);
 ```
 
-<!-- src: qbm/redis/bitmap_commands.h:65,87 -->
+<!-- src: qbm/redis/commands/bitmap_commands.h:62,81 -->
 
 Counts the bits set to 1 in `key`, optionally restricted to the inclusive byte range `[start, end]`. The reply is the
 count.
@@ -132,7 +132,7 @@ auto byte0 = co_await redis.bitcount(key, 0, 0); // result() == 8
 auto byte1 = co_await redis.bitcount(key, 1, 1); // result() == 0
 ```
 
-<!-- src: qbm/redis/tests/test-bitmap-commands.cpp:CORO_BITMAP_COMMANDS_BITCOUNT -->
+<!-- src: qbm/redis/tests/integration/bitmap/bitmap-commands.cpp:49-77 -->
 
 ### `bitpos` — find first 0/1 bit
 
@@ -146,7 +146,7 @@ Derived &bitpos(Func &&func, const std::string &key, bool bit,
                 long long start = 0, long long end = -1);
 ```
 
-<!-- src: qbm/redis/bitmap_commands.h:189,212 -->
+<!-- src: qbm/redis/commands/bitmap_commands.h:171,191 -->
 
 Returns the position of the first bit equal to `bit` (`true` for 1, `false` for 0) within the inclusive byte range, or
 `-1` if no such bit exists. The `bool bit` is serialized as `1`/`0` for you.
@@ -157,7 +157,7 @@ auto first_one  = co_await redis.bitpos(key, true);   // result() == 0
 auto first_zero = co_await redis.bitpos(key, false);  // result() == 8
 ```
 
-<!-- src: qbm/redis/tests/test-bitmap-commands.cpp:CORO_BITMAP_COMMANDS_BITPOS -->
+<!-- src: qbm/redis/tests/integration/bitmap/bitmap-commands.cpp:203-245 -->
 
 ### `getbit` — read one bit
 
@@ -170,7 +170,7 @@ template <typename Func>  // Func invocable with Reply<long long>&&
 Derived &getbit(Func &&func, const std::string &key, long long offset);
 ```
 
-<!-- src: qbm/redis/bitmap_commands.h:229,248 -->
+<!-- src: qbm/redis/commands/bitmap_commands.h:207,223 -->
 
 Returns the bit at `offset` (`0` or `1`). Offsets past the end of the string read as `0`.
 
@@ -179,7 +179,7 @@ auto bit = co_await redis.getbit(key, 7);
 if (bit) qb::io::cout() << "bit 7 = " << bit.result() << std::endl;  // 0 or 1
 ```
 
-<!-- src: qbm/redis/tests/test-bitmap-commands.cpp:CORO_BITMAP_COMMANDS_GETBIT_SETBIT -->
+<!-- src: qbm/redis/tests/integration/bitmap/bitmap-commands.cpp:248-277 -->
 
 ### `setbit` — write one bit
 
@@ -192,7 +192,7 @@ template <typename Func>  // Func invocable with Reply<long long>&&
 Derived &setbit(Func &&func, const std::string &key, long long offset, bool value);
 ```
 
-<!-- src: qbm/redis/bitmap_commands.h:265,285 -->
+<!-- src: qbm/redis/commands/bitmap_commands.h:240,257 -->
 
 Sets the bit at `offset` to `value` (`true`/`false`) and returns the bit's **previous** value. The string grows to fit
 `offset` if necessary, zero-padding the gap.
@@ -202,7 +202,7 @@ auto prev1 = co_await redis.setbit(key, 7, true);   // result() == 0 (was unset)
 auto prev2 = co_await redis.setbit(key, 7, false);  // result() == 1 (was set)
 ```
 
-<!-- src: qbm/redis/tests/test-bitmap-commands.cpp:CORO_BITMAP_COMMANDS_GETBIT_SETBIT -->
+<!-- src: qbm/redis/tests/integration/bitmap/bitmap-commands.cpp:248-277 -->
 
 ### `bitop` — bitwise operation between strings
 
@@ -217,7 +217,7 @@ Derived &bitop(Func &&func, const std::string &operation,
                const std::string &destkey, const std::vector<std::string> &keys);
 ```
 
-<!-- src: qbm/redis/bitmap_commands.h:146,167 -->
+<!-- src: qbm/redis/commands/bitmap_commands.h:133,150 -->
 
 Computes `operation` (`"AND"`/`"OR"`/`"XOR"`/`"NOT"`) across the source `keys` and stores the result in `destkey`,
 returning that string's length in bytes. `"NOT"` requires exactly one source key.
@@ -231,7 +231,7 @@ auto len = co_await redis.bitop("AND", destkey,
 auto out = co_await redis.get(destkey);   // destkey holds key1 AND key2
 ```
 
-<!-- src: qbm/redis/tests/test-bitmap-commands.cpp:CORO_BITMAP_COMMANDS_BITOP -->
+<!-- src: qbm/redis/tests/integration/bitmap/bitmap-commands.cpp:139-200 -->
 
 ### `bitfield` — packed integer fields
 
@@ -245,7 +245,7 @@ Derived &bitfield(Func &&func, const std::string &key,
                   const std::vector<std::string> &operations);
 ```
 
-<!-- src: qbm/redis/bitmap_commands.h:106,127 -->
+<!-- src: qbm/redis/commands/bitmap_commands.h:99,115 -->
 
 Runs a sequence of `GET`/`SET`/`INCRBY` sub-operations (with an optional `OVERFLOW WRAP|SAT|FAIL` directive) over packed
 integer fields. The reply vector has one positional entry per value-producing sub-operation; an entry is `std::nullopt`
@@ -261,7 +261,7 @@ if (reply) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-bitmap-commands.cpp:CORO_BITMAP_COMMANDS_BITFIELD -->
+<!-- src: qbm/redis/tests/integration/bitmap/bitmap-commands.cpp:80-107 -->
 
 ### `bitfieldRo` — read-only `BITFIELD_RO`
 
@@ -275,7 +275,7 @@ Derived &bitfieldRo(Func &&func, const std::string &key,
                     const std::vector<std::string> &operations);
 ```
 
-<!-- src: qbm/redis/bitmap_commands.h:301,324 -->
+<!-- src: qbm/redis/commands/bitmap_commands.h:273,290 -->
 
 The read-only variant of `bitfield`: only `GET` sub-operations are valid, which makes it safe to route to read replicas.
 The reply shape matches `bitfield`.
@@ -286,7 +286,7 @@ auto reply = co_await redis.bitfieldRo(key, {"GET", "u8", "0"});
 // reply.result()[0].value() == 42
 ```
 
-<!-- src: qbm/redis/tests/test-bitmap-commands.cpp:CORO_BITMAP_COMMANDS_BITFIELD_RO -->
+<!-- src: qbm/redis/tests/integration/bitmap/bitmap-commands.cpp:110-134 -->
 
 ### Callback form
 
@@ -300,7 +300,7 @@ redis.bitcount([](qb::redis::Reply<long long> &&r) {
 }, key);
 ```
 
-<!-- src: qbm/redis/bitmap_commands.h:87 -->
+<!-- src: qbm/redis/commands/bitmap_commands.h:81 -->
 
 ---
 

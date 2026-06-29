@@ -1,6 +1,6 @@
 # qbm-redis documentation map
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 This is the table of contents for the qbm-redis narrative documentation: an asynchronous Redis client built on the qb-io
@@ -19,9 +19,10 @@ The public surface lives in the `qb::redis` namespace; `qb::redis::detail` holds
 is `<redis/redis.h>`.
 
 The module is a **compiled library**, not header-only. The build registers it through `qb_register_module`, producing an
-archive under the alias `qbm::redis` (`qbm/redis/CMakeLists.txt`). Only `redis.cpp` and `reply.cpp` compile into that
-archive; the 200-plus command methods are template code pulled in through the umbrella header — but you still link the
-target to get those two translation units and the `PUBLIC` include directory. It compiles at C++20 by default and at
+archive under the alias `qbm::redis` (`qbm/redis/CMakeLists.txt`). Only `redis.cpp`, `reply.cpp`, and `server_reply.cpp`
+compile into that archive; the 200-plus command methods are template code pulled in through the umbrella header — but you
+still link the target to get those translation units and the `PUBLIC` include directory. It compiles at C++20 by default
+and at
 C++23 when `QB_CXX_STANDARD=23`; the standard is governed by the framework, not the module, and propagates to consumers
 as a compile feature. The coroutine API requires it.
 
@@ -166,8 +167,8 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 ## Examples as specification
 
 The integration tests under [`../tests/`](../tests/) are executable documentation and run in both RESP2 and RESP3 modes.
-When a signature or behavior is unclear, grep a test and read it — for example `test-pipeline.cpp` drives `connect` /
-`flushall` through `qb::io::async::run_sync` (`tests/test-pipeline.cpp:48`).
+When a signature or behavior is unclear, grep a test and read it — for example `integration/connection/pipeline.cpp` drives `connect` /
+`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:301`).
 
 ## See also
 

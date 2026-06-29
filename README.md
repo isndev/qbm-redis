@@ -1,6 +1,6 @@
 # qbm-redis — asynchronous Redis client
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 A non-blocking Redis client built on qb-io: connect, run the full command surface, drive pub/sub, transactions,
@@ -27,8 +27,9 @@ header pulls in everything an application needs:
 #include <redis/redis.h>   // brings in <qb/io/async.h> transitively
 ```
 
-`qbm-redis` is a **compiled library** (sources `redis.cpp` and `reply.cpp`), aliased `qbm::redis`. It is **not**
-header-only — link the target; including the header alone will not resolve the reply-parsing and protocol symbols.
+`qbm-redis` is a **compiled library** (sources `redis.cpp`, `reply.cpp`, and `server_reply.cpp`), aliased `qbm::redis`.
+It is **not** header-only — link the target; including the header alone will not resolve the reply-parsing and protocol
+symbols.
 
 ### How it relates to qb-core
 
@@ -191,7 +192,7 @@ redis.get([](qb::redis::Reply<std::optional<std::string>>&& r) {
 }, "user:1");
 ```
 
-<!-- src: qbm/redis/string_commands.h:165-184, FACTBOOK.md redis-collections invariants -->
+<!-- src: qbm/redis/commands/string_commands.h:165-184, FACTBOOK.md redis-collections invariants -->
 
 ### Reply\<T\>
 
@@ -236,7 +237,7 @@ redis.await();   // drains all three on the current loop
 
 See [readme/pipeline_and_await.md](./readme/pipeline_and_await.md). `RedisPipeline::flush()` is unrelated to the
 `FLUSHDB`/`FLUSHALL` commands.
-<!-- src: qbm/redis/redis.h:811-867, tests/test-pipeline.cpp:226 -->
+<!-- src: qbm/redis/redis.h:1039-1091, tests/integration/connection/pipeline.cpp:322 -->
 
 ---
 

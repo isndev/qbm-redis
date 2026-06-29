@@ -1,6 +1,6 @@
 # Command API model
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 How `qbm-redis` command methods map to RESP, how replies are typed and decoded into `qb::redis::Reply<T>`, and how to
@@ -57,6 +57,23 @@ Arguments are converted to RESP bulk strings in order; the reply handler is enqu
 fast (even synchronous) reply cannot run ahead of its handler. Redis answers requests in the order it received them, so
 the FIFO queue and the wire stay in lockstep. This ordering guarantee is what makes pipelining work —
 see [Pipelining and `await()`](./pipeline_and_await.md).
+
+```mermaid
+sequenceDiagram
+    participant App as your code
+    participant Cl as client (CRTP mixin method)
+    participant Q as reply FIFO queue
+    participant Net as RESP wire
+    participant Srv as Redis server
+    App->>Cl: redis.cmd(args…) — or co_await
+    Cl->>Q: enqueue typed reply handler (BEFORE send)
+    Cl->>Net: serialize name + args as RESP bulk strings
+    Net->>Srv: request
+    Srv-->>Net: reply (in request order)
+    Net-->>Q: dequeue matching handler (FIFO)
+    Q->>Q: decode — disconnect / -ERR / parse&lt;T&gt;
+    Q-->>App: Reply&lt;T&gt; (ok() / error() / value())
+```
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
@@ -226,7 +243,7 @@ as value types, not durations. The framework `qb::duration` type *is* used elsew
 command timeouts and the `RetryPolicy` delays (`redis.h:209-214`) — but those are transport-level deadlines, not Redis
 command arguments. See [Connection](./connection.md).
 
-<!-- src: qbm/redis/key_commands.h:215-251,390-427 (expire/pexpire native-unit overloads) -->
+<!-- src: qbm/redis/commands/key_commands.h:215-251,390-427 (expire/pexpire native-unit overloads) -->
 
 ## Command groups
 

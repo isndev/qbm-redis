@@ -1,6 +1,6 @@
 # Stream commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the Redis Streams command group — appending and trimming entries, range scans, blocking reads, consumer
@@ -17,6 +17,16 @@ A Redis stream is an append-only log keyed by a string. Each entry carries an ID
 set of field-value pairs. Streams support both plain fan-out reads (`XREAD`) and cooperative consumption through
 consumer groups (`XREADGROUP`, `XACK`, `XCLAIM`), where delivered-but-unacknowledged entries are tracked in a per-group
 Pending Entries List (PEL).
+
+```mermaid
+flowchart LR
+    P["producer — XADD"] --> S["stream (append-only log)"]
+    S -- "XREADGROUP GROUP g c (id '&gt;')" --> C["consumer c — entry enters the group PEL"]
+    C -- "XACK key g id" --> DONE["acknowledged — removed from PEL"]
+    C -- "idle too long" --> CL["XCLAIM / XAUTOCLAIM — reassign the pending entry"]
+    CL --> C2["consumer c2 — still in PEL until XACK"]
+    C2 -- "XACK" --> DONE
+```
 
 These commands are defined by the `qb::redis::stream_commands<Derived>` CRTP mixin (`stream_commands.h:33`), which
 `qb::redis::tcp::client` inherits along with every other command group. You call the methods directly on a connected
@@ -137,7 +147,7 @@ outside a coroutine.
 ### `xadd`
 
 `XADD key *|id field value [field value ...]` — append an entry and return its ID.
-<!-- src: qbm/redis/stream_commands.h:53,73 -->
+<!-- src: qbm/redis/commands/stream_commands.h:53,73 -->
 
 ```cpp
 auto xadd(const std::string &key,
@@ -168,12 +178,12 @@ redis.xadd([](qb::redis::Reply<qb::redis::stream_id> &&r) {
 }, "mystream", entries);
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:44 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:69 -->
 
 ### `xlen`
 
 `XLEN key` — number of entries in the stream.
-<!-- src: qbm/redis/stream_commands.h:110,127 -->
+<!-- src: qbm/redis/commands/stream_commands.h:110,127 -->
 
 ```cpp
 auto xlen(const std::string &key);                                       // -> Reply<long long>
@@ -188,12 +198,12 @@ if (len.ok())
     std::cout << len.result() << " entries\n";
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:51 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:73 -->
 
 ### `xdel`
 
 `XDEL key id [id ...]` — delete entries by ID; returns the count actually removed.
-<!-- src: qbm/redis/stream_commands.h:143,162 -->
+<!-- src: qbm/redis/commands/stream_commands.h:143,162 -->
 
 ```cpp
 template <typename... Ids>
@@ -211,13 +221,13 @@ if (del.ok())
     std::cout << "deleted " << del.result() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:97 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:135 -->
 
 ### `xtrim`
 
 `XTRIM key MAXLEN [=|~] threshold` — cap the stream to a maximum length, deleting older entries; returns the number
 removed.
-<!-- src: qbm/redis/stream_commands.h:335,356 -->
+<!-- src: qbm/redis/commands/stream_commands.h:335,356 -->
 
 ```cpp
 auto xtrim(const std::string &key, long long maxlen,
@@ -236,12 +246,12 @@ auto trimmed = co_await redis.xtrim("mystream", 1000);          // exact cap at 
 auto fast    = co_await redis.xtrim("mystream", 1000, true);    // approximate, faster
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:163 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:189 -->
 
 ### `xrange`
 
 `XRANGE key start end [COUNT count]` — entries within an ID range, oldest first.
-<!-- src: qbm/redis/stream_commands.h:758,779 -->
+<!-- src: qbm/redis/commands/stream_commands.h:758,779 -->
 
 ```cpp
 auto xrange(const std::string &key, const std::string &start,
@@ -266,12 +276,12 @@ if (range.ok())
 auto first_two = co_await redis.xrange("mystream", "-", "+", 2);   // COUNT 2
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:288 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:311 -->
 
 ### `xrevrange`
 
 `XREVRANGE key end start [COUNT count]` — entries within an ID range, newest first.
-<!-- src: qbm/redis/stream_commands.h:802,823 -->
+<!-- src: qbm/redis/commands/stream_commands.h:802,823 -->
 
 ```cpp
 auto xrevrange(const std::string &key, const std::string &end,
@@ -293,13 +303,13 @@ if (rev.ok() && !rev.result().empty())
     std::cout << "latest: " << rev.result().front().id.to_string() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:298 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:325 -->
 
 ### `xread`
 
 `XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]` — read entries with IDs greater than the supplied
 ones. Two overloads: single-stream and multi-stream.
-<!-- src: qbm/redis/stream_commands.h:481,502,526,547 -->
+<!-- src: qbm/redis/commands/stream_commands.h:481,502,526,547 -->
 
 ```cpp
 // Single stream
@@ -338,12 +348,12 @@ if (read.ok() && read.result().is_array())
 auto live = co_await redis.xread("mystream", "$", std::nullopt, 5000);
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:194,472 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:211,222 -->
 
 ### `xgroup_create`
 
 `XGROUP CREATE key group id [MKSTREAM]` — create a consumer group.
-<!-- src: qbm/redis/stream_commands.h:181,201 -->
+<!-- src: qbm/redis/commands/stream_commands.h:181,201 -->
 
 ```cpp
 auto xgroup_create(const std::string &key, const std::string &group,
@@ -363,12 +373,12 @@ if (created.ok() && created.result())   // status converts to bool ("OK")
     std::cout << "group ready\n";
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:127 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:162 -->
 
 ### `xgroup_destroy`
 
 `XGROUP DESTROY key group` — delete a consumer group and its PEL; returns the number of groups destroyed (`0` or `1`).
-<!-- src: qbm/redis/stream_commands.h:227,244 -->
+<!-- src: qbm/redis/commands/stream_commands.h:227,244 -->
 
 ```cpp
 auto xgroup_destroy(const std::string &key, const std::string &group);   // -> Reply<long long>
@@ -382,13 +392,13 @@ Derived &xgroup_destroy(Func &&func, const std::string &key,
 auto destroyed = co_await redis.xgroup_destroy("mystream", "mygroup");
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:132 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:166 -->
 
 ### `xgroup_delconsumer`
 
 `XGROUP DELCONSUMER key group consumer` — remove a consumer from a group; returns the number of pending messages the
 consumer owned.
-<!-- src: qbm/redis/stream_commands.h:260,280 -->
+<!-- src: qbm/redis/commands/stream_commands.h:260,280 -->
 
 ```cpp
 auto xgroup_delconsumer(const std::string &key, const std::string &group,
@@ -406,7 +416,7 @@ auto pending = co_await redis.xgroup_delconsumer("mystream", "mygroup", "consume
 ### `xgroupSetid`
 
 `XGROUP SETID key group id [ENTRIESREAD n]` — set the group's last-delivered ID. Note the camelCase name.
-<!-- src: qbm/redis/stream_commands.h:926,935 -->
+<!-- src: qbm/redis/commands/stream_commands.h:926,935 -->
 
 ```cpp
 auto xgroupSetid(const std::string &key, const std::string &group,
@@ -426,14 +436,14 @@ skip to the tail, or a specific entry ID.
 auto setid = co_await redis.xgroupSetid("mystream", "mygroup", "0");
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:326 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:353 -->
 
 ### `xgroupCreateconsumer`
 
 `XGROUP CREATECONSUMER key group consumer` — create a consumer explicitly; returns `true` if a new consumer was created,
 `false` if it already existed. Note the camelCase name and the `bool` reply (the snake_case group helpers return
 `status` or `long long`).
-<!-- src: qbm/redis/stream_commands.h:953,961 -->
+<!-- src: qbm/redis/commands/stream_commands.h:911,929 -->
 
 ```cpp
 auto xgroupCreateconsumer(const std::string &key, const std::string &group,
@@ -450,13 +460,13 @@ if (created.ok() && created.result())
     std::cout << "new consumer registered\n";
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:330 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:356 -->
 
 ### `xreadgroup`
 
 `XREADGROUP GROUP group consumer [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]` — read through a consumer
 group, moving delivered entries into the group's PEL. Two overloads: single-stream and multi-stream.
-<!-- src: qbm/redis/stream_commands.h:385,409,435,459 -->
+<!-- src: qbm/redis/commands/stream_commands.h:385,409,435,459 -->
 
 ```cpp
 // Single stream
@@ -496,13 +506,13 @@ if (read.ok())
     /* navigate read.result() (qb::json) */;
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:224 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:245 -->
 
 ### `xack`
 
 `XACK key group id [id ...]` — acknowledge processing of one or more delivered entries, removing them from the group's
 PEL; returns the count acknowledged.
-<!-- src: qbm/redis/stream_commands.h:298,319 -->
+<!-- src: qbm/redis/commands/stream_commands.h:298,319 -->
 
 ```cpp
 template <typename... Ids>
@@ -519,13 +529,13 @@ if (acked.ok())
     std::cout << "acknowledged " << acked.result() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:260 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:280 -->
 
 ### `xclaim`
 
 `XCLAIM key group consumer min-idle-time id [id ...] [options...]` — transfer ownership of pending entries to
 `consumer`; returns the claimed entries.
-<!-- src: qbm/redis/stream_commands.h:848,874 -->
+<!-- src: qbm/redis/commands/stream_commands.h:848,874 -->
 
 ```cpp
 auto xclaim(const std::string &key, const std::string &group,
@@ -552,13 +562,13 @@ if (claimed.ok())
     std::cout << "claimed " << claimed.result().size() << " entries\n";
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:361 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:389 -->
 
 ### `xautoclaim`
 
 `XAUTOCLAIM key group consumer min-idle-time start [COUNT count] [JUSTID]` — scan the PEL from `start` and claim idle
 entries in one round-trip.
-<!-- src: qbm/redis/stream_commands.h:892,905 -->
+<!-- src: qbm/redis/commands/stream_commands.h:892,905 -->
 
 ```cpp
 auto xautoclaim(const std::string &key, const std::string &group,
@@ -585,12 +595,12 @@ if (claimed.ok())
     /* navigate claimed.result() (qb::json): [next-cursor, entries, deleted-ids] */;
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:368 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:399 -->
 
 ### `xpending`
 
 `XPENDING key group [start end count] [consumer]` — inspect the group's pending entries.
-<!-- src: qbm/redis/stream_commands.h:699,725 -->
+<!-- src: qbm/redis/commands/stream_commands.h:699,725 -->
 
 ```cpp
 auto xpending(const std::string &key, const std::string &group,
@@ -615,12 +625,12 @@ if (pending.ok() && pending.result().is_array())
     std::cout << pending.result().size() << " pending entries\n";
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:437 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:473 -->
 
 ### `xinfo_stream`
 
 `XINFO STREAM key` — general metadata about the stream.
-<!-- src: qbm/redis/stream_commands.h:575,591 -->
+<!-- src: qbm/redis/commands/stream_commands.h:575,591 -->
 
 ```cpp
 auto xinfo_stream(const std::string &key);                               // -> Reply<qb::json>
@@ -635,12 +645,12 @@ if (info.ok())
     /* navigate info.result() (qb::json): length, first/last entry, groups, ... */;
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:394 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:422 -->
 
 ### `xinfo_groups`
 
 `XINFO GROUPS key` — one record per consumer group; the JSON reply is an array.
-<!-- src: qbm/redis/stream_commands.h:604,620 -->
+<!-- src: qbm/redis/commands/stream_commands.h:604,620 -->
 
 ```cpp
 auto xinfo_groups(const std::string &key);                               // -> Reply<qb::json>
@@ -655,12 +665,12 @@ if (groups.ok() && groups.result().is_array())
     /* iterate the group records */;
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:398 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:431 -->
 
 ### `xinfo_consumers`
 
 `XINFO CONSUMERS key group` — one record per consumer in the group; the JSON reply is an array.
-<!-- src: qbm/redis/stream_commands.h:634,651 -->
+<!-- src: qbm/redis/commands/stream_commands.h:634,651 -->
 
 ```cpp
 auto xinfo_consumers(const std::string &key, const std::string &group);  // -> Reply<qb::json>
@@ -676,12 +686,12 @@ if (consumers.ok() && consumers.result().is_array())
     /* iterate the consumer records */;
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:403 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:440 -->
 
 ### `xinfo_help`
 
 `XINFO HELP` — the server's help text for the `XINFO` subcommands; the JSON reply is an array of strings.
-<!-- src: qbm/redis/stream_commands.h:663,678 -->
+<!-- src: qbm/redis/commands/stream_commands.h:663,678 -->
 
 ```cpp
 auto xinfo_help();                                                       // -> Reply<qb::json>
@@ -694,12 +704,12 @@ Derived &xinfo_help(Func &&func);
 auto help = co_await redis.xinfo_help();
 ```
 
-<!-- src: qbm/redis/tests/test-stream-commands.cpp:408 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:444 -->
 
 ### `parse_stream_id` (static helper)
 
 A static utility that parses a `"timestamp-sequence"` string into a `stream_id`.
-<!-- src: qbm/redis/stream_commands.h:88 -->
+<!-- src: qbm/redis/commands/stream_commands.h:88 -->
 
 ```cpp
 static qb::redis::stream_id

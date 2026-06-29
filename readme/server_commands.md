@@ -1,6 +1,6 @@
 # Server administration commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the server administration command group — the `CLIENT`, `CONFIG`, `COMMAND`, `DEBUG`, `MEMORY`, `LATENCY`,
@@ -41,7 +41,7 @@ names. If you have seen those in older notes, they are wrong.
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:540-546 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:235-274 -->
 qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
     auto size = co_await redis.dbsize();              // Reply<long long>
     if (size)                                         // Reply<T> is contextually bool (== ok())
@@ -65,15 +65,15 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
   `LATENCY RESET`).
 - **`std::string`** — opaque human-readable blobs (`MEMORY DOCTOR`, `DEBUG OBJECT`, `CLIENT INFO`, `LATENCY DOCTOR`/
   `GRAPH`).
-- **`std::vector<std::string>`** — flat string arrays (`ROLE`, `MEMORY HELP`, `COMMAND GETKEYS`, `COMMAND LIST`).
+- **`std::vector<std::string>`** — flat string arrays (`MEMORY HELP`, `COMMAND GETKEYS`, `COMMAND LIST`).
 - **`qb::json`** (alias of `nlohmann::json`, from `<qb/json.h>`) — the wrapper boxes the RESP reply into a JSON value:
-  `INFO`, `COMMAND`/`COMMAND DOCS`/`COMMAND STATS`, `MEMORY STATS`, `SLOWLOG GET`, `LATENCY LATEST`/`HISTORY`/
+  `INFO`, `ROLE`, `COMMAND`/`COMMAND DOCS`/`COMMAND STATS`, `MEMORY STATS`, `SLOWLOG GET`, `LATENCY LATEST`/`HISTORY`/
   `HISTOGRAM`, `CLIENT TRACKINGINFO`, `CLIENT LIST`. How much structure you get depends on what the server sends: a RESP
   map or array (such as `CLIENT TRACKINGINFO` or `MEMORY STATS`) becomes a JSON object/array, but a bulk-string reply
   that is not itself JSON-shaped — notably `CLIENT LIST`, whose payload is a newline-delimited text block — arrives as a
   JSON **string** carrying the raw text, not a parsed structure. Test with `result().is_object()` / `is_array()` /
   `is_string()` before
-  indexing. <!-- src: qbm/redis/reply.cpp:489-544 (qb::json parse), qbm/redis/tests/test-server-commands.cpp:52-55 -->
+  indexing. <!-- src: qbm/redis/reply.cpp:489-544 (qb::json parse), qbm/redis/tests/integration/server/server-introspection.cpp:65-88 -->
 - **`std::vector<std::pair<std::string, std::string>>`** — `CONFIG GET` (parameter/value pairs).
 - **`std::vector<std::map<std::string, std::string>>`** — `COMMAND INFO` (one map per command).
 - **`std::pair<long long, long long>`** — `TIME` (seconds, microseconds), in the coroutine form only (see below).
@@ -82,13 +82,13 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
 
 This group has exactly **two** time-bearing arguments, and they use **different** units by design:
 
-- `debug_sleep(qb::duration)` takes the canonical [`qb::duration`](../../../qb/include/qb/system/timestamp.h) (any
+- `debug_sleep(qb::duration)` takes the canonical [`qb::duration`](../../../qb/include/qb/system/time.h) (any
   `std::chrono` duration converts implicitly). The wrapper converts it to libev fractional seconds via
   `qb::detail::to_ev_seconds(delay)` before placing it on the wire, so `DEBUG SLEEP` receives a fractional-seconds
-  argument. <!-- src: qbm/redis/server_commands.h:754,768-770 -->
+  argument. <!-- src: qbm/redis/commands/server_commands.h:754,768-770 -->
 - `client_pause(long long timeout, ...)` takes a **raw `long long` of milliseconds** — the native `CLIENT PAUSE` unit —
   **not** a `qb::duration`. This is a deliberate native-unit boundary, distinct from
-  `debug_sleep`. <!-- src: qbm/redis/server_commands.h:271,291-293 -->
+  `debug_sleep`. <!-- src: qbm/redis/commands/server_commands.h:271,291-293 -->
 
 Do not pass the retired `qb::Duration`/`qb::Timestamp` types — they were removed from the framework. Use
 `qb::duration` (a `std::chrono`-based span) for `debug_sleep`, and a plain integer count of milliseconds for
@@ -104,22 +104,22 @@ The two `TIME` overloads return **different types**:
   the two RESP fields with `std::from_chars`. When the reply carries two fields that are not both numeric (a malformed
   or proxied reply), it sets `ok() == false` and `error() == "Malformed TIME reply"` instead of throwing, because
   throwing out of the reply handler would propagate into the libev callback and terminate the
-  process. <!-- src: qbm/redis/server_commands.h:1424-1450 -->
+  process. <!-- src: qbm/redis/commands/server_commands.h:1424-1450 -->
 - the callback form `time(func)` hands back the raw `Reply<std::vector<std::string>>` with no
-  reshaping. <!-- src: qbm/redis/server_commands.h:1459-1465 -->
+  reshaping. <!-- src: qbm/redis/commands/server_commands.h:1459-1465 -->
 
 ### `MONITOR` is callback-only and long-lived
 
 `monitor(func)` has **no** coroutine overload. It enters monitoring mode and invokes your callback **repeatedly** — one
 `Reply<std::string>` per command the server processes — for the life of the `MONITOR` stream. Treat it like a
-subscription, not a one-shot request, and dedicate a connection to it. <!-- src: qbm/redis/server_commands.h:920-925 -->
+subscription, not a one-shot request, and dedicate a connection to it. <!-- src: qbm/redis/commands/server_commands.h:920-925 -->
 
 ### `COMMAND`'s named overload actually issues `COMMAND INFO`
 
 `command(func, names)` with a **non-empty** `names` vector issues `COMMAND INFO names`, not the top-level `COMMAND`
 dump; with an **empty** vector it silently falls back to the all-commands `COMMAND` form. If you want structured
 per-command metadata, this is expected; if you wanted the full catalog, pass no
-names. <!-- src: qbm/redis/server_commands.h:652-659 -->
+names. <!-- src: qbm/redis/commands/server_commands.h:652-659 -->
 
 ---
 
@@ -155,21 +155,21 @@ Notes:
 
 - `client_kill` emits `ADDR addr`, `ID id`, `TYPE type` only for non-default arguments, and `SKIPME yes` when `skipme`
   is `true`. `type` is a raw string (`normal`/`master`/`replica`/`pubsub`) — it is not validated
-  client-side. <!-- src: qbm/redis/server_commands.h:140-184 -->
+  client-side. <!-- src: qbm/redis/commands/server_commands.h:140-184 -->
 - `client_pause`'s `timeout` is **milliseconds** (native unit), not a `qb::duration`. `mode` is `"ALL"` or
-  `"WRITE"`. <!-- src: qbm/redis/server_commands.h:271-293 -->
+  `"WRITE"`. <!-- src: qbm/redis/commands/server_commands.h:271-293 -->
 - `client_tracking(true)` sends `CLIENT TRACKING ON`; `false` sends `OFF`. `client_caching`, `client_no_evict`,
   `client_no_touch` map `true`/`false` to `YES`/`NO` or `ON`/`OFF`
-  respectively. <!-- src: qbm/redis/server_commands.h:303-320, 1789-1857 -->
+  respectively. <!-- src: qbm/redis/commands/server_commands.h:303-320, 1745-1785 -->
 - `client_reply`'s `mode` (`ON`/`OFF`/`SKIP`) is passed through
-  unvalidated. <!-- src: qbm/redis/server_commands.h:1859-1871 -->
+  unvalidated. <!-- src: qbm/redis/commands/server_commands.h:1787-1809 -->
 - `client_list()` yields a `qb::json` **string** holding the raw `CLIENT LIST` text block (one client per line), not a
   parsed array — the payload is line-delimited text, not JSON, so the wrapper boxes it verbatim. Parse the lines
   yourself, or call `client_info()` for the current connection. `client_tracking_info()`, by contrast, is a RESP map and
-  comes back as a JSON object. <!-- src: qbm/redis/reply.cpp:515-529, qbm/redis/server_commands.h:1476-1495 -->
+  comes back as a JSON object. <!-- src: qbm/redis/reply.cpp:515-529, qbm/redis/commands/server_commands.h:1476-1495 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:42-67 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:51-75 -->
 qb::io::async::task<void> clients(qb::redis::tcp::client &redis) {
     co_await redis.client_setname("worker-1");
     auto name = co_await redis.client_getname();      // Reply<std::optional<std::string>>
@@ -198,7 +198,7 @@ redis.client_id([](qb::redis::Reply<long long> &&r) {
 `MONITOR` (callback-only, streaming):
 
 ```cpp
-// <!-- src: qbm/redis/server_commands.h:920-925 -->
+// <!-- src: qbm/redis/commands/server_commands.h:920-925 -->
 // The callback fires once per command the server processes, for the stream's life.
 redis.monitor([](qb::redis::Reply<std::string> &&line) {
     if (line.ok())
@@ -216,10 +216,10 @@ redis.monitor([](qb::redis::Reply<std::string> &&line) {
 | `CONFIG REWRITE`   | `config_rewrite()`                                                   | `status`                                           |
 
 `config_get` accepts a glob (`"*max*"`) and returns one pair per matched parameter. The wrapper folds the flat RESP
-array into pairs for you. <!-- src: qbm/redis/server_commands.h:368-406 -->
+array into pairs for you. <!-- src: qbm/redis/commands/server_commands.h:368-406 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:179-190 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:145-188 -->
 qb::io::async::task<void> config(qb::redis::tcp::client &redis) {
     auto cur = co_await redis.config_get("maxmemory");   // Reply<vector<pair<string,string>>>
     if (cur && !cur.result().empty()) {
@@ -249,7 +249,7 @@ See the [`COMMAND` named-overload note](#commands-named-overload-actually-issues
 with a non-empty vector returns `COMMAND INFO` data.
 
 ```cpp
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:279-280 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:211-249 -->
 qb::io::async::task<void> introspect(qb::redis::tcp::client &redis) {
     auto n = co_await redis.command_count();          // Reply<long long>
     qb::io::cout() << "command count: " << n.result() << std::endl;
@@ -272,10 +272,10 @@ qb::io::async::task<void> introspect(qb::redis::tcp::client &redis) {
 | `MEMORY HELP`         | `memory_help()`                                               | `std::vector<std::string>` |
 
 `memory_usage` appends `SAMPLES n` only when `samples > 0`. The reply is the estimated size of `key` in
-bytes. <!-- src: qbm/redis/server_commands.h:887-909 -->
+bytes. <!-- src: qbm/redis/commands/server_commands.h:887-909 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:357-363 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:194-230 -->
 qb::io::async::task<void> mem(qb::redis::tcp::client &redis) {
     auto used = co_await redis.memory_usage("mykey");      // Reply<long long> (bytes)
     qb::io::cout() << "bytes: " << used.result() << std::endl;
@@ -296,7 +296,7 @@ qb::io::async::task<void> mem(qb::redis::tcp::client &redis) {
 | `LATENCY GRAPH`     | `latency_graph(const std::string &event)`                          | `std::string` |
 
 `latency_reset()` with no event resets all events and returns the count reset; with an event name it resets that
-one. <!-- src: qbm/redis/server_commands.h:1568-1592 -->
+one. <!-- src: qbm/redis/commands/server_commands.h:1568-1592 -->
 
 ### Slowlog
 
@@ -307,7 +307,7 @@ one. <!-- src: qbm/redis/server_commands.h:1568-1592 -->
 | `SLOWLOG RESET` | `slowlog_reset()`                   | `status`    |
 
 ```cpp
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:407-436 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:155-188 -->
 qb::io::async::task<void> slowlog(qb::redis::tcp::client &redis) {
     auto len = co_await redis.slowlog_len();          // Reply<long long>
     auto entries = co_await redis.slowlog_get(5);     // Reply<qb::json> (newest 5)
@@ -325,11 +325,11 @@ qb::io::async::task<void> slowlog(qb::redis::tcp::client &redis) {
 | `DEBUG SEGFAULT` | `debug_segfault()`                     | `status`      |
 
 `debug_sleep` is the **only** command in this group that takes a [
-`qb::duration`](../../../qb/include/qb/system/timestamp.h); any `std::chrono` duration converts implicitly.
+`qb::duration`](../../../qb/include/qb/system/time.h); any `std::chrono` duration converts implicitly.
 `debug_segfault` **crashes the server** — it exists for fault-injection testing only.
 
 ```cpp
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:333-335 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:334-366 -->
 qb::io::async::task<void> debug(qb::redis::tcp::client &redis) {
     // qb::duration accepts any std::chrono unit.
     auto r = co_await redis.debug_sleep(std::chrono::milliseconds(10));  // Reply<status>
@@ -348,10 +348,10 @@ qb::io::async::task<void> debug(qb::redis::tcp::client &redis) {
 
 `save()` blocks the server until the RDB snapshot is written; prefer `bgsave()` in production. `bgsave(true)` sends
 `BGSAVE SCHEDULE`. `lastsave()` returns the Unix timestamp (seconds) of the last successful
-save. <!-- src: qbm/redis/server_commands.h:1184-1272 -->
+save. <!-- src: qbm/redis/commands/server_commands.h:1184-1272 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:489-522 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:304-327 -->
 qb::io::async::task<void> persist(qb::redis::tcp::client &redis) {
     co_await redis.bgsave();                           // background snapshot
     co_await redis.bgsave(true);                       // BGSAVE SCHEDULE
@@ -370,10 +370,10 @@ qb::io::async::task<void> persist(qb::redis::tcp::client &redis) {
 
 `flushdb(true)` / `flushall(true)` append `ASYNC` so the server reclaims memory in the background; the default is
 synchronous. These are **destructive** — `flushall` erases every database, not just the selected
-one. <!-- src: qbm/redis/server_commands.h:1313-1374 -->
+one. <!-- src: qbm/redis/commands/server_commands.h:1313-1374 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/test-server-commands.cpp:540-559 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:235-274 -->
 qb::io::async::task<void> db(qb::redis::tcp::client &redis) {
     auto n = co_await redis.dbsize();                  // Reply<long long>
     co_await redis.flushdb();                          // synchronous wipe of current db
@@ -388,14 +388,14 @@ qb::io::async::task<void> db(qb::redis::tcp::client &redis) {
 | `INFO`             | `info(const std::string &section = "")` | `qb::json`                                          |
 | `TIME` (coroutine) | `time()`                                | `std::pair<long long, long long>`                   |
 | `TIME` (callback)  | `time(Func &&func)`                     | callback receives `Reply<std::vector<std::string>>` |
-| `ROLE`             | `role()`                                | `std::vector<std::string>`                          |
+| `ROLE`             | `role()`                                | `qb::json`                                          |
 
 `info()` parses the textual `INFO` payload into a `qb::json` object; pass a section name (`"memory"`,
 `"replication"`, ...) to narrow it. `time()`'s two overloads return **different** types — see the [
-`TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only). <!-- src: qbm/redis/server_commands.h:1388-1465 -->
+`TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only). <!-- src: qbm/redis/commands/server_commands.h:1388-1465 -->
 
 ```cpp
-// <!-- src: qbm/redis/server_commands.h:1424-1450 -->
+// <!-- src: qbm/redis/commands/server_commands.h:1424-1450 -->
 qb::io::async::task<void> server_info(qb::redis::tcp::client &redis) {
     auto info = co_await redis.info("server");         // Reply<qb::json>
     qb::io::cout() << info.result().dump() << std::endl;
@@ -423,7 +423,7 @@ cluster API ([cluster_commands.md](./cluster_commands.md)) for managed topology,
 `shutdown()` with no argument sends `SHUTDOWN`; pass `"SAVE"` or `"NOSAVE"` to control the final snapshot. `SHUTDOWN` *
 *stops the server**: the connection drops and you will typically see a connection error rather than a status reply.
 `SYNC`/`PSYNC` are internal replication primitives and are rarely called
-directly. <!-- src: qbm/redis/server_commands.h:1008-1030 (slaveof always emits host+port), 970-996, 1092-1138, 1733-1745 -->
+directly. <!-- src: qbm/redis/commands/server_commands.h:1008-1030 (slaveof always emits host+port), 970-996, 1092-1138, 1733-1745 -->
 
 ```cpp
 qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
@@ -456,7 +456,7 @@ qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
   Restrict these with ACLs (see [acl_commands.md](./acl_commands.md)).
 - **`memory_info` is not reachable here.** The header carries a private INFO-to-`memory_info` parser and a `memory_info`
   struct, but no public command in this group exposes them — `info()` returns `qb::json`. Do not write code against
-  `memory_info` expecting `info()` to populate it. <!-- src: qbm/redis/server_commands.h:52, types.h -->
+  `memory_info` expecting `info()` to populate it. <!-- src: qbm/redis/commands/server_commands.h:52, types.h -->
 
 ---
 

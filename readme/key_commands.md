@@ -1,6 +1,6 @@
 # Key commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the generic key-management command group — existence, deletion, expiry, type inspection, renaming,
@@ -38,7 +38,8 @@ below are the correct way to express expiry.)
 
 | Reply `T`                    | Meaning                                | Commands                                                                                                          |
 |------------------------------|----------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| `long long`                  | a count or a TTL/timestamp integer     | `del`, `exists`, `touch`, `unlink`, `ttl`, `pttl`, `expiretime`, `pexpiretime`, `wait`, `waitaof`, `sortKeyStore` |
+| `long long`                  | a count or a TTL/timestamp integer     | `del`, `exists`, `touch`, `unlink`, `ttl`, `pttl`, `expiretime`, `pexpiretime`, `wait`, `sortKeyStore`           |
+| `std::vector<long long>`     | the per-target fsync counts            | `waitaof`                                                                                                         |
 | `bool`                       | success/failure of a keyed mutation    | `expire`, `expireat`, `pexpire`, `pexpireat`, `persist`, `move`, `renamenx`, `copyKey`                            |
 | `qb::redis::status`          | a `+OK` status reply                   | `rename`, `restore`, `migrate`                                                                                    |
 | `std::string`                | the type name                          | `type`                                                                                                            |
@@ -84,7 +85,7 @@ if (!co_await redis.connect())
     co_return;
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp; qbm/redis/readme/connection.md -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp; qbm/redis/readme/connection.md -->
 
 Each command shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
 `Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:150`).
@@ -112,7 +113,7 @@ if (r.ok())
 redis.del([](qb::redis::Reply<long long> &&r) { /* r.result() */ }, "k1");
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_DEL) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:52-86 -->
 
 ### `unlink`
 
@@ -142,7 +143,7 @@ auto r = co_await redis.exists("k1", "k2", "k3");
 // r.result() == number present
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXISTS) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:120-144 -->
 
 ### `touch`
 
@@ -157,7 +158,7 @@ template <typename Func, typename... Keys> Derived &touch(Func &&, Keys &&...);
 auto r = co_await redis.touch("k1", "k2", "k3");
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_TOUCH) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:228-245 -->
 
 ## Expiration
 
@@ -187,7 +188,7 @@ auto r = co_await redis.expire("session", 30s);   // seconds
 if (r.ok() && r.result()) { /* timeout applied */ }
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT: expire(key, std::chrono::seconds{30})) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 (EXPIRE_LIFECYCLE: expire(key, std::chrono::seconds{30})) -->
 
 ### `pexpire`
 
@@ -204,7 +205,7 @@ template <typename Func> Derived &pexpire(Func &&, const std::string &key, const
 auto r = co_await redis.pexpire("session", 30000ms);   // milliseconds
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT: pexpire(key, std::chrono::milliseconds{30000})) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 (EXPIRE_LIFECYCLE: pexpire(key, std::chrono::milliseconds{30000})) -->
 
 ### `expireat`
 
@@ -225,7 +226,7 @@ long long now_s = std::chrono::duration_cast<std::chrono::seconds>(
 auto r = co_await redis.expireat("session", now_s + 60);   // expire 60s from now
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 -->
 
 ### `pexpireat`
 
@@ -246,7 +247,7 @@ long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 auto r = co_await redis.pexpireat("session", now_ms + 60000);
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 -->
 
 ### `persist`
 
@@ -276,7 +277,7 @@ auto r = co_await redis.ttl("session");
 if (r.ok() && r.result() > 0) { /* r.result() seconds left */ }
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_EXPIREAT_PEXPIREAT: ttl after expireat) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 -->
 
 ### `pttl`
 
@@ -324,7 +325,7 @@ auto r = co_await redis.type("mylist");
 // r.result() == "list"
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_TYPE) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:247-279 -->
 
 ### `randomkey`
 
@@ -341,7 +342,7 @@ if (r.ok() && r.result().has_value())
     qb::io::cout() << *r.result() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_RANDOMKEY) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:172-198 -->
 
 ### `objectEncoding` / `objectFreq` / `objectIdletime` / `objectRefcount`
 
@@ -382,7 +383,7 @@ auto r = co_await redis.keys("user:*");
 for (auto const &k : r.result()) { /* ... */ }
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_KEYS) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:146-170 -->
 
 ### `scan`
 
@@ -410,7 +411,7 @@ do {
 } while (cursor != 0);
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_SCAN) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:200-226 -->
 
 > **Pitfalls for the auto-iterating callback overload `scan(func, pattern)`.** It accumulates the **entire** matched
 > keyspace in memory and invokes `func` exactly once after the cursor returns to `0` (`key_commands.h:97-117`, `:662`) —
@@ -435,7 +436,7 @@ auto r = co_await redis.rename("old", "new");
 if (r.ok() && r.result()) { /* "OK" */ }
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_RENAME_RENAMENX) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:372-410 -->
 
 ### `renamenx`
 
@@ -450,7 +451,7 @@ template <typename Func> Derived &renamenx(Func &&, const std::string &key, cons
 auto r = co_await redis.renamenx("old", "new");   // r.result() == false if "new" existed
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_RENAME_RENAMENX) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:372-410 -->
 
 ### `copyKey`
 
@@ -470,7 +471,7 @@ auto r = co_await redis.copyKey("src", "dst");
 auto r2 = co_await redis.copyKey("src", "dst", std::nullopt, /*replace=*/true);
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_COPY) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:438-478 -->
 
 ### `move`
 
@@ -486,7 +487,7 @@ template <typename Func> Derived &move(Func &&, const std::string &key, long lon
 auto r = co_await redis.move("session", 1LL);
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_MOVE) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:412-436 -->
 
 ## Serialization and migration
 
@@ -505,7 +506,7 @@ auto d = co_await redis.dump("k");
 if (d.ok() && d.result().has_value()) { /* *d.result() is the blob */ }
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_DUMP) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:88-118 -->
 
 ### `restore`
 
@@ -524,7 +525,7 @@ auto d = co_await redis.dump("k");
 auto r = co_await redis.restore("k_copy", *d.result(), /*ttl_ms=*/0);
 ```
 
-<!-- src: qbm/redis/tests/test-key-commands.cpp (CORO_KEY_COMMANDS_DUMP) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:88-118 -->
 
 ### `migrate`
 
@@ -604,10 +605,10 @@ auto r = co_await redis.wait(1, 1000ms);   // wait up to 1s for 1 replica
 ### `waitaof`
 
 `WAITAOF numlocal numreplicas timeout` (Redis 7.2+) — block until the prior writes are fsynced to the AOF locally and on
-`numreplicas` replicas. `timeout` is in **milliseconds**. Returns a count reply.
+`numreplicas` replicas. `timeout` is in **milliseconds**. Returns the two fsync counts `[numlocal, numreplicas]` as a vector.
 
 ```cpp
-auto waitaof(long long num_local, long long num_replicas, long long timeout);   // -> Reply<long long>
+auto waitaof(long long num_local, long long num_replicas, long long timeout);   // -> Reply<std::vector<long long>>
 template <typename Func> Derived &waitaof(Func &&, long long num_local,
              long long num_replicas, long long timeout);
 ```
