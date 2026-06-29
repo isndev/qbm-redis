@@ -28,12 +28,12 @@
  * auth-failure case (WRONGPASS / NOAUTH) was added.
  */
 
-#include <string>
 #include <gtest/gtest.h>
+#include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -80,9 +80,8 @@ TEST_P(ConnectionProtocolModesTest, AUTH_WRONG_PASSWORD_FAILS) {
         EXPECT_FALSE(reply.ok()) << "AUTH for a nonexistent user must fail, got OK";
         const std::string err(reply.error());
         EXPECT_FALSE(err.empty());
-        EXPECT_TRUE(err.find("WRONGPASS") != std::string::npos ||
-                    err.find("NOAUTH") != std::string::npos ||
-                    err.find("ERR") != std::string::npos)
+        EXPECT_TRUE(err.find("WRONGPASS") != std::string::npos || err.find("NOAUTH") != std::string::npos
+                    || err.find("ERR") != std::string::npos)
             << "unexpected AUTH error text: " << err;
         completed = true;
     };
@@ -249,8 +248,8 @@ TEST_P(ConnectionProtocolModesTest, RETRY_IMMEDIATE_SUCCESS) {
     bool                   completed = false;
     bool                   connected = false;
     auto                   test_task = [&]() -> qb::io::async::task<void> {
-        connected = co_await client.connect_with_retry(
-            qb::redis::RetryPolicy{}.with_max_attempts(5).with_initial_delay(10ms).with_connect_timeout(2s));
+        connected =
+            co_await client.connect_with_retry(qb::redis::RetryPolicy{}.with_max_attempts(5).with_initial_delay(10ms).with_connect_timeout(2s));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -266,12 +265,9 @@ TEST_P(ConnectionProtocolModesTest, RETRY_EXHAUSTED) {
     bool                   completed = false;
     bool                   connected = true; // intentionally wrong; expect false
     auto                   test_task = [&]() -> qb::io::async::task<void> {
-        connected = co_await client.connect_with_retry(qb::redis::RetryPolicy{}
-                                                           .with_max_attempts(3)
-                                                           .with_initial_delay(20ms)
-                                                           .with_max_delay(50ms)
-                                                           .with_jitter(false)
-                                                           .with_connect_timeout(500ms));
+        connected = co_await client.connect_with_retry(
+            qb::redis::RetryPolicy{}.with_max_attempts(3).with_initial_delay(20ms).with_max_delay(50ms).with_jitter(false).with_connect_timeout(
+                500ms));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -288,12 +284,8 @@ TEST_P(ConnectionProtocolModesTest, RETRY_OBSERVER) {
     int                    retry_count = 0;
     auto                   test_task   = [&]() -> qb::io::async::task<void> {
         (void) co_await client.connect_with_retry(
-            qb::redis::RetryPolicy{}
-                .with_max_attempts(3)
-                .with_initial_delay(10ms)
-                .with_jitter(false)
-                .with_connect_timeout(200ms)
-                .with_on_retry([&](int /*attempt*/, qb::duration /*wait*/) { ++retry_count; }));
+            qb::redis::RetryPolicy{}.with_max_attempts(3).with_initial_delay(10ms).with_jitter(false).with_connect_timeout(200ms).with_on_retry(
+                [&](int /*attempt*/, qb::duration /*wait*/) { ++retry_count; }));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -308,9 +300,8 @@ TEST_P(ConnectionProtocolModesTest, RETRY_WITH_URI) {
     bool                   completed = false;
     bool                   connected = false;
     auto                   test_task = [&]() -> qb::io::async::task<void> {
-        connected = co_await client.connect_with_retry(
-            qb::io::uri{redis_test_uri()},
-            qb::redis::RetryPolicy{}.with_max_attempts(3).with_initial_delay(10ms));
+        connected = co_await client.connect_with_retry(qb::io::uri{redis_test_uri()},
+                                                       qb::redis::RetryPolicy{}.with_max_attempts(3).with_initial_delay(10ms));
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());

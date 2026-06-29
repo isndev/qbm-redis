@@ -34,8 +34,8 @@
 #include <map>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace qb::redis::test;
@@ -62,7 +62,10 @@ TEST_P(SortedSetProtocolModesTest, BASIC) {
 
         auto score_reply = co_await redis.zscore(key, "member2");
         EXPECT_TRUE(score_reply.ok()) << score_reply.error();
-        if (!(score_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: score_reply.result().has_value()"; co_return; }
+        if (!(score_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: score_reply.result().has_value()";
+            co_return;
+        }
         EXPECT_DOUBLE_EQ(*score_reply.result(), 20.0);
 
         auto score_none = co_await redis.zscore(key, "nonexistent");
@@ -88,28 +91,34 @@ TEST_P(SortedSetProtocolModesTest, ADD_NX_XX_CH) {
 
         // NX: only ADD new members. a already exists → not updated; b is new → added(1).
         std::vector<qb::redis::score_member> nx_members = {{99.0, "a"}, {2.0, "b"}};
-        auto                                 nx = co_await redis.zadd(key, nx_members, qb::redis::UpdateType::NOT_EXIST);
+        auto                                 nx         = co_await redis.zadd(key, nx_members, qb::redis::UpdateType::NOT_EXIST);
         EXPECT_TRUE(nx.ok()) << nx.error();
         EXPECT_EQ(nx.result(), 1); // only b added
         auto a_after_nx = co_await redis.zscore(key, "a");
-        if (!(a_after_nx.result().has_value())) { ADD_FAILURE() << "precondition failed: a_after_nx.result().has_value()"; co_return; }
+        if (!(a_after_nx.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: a_after_nx.result().has_value()";
+            co_return;
+        }
         EXPECT_DOUBLE_EQ(*a_after_nx.result(), 1.0); // unchanged by NX
 
         // XX: only UPDATE existing members. a exists → updated; c is new → ignored.
         // Default reply counts only *added* members, so XX-update reports 0 added.
         std::vector<qb::redis::score_member> xx_members = {{5.0, "a"}, {3.0, "c"}};
-        auto                                 xx = co_await redis.zadd(key, xx_members, qb::redis::UpdateType::EXIST);
+        auto                                 xx         = co_await redis.zadd(key, xx_members, qb::redis::UpdateType::EXIST);
         EXPECT_TRUE(xx.ok()) << xx.error();
         EXPECT_EQ(xx.result(), 0); // nothing *added* (a updated, c skipped)
         auto a_after_xx = co_await redis.zscore(key, "a");
-        if (!(a_after_xx.result().has_value())) { ADD_FAILURE() << "precondition failed: a_after_xx.result().has_value()"; co_return; }
-        EXPECT_DOUBLE_EQ(*a_after_xx.result(), 5.0); // updated by XX
+        if (!(a_after_xx.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: a_after_xx.result().has_value()";
+            co_return;
+        }
+        EXPECT_DOUBLE_EQ(*a_after_xx.result(), 5.0);                          // updated by XX
         EXPECT_FALSE((co_await redis.zscore(key, "c")).result().has_value()); // c never created
 
         // CH (changed=true): report members whose score changed OR were added.
         // a: 5→7 (changed), b: 2→2 (unchanged), d: new (added) → CH counts a + d = 2.
         std::vector<qb::redis::score_member> ch_members = {{7.0, "a"}, {2.0, "b"}, {4.0, "d"}};
-        auto                                 ch = co_await redis.zadd(key, ch_members, qb::redis::UpdateType::ALWAYS, true);
+        auto                                 ch         = co_await redis.zadd(key, ch_members, qb::redis::UpdateType::ALWAYS, true);
         EXPECT_TRUE(ch.ok()) << ch.error();
         EXPECT_EQ(ch.result(), 2);
 
@@ -131,19 +140,31 @@ TEST_P(SortedSetProtocolModesTest, RANK) {
 
         auto rank_b = co_await redis.zrank(key, "b");
         EXPECT_TRUE(rank_b.ok());
-        if (!(rank_b.result().has_value())) { ADD_FAILURE() << "precondition failed: rank_b.result().has_value()"; co_return; }
+        if (!(rank_b.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: rank_b.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*rank_b.result(), 1);
 
         auto rank_d = co_await redis.zrank(key, "d");
-        if (!(rank_d.result().has_value())) { ADD_FAILURE() << "precondition failed: rank_d.result().has_value()"; co_return; }
+        if (!(rank_d.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: rank_d.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*rank_d.result(), 3);
 
         auto revrank_b = co_await redis.zrevrank(key, "b");
-        if (!(revrank_b.result().has_value())) { ADD_FAILURE() << "precondition failed: revrank_b.result().has_value()"; co_return; }
+        if (!(revrank_b.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: revrank_b.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*revrank_b.result(), 2);
 
         auto revrank_d = co_await redis.zrevrank(key, "d");
-        if (!(revrank_d.result().has_value())) { ADD_FAILURE() << "precondition failed: revrank_d.result().has_value()"; co_return; }
+        if (!(revrank_d.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: revrank_d.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*revrank_d.result(), 0);
 
         auto rank_none = co_await redis.zrank(key, "nonexistent");
@@ -168,7 +189,10 @@ TEST_P(SortedSetProtocolModesTest, RANGE_WITHSCORES) {
 
         auto range_reply = co_await redis.zrange(key, 1, 3);
         EXPECT_TRUE(range_reply.ok()) << range_reply.error();
-        if (!(range_reply.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: range_reply.result().size() == 3u"; co_return; }
+        if (!(range_reply.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: range_reply.result().size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(range_reply.result()[0].member, "b");
         EXPECT_DOUBLE_EQ(range_reply.result()[0].score, 20.0);
         EXPECT_EQ(range_reply.result()[1].member, "c");
@@ -178,7 +202,10 @@ TEST_P(SortedSetProtocolModesTest, RANGE_WITHSCORES) {
 
         auto revrange_reply = co_await redis.zrevrange(key, 0, 2);
         EXPECT_TRUE(revrange_reply.ok()) << revrange_reply.error();
-        if (!(revrange_reply.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: revrange_reply.result().size() == 3u"; co_return; }
+        if (!(revrange_reply.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: revrange_reply.result().size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(revrange_reply.result()[0].member, "e");
         EXPECT_DOUBLE_EQ(revrange_reply.result()[0].score, 50.0);
         EXPECT_EQ(revrange_reply.result()[1].member, "d");
@@ -225,7 +252,10 @@ TEST_P(SortedSetProtocolModesTest, POP) {
 
         auto popmax_reply = co_await redis.zpopmax(key, 2);
         EXPECT_TRUE(popmax_reply.ok()) << popmax_reply.error();
-        if (!(popmax_reply.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: popmax_reply.result().size() == 2u"; co_return; }
+        if (!(popmax_reply.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: popmax_reply.result().size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(popmax_reply.result()[0].member, "e");
         EXPECT_DOUBLE_EQ(popmax_reply.result()[0].score, 50.0);
         EXPECT_EQ(popmax_reply.result()[1].member, "d");
@@ -234,7 +264,10 @@ TEST_P(SortedSetProtocolModesTest, POP) {
 
         auto popmin_reply = co_await redis.zpopmin(key, 1);
         EXPECT_TRUE(popmin_reply.ok()) << popmin_reply.error();
-        if (!(popmin_reply.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: popmin_reply.result().size() == 1u"; co_return; }
+        if (!(popmin_reply.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: popmin_reply.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(popmin_reply.result()[0].member, "a");
         EXPECT_DOUBLE_EQ(popmin_reply.result()[0].score, 10.0);
 
@@ -344,13 +377,19 @@ TEST_P(SortedSetProtocolModesTest, RANGE_BY_SCORE) {
         qb::redis::score_interval interval(20.0, 40.0, qb::redis::BoundType::CLOSED);
         auto                      range_reply = co_await redis.zrangebyscore(key, interval);
         EXPECT_TRUE(range_reply.ok()) << range_reply.error();
-        if (!(range_reply.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: range_reply.result().size() == 3u"; co_return; }
+        if (!(range_reply.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: range_reply.result().size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(range_reply.result()[0].member, "b");
         EXPECT_EQ(range_reply.result()[2].member, "d");
 
         auto revrange_reply = co_await redis.zrevrangebyscore(key, interval);
         EXPECT_TRUE(revrange_reply.ok()) << revrange_reply.error();
-        if (!(revrange_reply.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: revrange_reply.result().size() == 3u"; co_return; }
+        if (!(revrange_reply.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: revrange_reply.result().size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(revrange_reply.result()[0].member, "d");
         EXPECT_EQ(revrange_reply.result()[1].member, "c");
         EXPECT_EQ(revrange_reply.result()[2].member, "b");
@@ -376,7 +415,10 @@ TEST_P(SortedSetProtocolModesTest, RANGE_BY_SCORE_LIMIT) {
         qb::redis::LimitOptions   limit{/*offset*/ 1, /*count*/ 2};
         auto                      r = co_await redis.zrangebyscore(key, interval, limit);
         EXPECT_TRUE(r.ok()) << r.error();
-        if (!(r.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: r.result().size() == 2u"; co_return; }
+        if (!(r.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: r.result().size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(r.result()[0].member, "b");
         EXPECT_DOUBLE_EQ(r.result()[0].score, 2.0);
         EXPECT_EQ(r.result()[1].member, "c");
@@ -422,14 +464,20 @@ TEST_P(SortedSetProtocolModesTest, LEX_RANGE) {
         qb::redis::lex_interval lex_interval("b", "e", qb::redis::BoundType::LEFT_OPEN);
         auto                    range_reply = co_await redis.zrangebylex(key, lex_interval);
         EXPECT_TRUE(range_reply.ok()) << range_reply.error();
-        if (!(range_reply.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: range_reply.result().size() == 3u"; co_return; }
+        if (!(range_reply.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: range_reply.result().size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(range_reply.result()[0], "c");
         EXPECT_EQ(range_reply.result()[1], "d");
         EXPECT_EQ(range_reply.result()[2], "e");
 
         auto rev_reply = co_await redis.zrevrangebylex(key, lex_interval);
         EXPECT_TRUE(rev_reply.ok()) << rev_reply.error();
-        if (!(rev_reply.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: rev_reply.result().size() == 3u"; co_return; }
+        if (!(rev_reply.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: rev_reply.result().size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(rev_reply.result()[0], "e");
         EXPECT_EQ(rev_reply.result()[1], "d");
         EXPECT_EQ(rev_reply.result()[2], "c");
@@ -468,12 +516,18 @@ TEST_P(SortedSetProtocolModesTest, ZDIFF) {
 
         auto diff_r = co_await redis.zdiff({set1, set2});
         EXPECT_TRUE(diff_r.ok()) << diff_r.error();
-        if (!(diff_r.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: diff_r.result().size() == 1u"; co_return; }
+        if (!(diff_r.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: diff_r.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(diff_r.result()[0], "a");
 
         auto diff_scores = co_await redis.zdiffWithScores({set1, set2});
         EXPECT_TRUE(diff_scores.ok()) << diff_scores.error();
-        if (!(diff_scores.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: diff_scores.result().size() == 1u"; co_return; }
+        if (!(diff_scores.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: diff_scores.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(diff_scores.result()[0].member, "a");
         EXPECT_DOUBLE_EQ(diff_scores.result()[0].score, 1.0);
 
@@ -503,14 +557,20 @@ TEST_P(SortedSetProtocolModesTest, ZINTER) {
 
         auto inter_r = co_await redis.zinter({set1, set2});
         EXPECT_TRUE(inter_r.ok()) << inter_r.error();
-        if (!(inter_r.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: inter_r.result().size() == 2u"; co_return; }
+        if (!(inter_r.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: inter_r.result().size() == 2u";
+            co_return;
+        }
         // ZINTER returns common members in ascending aggregated-score order: b, c.
         EXPECT_EQ(inter_r.result()[0], "b");
         EXPECT_EQ(inter_r.result()[1], "c");
 
         auto inter_scores = co_await redis.zinterWithScores({set1, set2});
         EXPECT_TRUE(inter_scores.ok()) << inter_scores.error();
-        if (!(inter_scores.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: inter_scores.result().size() == 2u"; co_return; }
+        if (!(inter_scores.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: inter_scores.result().size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(inter_scores.result()[0].member, "b");
         EXPECT_DOUBLE_EQ(inter_scores.result()[0].score, 4.0); // 2 + 2 (SUM)
         EXPECT_EQ(inter_scores.result()[1].member, "c");
@@ -540,9 +600,15 @@ TEST_P(SortedSetProtocolModesTest, ZMPOP_ZMSCORE_ZRANDMEMBER) {
 
         auto pop_r = co_await redis.zmpop({key}, "MIN", 1);
         EXPECT_TRUE(pop_r.ok()) << pop_r.error();
-        if (!(pop_r.result().has_value())) { ADD_FAILURE() << "precondition failed: pop_r.result().has_value()"; co_return; }
+        if (!(pop_r.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: pop_r.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(pop_r.result()->first, key);
-        if (!(pop_r.result()->second.size() == 1u)) { ADD_FAILURE() << "precondition failed: pop_r.result()->second.size() == 1u"; co_return; }
+        if (!(pop_r.result()->second.size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: pop_r.result()->second.size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(pop_r.result()->second[0].member, "a");
         EXPECT_DOUBLE_EQ(pop_r.result()->second[0].score, 1.0);
 
@@ -553,16 +619,28 @@ TEST_P(SortedSetProtocolModesTest, ZMPOP_ZMSCORE_ZRANDMEMBER) {
 
         auto mscore_r = co_await redis.zmscore(key, {"a", "b", "nonexistent"});
         EXPECT_TRUE(mscore_r.ok()) << mscore_r.error();
-        if (!(mscore_r.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: mscore_r.result().size() == 3u"; co_return; }
-        if (!(mscore_r.result()[0].has_value())) { ADD_FAILURE() << "precondition failed: mscore_r.result()[0].has_value()"; co_return; }
+        if (!(mscore_r.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: mscore_r.result().size() == 3u";
+            co_return;
+        }
+        if (!(mscore_r.result()[0].has_value())) {
+            ADD_FAILURE() << "precondition failed: mscore_r.result()[0].has_value()";
+            co_return;
+        }
         EXPECT_DOUBLE_EQ(*mscore_r.result()[0], 1.0);
-        if (!(mscore_r.result()[1].has_value())) { ADD_FAILURE() << "precondition failed: mscore_r.result()[1].has_value()"; co_return; }
+        if (!(mscore_r.result()[1].has_value())) {
+            ADD_FAILURE() << "precondition failed: mscore_r.result()[1].has_value()";
+            co_return;
+        }
         EXPECT_DOUBLE_EQ(*mscore_r.result()[1], 2.0);
         EXPECT_FALSE(mscore_r.result()[2].has_value());
 
         auto rand_r = co_await redis.zrandmember(key);
         EXPECT_TRUE(rand_r.ok()) << rand_r.error();
-        if (!(rand_r.result().has_value())) { ADD_FAILURE() << "precondition failed: rand_r.result().has_value()"; co_return; }
+        if (!(rand_r.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: rand_r.result().has_value()";
+            co_return;
+        }
         EXPECT_TRUE(seeded_scores.count(*rand_r.result()) == 1);
 
         auto rand_count = co_await redis.zrandmemberCount(key, 2);
@@ -572,7 +650,10 @@ TEST_P(SortedSetProtocolModesTest, ZMPOP_ZMSCORE_ZRANDMEMBER) {
         // ZRANDMEMBER WITHSCORES: each returned score must match the seeded value.
         auto rand_scores = co_await redis.zrandmemberWithScores(key, 2);
         EXPECT_TRUE(rand_scores.ok()) << rand_scores.error();
-        if (!(rand_scores.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: rand_scores.result().size() == 2u"; co_return; }
+        if (!(rand_scores.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: rand_scores.result().size() == 2u";
+            co_return;
+        }
         for (const auto &sm : rand_scores.result()) {
             EXPECT_TRUE(seeded_scores.count(sm.member) == 1) << "unexpected member " << sm.member;
             EXPECT_DOUBLE_EQ(sm.score, seeded_scores.at(sm.member));
@@ -590,7 +671,10 @@ TEST_P(SortedSetProtocolModesTest, ZMPOP_ZMSCORE_ZRANDMEMBER) {
         EXPECT_TRUE((co_await redis.zadd(key, bzmpop_members)).ok());
         auto bzmpop_r = co_await redis.bzmpop({key}, 1, "MIN", 1);
         EXPECT_TRUE(bzmpop_r.ok()) << bzmpop_r.error();
-        if (!(bzmpop_r.result().has_value())) { ADD_FAILURE() << "precondition failed: bzmpop_r.result().has_value()"; co_return; }
+        if (!(bzmpop_r.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: bzmpop_r.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(bzmpop_r.result()->second.size(), 1u);
 
         CO_IGNORE(co_await redis.del(key, src, dst));

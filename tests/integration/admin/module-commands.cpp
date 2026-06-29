@@ -33,8 +33,8 @@
 #include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 // ProtocolMode / ProtocolModesTestBase / macros from redis_integration_fixture.h (global re-export).
 
@@ -70,7 +70,10 @@ TEST_P(ModuleTest, HelpMentionsModule) {
 
         auto help = co_await redis.module_help();
         EXPECT_TRUE(help.ok()) << help.error();
-        if (!(!(help.result().empty()))) { ADD_FAILURE() << "precondition failed: !(help.result().empty())"; co_return; }
+        if (!(!(help.result().empty()))) {
+            ADD_FAILURE() << "precondition failed: !(help.result().empty())";
+            co_return;
+        }
         bool mentions = false;
         for (const auto &line : help.result())
             if (line.find("MODULE") != std::string::npos)
@@ -93,10 +96,8 @@ TEST_P(ModuleTest, LoadEmptyPathRejected) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             const std::string err{reply.error()};
-            EXPECT_TRUE(err.find("MODULE command not allowed") != std::string::npos
-                        || err.find("wrong number") != std::string::npos
-                        || err.find("Error loading") != std::string::npos
-                        || err.find("path") != std::string::npos)
+            EXPECT_TRUE(err.find("MODULE command not allowed") != std::string::npos || err.find("wrong number") != std::string::npos
+                        || err.find("Error loading") != std::string::npos || err.find("path") != std::string::npos)
                 << err;
         }
         completed = true;
@@ -114,10 +115,8 @@ TEST_P(ModuleTest, UnloadMissingModuleRejected) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             const std::string err{reply.error()};
-            EXPECT_TRUE(err.find("MODULE command not allowed") != std::string::npos
-                        || err.find("no such module") != std::string::npos
-                        || err.find("No such module") != std::string::npos
-                        || err.find("not loaded") != std::string::npos)
+            EXPECT_TRUE(err.find("MODULE command not allowed") != std::string::npos || err.find("no such module") != std::string::npos
+                        || err.find("No such module") != std::string::npos || err.find("not loaded") != std::string::npos)
                 << err;
         }
         completed = true;
@@ -136,7 +135,10 @@ TEST_P(ModuleTest, DISABLED_LoadAndUnloadRealModule) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
 
         const char *path = std::getenv("REDIS_TEST_MODULE_PATH");
-        if (!(path != nullptr)) { ADD_FAILURE() << "set REDIS_TEST_MODULE_PATH to a loadable .so"; co_return; }
+        if (!(path != nullptr)) {
+            ADD_FAILURE() << "set REDIS_TEST_MODULE_PATH to a loadable .so";
+            co_return;
+        }
 
         auto load = co_await redis.module_load(path);
         EXPECT_TRUE(load.ok()) << load.error();

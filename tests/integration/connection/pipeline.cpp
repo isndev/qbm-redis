@@ -20,13 +20,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <gtest/gtest.h>
 #include <string>
 #include <vector>
-#include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 #if defined(_WIN32)
 #include <process.h>
@@ -205,9 +205,8 @@ TEST_F(PipelineCallbackTest, TwoWavesSeparatedByAwait) {
 TEST_F(PipelineCallbackTest, EchoViaLowLevelCommand) {
     // A payload with an embedded NUL must round-trip byte-exact through the binary-safe
     // bulk-string codec (NUL is not a terminator on the wire).
-    const std::string nul_payload =
-        unique_prefix() + std::string("hello") + std::string(1, '\0') + std::string("world");
-    std::string out;
+    const std::string nul_payload = unique_prefix() + std::string("hello") + std::string(1, '\0') + std::string("world");
+    std::string       out;
     redis.command<std::string>(
         [&out](qb::redis::Reply<std::string> &&r) {
             ASSERT_TRUE(r.ok());
@@ -272,7 +271,10 @@ TEST_F(PipelineCallbackTest, CoroutineAfterCallbackAwait) {
     auto task = [this, &completed, key]() -> qb::io::async::task<void> {
         auto g = co_await redis.get(key);
         EXPECT_TRUE(g.ok());
-        if (!(g.result().has_value())) { ADD_FAILURE() << "precondition failed: g.result().has_value()"; co_return; }
+        if (!(g.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: g.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*g.result(), "z");
         completed = true;
     };
@@ -393,7 +395,7 @@ TEST_P(PipelineProtocolModesTest, CoroutineThenCallbackPipelineInSameConnection)
     bool ping_ok   = false;
     auto task      = [this, &completed, &ping_ok]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
-        auto p    = co_await redis.ping();
+        auto p = co_await redis.ping();
         EXPECT_TRUE(p.ok());
         ping_ok   = p.ok();
         completed = true;

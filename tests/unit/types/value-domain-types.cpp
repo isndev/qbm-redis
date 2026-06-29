@@ -46,11 +46,11 @@
  * @ingroup Redis
  */
 
+#include <gtest/gtest.h>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
-#include <gtest/gtest.h>
 // Umbrella header: brings in types.h (the value-domain structs under test) and
 // reply.h. Mirrors interval-formatting.cpp in this same directory.
 #include "../redis.h"
@@ -120,8 +120,8 @@ TEST(ScoreMember, EqualityRequiresBothFields) {
 TEST(GeoPos, EqualityComparesBothCoordinates) {
     qb::redis::geo_pos p{13.361389, 38.115556};
     EXPECT_TRUE((p == qb::redis::geo_pos{13.361389, 38.115556}));
-    EXPECT_FALSE((p == qb::redis::geo_pos{13.361389, 0.0}));  // latitude differs
-    EXPECT_FALSE((p == qb::redis::geo_pos{0.0, 38.115556}));  // longitude differs
+    EXPECT_FALSE((p == qb::redis::geo_pos{13.361389, 0.0})); // latitude differs
+    EXPECT_FALSE((p == qb::redis::geo_pos{0.0, 38.115556})); // longitude differs
     // The defaulted operator== also synthesizes operator!= in C++20.
     EXPECT_TRUE((p != qb::redis::geo_pos{0.0, 0.0}));
 }
@@ -350,8 +350,8 @@ TEST(Message, CarriesChannelAndPayload) {
 }
 
 TEST(PMessage, InheritsMessageWithPattern) {
-    qb::redis::pmessage pm;            // : public message
-    pm.pattern = "news.*";             // PSUBSCRIBE sets the matching pattern
+    qb::redis::pmessage pm; // : public message
+    pm.pattern = "news.*";  // PSUBSCRIBE sets the matching pattern
     pm.channel = "news.sports";
     pm.payload = "goal";
     // Slices to the message base; the inherited fields are intact.

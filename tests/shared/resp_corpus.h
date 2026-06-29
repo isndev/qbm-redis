@@ -56,14 +56,14 @@ namespace qb::redis::test::corpus {
 namespace frames {
 
 // --- RESP2 scalars ---------------------------------------------------------
-inline constexpr std::string_view simple_string = "+OK\r\n";                       // SimpleString("OK")
-inline constexpr std::string_view simple_error  = "-ERR unknown command\r\n";      // SimpleError("ERR","unknown command")
-inline constexpr std::string_view integer       = ":1234\r\n";                     // Integer(1234)
-inline constexpr std::string_view integer_min   = ":-9223372036854775808\r\n";     // Integer(INT64_MIN)
-inline constexpr std::string_view bulk          = "$5\r\nhello\r\n";               // BulkString("hello")
-inline constexpr std::string_view bulk_empty    = "$0\r\n\r\n";                     // BulkString("")
-inline constexpr std::string_view bulk_null     = "$-1\r\n";                        // Null
-inline constexpr std::string_view array_null    = "*-1\r\n";                        // Null
+inline constexpr std::string_view simple_string = "+OK\r\n";                   // SimpleString("OK")
+inline constexpr std::string_view simple_error  = "-ERR unknown command\r\n";  // SimpleError("ERR","unknown command")
+inline constexpr std::string_view integer       = ":1234\r\n";                 // Integer(1234)
+inline constexpr std::string_view integer_min   = ":-9223372036854775808\r\n"; // Integer(INT64_MIN)
+inline constexpr std::string_view bulk          = "$5\r\nhello\r\n";           // BulkString("hello")
+inline constexpr std::string_view bulk_empty    = "$0\r\n\r\n";                // BulkString("")
+inline constexpr std::string_view bulk_null     = "$-1\r\n";                   // Null
+inline constexpr std::string_view array_null    = "*-1\r\n";                   // Null
 
 // --- RESP2 aggregates ------------------------------------------------------
 // *2 [ "hello", "world" ]
@@ -74,14 +74,14 @@ inline constexpr std::string_view array_mixed = "*3\r\n:1\r\n$5\r\nhello\r\n+OK\
 inline constexpr std::string_view array_nested = "*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*2\r\n+Hello\r\n-World\r\n";
 
 // --- RESP3 scalars ---------------------------------------------------------
-inline constexpr std::string_view null_      = "_\r\n";    // Null
-inline constexpr std::string_view boolean_t  = "#t\r\n";   // Boolean(true)
-inline constexpr std::string_view boolean_f  = "#f\r\n";   // Boolean(false)
-inline constexpr std::string_view dbl        = ",1.23\r\n"; // Double(1.23)
-inline constexpr std::string_view dbl_inf    = ",inf\r\n";  // Double(+inf)
+inline constexpr std::string_view null_      = "_\r\n";                               // Null
+inline constexpr std::string_view boolean_t  = "#t\r\n";                              // Boolean(true)
+inline constexpr std::string_view boolean_f  = "#f\r\n";                              // Boolean(false)
+inline constexpr std::string_view dbl        = ",1.23\r\n";                           // Double(1.23)
+inline constexpr std::string_view dbl_inf    = ",inf\r\n";                            // Double(+inf)
 inline constexpr std::string_view big_number = "(123456789012345678901234567890\r\n"; // BigNumber(...)
-inline constexpr std::string_view bulk_error = "!21\r\nSYNTAX invalid syntax\r\n";     // BulkError("SYNTAX","invalid syntax")
-inline constexpr std::string_view verbatim   = "=15\r\ntxt:Some string\r\n";           // VerbatimString("txt","Some string")
+inline constexpr std::string_view bulk_error = "!21\r\nSYNTAX invalid syntax\r\n";    // BulkError("SYNTAX","invalid syntax")
+inline constexpr std::string_view verbatim   = "=15\r\ntxt:Some string\r\n";          // VerbatimString("txt","Some string")
 
 // --- RESP3 aggregates ------------------------------------------------------
 // %2 { "first": 1, "second": 2 }

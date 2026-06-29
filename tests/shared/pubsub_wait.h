@@ -55,14 +55,12 @@ namespace qb::redis::test {
  * can still tear subscriptions down; check the return value if you need to branch.
  */
 [[nodiscard]] inline bool
-pubsub_wait_until(const std::function<bool()> &predicate,
-                  qb::duration                 timeout = std::chrono::seconds(5)) {
+pubsub_wait_until(const std::function<bool()> &predicate, qb::duration timeout = std::chrono::seconds(5)) {
     if (predicate())
         return true;
 
     bool timed_out = false;
-    auto watchdog =
-        qb::io::async::scoped_callback([&timed_out]() noexcept { timed_out = true; }, timeout);
+    auto watchdog  = qb::io::async::scoped_callback([&timed_out]() noexcept { timed_out = true; }, timeout);
     (void) watchdog;
 
     while (!timed_out) {
@@ -71,8 +69,7 @@ pubsub_wait_until(const std::function<bool()> &predicate,
             return true;
     }
 
-    ADD_FAILURE() << "pubsub delivery watchdog fired after "
-                  << qb::detail::to_ev_seconds(timeout)
+    ADD_FAILURE() << "pubsub delivery watchdog fired after " << qb::detail::to_ev_seconds(timeout)
                   << "s — expected message(s) never arrived (delivery stalled or lost).";
     return false;
 }
@@ -90,10 +87,8 @@ pubsub_wait_until(const std::function<bool()> &predicate,
  * @return true if `counter >= expected` was reached before the watchdog fired.
  */
 [[nodiscard]] inline bool
-pubsub_wait_count(const std::atomic<size_t> &counter, size_t expected,
-                  qb::duration timeout = std::chrono::seconds(5)) {
-    return pubsub_wait_until(
-        [&counter, expected]() { return counter.load() >= expected; }, timeout);
+pubsub_wait_count(const std::atomic<size_t> &counter, size_t expected, qb::duration timeout = std::chrono::seconds(5)) {
+    return pubsub_wait_until([&counter, expected]() { return counter.load() >= expected; }, timeout);
 }
 
 /**
@@ -110,9 +105,8 @@ pubsub_wait_count(const std::atomic<size_t> &counter, size_t expected,
  */
 inline void
 pubsub_drain_for(qb::duration settle = std::chrono::milliseconds(200)) {
-    bool elapsed  = false;
-    auto stopwatch =
-        qb::io::async::scoped_callback([&elapsed]() noexcept { elapsed = true; }, settle);
+    bool elapsed   = false;
+    auto stopwatch = qb::io::async::scoped_callback([&elapsed]() noexcept { elapsed = true; }, settle);
     (void) stopwatch;
     while (!elapsed)
         qb::io::async::run(EVRUN_NOWAIT);

@@ -43,13 +43,13 @@
  */
 
 #include <chrono>
+#include <gtest/gtest.h>
 #include <string>
 #include <vector>
-#include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace std::chrono_literals;
@@ -186,8 +186,7 @@ TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_EXHAUSTS_ATTEMPTS) {
     // therefore first pump until reconnection has STARTED; otherwise `!is_reconnecting()`
     // is trivially true the instant after disconnect() and the wait below returns before a
     // single attempt runs (on_retry would never fire → retry_count stuck at 0).
-    ASSERT_TRUE(run_until([&] { return client.is_reconnecting(); }, 1000ms))
-        << "auto-reconnect never started";
+    ASSERT_TRUE(run_until([&] { return client.is_reconnecting(); }, 1000ms)) << "auto-reconnect never started";
     // Then wait until reconnection has finished (all attempts exhausted).
     ASSERT_TRUE(run_until([&] { return !client.is_reconnecting(); }, 5000ms));
     EXPECT_FALSE(client.is_connected());
@@ -379,8 +378,7 @@ TEST_P(ReconnectProtocolModesTest, COMMAND_TIMEOUT_DROPS_CONNECTION) {
     EXPECT_FALSE(ok) << "command should have timed out";
     EXPECT_NE(err.find("timed out"), std::string::npos) << "got: " << err;
 
-    EXPECT_TRUE(run_until([&] { return client.is_connected(); }, 5000ms))
-        << "client should auto-reconnect after a command timeout";
+    EXPECT_TRUE(run_until([&] { return client.is_connected(); }, 5000ms)) << "client should auto-reconnect after a command timeout";
 }
 
 // ============================================================================

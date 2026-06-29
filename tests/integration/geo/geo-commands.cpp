@@ -34,12 +34,12 @@
  * decode them) rather than by parsing the dropped radius-search payloads.
  */
 
-#include <gtest/gtest.h>
 #include <algorithm>
+#include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace qb::redis::test;
@@ -91,20 +91,24 @@ TEST_P(GeoProtocolModesTest, GEODIST) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string key = protocol_key("geodist");
 
-        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo",
-                                           kCataniaLon, kCataniaLat, "Catania"))
-                        .ok());
+        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo", kCataniaLon, kCataniaLat, "Catania")).ok());
 
         // Meters (default unit) ≈ 166274 m.
         auto reply1 = co_await redis.geodist(key, "Palermo", "Catania");
         EXPECT_TRUE(reply1.ok()) << reply1.error();
-        if (!(reply1.result().has_value())) { ADD_FAILURE() << "precondition failed: reply1.result().has_value()"; co_return; }
+        if (!(reply1.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply1.result().has_value()";
+            co_return;
+        }
         EXPECT_NEAR(*reply1.result(), kPalermoCataniaKm * 1000.0, 50.0);
 
         // Kilometers ≈ 166.27 km.
         auto reply2 = co_await redis.geodist(key, "Palermo", "Catania", qb::redis::GeoUnit::KM);
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().has_value())) { ADD_FAILURE() << "precondition failed: reply2.result().has_value()"; co_return; }
+        if (!(reply2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result().has_value()";
+            co_return;
+        }
         EXPECT_NEAR(*reply2.result(), kPalermoCataniaKm, 0.1);
 
         // Distance to a missing member is nil.
@@ -130,8 +134,14 @@ TEST_P(GeoProtocolModesTest, GEOHASH) {
         auto reply = co_await redis.geohash(key, "Palermo", "Missing");
         EXPECT_TRUE(reply.ok()) << reply.error();
         auto hashes = reply.result();
-        if (!(hashes.size() == 2u)) { ADD_FAILURE() << "precondition failed: hashes.size() == 2u"; co_return; }
-        if (!(hashes[0].has_value())) { ADD_FAILURE() << "precondition failed: hashes[0].has_value()"; co_return; }
+        if (!(hashes.size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: hashes.size() == 2u";
+            co_return;
+        }
+        if (!(hashes[0].has_value())) {
+            ADD_FAILURE() << "precondition failed: hashes[0].has_value()";
+            co_return;
+        }
         EXPECT_EQ(hashes[0]->size(), 11u); // Redis geohash strings are 11 chars
         // Palermo's documented geohash starts with "sqc8b49rny".
         EXPECT_EQ(hashes[0]->rfind("sqc8", 0), 0u);
@@ -155,8 +165,14 @@ TEST_P(GeoProtocolModesTest, GEOPOS) {
         auto reply = co_await redis.geopos(key, "Palermo", "Missing");
         EXPECT_TRUE(reply.ok()) << reply.error();
         auto positions = reply.result();
-        if (!(positions.size() == 2u)) { ADD_FAILURE() << "precondition failed: positions.size() == 2u"; co_return; }
-        if (!(positions[0].has_value())) { ADD_FAILURE() << "precondition failed: positions[0].has_value()"; co_return; }
+        if (!(positions.size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: positions.size() == 2u";
+            co_return;
+        }
+        if (!(positions[0].has_value())) {
+            ADD_FAILURE() << "precondition failed: positions[0].has_value()";
+            co_return;
+        }
         // GEOADD lossily stores 52-bit geohash → ~1e-5 precision on readback.
         EXPECT_NEAR(positions[0]->longitude, kPalermoLon, 1e-4);
         EXPECT_NEAR(positions[0]->latitude, kPalermoLat, 1e-4);
@@ -175,29 +191,33 @@ TEST_P(GeoProtocolModesTest, GEORADIUS) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string key = protocol_key("georadius");
 
-        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo",
-                                           kCataniaLon, kCataniaLat, "Catania"))
-                        .ok());
+        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo", kCataniaLon, kCataniaLat, "Catania")).ok());
 
         // 200 km from Palermo includes both (they are ~166 km apart).
         auto reply = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM);
         EXPECT_TRUE(reply.ok()) << reply.error();
         auto results = reply.result();
-        if (!(results.size() == 2u)) { ADD_FAILURE() << "precondition failed: results.size() == 2u"; co_return; }
+        if (!(results.size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: results.size() == 2u";
+            co_return;
+        }
         EXPECT_NE(std::find(results.begin(), results.end(), "Palermo"), results.end());
         EXPECT_NE(std::find(results.begin(), results.end(), "Catania"), results.end());
 
         // A tight 50 km radius from Palermo excludes Catania → only Palermo.
         auto tight = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 50, qb::redis::GeoUnit::KM);
         EXPECT_TRUE(tight.ok()) << tight.error();
-        if (!(tight.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: tight.result().size() == 1u"; co_return; }
+        if (!(tight.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: tight.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(tight.result()[0], "Palermo");
 
         // WITHDIST/WITHCOORD options: wrapper still returns names only, but the command
         // must succeed and yield the same member set.
         // NOTE: option vectors hoisted into named locals — GCC 14.2 coroutine ICE workaround.
         std::vector<std::string> opts{"WITHDIST", "WITHCOORD"};
-        auto reply2 = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM, opts);
+        auto                     reply2 = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM, opts);
         EXPECT_TRUE(reply2.ok()) << reply2.error();
         EXPECT_EQ(reply2.result().size(), 2u);
 
@@ -214,19 +234,23 @@ TEST_P(GeoProtocolModesTest, GEORADIUSBYMEMBER) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string key = protocol_key("georadiusbymember");
 
-        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo",
-                                           kCataniaLon, kCataniaLat, "Catania"))
-                        .ok());
+        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo", kCataniaLon, kCataniaLat, "Catania")).ok());
 
         auto reply = co_await redis.georadiusbymember(key, "Palermo", 200, qb::redis::GeoUnit::KM);
         EXPECT_TRUE(reply.ok()) << reply.error();
-        if (!(reply.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: reply.result().size() == 2u"; co_return; }
+        if (!(reply.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: reply.result().size() == 2u";
+            co_return;
+        }
         EXPECT_NE(std::find(reply.result().begin(), reply.result().end(), "Palermo"), reply.result().end());
 
         // The member centre itself is within any non-negative radius.
         auto self = co_await redis.georadiusbymember(key, "Palermo", 1, qb::redis::GeoUnit::M);
         EXPECT_TRUE(self.ok()) << self.error();
-        if (!(self.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: self.result().size() == 1u"; co_return; }
+        if (!(self.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: self.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(self.result()[0], "Palermo");
 
         CO_IGNORE(co_await redis.del(key));
@@ -242,20 +266,24 @@ TEST_P(GeoProtocolModesTest, GEOSEARCH) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string key = protocol_key("geosearch");
 
-        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo",
-                                           kCataniaLon, kCataniaLat, "Catania"))
-                        .ok());
+        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo", kCataniaLon, kCataniaLat, "Catania")).ok());
 
         auto reply = co_await redis.geosearch(key, "Palermo", 200, qb::redis::GeoUnit::KM);
         EXPECT_TRUE(reply.ok()) << reply.error();
-        if (!(reply.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: reply.result().size() == 2u"; co_return; }
+        if (!(reply.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: reply.result().size() == 2u";
+            co_return;
+        }
         EXPECT_NE(std::find(reply.result().begin(), reply.result().end(), "Palermo"), reply.result().end());
         EXPECT_NE(std::find(reply.result().begin(), reply.result().end(), "Catania"), reply.result().end());
 
         // Tight radius from Palermo excludes Catania → exactly Palermo.
         auto tight = co_await redis.geosearch(key, "Palermo", 50, qb::redis::GeoUnit::KM);
         EXPECT_TRUE(tight.ok()) << tight.error();
-        if (!(tight.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: tight.result().size() == 1u"; co_return; }
+        if (!(tight.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: tight.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(tight.result()[0], "Palermo");
 
         CO_IGNORE(co_await redis.del(key));
@@ -271,21 +299,22 @@ TEST_P(GeoProtocolModesTest, GEORADIUS_OPTIONS) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string key = protocol_key("georadius_options");
 
-        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo",
-                                           kCataniaLon, kCataniaLat, "Catania"))
-                        .ok());
+        EXPECT_TRUE((co_await redis.geoadd(key, kPalermoLon, kPalermoLat, "Palermo", kCataniaLon, kCataniaLat, "Catania")).ok());
 
         // COUNT 1 → EXACTLY one result (there ARE two candidates in range).
         std::vector<std::string> opts_count{"COUNT", "1"};
-        auto reply_count = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM, opts_count);
+        auto                     reply_count = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM, opts_count);
         EXPECT_TRUE(reply_count.ok()) << reply_count.error();
         EXPECT_EQ(reply_count.result().size(), 1u);
 
         // ASC sort from Palermo's coordinates → nearest first is Palermo.
         std::vector<std::string> opts_asc{"ASC"};
-        auto reply_asc = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM, opts_asc);
+        auto                     reply_asc = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM, opts_asc);
         EXPECT_TRUE(reply_asc.ok()) << reply_asc.error();
-        if (!(reply_asc.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: reply_asc.result().size() == 2u"; co_return; }
+        if (!(reply_asc.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: reply_asc.result().size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(reply_asc.result()[0], "Palermo");
         EXPECT_EQ(reply_asc.result()[1], "Catania");
 
@@ -293,7 +322,10 @@ TEST_P(GeoProtocolModesTest, GEORADIUS_OPTIONS) {
         std::vector<std::string> opts_count_asc{"COUNT", "1", "ASC"};
         auto reply_ca = co_await redis.georadius(key, kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM, opts_count_asc);
         EXPECT_TRUE(reply_ca.ok()) << reply_ca.error();
-        if (!(reply_ca.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: reply_ca.result().size() == 1u"; co_return; }
+        if (!(reply_ca.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: reply_ca.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(reply_ca.result()[0], "Palermo");
 
         CO_IGNORE(co_await redis.del(key));
@@ -315,7 +347,10 @@ TEST_P(GeoProtocolModesTest, EDGE_CASES) {
 
         auto reply2 = co_await redis.geopos(key, "NonExistent");
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: reply2.result().size() == 1u"; co_return; }
+        if (!(reply2.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: reply2.result().size() == 1u";
+            co_return;
+        }
         EXPECT_FALSE(reply2.result()[0].has_value());
 
         auto reply3 = co_await redis.georadius("NonExistentKey", kPalermoLon, kPalermoLat, 200, qb::redis::GeoUnit::KM);

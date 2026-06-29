@@ -58,7 +58,7 @@ unconnected_client() {
 
 // ── Single-key WATCH with an empty key ──────────────────────────────────────
 TEST(TransactionWatchValidation, EmptyKeyRejectedSynchronously) {
-    bool                   fired = false;
+    bool                                fired = false;
     qb::redis::Reply<qb::redis::status> captured;
 
     unconnected_client().watch(
@@ -78,7 +78,7 @@ TEST(TransactionWatchValidation, EmptyKeyRejectedSynchronously) {
 
 // ── Multi-key WATCH with an empty key list ──────────────────────────────────
 TEST(TransactionWatchValidation, EmptyKeyListRejectedSynchronously) {
-    bool                   fired = false;
+    bool                                fired = false;
     qb::redis::Reply<qb::redis::status> captured;
 
     unconnected_client().watch(

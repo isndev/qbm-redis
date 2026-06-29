@@ -50,20 +50,20 @@
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
-#include "../../shared/redis_integration_fixture.h"
 #include "../../shared/pubsub_wait.h"
+#include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using qb::redis::test::pubsub_wait_count;
 using qb::redis::test::pubsub_wait_until;
 
 /// Coroutine-safe early-return guard (ASSERT_* cannot be used inside a coroutine).
-#define CORO_REQUIRE(cond, done_flag)                                  \
-    if (!(cond)) {                                                     \
-        ADD_FAILURE() << "CORO_REQUIRE failed: " #cond;               \
-        done_flag = true;                                             \
-        co_return;                                                    \
+#define CORO_REQUIRE(cond, done_flag)                   \
+    if (!(cond)) {                                      \
+        ADD_FAILURE() << "CORO_REQUIRE failed: " #cond; \
+        done_flag = true;                               \
+        co_return;                                      \
     }
 
 namespace {
@@ -220,9 +220,9 @@ TEST_P(PubSubSubscribeTest, SubscribeMultipleChannelsDeliversEachOnce) {
                                      }};
     ASSERT_TRUE(qb::io::async::run_sync(cons.connect()));
 
-    const auto               ch_a = protocol_key("mca");
-    const auto               ch_b = protocol_key("mcb");
-    const auto               ch_c = protocol_key("mcc");
+    const auto               ch_a     = protocol_key("mca");
+    const auto               ch_b     = protocol_key("mcb");
+    const auto               ch_c     = protocol_key("mcc");
     std::vector<std::string> channels = {ch_a, ch_b, ch_c};
 
     bool done = false;
@@ -266,10 +266,10 @@ TEST_P(PubSubSubscribeTest, PsubscribeMultiplePatternsDeliverEach) {
     qb::redis::tcp::cb_consumer cons{REDIS_URI_PROTOCOL, [&](auto &&) { ++message_count; }};
     ASSERT_TRUE(qb::io::async::run_sync(cons.connect()));
 
-    const auto               pat_a = protocol_key("mpa") + "*";
-    const auto               pat_b = protocol_key("mpb") + "*";
-    const auto               ch_a  = protocol_key("mpa") + "1";
-    const auto               ch_b  = protocol_key("mpb") + "1";
+    const auto               pat_a    = protocol_key("mpa") + "*";
+    const auto               pat_b    = protocol_key("mpb") + "*";
+    const auto               ch_a     = protocol_key("mpa") + "1";
+    const auto               ch_b     = protocol_key("mpb") + "1";
     std::vector<std::string> patterns = {pat_a, pat_b};
 
     bool done = false;

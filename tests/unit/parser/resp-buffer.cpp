@@ -33,10 +33,10 @@
  * @ingroup Redis
  */
 
+#include <gtest/gtest.h>
 #include <span>
 #include <string>
 #include <string_view>
-#include <gtest/gtest.h>
 
 #include "../parser/buffer.h"
 

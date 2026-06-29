@@ -40,8 +40,8 @@
 #include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace qb::redis::test;
@@ -65,7 +65,7 @@ TEST_P(StreamProtocolModesTest, XADD_XLEN) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string key = protocol_key("basic");
 
-        std::vector<std::pair<std::string, std::string>> entries = {{"field1", "value1"}, {"field2", "value2"}};
+        std::vector<std::pair<std::string, std::string>> entries   = {{"field1", "value1"}, {"field2", "value2"}};
         auto                                             add_reply = co_await redis.xadd(key, entries);
         EXPECT_TRUE(add_reply.ok()) << add_reply.error();
         EXPECT_GT(add_reply.result().timestamp, 0);
@@ -102,7 +102,7 @@ TEST_P(StreamProtocolModesTest, XADD_EXPLICIT_AND_DUPLICATE_ID) {
         EXPECT_EQ(a2.result().sequence, 6);
 
         // Re-using a smaller-or-equal ID is rejected by the server.
-        std::vector<std::pair<std::string, std::string>> e3 = {{"f", "dup"}};
+        std::vector<std::pair<std::string, std::string>> e3  = {{"f", "dup"}};
         auto                                             dup = co_await redis.xadd(key, e3, std::string("5-5"));
         EXPECT_FALSE(dup.ok());
         EXPECT_FALSE(dup.error().empty());
@@ -310,7 +310,10 @@ TEST_P(StreamProtocolModesTest, XRANGE_XREVRANGE) {
 
         auto range_r = co_await redis.xrange(key, "-", "+");
         EXPECT_TRUE(range_r.ok()) << range_r.error();
-        if (!(range_r.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: range_r.result().size() == 3u"; co_return; }
+        if (!(range_r.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: range_r.result().size() == 3u";
+            co_return;
+        }
         // First entry carries the first field/value pair.
         EXPECT_EQ(range_r.result()[0].fields.at("f1"), "v1");
         EXPECT_EQ(range_r.result()[2].fields.at("f3"), "v3");
@@ -321,7 +324,10 @@ TEST_P(StreamProtocolModesTest, XRANGE_XREVRANGE) {
 
         auto rev_r = co_await redis.xrevrange(key, "+", "-");
         EXPECT_TRUE(rev_r.ok()) << rev_r.error();
-        if (!(rev_r.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: rev_r.result().size() == 3u"; co_return; }
+        if (!(rev_r.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: rev_r.result().size() == 3u";
+            co_return;
+        }
         // Reverse order → newest first.
         EXPECT_GE(rev_r.result()[0].id.timestamp, rev_r.result()[1].id.timestamp);
         EXPECT_EQ(rev_r.result()[0].fields.at("f3"), "v3");
@@ -373,7 +379,7 @@ TEST_P(StreamProtocolModesTest, XCLAIM_XAUTOCLAIM) {
         std::string consumer1 = "c1";
         std::string consumer2 = "c2";
 
-        auto        add_r  = co_await redis.xadd(key, {{"field", "value"}});
+        auto add_r = co_await redis.xadd(key, {{"field", "value"}});
         EXPECT_TRUE(add_r.ok()) << add_r.error();
         std::string msg_id = add_r.result().to_string();
         EXPECT_TRUE((co_await redis.xgroup_create(key, group, "0", true)).ok());
@@ -382,7 +388,10 @@ TEST_P(StreamProtocolModesTest, XCLAIM_XAUTOCLAIM) {
 
         auto claim_r = co_await redis.xclaim(key, group, consumer2, 0, {msg_id});
         EXPECT_TRUE(claim_r.ok()) << claim_r.error();
-        if (!(claim_r.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: claim_r.result().size() == 1u"; co_return; }
+        if (!(claim_r.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: claim_r.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(claim_r.result()[0].fields.at("field"), "value");
 
         CO_IGNORE(co_await redis.xadd(key, {{"f2", "v2"}}));
@@ -422,7 +431,10 @@ TEST_P(StreamProtocolModesTest, XINFO) {
         auto groups_reply = co_await redis.xinfo_groups(key);
         EXPECT_TRUE(groups_reply.ok()) << groups_reply.error();
         EXPECT_TRUE(groups_reply.result().is_array());
-        if (!(groups_reply.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: groups_reply.result().size() == 1u"; co_return; }
+        if (!(groups_reply.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: groups_reply.result().size() == 1u";
+            co_return;
+        }
         EXPECT_TRUE(json_contains(groups_reply.result(), group));
 
         auto consumers_reply = co_await redis.xinfo_consumers(key, group);
@@ -461,7 +473,10 @@ TEST_P(StreamProtocolModesTest, XPENDING) {
         auto detail = co_await redis.xpending(key, group, "-", "+", 10);
         EXPECT_TRUE(detail.ok()) << detail.error();
         EXPECT_TRUE(detail.result().is_array());
-        if (!(detail.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: detail.result().size() == 1u"; co_return; }
+        if (!(detail.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: detail.result().size() == 1u";
+            co_return;
+        }
         EXPECT_TRUE(json_contains(detail.result(), id));
         EXPECT_TRUE(json_contains(detail.result(), consumer));
 

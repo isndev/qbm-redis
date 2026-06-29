@@ -37,8 +37,8 @@
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/json.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -111,7 +111,10 @@ TEST_P(EvalJsonTest, JSON_ARRAY) {
         EXPECT_TRUE(reply.ok()) << reply.error();
         const auto &result = reply.result();
         EXPECT_TRUE(result.is_array());
-        if (!(result.size() == 3u)) { ADD_FAILURE() << "precondition failed: result.size() == 3u"; co_return; }
+        if (!(result.size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: result.size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(result[0], "item3"); // LPUSH prepends
         EXPECT_EQ(result[1], "item2");
         EXPECT_EQ(result[2], "item1");
@@ -180,7 +183,10 @@ TEST_P(EvalJsonTest, JSON_COMPLEX_NESTED) {
         EXPECT_EQ(result["boolean"], true);
 
         EXPECT_TRUE(result["array"].is_array());
-        if (!(result["array"].size() == 3u)) { ADD_FAILURE() << "precondition failed: result[\"array\"].size() == 3u"; co_return; }
+        if (!(result["array"].size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: result[\"array\"].size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(result["array"][0], "one");
         EXPECT_EQ(result["array"][2], "three");
 
@@ -205,8 +211,7 @@ TEST_P(EvalJsonTest, JSON_CJSON_MIXED_SCALARS) {
     bool completed = false;
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
-        auto reply = co_await redis.eval<qb::json>(
-            R"(return cjson.encode({a = 1, b = "two", c = true}))");
+        auto reply = co_await redis.eval<qb::json>(R"(return cjson.encode({a = 1, b = "two", c = true}))");
         EXPECT_TRUE(reply.ok()) << reply.error();
         const auto &result = reply.result();
         EXPECT_TRUE(result.is_object());

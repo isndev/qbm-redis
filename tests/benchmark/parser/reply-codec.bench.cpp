@@ -162,9 +162,8 @@ make_xread_reply(int streams, int entries_per_stream) {
     for (int s = 0; s < streams; ++s) {
         std::vector<std::unique_ptr<Value>> entry_list;
         for (int e = 0; e < entries_per_stream; ++e) {
-            entry_list.push_back(make_stream_entry(
-                std::to_string(e + 1) + "-0",
-                {{"field", "value:" + std::to_string(e)}, {"seq", std::to_string(e)}}));
+            entry_list.push_back(
+                make_stream_entry(std::to_string(e + 1) + "-0", {{"field", "value:" + std::to_string(e)}, {"seq", std::to_string(e)}}));
         }
         // [ "stream:<s>", [ entry, entry, … ] ]
         std::vector<std::unique_ptr<Value>> stream_pair;
@@ -248,8 +247,7 @@ BM_ReplySerialize_PutInPipe(benchmark::State &state) {
     // stream_id) so the redis_count + to_redis_string dispatch is exercised.
     {
         qb::allocator::pipe<char> pipe;
-        qb::redis::put_in_pipe(pipe, std::string("ZADD"), std::string("myset"),
-                               qb::redis::score_member{1.5, "alice"},
+        qb::redis::put_in_pipe(pipe, std::string("ZADD"), std::string("myset"), qb::redis::score_member{1.5, "alice"},
                                qb::redis::score_member{2.5, "bob"});
         if (pipe.size() == 0) {
             state.SkipWithError("put_in_pipe produced an empty pipe");
@@ -260,8 +258,7 @@ BM_ReplySerialize_PutInPipe(benchmark::State &state) {
     qb::allocator::pipe<char> pipe;
     for (auto _ : state) {
         pipe.reset();
-        qb::redis::put_in_pipe(pipe, std::string("ZADD"), std::string("myset"),
-                               qb::redis::score_member{1.5, "alice"},
+        qb::redis::put_in_pipe(pipe, std::string("ZADD"), std::string("myset"), qb::redis::score_member{1.5, "alice"},
                                qb::redis::score_member{2.5, "bob"});
         benchmark::DoNotOptimize(pipe.begin());
     }

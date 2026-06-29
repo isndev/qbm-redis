@@ -413,13 +413,12 @@ TEST_P(ExtractStreamIdParam, Edges) {
     }
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    ExtractStreamId, ExtractStreamIdParam,
-    ::testing::Values(StreamIdCase{"1234567890-0", true, 1234567890, 0}, StreamIdCase{"1-5", true, 1, 5},
-                      StreamIdCase{"0-0", true, 0, 0}, StreamIdCase{"invalid", false, 0, 0},
-                      StreamIdCase{"123", false, 0, 0},      // no dash
-                      StreamIdCase{"x-y", false, 0, 0},      // non-numeric components
-                      StreamIdCase{"99999999999999999999999-0", false, 0, 0})); // overflow
+INSTANTIATE_TEST_SUITE_P(ExtractStreamId, ExtractStreamIdParam,
+                         ::testing::Values(StreamIdCase{"1234567890-0", true, 1234567890, 0}, StreamIdCase{"1-5", true, 1, 5},
+                                           StreamIdCase{"0-0", true, 0, 0}, StreamIdCase{"invalid", false, 0, 0},
+                                           StreamIdCase{"123", false, 0, 0},                         // no dash
+                                           StreamIdCase{"x-y", false, 0, 0},                         // non-numeric components
+                                           StreamIdCase{"99999999999999999999999-0", false, 0, 0})); // overflow
 
 // stream id from a non-string value is rejected.
 TEST(ExtractStreamId, NonStringIsError) {
@@ -536,12 +535,12 @@ TEST(AsyncResult, ArrowOperator) {
 TEST(AsyncResult, VoidSuccessAndError) {
     qb::redis::AsyncResult<void> ok;
     EXPECT_TRUE(ok.is_ok());
-    EXPECT_FALSE(ok.has_error());        // void specialization has_error()
-    EXPECT_TRUE(static_cast<bool>(ok));  // operator bool() success path
+    EXPECT_FALSE(ok.has_error());       // void specialization has_error()
+    EXPECT_TRUE(static_cast<bool>(ok)); // operator bool() success path
 
     qb::redis::AsyncResult<void> err(std::string("void error"));
     EXPECT_FALSE(err.is_ok());
-    EXPECT_TRUE(err.has_error());        // has_error() error path
+    EXPECT_TRUE(err.has_error());         // has_error() error path
     EXPECT_FALSE(static_cast<bool>(err)); // operator bool() error path
     EXPECT_EQ(err.error(), "void error");
 }

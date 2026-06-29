@@ -36,8 +36,8 @@
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::redis;
 using namespace qb::redis::test;
@@ -102,11 +102,17 @@ TEST_P(ListProtocolModesTest, POP) {
         EXPECT_EQ(seed.result(), 5);
 
         auto left = co_await redis.lpop(key);
-        if (!(left.ok() && left.result().has_value())) { ADD_FAILURE() << "precondition failed: left.ok() && left.result().has_value()"; co_return; }
+        if (!(left.ok() && left.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: left.ok() && left.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*left.result(), "item1");
 
         auto right = co_await redis.rpop(key);
-        if (!(right.ok() && right.result().has_value())) { ADD_FAILURE() << "precondition failed: right.ok() && right.result().has_value()"; co_return; }
+        if (!(right.ok() && right.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: right.ok() && right.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*right.result(), "item5");
 
         auto len = co_await redis.llen(key);
@@ -115,7 +121,10 @@ TEST_P(ListProtocolModesTest, POP) {
 
         auto left2 = co_await redis.lpop(key, 2);
         EXPECT_TRUE(left2.ok());
-        if (!(left2.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: left2.result().size() == 2u"; co_return; }
+        if (!(left2.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: left2.result().size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(left2.result()[0], "item2");
         EXPECT_EQ(left2.result()[1], "item3");
 
@@ -171,11 +180,17 @@ TEST_P(ListProtocolModesTest, INDEX_AND_SET) {
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto at2 = co_await redis.lindex(key, 2);
-        if (!(at2.ok() && at2.result().has_value())) { ADD_FAILURE() << "precondition failed: at2.ok() && at2.result().has_value()"; co_return; }
+        if (!(at2.ok() && at2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: at2.ok() && at2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*at2.result(), "item3");
 
         auto last = co_await redis.lindex(key, -1);
-        if (!(last.ok() && last.result().has_value())) { ADD_FAILURE() << "precondition failed: last.ok() && last.result().has_value()"; co_return; }
+        if (!(last.ok() && last.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: last.ok() && last.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*last.result(), "item5");
 
         // LINDEX out of range → nil (not an error).
@@ -188,7 +203,10 @@ TEST_P(ListProtocolModesTest, INDEX_AND_SET) {
         EXPECT_TRUE(set_r.result().ok());
 
         auto modified = co_await redis.lindex(key, 1);
-        if (!(modified.ok() && modified.result().has_value())) { ADD_FAILURE() << "precondition failed: modified.ok() && modified.result().has_value()"; co_return; }
+        if (!(modified.ok() && modified.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: modified.ok() && modified.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*modified.result(), "replaced");
 
         // LSET out of range → error reply.
@@ -312,7 +330,10 @@ TEST_P(ListProtocolModesTest, POS) {
 
         auto rank2 = co_await redis.lpos(key, "item2", 2);
         EXPECT_TRUE(rank2.ok());
-        if (!(rank2.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: rank2.result().size() == 2u"; co_return; }
+        if (!(rank2.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: rank2.result().size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(rank2.result()[0], 3);
 
         auto count2 = co_await redis.lpos(key, "item2", std::nullopt, 2);
@@ -344,7 +365,10 @@ TEST_P(ListProtocolModesTest, BLOCKING_IMMEDIATE) {
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto blpop = co_await redis.blpop({key1, key2}, 1);
-        if (!(blpop.ok() && blpop.result().has_value())) { ADD_FAILURE() << "precondition failed: blpop.ok() && blpop.result().has_value()"; co_return; }
+        if (!(blpop.ok() && blpop.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: blpop.ok() && blpop.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(blpop.result()->first, key1);
         EXPECT_EQ(blpop.result()->second, "item1");
 
@@ -356,7 +380,10 @@ TEST_P(ListProtocolModesTest, BLOCKING_IMMEDIATE) {
         auto seed2 = co_await redis.rpush(key2, "item2");
         EXPECT_TRUE(seed2.ok());
         auto brpop = co_await redis.brpop({key1, key2}, 1);
-        if (!(brpop.ok() && brpop.result().has_value())) { ADD_FAILURE() << "precondition failed: brpop.ok() && brpop.result().has_value()"; co_return; }
+        if (!(brpop.ok() && brpop.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: brpop.ok() && brpop.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(brpop.result()->first, key2);
         EXPECT_EQ(brpop.result()->second, "item2");
 
@@ -374,8 +401,8 @@ TEST_P(ListProtocolModesTest, BLPOP_BLOCKS_THEN_WOKEN_BY_SECOND_CLIENT) {
 
     const std::string key = protocol_key("blpop_wake");
 
-    bool popped       = false;
-    bool wake_ok      = false;
+    bool        popped  = false;
+    bool        wake_ok = false;
     std::string value;
 
     // Consumer: park on BLPOP before the key has any element.
@@ -387,7 +414,7 @@ TEST_P(ListProtocolModesTest, BLPOP_BLOCKS_THEN_WOKEN_BY_SECOND_CLIENT) {
     qb::io::async::coro_scheduler().spawn([this, key, &popped, &wake_ok, &value]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(popped);
         (void) co_await redis.del(key);
-        auto r = co_await redis.blpop({key}, 5);
+        auto r  = co_await redis.blpop({key}, 5);
         wake_ok = r.ok();
         if (r.ok() && r.result().has_value()) {
             EXPECT_EQ(r.result()->first, key);
@@ -423,7 +450,10 @@ TEST_P(ListProtocolModesTest, MOVE) {
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto m1 = co_await redis.lmove(source, dest, ListPosition::RIGHT, ListPosition::LEFT);
-        if (!(m1.ok() && m1.result().has_value())) { ADD_FAILURE() << "precondition failed: m1.ok() && m1.result().has_value()"; co_return; }
+        if (!(m1.ok() && m1.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: m1.ok() && m1.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*m1.result(), "item3");
 
         auto src_after = co_await redis.lrange(source, 0, -1);
@@ -433,7 +463,10 @@ TEST_P(ListProtocolModesTest, MOVE) {
         EXPECT_EQ(dst_after.result(), (std::vector<std::string>{"item3"}));
 
         auto m2 = co_await redis.lmove(source, dest, ListPosition::LEFT, ListPosition::RIGHT);
-        if (!(m2.ok() && m2.result().has_value())) { ADD_FAILURE() << "precondition failed: m2.ok() && m2.result().has_value()"; co_return; }
+        if (!(m2.ok() && m2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: m2.ok() && m2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*m2.result(), "item1");
 
         auto dst_final = co_await redis.lrange(dest, 0, -1);
@@ -489,7 +522,10 @@ TEST_P(ListProtocolModesTest, RPOPLPUSH) {
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto moved = co_await redis.rpoplpush(source, dest);
-        if (!(moved.ok() && moved.result().has_value())) { ADD_FAILURE() << "precondition failed: moved.ok() && moved.result().has_value()"; co_return; }
+        if (!(moved.ok() && moved.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: moved.ok() && moved.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*moved.result(), "item3");
 
         auto src_after = co_await redis.lrange(source, 0, -1);
@@ -517,9 +553,15 @@ TEST_P(ListProtocolModesTest, BLMPOP) {
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto r = co_await redis.blmpop({key1, key2}, ListPosition::RIGHT, 1, 2);
-        if (!(r.ok() && r.result().has_value())) { ADD_FAILURE() << "precondition failed: r.ok() && r.result().has_value()"; co_return; }
+        if (!(r.ok() && r.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: r.ok() && r.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(r.result()->first, key2);
-        if (!(r.result()->second.size() == 2u)) { ADD_FAILURE() << "precondition failed: r.result()->second.size() == 2u"; co_return; }
+        if (!(r.result()->second.size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: r.result()->second.size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(r.result()->second[0], "z");
         EXPECT_EQ(r.result()->second[1], "y");
 
@@ -540,9 +582,15 @@ TEST_P(ListProtocolModesTest, LMPOP) {
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto r = co_await redis.lmpop({key1, key2}, ListPosition::LEFT, 2);
-        if (!(r.ok() && r.result().has_value())) { ADD_FAILURE() << "precondition failed: r.ok() && r.result().has_value()"; co_return; }
+        if (!(r.ok() && r.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: r.ok() && r.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(r.result()->first, key2);
-        if (!(r.result()->second.size() == 2u)) { ADD_FAILURE() << "precondition failed: r.result()->second.size() == 2u"; co_return; }
+        if (!(r.result()->second.size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: r.result()->second.size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(r.result()->second[0], "a");
         EXPECT_EQ(r.result()->second[1], "b");
 
@@ -563,7 +611,10 @@ TEST_P(ListProtocolModesTest, BLMOVE) {
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto r = co_await redis.blmove(src, dst, ListPosition::RIGHT, ListPosition::LEFT, 1);
-        if (!(r.ok() && r.result().has_value())) { ADD_FAILURE() << "precondition failed: r.ok() && r.result().has_value()"; co_return; }
+        if (!(r.ok() && r.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: r.ok() && r.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*r.result(), "x");
 
         auto dst_after = co_await redis.lrange(dst, 0, -1);
@@ -584,8 +635,8 @@ TEST_P(ListProtocolModesTest, BRPOPLPUSH_BLOCKS_THEN_WOKEN_BY_SECOND_CLIENT) {
     const std::string src = protocol_key("brpoplpush_wake_src");
     const std::string dst = protocol_key("brpoplpush_wake_dst");
 
-    bool done    = false;
-    bool wake_ok = false;
+    bool        done    = false;
+    bool        wake_ok = false;
     std::string value;
 
     // Pass lambdas to spawn() WITHOUT the trailing () (lambda-safe overload): the by-value
@@ -594,7 +645,7 @@ TEST_P(ListProtocolModesTest, BRPOPLPUSH_BLOCKS_THEN_WOKEN_BY_SECOND_CLIENT) {
     qb::io::async::coro_scheduler().spawn([this, src, dst, &done, &wake_ok, &value]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(done);
         (void) co_await redis.del(src, dst);
-        auto r = co_await redis.brpoplpush(src, dst, 5);
+        auto r  = co_await redis.brpoplpush(src, dst, 5);
         wake_ok = r.ok();
         if (r.ok() && r.result().has_value())
             value = *r.result();

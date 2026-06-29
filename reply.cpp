@@ -179,8 +179,8 @@ parse(ParseTag<qb::redis::stream_id>, const ReplyValue &reply) {
     }
 
     qb::redis::stream_id id;
-    auto ts  = qb::to_number<long long>(sv.substr(0, pos));
-    auto seq = qb::to_number<long long>(sv.substr(pos + 1));
+    auto                 ts  = qb::to_number<long long>(sv.substr(0, pos));
+    auto                 seq = qb::to_number<long long>(sv.substr(pos + 1));
     if (!ts || !seq) {
         throw ProtoError("Invalid stream ID values");
     }
@@ -417,8 +417,7 @@ parse(ParseTag<qb::redis::memory_info>, const ReplyValue &reply) {
         auto it = info_map.find(key);
         if (it == info_map.end())
             return 0;
-        return static_cast<size_t>(
-            qb::to_number_prefix<unsigned long long>(it->second).value_or(0));
+        return static_cast<size_t>(qb::to_number_prefix<unsigned long long>(it->second).value_or(0));
     };
 
     info.used_memory                  = get_size_t("used_memory");

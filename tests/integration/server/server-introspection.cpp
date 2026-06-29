@@ -44,8 +44,8 @@
 #include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 // ProtocolMode / ProtocolModesTestBase / INSTANTIATE_PROTOCOL_MODES / run_coro_test_until /
 // CO_IGNORE / PROTOCOL_ENSURE_RESP3_VAR come from redis_integration_fixture.h (legacy-compatible
@@ -122,8 +122,7 @@ TEST_P(ServerIntrospectionTest, RoleReportsMaster) {
         auto role = co_await redis.role();
         EXPECT_TRUE(role.ok()) << role.error();
         if (!role.result().is_array() || role.result().size() < 3u) {
-            ADD_FAILURE() << "ROLE must be a >=3-element array, got size "
-                          << (role.result().is_array() ? role.result().size() : 0);
+            ADD_FAILURE() << "ROLE must be a >=3-element array, got size " << (role.result().is_array() ? role.result().size() : 0);
             completed = true;
             co_return;
         }
@@ -134,8 +133,7 @@ TEST_P(ServerIntrospectionTest, RoleReportsMaster) {
             co_return;
         }
         const std::string role_token = role.result()[0].get<std::string>();
-        EXPECT_TRUE(role_token == "master" || role_token == "slave" || role_token == "sentinel")
-            << role_token;
+        EXPECT_TRUE(role_token == "master" || role_token == "slave" || role_token == "sentinel") << role_token;
         // For a standalone server it is specifically "master".
         EXPECT_EQ(role_token, "master");
         // [1] replication offset (non-negative integer).
@@ -213,8 +211,7 @@ TEST_P(ServerIntrospectionTest, MemoryUsageStatsDoctorHelp) {
         auto stats = co_await redis.memory_stats();
         EXPECT_TRUE(stats.ok()) << stats.error();
         EXPECT_TRUE(stats.result().is_object());
-        EXPECT_TRUE(stats.result().contains("peak.allocated")
-                    || stats.result().contains("total.allocated"));
+        EXPECT_TRUE(stats.result().contains("peak.allocated") || stats.result().contains("total.allocated"));
 
         auto doctor = co_await redis.memory_doctor();
         EXPECT_TRUE(doctor.ok()) << doctor.error();
