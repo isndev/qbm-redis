@@ -1,2 +1,5 @@
 # style: clang-format all sources + bump copyright to 2026 (2026-06-19)
 e02faa612f033dd5ec25ba50392df688230f4128
+
+# style: clang-format sweep + condense license headers (2026-06-29)
+f82780f0e2aee9f282b6b3a46960c6ba879ca4dc
