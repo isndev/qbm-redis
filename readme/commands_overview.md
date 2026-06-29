@@ -71,8 +71,8 @@ sequenceDiagram
     Net->>Srv: request
     Srv-->>Net: reply (in request order)
     Net-->>Q: dequeue matching handler (FIFO)
-    Q->>Q: decode — disconnect / -ERR / parse&lt;T&gt;
-    Q-->>App: Reply&lt;T&gt; (ok() / error() / value())
+    Q->>Q: decode — disconnect / -ERR / parse<T>
+    Q-->>App: Reply<T> (ok() / error() / value())
 ```
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
