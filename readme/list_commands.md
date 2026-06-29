@@ -1,6 +1,6 @@
 # List commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the Redis List command group — head/tail pushes and pops, indexed access, range and trim operations,
@@ -102,7 +102,7 @@ auto llen(const std::string &key);                                  // -> Reply<
 template <typename Func> Derived &llen(Func &&, const std::string &key);
 ```
 
-<!-- src: qbm/redis/list_commands.h:56,71 -->
+<!-- src: qbm/redis/commands/list_commands.h:53,66 -->
 
 ```cpp
 auto r = co_await redis.llen("queue");
@@ -126,7 +126,7 @@ template <typename Func, typename... Args> Derived &lpush(Func &&, const std::st
 template <typename Func, typename... Args> Derived &rpush(Func &&, const std::string &key, Args &&...args);
 ```
 
-<!-- src: qbm/redis/list_commands.h:87,104,149,166 -->
+<!-- src: qbm/redis/commands/list_commands.h:81,139,97,155 -->
 
 ```cpp
 auto len = co_await redis.rpush("queue", "job1", "job2", "job3");
@@ -150,7 +150,7 @@ template <typename Func, typename... Args> Derived &lpushx(Func &&, const std::s
 template <typename Func, typename... Args> Derived &rpushx(Func &&, const std::string &key, Args &&...args);
 ```
 
-<!-- src: qbm/redis/list_commands.h:118,135,180,197 -->
+<!-- src: qbm/redis/commands/list_commands.h:110,168,126,184 -->
 
 ```cpp
 auto r = co_await redis.rpushx("queue", "job4");
@@ -180,7 +180,7 @@ template <typename Func> Derived &lpop(Func &&, const std::string &key, long lon
 template <typename Func> Derived &rpop(Func &&, const std::string &key, long long count);
 ```
 
-<!-- src: qbm/redis/list_commands.h:213,232,243,261,273,292,303,318 -->
+<!-- src: qbm/redis/commands/list_commands.h:228,284,200,256,242,298,217,273 -->
 
 ```cpp
 auto one = co_await redis.lpop("queue");
@@ -205,7 +205,7 @@ auto lindex(const std::string &key, long long index);               // -> Reply<
 template <typename Func> Derived &lindex(Func &&, const std::string &key, long long index);
 ```
 
-<!-- src: qbm/redis/list_commands.h:462,478 -->
+<!-- src: qbm/redis/commands/list_commands.h:419,434 -->
 
 ```cpp
 auto r = co_await redis.lindex("queue", -1);
@@ -226,7 +226,7 @@ template <typename Func> Derived &linsert(Func &&, const std::string &key, Inser
                                           const std::string &pivot, const std::string &val);
 ```
 
-<!-- src: qbm/redis/list_commands.h:495,514 -->
+<!-- src: qbm/redis/commands/list_commands.h:448,465 -->
 
 ```cpp
 auto r = co_await redis.linsert("queue", qb::redis::InsertPosition::BEFORE, "job2", "job1.5");
@@ -244,7 +244,7 @@ auto lset(const std::string &key, long long index, const std::string &val);   //
 template <typename Func> Derived &lset(Func &&, const std::string &key, long long index, const std::string &val);
 ```
 
-<!-- src: qbm/redis/list_commands.h:598,615 -->
+<!-- src: qbm/redis/commands/list_commands.h:538,554 -->
 
 ```cpp
 auto r = co_await redis.lset("queue", 0, "rewritten");
@@ -264,7 +264,7 @@ auto lrem(const std::string &key, long long count, const std::string &val);   //
 template <typename Func> Derived &lrem(Func &&, const std::string &key, long long count, const std::string &val);
 ```
 
-<!-- src: qbm/redis/list_commands.h:565,583 -->
+<!-- src: qbm/redis/commands/list_commands.h:508,525 -->
 
 ```cpp
 auto r = co_await redis.lrem("queue", 0, "done");
@@ -285,7 +285,7 @@ auto lrange(const std::string &key, long long start, long long stop);   // -> Re
 template <typename Func> Derived &lrange(Func &&, const std::string &key, long long start, long long stop);
 ```
 
-<!-- src: qbm/redis/list_commands.h:531,548 -->
+<!-- src: qbm/redis/commands/list_commands.h:478,494 -->
 
 ```cpp
 auto all = co_await redis.lrange("queue", 0, -1);
@@ -304,7 +304,7 @@ auto ltrim(const std::string &key, long long start, long long stop);   // -> Rep
 template <typename Func> Derived &ltrim(Func &&, const std::string &key, long long start, long long stop);
 ```
 
-<!-- src: qbm/redis/list_commands.h:630,647 -->
+<!-- src: qbm/redis/commands/list_commands.h:567,583 -->
 
 ```cpp
 // Keep only the newest 100 entries
@@ -327,7 +327,7 @@ template <typename Func> Derived &lmove(Func &&, const std::string &source, cons
                                         ListPosition wherefrom, ListPosition whereto);
 ```
 
-<!-- src: qbm/redis/list_commands.h:699,718 -->
+<!-- src: qbm/redis/commands/list_commands.h:629,648 -->
 
 ```cpp
 using qb::redis::ListPosition;
@@ -346,7 +346,7 @@ auto rpoplpush(const std::string &source, const std::string &destination);   // 
 template <typename Func> Derived &rpoplpush(Func &&, const std::string &source, const std::string &destination);
 ```
 
-<!-- src: qbm/redis/list_commands.h:664,681 -->
+<!-- src: qbm/redis/commands/list_commands.h:598,614 -->
 
 ```cpp
 auto moved = co_await redis.rpoplpush("pending", "processing");
@@ -366,7 +366,7 @@ template <typename Func> Derived &lmpop(Func &&, const std::vector<std::string> 
                                         ListPosition position, long long count = 1);
 ```
 
-<!-- src: qbm/redis/list_commands.h:738,752 -->
+<!-- src: qbm/redis/commands/list_commands.h:664,681 -->
 
 ```cpp
 auto r = co_await redis.lmpop({"q1", "q2"}, qb::redis::ListPosition::LEFT, 2);
@@ -384,13 +384,13 @@ if (r.result().has_value()) {
 ### `lpos`
 
 `LPOS key element [RANK rank] [COUNT count] [MAXLEN maxlen]` — find the index/indices of `element`. There is a single
-overload that always returns a vector of positions (`list_commands.h:921` always sends `COUNT`, defaulting to `0` = all
+overload that always returns a vector of positions (`list_commands.h:848-849` always sends `COUNT`, defaulting to `0` = all
 matches when `count` is `std::nullopt`); for a single-position lookup, read `result().front()` after checking the vector
 is non-empty.
 
 The optional arguments are, in order, `rank`, `count`, then `maxlen`, matching the wire order `[RANK] [COUNT] [MAXLEN]`
 shown above. `COUNT` is always emitted (defaulting to `0` = all matches when `count` is `std::nullopt`); `RANK` and
-`MAXLEN` are emitted only when supplied (`list_commands.h:927-936`).
+`MAXLEN` are emitted only when supplied (`list_commands.h:850-853`).
 
 ```cpp
 // Coroutine
@@ -405,7 +405,7 @@ template <typename Func> Derived &lpos(Func &&, const std::string &key, const st
                                        std::optional<long long> maxlen = std::nullopt);
 ```
 
-<!-- src: qbm/redis/list_commands.h:882,904 -->
+<!-- src: qbm/redis/commands/list_commands.h:816,836 -->
 
 ```cpp
 auto r = co_await redis.lpos("queue", "job2");
@@ -417,7 +417,7 @@ auto all = co_await redis.lpos("queue", "job2", std::nullopt, 0, 1000);
 ```
 
 > Like `lmpop`, the callback overload no-ops (returns the client without invoking the callback) when `key` or `element`
-> is empty (`list_commands.h:911`).
+> is empty (`list_commands.h:838-840`).
 
 ## Blocking operations
 
@@ -446,7 +446,7 @@ template <typename Func> Derived &blpop(Func &&, const std::vector<std::string> 
 template <typename Func> Derived &blpop(Func &&, const std::vector<std::string> &keys, const std::chrono::seconds &timeout);
 ```
 
-<!-- src: qbm/redis/list_commands.h:335,356,369,385,397,418,431,448 -->
+<!-- src: qbm/redis/commands/list_commands.h:312,364,339,391,327,379,352,405 -->
 
 ```cpp
 auto r = co_await redis.blpop({"high", "low"}, 5s);   // 5-second block
@@ -472,7 +472,7 @@ template <typename Func> Derived &blmove(Func &&, const std::string &source, con
                                          ListPosition wherefrom, ListPosition whereto, long long timeout);
 ```
 
-<!-- src: qbm/redis/list_commands.h:825,839 -->
+<!-- src: qbm/redis/commands/list_commands.h:746,766 -->
 
 ```cpp
 using qb::redis::ListPosition;
@@ -494,7 +494,7 @@ template <typename Func> Derived &blmpop(Func &&, const std::vector<std::string>
                                          ListPosition position, long long timeout, long long count = 1);
 ```
 
-<!-- src: qbm/redis/list_commands.h:781,795 -->
+<!-- src: qbm/redis/commands/list_commands.h:705,723 -->
 
 ```cpp
 auto r = co_await redis.blmpop({"q1", "q2"}, qb::redis::ListPosition::LEFT, 5, 2);
@@ -517,7 +517,7 @@ template <typename Func> Derived &brpoplpush(Func &&, const std::string &source,
                                              const std::string &destination, long long timeout);
 ```
 
-<!-- src: qbm/redis/list_commands.h:854,862 -->
+<!-- src: qbm/redis/commands/list_commands.h:783,800 -->
 
 ## Pitfalls
 
@@ -531,7 +531,7 @@ template <typename Func> Derived &brpoplpush(Func &&, const std::string &source,
   command (so the callback never fires) when a required argument is empty (`list_commands.h:759`, `:802`, `:911`).
   Validate inputs before relying on the callback.
 - **`lpos` has no scalar overload.** It always returns `std::vector<long long>` because it always sends `COUNT` on the
-  wire (`list_commands.h:921`). For a single position, read `result().front()` after checking the vector is non-empty.
+  wire (`list_commands.h:848-849`). For a single position, read `result().front()` after checking the vector is non-empty.
 - **`brpoplpush` is deprecated.** New code should use `blmove`.
 - **Blocking commands occupy the connection.** A pending `blpop`/`brpop`/`blmove`/`blmpop` ties up the client until it
   resolves; use a dedicated client for long-lived blocking reads rather than sharing one with latency-sensitive traffic.

@@ -1,6 +1,6 @@
 # HyperLogLog commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the HyperLogLog command group — `PFADD`, `PFCOUNT`, and `PFMERGE` — which estimate the cardinality of very
@@ -57,7 +57,7 @@ qb::io::async::task<void> hll_demo(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-hyperloglog-commands.cpp -->
+<!-- src: qbm/redis/tests/integration/hyperloglog/hyperloglog-commands.cpp -->
 
 ---
 
@@ -69,7 +69,7 @@ qb::io::async::task<void> hll_demo(qb::redis::tcp::client &redis) {
 cannot be instantiated on its own. It reaches the connection through `Derived` — it calls
 `derived().command<T>(func, ...)` for the callback form and `derived().make_coro_command<T>(...)` for the coroutine
 form — so you only ever use it through the composed client,
-`qb::redis::tcp::client`. <!-- src: qbm/redis/hyperloglog_commands.h:35-41 -->
+`qb::redis::tcp::client`. <!-- src: qbm/redis/commands/hyperloglog_commands.h:35-41 -->
 
 Each command therefore exists as a matched pair of overloads:
 
@@ -118,7 +118,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
 pfadd(Func &&func, const std::string &key, Elements &&...elements);
 ```
 
-<!-- src: qbm/redis/hyperloglog_commands.h:53-78 -->
+<!-- src: qbm/redis/commands/hyperloglog_commands.h:53-78 -->
 
 Elements are passed variadically; each must be a value the client can serialize as a command argument (a string literal,
 `std::string`, or any type with the module's argument conversion). Calling `pfadd(key)` with no elements compiles and
@@ -140,7 +140,7 @@ redis.pfadd(
     "hll:users", "u4");
 ```
 
-<!-- src: qbm/redis/tests/test-hyperloglog-commands.cpp:44-71 -->
+<!-- src: qbm/redis/tests/integration/hyperloglog/hyperloglog-commands.cpp:43-66 -->
 
 ### `PFCOUNT key [key ...]` — `pfcount`
 
@@ -158,7 +158,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 pfcount(Func &&func, Keys &&...keys);
 ```
 
-<!-- src: qbm/redis/hyperloglog_commands.h:88-112 -->
+<!-- src: qbm/redis/commands/hyperloglog_commands.h:88-112 -->
 
 The keys are taken purely variadically — there is no mandatory leading key parameter — so `pfcount()` with zero keys
 compiles and sends a bare `PFCOUNT`, which Redis rejects at runtime with an arity error. Always pass at least one key.
@@ -180,7 +180,7 @@ redis.pfcount(
     "hll:a");
 ```
 
-<!-- src: qbm/redis/tests/test-hyperloglog-commands.cpp:74-103 -->
+<!-- src: qbm/redis/tests/integration/hyperloglog/hyperloglog-commands.cpp:69-92 -->
 
 ### `PFMERGE destkey [sourcekey ...]` — `pfmerge`
 
@@ -199,7 +199,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 pfmerge(Func &&func, const std::string &destination, Keys &&...keys);
 ```
 
-<!-- src: qbm/redis/hyperloglog_commands.h:123-149 -->
+<!-- src: qbm/redis/commands/hyperloglog_commands.h:123-149 -->
 
 The source keys are variadic and follow the required `destination`. As with `pfcount`, passing zero source keys (
 `pfmerge(dest)`) compiles; Redis accepts it and writes an empty (or unchanged) HyperLogLog to `dest`.
@@ -221,7 +221,7 @@ redis.pfmerge(
     "hll:all", "hll:a", "hll:b");
 ```
 
-<!-- src: qbm/redis/tests/test-hyperloglog-commands.cpp:106-165 -->
+<!-- src: qbm/redis/tests/integration/hyperloglog/hyperloglog-commands.cpp:95-118 -->
 
 ---
 

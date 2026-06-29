@@ -9,6 +9,25 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 Tracks changes on the development branch not yet part of a tagged release.
 
+_Nothing yet._
+
+## [2.6.0] - 2026-06-29
+
+Aligned with the qb 2.6.0 framework release.
+
+### Changed
+
+- Test suite restructured into tiered `unit/` / `system/` / `integration/` / `benchmark/` directories.
+
+### Fixed
+
+- RESP3 map decoding, several reply-type conversions, and `MULTI` / `EXEC` transaction handling corrected.
+
+### Documentation
+
+- Narrative and reference docs overhauled; every page carries code-verified `src:` citations enforced by
+  `scripts/doc-lint.sh`.
+
 ## [2.0.0]
 
 Aligns qbm-redis with the qb 2.0 framework (C++20 baseline) and hardens the RESP protocol paths.
@@ -36,4 +55,5 @@ Aligns qbm-redis with the qb 2.0 framework (C++20 baseline) and hardens the RESP
 - Overflow-safe `ViewBuffer` length bounds (defense in depth).
 - Fault on a corrupt RESP terminator and drop the dead destructive parse path.
 
-[Unreleased]: https://github.com/isndev/qbm-redis/compare/main...HEAD
+[Unreleased]: https://github.com/isndev/qbm-redis/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/isndev/qbm-redis/releases/tag/v2.6.0

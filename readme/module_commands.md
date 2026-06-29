@@ -1,6 +1,6 @@
 # Module commands reference
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 Reference for the module command group — `MODULE LIST`, `MODULE LOAD`, `MODULE UNLOAD`, and `MODULE HELP` — exposed by
@@ -39,7 +39,7 @@ qb::io::async::task<void> example(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: derived from qbm/redis/tests/test-module-commands.cpp:41-80 -->
+<!-- src: derived from qbm/redis/tests/integration/admin/module-commands.cpp:48-85 -->
 
 This command group carries **no time arguments** — none of its parameters are durations, so the
 seconds-versus-milliseconds boundary documented for key-expiry commands does not apply here. Connect and command
@@ -79,7 +79,7 @@ Every command resolves to `qb::redis::Reply<T>` (`reply.h:1052`):
 
 A rejected command does **not** throw from the coroutine path and does **not** close the connection — it resolves with
 `ok() == false` and the message in `error()`. The tests rely on exactly this: loading an empty path or unloading a
-missing module yields `reply.ok() == false`, never an exception (`test-module-commands.cpp:88-96`, `:112-120`).
+missing module yields `reply.ok() == false`, never an exception (`integration/admin/module-commands.cpp:90-106`, `:109-125`).
 See [error_handling.md](./error_handling.md) for the typed error hierarchy.
 
 > Module commands are **optional server features.** A server built without the modules API answers with an
@@ -104,7 +104,7 @@ if (r.ok() && r.result().ok()) {
 
 `module_list` replies with `qb::json` (which is `nlohmann::json`; `qb/json.h:104`) — an array of objects, one per loaded
 module. The reply is the server's own `MODULE LIST` payload passed through verbatim, so the available fields are
-server-version-dependent. The only field the test asserts is `name`, a string (`test-module-commands.cpp:57-58`); a
+server-version-dependent. The only field the test asserts is `name`, a string (`integration/admin/module-commands.cpp:58`); a
 typical server also reports a numeric version under `ver`. Read it with the standard `nlohmann::json`-style API (
 `is_array()`, `contains()`, `operator[]`, `get<T>()`), and probe with `contains()` before reading any field other than
 `name`.
@@ -138,7 +138,7 @@ module_list(Func &&func);
 ```
 
 Returns an array of objects describing every module loaded in the server. The test asserts each entry has a `name` field
-of string type (`test-module-commands.cpp:57-58`); the remaining fields are the server's own `MODULE LIST` payload and
+of string type (`integration/admin/module-commands.cpp:58`); the remaining fields are the server's own `MODULE LIST` payload and
 vary by version (a numeric version is typically reported under `ver`). The array is empty (but still an array) when no
 modules are loaded.
 
@@ -155,7 +155,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-module-commands.cpp:46-66 -->
+<!-- src: qbm/redis/tests/integration/admin/module-commands.cpp:48-63 -->
 
 Callback form:
 
@@ -188,7 +188,7 @@ strings or any type the serializer accepts.
 
 A successful load replies `status == "OK"`. An invalid path, a missing file, or a module that refuses to initialize
 replies with an error — surfaced as `!reply.ok()`, **not** an exception. The test passes an empty path and asserts the
-failure path (`test-module-commands.cpp:88-96`):
+failure path (`integration/admin/module-commands.cpp:90-106`):
 
 ```cpp
 auto reply = co_await redis.module_load("");       // empty path -> error reply
@@ -198,7 +198,7 @@ if (!reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-module-commands.cpp:88-96 -->
+<!-- src: qbm/redis/tests/integration/admin/module-commands.cpp:90-106 -->
 
 With a real module and arguments:
 
@@ -240,7 +240,7 @@ if (!reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-module-commands.cpp:112-120 -->
+<!-- src: qbm/redis/tests/integration/admin/module-commands.cpp:109-125 -->
 
 Successful unload:
 
@@ -275,7 +275,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/test-module-commands.cpp:136-147 -->
+<!-- src: qbm/redis/tests/integration/admin/module-commands.cpp:66-85 -->
 
 ---
 
@@ -292,7 +292,7 @@ see [connection.md](./connection.md)).
 
 - **`MODULE` may be unsupported.** A server compiled without the modules API rejects the whole family with an
   `unknown command 'MODULE'` error. That surfaces as `!reply.ok()` (or, on the rare path where the driver raises, a
-  caught `std::exception`); always handle the not-supported branch, as the tests do (`test-module-commands.cpp:64-72`).
+  caught `std::exception`); always handle the not-supported branch, as the tests do (`integration/admin/module-commands.cpp:90-106`).
 - **Two-layer success check for `status` replies.** For `module_load`/`module_unload`, `reply.ok()` only tells you the
   command round-tripped. You must also check `reply.result().ok()` to confirm the server returned `"OK"`. A
   loaded-but-init-failed module can round-trip with a non-`"OK"` status.
@@ -300,11 +300,11 @@ see [connection.md](./connection.md)).
   path will not match.
 - **Failures are reply errors, not exceptions.** On the coroutine path, an empty path, missing file, or missing module
   resolves with `ok() == false`; it does not throw and does not close the connection. Branch on `reply.ok()` rather than
-  wrapping in `try/catch` (`test-module-commands.cpp:88-96`, `:112-120`).
+  wrapping in `try/catch` (`integration/admin/module-commands.cpp:90-106`, `:109-125`).
 - **`module_load` is privileged.** It executes native code in the server. Restrict it via ACLs and never feed it
   untrusted paths or arguments.
 - **No protocol-mode difference.** These commands behave identically under RESP2 and RESP3; the module test suite runs
-  every case in both modes (`INSTANTIATE_PROTOCOL_MODES`, `test-module-commands.cpp:34`).
+  every case in both modes (`INSTANTIATE_PROTOCOL_MODES`, `integration/admin/module-commands.cpp:45`).
 
 ---
 
@@ -319,4 +319,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified against: qbm/redis/module_commands.h, qbm/redis/types.h:334 (status), qbm/redis/reply.h:1052 (Reply), qbm/redis/tests/test-module-commands.cpp; FACTBOOK.json module_commands @ qb 2.0.0 -->
+<!-- Verified against: qbm/redis/commands/module_commands.h, qbm/redis/types.h:334 (status), qbm/redis/reply.h:1052 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 2.6.0 -->

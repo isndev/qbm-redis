@@ -1,6 +1,6 @@
 # Pipelining and `await()`
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 How the client pipelines callback commands over a single connection, how `await()` drains pending replies without
@@ -49,7 +49,21 @@ redis.get([&](qb::redis::Reply<std::optional<std::string>> &&r) { if (r.ok()) ++
 redis.await();  // polls the loop until all three callbacks have run; done == 3
 ```
 
-<!-- src: qbm/redis/tests/test-pipeline.cpp:63-90 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:79-106 -->
+
+```mermaid
+sequenceDiagram
+    participant App as Your code
+    participant Cli as redis client<br/>(FIFO handler queue)
+    participant Srv as Redis server
+    App->>Cli: set(cb1, …) · enqueue cb1, write SET
+    App->>Cli: get(cb2, …) · enqueue cb2, write GET
+    App->>Cli: incr(cb3, …) · enqueue cb3, write INCR
+    Cli->>Srv: SET · GET · INCR — pipelined over one socket
+    Srv-->>Cli: +OK · $value · :n — replies in request order
+    App->>Cli: await() — poll loop (EVRUN_NOWAIT) until queue drains
+    Cli-->>App: cb1, then cb2, then cb3 (FIFO)
+```
 
 > The client is **not thread-safe.** Use one client from a single I/O thread / strand (one concurrent accessor at a
 > time). The reply queue and outbound pipe are unsynchronized (`redis.h:583-584`).
@@ -75,7 +89,7 @@ redis.await();
 // pending_reply_count() == 0 here
 ```
 
-<!-- src: qbm/redis/tests/test-pipeline.cpp:67-88 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:79-106 -->
 
 ### Pipelining cuts round trips
 
@@ -93,7 +107,7 @@ redis.await();
 // order == {1, 2, 3}
 ```
 
-<!-- src: qbm/redis/tests/test-pipeline.cpp:92-114 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:108-130 -->
 
 ### What `await()` does and does not do
 
@@ -117,7 +131,7 @@ while (redis.pending_reply_count() > 0)
     qb::io::async::run(EVRUN_NOWAIT);
 ```
 
-<!-- src: qbm/redis/tests/test-pipeline.cpp:247-262 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:286-303 -->
 
 ### `qb::redis::tcp::pipeline`
 
@@ -148,7 +162,7 @@ pipe
 pipe.flush();  // == client().await(); NOT Redis FLUSHDB/FLUSHALL
 ```
 
-<!-- src: qbm/redis/tests/test-pipeline.cpp:269-292 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:305-325 -->
 
 Mixing the named wrapper with the client's mixin methods is fine — they share one queue:
 
@@ -159,7 +173,7 @@ pipe.client().get([](qb::redis::Reply<std::optional<std::string>> &&r) { /* ... 
 pipe.flush();  // drains both
 ```
 
-<!-- src: qbm/redis/tests/test-pipeline.cpp:294-317 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:327-352 -->
 
 ---
 
@@ -189,4 +203,4 @@ pipe.flush();  // drains both
 - [error_handling.md](./error_handling.md) — the `Reply<T>` error model and the `"disconnected"` / `"command timed out"`
   failure reasons.
 - [transaction_commands.md](./transaction_commands.md) — `MULTI`/`EXEC`, which build on the same reply queue.
-- Tests: `qbm/redis/tests/test-pipeline.cpp` (CTest target `qbm-redis-test-pipeline`).
+- Tests: `qbm/redis/tests/integration/connection/pipeline.cpp` (CTest: integration-tier `pipeline`, registered via `qredis_itest`).

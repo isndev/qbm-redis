@@ -1,6 +1,6 @@
 # Error handling
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
 > supported)
 
 How `qbm-redis` reports failures: the RESP reply model, the `Reply<T>` error result you check instead of catching, where
@@ -17,8 +17,8 @@ client), [commands_overview.md](./commands_overview.md) (how commands run) — *
 
 `qbm-redis` is a compiled qb module (`qbm::redis`); pull it in with `add_subdirectory(qb)` →
 `qb_load_modules("<path>/qbm")` → `target_link_libraries(app PRIVATE qbm::redis)`. Almost all of the surface is template
-code in `<redis/redis.h>`; only `redis.cpp` and `reply.cpp` compile into the archive. Do not add the include directory
-by hand — link the target.
+code in `<redis/redis.h>`; only `redis.cpp`, `reply.cpp`, and `server_reply.cpp` compile into the archive. Do not add the
+include directory by hand — link the target.
 
 ---
 
@@ -40,13 +40,25 @@ There are three places a failure can originate, and all three converge on the sa
 - **Connection and timeout failures** — the socket drops, or a command exceeds `command_timeout`. Every pending reply is
   failed with `Reply{ok=false}` and an `error()` of `"disconnected"` or `"command timed out"`.
 
+All three origins converge on the one `Reply<T>` channel — you only ever check `ok()`:
+
+```mermaid
+flowchart TD
+    A["Redis command error<br/>(-WRONGTYPE, -NOAUTH, -MOVED…)"] --> X["Reply{ok=false}<br/>error() = message string"]
+    B["reply-shape / parse mismatch<br/>(throws ProtoError / ReplyParseError…)"] --> CB["caught at parse seam<br/>(dispatcher catches const Error&)"] --> X
+    C["connection drop / command_timeout"] --> X
+    OK["successful decode"] --> Y["Reply{ok=true}<br/>result() = value"]
+    X --> Z["caller: if (reply) / reply.ok()"]
+    Y --> Z
+```
+
 Underneath, two containment mechanisms guarantee a server can never crash your process: the protocol `onMessage`
 dispatch is `noexcept` and catches everything, and a structurally corrupt frame faults the streaming parser into a
 sticky error state that tears the connection down instead of looping forever on a byte it cannot advance past.
 
 The per-command failure message is a `std::string` you read through `reply.error()`. The exception classes (`Error`,
 `ProtoError`, `CommandError`, …) exist for the internal parse seam; in adopter code you read strings, not catch types.
-Do not confuse that string with `qb::redis::error` — a distinct struct (`types.h:362`) that is the pub/sub consumer's
+Do not confuse that string with `qb::redis::error` — a distinct struct (`types.h:540`) that is the pub/sub consumer's
 error *event* (`{std::string what; reply_ptr raw;}`), delivered to a consumer's `on_error` callback, not to a command
 reply.
 
@@ -371,7 +383,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   cannot keep feeding the same socket. Reconnect (or rely on auto-reconnect) to get a fresh parser (
   `parser/parser.h:146`, `redis.h:142-147`).
 - **`reply.error()` is the per-command message; `qb::redis::error` is a different thing.** Command failures hand you a
-  `std::string` through `reply.error()` — compare and log it as text. `qb::redis::error` (`types.h:362`) is the pub/sub
+  `std::string` through `reply.error()` — compare and log it as text. `qb::redis::error` (`types.h:540`) is the pub/sub
   consumer's error event struct (`.what` message + `.raw` reply), routed to a consumer `on_error` callback, not to a
   command `Reply<T>`. The exception classes (`Error`, `ProtoError`, …) live only at the internal parse seam.
 - **Cluster redirects are not automatic.** `MOVED`/`ASK` arrive as `Reply{ok=false}` with the redirect in `error()`;
