@@ -34,8 +34,8 @@
 #include <set>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::redis::test;
 
@@ -60,10 +60,16 @@ TEST_P(HashProtocolModesTest, HSET_HGET_LIFECYCLE) {
         EXPECT_EQ(s2.result(), 1);
 
         auto g1 = co_await redis.hget(key, "field1");
-        if (!(g1.ok() && g1.result().has_value())) { ADD_FAILURE() << "precondition failed: g1.ok() && g1.result().has_value()"; co_return; }
+        if (!(g1.ok() && g1.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: g1.ok() && g1.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*g1.result(), "value1");
         auto g2 = co_await redis.hget(key, "field2");
-        if (!(g2.ok() && g2.result().has_value())) { ADD_FAILURE() << "precondition failed: g2.ok() && g2.result().has_value()"; co_return; }
+        if (!(g2.ok() && g2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: g2.ok() && g2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*g2.result(), "value2");
         auto g3 = co_await redis.hget(key, "field3");
         EXPECT_TRUE(g3.ok());
@@ -110,18 +116,33 @@ TEST_P(HashProtocolModesTest, HMSET_HMGET_HGETALL) {
 
         auto hmget = co_await redis.hmget(key, "field1", "field2", "field3", "field4");
         EXPECT_TRUE(hmget.ok());
-        if (!(hmget.result().size() == 4u)) { ADD_FAILURE() << "precondition failed: hmget.result().size() == 4u"; co_return; }
-        if (!(hmget.result()[0].has_value())) { ADD_FAILURE() << "precondition failed: hmget.result()[0].has_value()"; co_return; }
+        if (!(hmget.result().size() == 4u)) {
+            ADD_FAILURE() << "precondition failed: hmget.result().size() == 4u";
+            co_return;
+        }
+        if (!(hmget.result()[0].has_value())) {
+            ADD_FAILURE() << "precondition failed: hmget.result()[0].has_value()";
+            co_return;
+        }
         EXPECT_EQ(*hmget.result()[0], "value1");
-        if (!(hmget.result()[1].has_value())) { ADD_FAILURE() << "precondition failed: hmget.result()[1].has_value()"; co_return; }
+        if (!(hmget.result()[1].has_value())) {
+            ADD_FAILURE() << "precondition failed: hmget.result()[1].has_value()";
+            co_return;
+        }
         EXPECT_EQ(*hmget.result()[1], "value2");
-        if (!(hmget.result()[2].has_value())) { ADD_FAILURE() << "precondition failed: hmget.result()[2].has_value()"; co_return; }
+        if (!(hmget.result()[2].has_value())) {
+            ADD_FAILURE() << "precondition failed: hmget.result()[2].has_value()";
+            co_return;
+        }
         EXPECT_EQ(*hmget.result()[2], "value3");
         EXPECT_FALSE(hmget.result()[3].has_value());
 
         auto all = co_await redis.hgetall(key);
         EXPECT_TRUE(all.ok());
-        if (!(all.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: all.result().size() == 3u"; co_return; }
+        if (!(all.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: all.result().size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(all.result().at("field1"), "value1");
         EXPECT_EQ(all.result().at("field2"), "value2");
         EXPECT_EQ(all.result().at("field3"), "value3");
@@ -159,10 +180,16 @@ TEST_P(HashProtocolModesTest, INCR) {
         EXPECT_FLOAT_EQ(f3.result(), 9.5);
 
         auto counter = co_await redis.hget(key, "counter");
-        if (!(counter.ok() && counter.result().has_value())) { ADD_FAILURE() << "precondition failed: counter.ok() && counter.result().has_value()"; co_return; }
+        if (!(counter.ok() && counter.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: counter.ok() && counter.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*counter.result(), "6");
         auto fl = co_await redis.hget(key, "float");
-        if (!(fl.ok() && fl.result().has_value())) { ADD_FAILURE() << "precondition failed: fl.ok() && fl.result().has_value()"; co_return; }
+        if (!(fl.ok() && fl.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: fl.ok() && fl.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*fl.result(), "9.5");
 
         completed = true;
@@ -190,7 +217,10 @@ TEST_P(HashProtocolModesTest, INCR_NON_NUMERIC_ERRORS) {
 
         // Field value must be untouched after the failed increments.
         auto unchanged = co_await redis.hget(key, "text");
-        if (!(unchanged.ok() && unchanged.result().has_value())) { ADD_FAILURE() << "precondition failed: unchanged.ok() && unchanged.result().has_value()"; co_return; }
+        if (!(unchanged.ok() && unchanged.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: unchanged.ok() && unchanged.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*unchanged.result(), "not-a-number");
 
         completed = true;
@@ -210,7 +240,10 @@ TEST_P(HashProtocolModesTest, HSETNX) {
         EXPECT_TRUE(first.result());
 
         auto v1 = co_await redis.hget(key, "field1");
-        if (!(v1.ok() && v1.result().has_value())) { ADD_FAILURE() << "precondition failed: v1.ok() && v1.result().has_value()"; co_return; }
+        if (!(v1.ok() && v1.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: v1.ok() && v1.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*v1.result(), "value1");
 
         auto second = co_await redis.hsetnx(key, "field1", "new-value");
@@ -218,7 +251,10 @@ TEST_P(HashProtocolModesTest, HSETNX) {
         EXPECT_FALSE(second.result());
 
         auto v2 = co_await redis.hget(key, "field1");
-        if (!(v2.ok() && v2.result().has_value())) { ADD_FAILURE() << "precondition failed: v2.ok() && v2.result().has_value()"; co_return; }
+        if (!(v2.ok() && v2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: v2.ok() && v2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*v2.result(), "value1"); // unchanged
 
         completed = true;
@@ -290,7 +326,10 @@ TEST_P(HashProtocolModesTest, SCAN_ASSERTS_FIELDS_AND_VALUES) {
         EXPECT_TRUE(scan.ok()) << scan.error();
         EXPECT_EQ(scan.result().cursor, 0u); // complete in one step for a tiny hash
         const auto &items = scan.result().items;
-        if (!(items.size() == 3u)) { ADD_FAILURE() << "precondition failed: items.size() == 3u"; co_return; }
+        if (!(items.size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: items.size() == 3u";
+            co_return;
+        }
         EXPECT_EQ(items.at("field1"), "value1");
         EXPECT_EQ(items.at("field2"), "value2");
         EXPECT_EQ(items.at("field3"), "value3");
@@ -312,7 +351,7 @@ TEST_P(HashProtocolModesTest, SCAN_MATCH_PATTERN) {
 
         // Drive the cursor to completion accumulating only the user:* fields.
         qb::unordered_map<std::string, std::string> collected;
-        size_t cursor = 0;
+        size_t                                      cursor = 0;
         do {
             auto step = co_await redis.hscan(key, static_cast<long long>(cursor), "user:*", 100);
             EXPECT_TRUE(step.ok()) << step.error();
@@ -321,7 +360,10 @@ TEST_P(HashProtocolModesTest, SCAN_MATCH_PATTERN) {
             cursor = step.result().cursor;
         } while (cursor != 0);
 
-        if (!(collected.size() == 2u)) { ADD_FAILURE() << "precondition failed: collected.size() == 2u"; co_return; }
+        if (!(collected.size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: collected.size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(collected.at("user:1"), "a");
         EXPECT_EQ(collected.at("user:2"), "b");
         EXPECT_EQ(collected.count("post:1"), 0u);
@@ -351,8 +393,8 @@ TEST_P(HashProtocolModesTest, SCAN_LARGE_HASH_MULTI_CURSOR) {
         }
 
         qb::unordered_map<std::string, std::string> collected;
-        size_t cursor = 0;
-        int    steps  = 0;
+        size_t                                      cursor = 0;
+        int                                         steps  = 0;
         do {
             auto step = co_await redis.hscan(key, static_cast<long long>(cursor), "*", 32);
             EXPECT_TRUE(step.ok()) << step.error();
@@ -364,7 +406,10 @@ TEST_P(HashProtocolModesTest, SCAN_LARGE_HASH_MULTI_CURSOR) {
         } while (cursor != 0);
 
         EXPECT_GT(steps, 1) << "expected the large hash to require multiple cursor steps";
-        if (!(collected.size() == static_cast<size_t>(kCount))) { ADD_FAILURE() << "precondition failed: collected.size() == static_cast<size_t>(kCount)"; co_return; }
+        if (!(collected.size() == static_cast<size_t>(kCount))) {
+            ADD_FAILURE() << "precondition failed: collected.size() == static_cast<size_t>(kCount)";
+            co_return;
+        }
         EXPECT_EQ(collected.at("f0"), "v0");
         EXPECT_EQ(collected.at("f499"), "v499");
 

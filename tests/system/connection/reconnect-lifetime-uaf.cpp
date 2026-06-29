@@ -116,23 +116,18 @@ TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
     // Initial connect goes to the same accept-less loopback listener: the TCP
     // handshake completes, so connect() succeeds with NO redis daemon.
     auto client = std::make_unique<qb::redis::tcp::client>(uri);
-    ASSERT_TRUE(qb::io::async::run_sync(client->connect()))
-        << "loopback listener should complete the TCP handshake";
+    ASSERT_TRUE(qb::io::async::run_sync(client->connect())) << "loopback listener should complete the TCP handshake";
 
     // Enable auto-reconnect (same loopback target) and force a disconnect so a
     // reconnect is spawned. A 2s connect timeout leaves a comfortable window in
     // which the connect is in flight.
-    client->enable_auto_reconnect(qb::redis::RetryPolicy{}
-                                      .with_max_attempts(3)
-                                      .with_initial_delay(50ms)
-                                      .with_connect_timeout(2s)
-                                      .with_jitter(false));
+    client->enable_auto_reconnect(
+        qb::redis::RetryPolicy{}.with_max_attempts(3).with_initial_delay(50ms).with_connect_timeout(2s).with_jitter(false));
     client->disconnect();
 
     // Reconnect started: the connect to the listener is registered and in flight
     // (its completion lambda runs on a later loop iteration, not this one).
-    ASSERT_TRUE(run_until([&] { return client->is_reconnecting(); }, 2000ms))
-        << "auto-reconnect did not start";
+    ASSERT_TRUE(run_until([&] { return client->is_reconnecting(); }, 2000ms)) << "auto-reconnect did not start";
 
     // Destroy the client while the (about-to-succeed) connect is in flight.
     client.reset();

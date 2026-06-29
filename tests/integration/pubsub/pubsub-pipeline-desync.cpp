@@ -51,9 +51,9 @@
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
-#include "../../shared/redis_integration_fixture.h"
 #include "../../shared/pubsub_wait.h"
+#include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using qb::redis::test::pubsub_wait_count;

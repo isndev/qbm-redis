@@ -35,8 +35,8 @@
 #include <set>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::redis::test;
 
@@ -96,7 +96,10 @@ TEST_P(SetProtocolModesTest, ISMEMBER) {
 
         auto multi = co_await redis.smismember(key, "member1", "member2", "nonexistent");
         EXPECT_TRUE(multi.ok());
-        if (!(multi.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: multi.result().size() == 3u"; co_return; }
+        if (!(multi.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: multi.result().size() == 3u";
+            co_return;
+        }
         EXPECT_TRUE(multi.result()[0]);
         EXPECT_TRUE(multi.result()[1]);
         EXPECT_FALSE(multi.result()[2]);
@@ -142,11 +145,14 @@ TEST_P(SetProtocolModesTest, POP) {
         const std::string key = protocol_key("pop");
 
         const std::set<std::string> seeded{"member1", "member2", "member3", "member4", "member5"};
-        auto seed = co_await redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
+        auto                        seed = co_await redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto one = co_await redis.spop(key);
-        if (!(one.ok() && one.result().has_value())) { ADD_FAILURE() << "precondition failed: one.ok() && one.result().has_value()"; co_return; }
+        if (!(one.ok() && one.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: one.ok() && one.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(seeded.count(*one.result()), 1u) << "SPOP returned a non-member: " << *one.result();
 
         auto card1 = co_await redis.scard(key);
@@ -155,7 +161,10 @@ TEST_P(SetProtocolModesTest, POP) {
 
         auto two = co_await redis.spop(key, 2);
         EXPECT_TRUE(two.ok());
-        if (!(two.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: two.result().size() == 2u"; co_return; }
+        if (!(two.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: two.result().size() == 2u";
+            co_return;
+        }
         for (const auto &m : two.result())
             EXPECT_EQ(seeded.count(m), 1u) << "SPOP(count) returned a non-member: " << m;
         // No duplicates within a single SPOP batch.
@@ -187,11 +196,14 @@ TEST_P(SetProtocolModesTest, RANDMEMBER) {
         const std::string key = protocol_key("randmember");
 
         const std::set<std::string> seeded{"member1", "member2", "member3", "member4", "member5"};
-        auto seed = co_await redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
+        auto                        seed = co_await redis.sadd(key, "member1", "member2", "member3", "member4", "member5");
         EXPECT_TRUE(seed.ok()) << seed.error();
 
         auto one = co_await redis.srandmember(key);
-        if (!(one.ok() && one.result().has_value())) { ADD_FAILURE() << "precondition failed: one.ok() && one.result().has_value()"; co_return; }
+        if (!(one.ok() && one.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: one.ok() && one.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(seeded.count(*one.result()), 1u) << "SRANDMEMBER returned a non-member: " << *one.result();
 
         auto card = co_await redis.scard(key);
@@ -200,7 +212,10 @@ TEST_P(SetProtocolModesTest, RANDMEMBER) {
 
         auto three = co_await redis.srandmember(key, 3);
         EXPECT_TRUE(three.ok());
-        if (!(three.result().size() == 3u)) { ADD_FAILURE() << "precondition failed: three.result().size() == 3u"; co_return; }
+        if (!(three.result().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: three.result().size() == 3u";
+            co_return;
+        }
         std::set<std::string> distinct(three.result().begin(), three.result().end());
         EXPECT_EQ(distinct.size(), 3u) << "positive-count SRANDMEMBER must not repeat";
         for (const auto &m : three.result())
@@ -271,18 +286,15 @@ TEST_P(SetProtocolModesTest, OPERATIONS) {
 
         auto diff = co_await redis.sdiff({set1, set2});
         EXPECT_TRUE(diff.ok());
-        EXPECT_EQ(std::set<std::string>(diff.result().begin(), diff.result().end()),
-                  (std::set<std::string>{"a", "d"}));
+        EXPECT_EQ(std::set<std::string>(diff.result().begin(), diff.result().end()), (std::set<std::string>{"a", "d"}));
 
         auto inter = co_await redis.sinter({set1, set2});
         EXPECT_TRUE(inter.ok());
-        EXPECT_EQ(std::set<std::string>(inter.result().begin(), inter.result().end()),
-                  (std::set<std::string>{"b", "c"}));
+        EXPECT_EQ(std::set<std::string>(inter.result().begin(), inter.result().end()), (std::set<std::string>{"b", "c"}));
 
         auto uni = co_await redis.sunion({set1, set2});
         EXPECT_TRUE(uni.ok());
-        EXPECT_EQ(std::set<std::string>(uni.result().begin(), uni.result().end()),
-                  (std::set<std::string>{"a", "b", "c", "d", "e", "f"}));
+        EXPECT_EQ(std::set<std::string>(uni.result().begin(), uni.result().end()), (std::set<std::string>{"a", "b", "c", "d", "e", "f"}));
 
         auto intercard = co_await redis.sintercard({set1, set2});
         EXPECT_TRUE(intercard.ok());
@@ -312,8 +324,7 @@ TEST_P(SetProtocolModesTest, STORE) {
         EXPECT_EQ(diff.result(), 2);
         auto diff_members = co_await redis.smembers(dest1);
         EXPECT_TRUE(diff_members.ok());
-        EXPECT_EQ(std::set<std::string>(diff_members.result().begin(), diff_members.result().end()),
-                  (std::set<std::string>{"a", "d"}));
+        EXPECT_EQ(std::set<std::string>(diff_members.result().begin(), diff_members.result().end()), (std::set<std::string>{"a", "d"}));
 
         auto inter = co_await redis.sinterstore(dest2, {set1, set2});
         EXPECT_TRUE(inter.ok());
@@ -388,7 +399,7 @@ TEST_P(SetProtocolModesTest, SCAN_LARGE_SET_MULTI_BATCH) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         const std::string key = protocol_key("scan_large");
 
-        constexpr int kCount = 500;
+        constexpr int         kCount = 500;
         std::set<std::string> expected;
         for (int i = 0; i < kCount; ++i) {
             const std::string m = "m" + std::to_string(i);
@@ -398,8 +409,8 @@ TEST_P(SetProtocolModesTest, SCAN_LARGE_SET_MULTI_BATCH) {
         }
 
         std::set<std::string> collected;
-        size_t cursor = 0;
-        int    steps  = 0;
+        size_t                cursor = 0;
+        int                   steps  = 0;
         do {
             auto step = co_await redis.sscan(key, static_cast<long long>(cursor), "*", 32);
             EXPECT_TRUE(step.ok()) << step.error();

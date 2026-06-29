@@ -32,8 +32,8 @@
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 // ProtocolMode / ProtocolModesTestBase / INSTANTIATE_PROTOCOL_MODES / run_coro_test_until /
 // CO_IGNORE / PROTOCOL_ENSURE_RESP3_VAR come from redis_integration_fixture.h (legacy-compatible
@@ -58,7 +58,10 @@ TEST_P(ServerAdminTest, ClientSetnameGetnameRoundTrip) {
 
         auto getname = co_await redis.client_getname();
         EXPECT_TRUE(getname.ok()) << getname.error();
-        if (!(getname.result().has_value())) { ADD_FAILURE() << "precondition failed: getname.result().has_value()"; co_return; }
+        if (!(getname.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: getname.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*getname.result(), "qb_admin_client");
 
         // client_id is a positive monotonic connection id.
@@ -147,7 +150,10 @@ TEST_P(ServerAdminTest, ConfigSetGetRoundTrip) {
         // Snapshot maxmemory so we can restore it (never leave the daemon mutated).
         auto before = co_await redis.config_get("maxmemory");
         EXPECT_TRUE(before.ok()) << before.error();
-        if (!(!(before.result().empty()))) { ADD_FAILURE() << "precondition failed: !(before.result().empty())"; co_return; }
+        if (!(!(before.result().empty()))) {
+            ADD_FAILURE() << "precondition failed: !(before.result().empty())";
+            co_return;
+        }
         EXPECT_EQ(before.result()[0].first, "maxmemory");
         const std::string original = before.result()[0].second;
 
@@ -157,7 +163,10 @@ TEST_P(ServerAdminTest, ConfigSetGetRoundTrip) {
 
         auto after = co_await redis.config_get("maxmemory");
         EXPECT_TRUE(after.ok()) << after.error();
-        if (!(!(after.result().empty()))) { ADD_FAILURE() << "precondition failed: !(after.result().empty())"; co_return; }
+        if (!(!(after.result().empty()))) {
+            ADD_FAILURE() << "precondition failed: !(after.result().empty())";
+            co_return;
+        }
         EXPECT_EQ(after.result()[0].second, "104857600");
 
         // Restore.
@@ -208,7 +217,10 @@ TEST_P(ServerAdminTest, CommandInfoForNamedCommands) {
         auto                     info  = co_await redis.command(names);
         EXPECT_TRUE(info.ok()) << info.error();
         const auto &j = info.result();
-        if (!(!(j.empty()))) { ADD_FAILURE() << "precondition failed: !(j.empty())"; co_return; }
+        if (!(!(j.empty()))) {
+            ADD_FAILURE() << "precondition failed: !(j.empty())";
+            co_return;
+        }
 
         bool has_get = false, has_set = false;
         if (j.is_object()) {
@@ -245,7 +257,10 @@ TEST_P(ServerAdminTest, CommandAllAndCount) {
         auto all = co_await redis.command();
         EXPECT_TRUE(all.ok()) << all.error();
         const auto &j = all.result();
-        if (!(!(j.empty()))) { ADD_FAILURE() << "precondition failed: !(j.empty())"; co_return; }
+        if (!(!(j.empty()))) {
+            ADD_FAILURE() << "precondition failed: !(j.empty())";
+            co_return;
+        }
         EXPECT_GT(j.size(), 10u);
 
         bool has_ping = false;
@@ -285,7 +300,10 @@ TEST_P(ServerAdminTest, CommandGetkeysDocsList) {
         // SET <key> <value> → the only key is <key>, at position 0.
         auto keys = co_await redis.command_getkeys("set", {"admin:k", "v"});
         EXPECT_TRUE(keys.ok()) << keys.error();
-        if (!(keys.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: keys.result().size() == 1u"; co_return; }
+        if (!(keys.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: keys.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(keys.result()[0], "admin:k");
 
         auto kflags = co_await redis.command_getkeysandflags("GET", {"admin:k"});
@@ -328,8 +346,7 @@ TEST_P(ServerAdminTest, DebugObjectAndSleep) {
         if (dbg.ok()) {
             const std::string &line = dbg.result();
             EXPECT_FALSE(line.empty());
-            EXPECT_TRUE(line.find("encoding") != std::string::npos
-                        || line.find("refcount") != std::string::npos
+            EXPECT_TRUE(line.find("encoding") != std::string::npos || line.find("refcount") != std::string::npos
                         || line.find("serializedlength") != std::string::npos)
                 << line;
         } else {

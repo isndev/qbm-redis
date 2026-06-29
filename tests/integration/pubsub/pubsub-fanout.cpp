@@ -47,9 +47,9 @@
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
-#include "../../shared/redis_integration_fixture.h"
 #include "../../shared/pubsub_wait.h"
+#include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using qb::redis::test::pubsub_drain_for;
@@ -57,11 +57,11 @@ using qb::redis::test::pubsub_wait_count;
 using qb::redis::test::pubsub_wait_until;
 
 /// Coroutine-safe early-return guard (ASSERT_* cannot be used inside a coroutine).
-#define CORO_REQUIRE(cond, done_flag)                                  \
-    if (!(cond)) {                                                     \
-        ADD_FAILURE() << "CORO_REQUIRE failed: " #cond;               \
-        done_flag = true;                                             \
-        co_return;                                                    \
+#define CORO_REQUIRE(cond, done_flag)                   \
+    if (!(cond)) {                                      \
+        ADD_FAILURE() << "CORO_REQUIRE failed: " #cond; \
+        done_flag = true;                               \
+        co_return;                                      \
     }
 
 namespace {
@@ -82,8 +82,7 @@ protected:
         ProtocolModesTestBase::SetUp();
         if (IsSkipped())
             return;
-        ASSERT_TRUE(qb::io::async::run_sync(publisher.connect()))
-            << "publisher connection failed";
+        ASSERT_TRUE(qb::io::async::run_sync(publisher.connect())) << "publisher connection failed";
     }
 };
 
@@ -240,8 +239,7 @@ TEST_P(PubSubFanoutTest, PublishAfterUnsubscribeDoesNotFireCallback) {
     std::atomic<size_t> message_count{0};
     const auto          ch = protocol_key("unsub");
 
-    qb::redis::tcp::cb_consumer consumer{REDIS_URI_PROTOCOL,
-                                         [&](auto &&) { ++message_count; }};
+    qb::redis::tcp::cb_consumer consumer{REDIS_URI_PROTOCOL, [&](auto &&) { ++message_count; }};
     ASSERT_TRUE(qb::io::async::run_sync(consumer.connect()));
 
     bool done = false;
@@ -318,10 +316,10 @@ TEST_P(PubSubFanoutTest, PubsubChannelsAndNumsubReportSubscribers) {
     qb::io::async::coro_scheduler().spawn(sub());
     run_coro_test_until(done);
 
-    done                = false;
+    done                     = false;
     bool      channel_listed = false;
     long long numsub         = -1;
-    auto introspect          = [&]() -> qb::io::async::task<void> {
+    auto      introspect     = [&]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_CLIENT(publisher, done);
 
         // PUBSUB CHANNELS <pattern> -> array of active channel names matching pattern.
@@ -425,7 +423,9 @@ TEST_P(PubSubFanoutTest, PublishEmptyPayloadDeliversEmptyString) {
 // publish -> deliver round-trip byte-for-byte, not be truncated at the NUL.
 
 TEST_P(PubSubFanoutTest, PublishBinaryPayloadWithNulRoundTrips) {
-    const std::string binary = std::string("a\0b\x01\x02\xff" "c", 7); // embeds NUL at [1]
+    const std::string binary = std::string("a\0b\x01\x02\xff"
+                                           "c",
+                                           7); // embeds NUL at [1]
     ASSERT_EQ(binary.size(), 7u);
     ASSERT_EQ(binary[1], '\0');
 

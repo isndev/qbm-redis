@@ -267,7 +267,7 @@ BM_RespParse_WideArray(benchmark::State &state) {
 
 void
 BM_RespParse_SmallBatch(benchmark::State &state) {
-    const int                count = static_cast<int>(state.range(0));
+    const int                count       = static_cast<int>(state.range(0));
     static const std::string frame_1000  = make_small_batch(1000);
     static const std::string frame_10000 = make_small_batch(10000);
     const std::string       &frame       = (count >= 10000) ? frame_10000 : frame_1000;

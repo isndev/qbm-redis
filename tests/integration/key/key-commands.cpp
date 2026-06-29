@@ -33,13 +33,13 @@
 
 #include <algorithm>
 #include <chrono>
+#include <gtest/gtest.h>
 #include <string>
 #include <vector>
-#include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -95,7 +95,10 @@ TEST_P(KeyProtocolModesTest, DUMP_RESTORE) {
 
         auto dump = co_await redis.dump(key);
         EXPECT_TRUE(dump.ok()) << dump.error();
-        if (!(dump.result().has_value())) { ADD_FAILURE() << "precondition failed: dump.result().has_value()"; co_return; }
+        if (!(dump.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: dump.result().has_value()";
+            co_return;
+        }
 
         const std::string new_key = protocol_key("restored");
         auto              restore = co_await redis.restore(new_key, *dump.result(), 0);
@@ -103,7 +106,10 @@ TEST_P(KeyProtocolModesTest, DUMP_RESTORE) {
 
         auto got = co_await redis.get(new_key);
         EXPECT_TRUE(got.ok()) << got.error();
-        if (!(got.result().has_value())) { ADD_FAILURE() << "precondition failed: got.result().has_value()"; co_return; }
+        if (!(got.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: got.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*got.result(), value);
         completed = true;
     };
@@ -180,7 +186,10 @@ TEST_P(KeyProtocolModesTest, RANDOMKEY) {
 
         auto random = co_await redis.randomkey();
         EXPECT_TRUE(random.ok()) << random.error();
-        if (!(random.result().has_value())) { ADD_FAILURE() << "precondition failed: random.result().has_value()"; co_return; }
+        if (!(random.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: random.result().has_value()";
+            co_return;
+        }
         EXPECT_TRUE(*random.result() == key1 || *random.result() == key2 || *random.result() == key3);
         completed = true;
     };
@@ -316,8 +325,7 @@ TEST_P(KeyProtocolModesTest, EXPIRE_LIFECYCLE) {
         const std::string key = protocol_key("expireat");
         CO_IGNORE(co_await redis.set(key, "value"));
 
-        const long long now_s =
-            std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        const long long now_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
         auto expireat = co_await redis.expireat(key, now_s + 60);
         EXPECT_TRUE(expireat.ok()) << expireat.error();
@@ -379,7 +387,10 @@ TEST_P(KeyProtocolModesTest, RENAME_RENAMENX) {
 
         auto get_new = co_await redis.get(dst);
         EXPECT_TRUE(get_new.ok()) << get_new.error();
-        if (!(get_new.result().has_value())) { ADD_FAILURE() << "precondition failed: get_new.result().has_value()"; co_return; }
+        if (!(get_new.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: get_new.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*get_new.result(), "hello");
 
         auto renamenx_ok = co_await redis.renamenx(dst, dst2);
@@ -438,7 +449,10 @@ TEST_P(KeyProtocolModesTest, COPY) {
 
         auto got = co_await redis.get(dst);
         EXPECT_TRUE(got.ok()) << got.error();
-        if (!(got.result().has_value())) { ADD_FAILURE() << "precondition failed: got.result().has_value()"; co_return; }
+        if (!(got.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: got.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*got.result(), "copy_value");
 
         // COPY without REPLACE onto an existing key must fail (false).
@@ -452,7 +466,10 @@ TEST_P(KeyProtocolModesTest, COPY) {
         EXPECT_TRUE(copy_replace.ok()) << copy_replace.error();
         EXPECT_TRUE(copy_replace.result());
         auto got2 = co_await redis.get(dst);
-        if (!(got2.ok() && got2.result().has_value())) { ADD_FAILURE() << "precondition failed: got2.ok() && got2.result().has_value()"; co_return; }
+        if (!(got2.ok() && got2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: got2.ok() && got2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*got2.result(), "copy_value");
         completed = true;
     };
@@ -468,9 +485,8 @@ TEST_P(KeyProtocolModesTest, EXPIRETIME_PEXPIRETIME) {
         CO_IGNORE(co_await redis.set(key, "v"));
         CO_IGNORE(co_await redis.expire(key, 120));
 
-        const long long now_s =
-            std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        auto et = co_await redis.expiretime(key);
+        const long long now_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        auto            et    = co_await redis.expiretime(key);
         EXPECT_TRUE(et.ok()) << et.error();
         EXPECT_GT(et.result(), now_s) << "EXPIRETIME must be a future absolute Unix time";
 
@@ -502,7 +518,10 @@ TEST_P(KeyProtocolModesTest, OBJECT_ENCODING) {
 
         auto enc = co_await redis.objectEncoding(key);
         EXPECT_TRUE(enc.ok()) << enc.error();
-        if (!(enc.result().has_value())) { ADD_FAILURE() << "precondition failed: enc.result().has_value()"; co_return; }
+        if (!(enc.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: enc.result().has_value()";
+            co_return;
+        }
         // A short string value is stored as "embstr" on modern Redis.
         EXPECT_FALSE(enc.result()->empty());
         completed = true;
@@ -528,9 +547,8 @@ TEST_P(KeyProtocolModesTest, OBJECT_REFCOUNT_IDLETIME_FREQ) {
 
         // Capability probe: OBJECT FREQ only works under an *lfu maxmemory-policy.
         auto       policy = co_await redis.config_get("maxmemory-policy");
-        const bool lfu    = policy.ok() && !policy.result().empty() &&
-                         policy.result().front().second.find("lfu") != std::string::npos;
-        auto freq = co_await redis.objectFreq(key);
+        const bool lfu    = policy.ok() && !policy.result().empty() && policy.result().front().second.find("lfu") != std::string::npos;
+        auto       freq   = co_await redis.objectFreq(key);
         if (lfu) {
             EXPECT_TRUE(freq.ok()) << "OBJECT FREQ must succeed under an LFU policy: " << freq.error();
         } else if (!freq.ok()) {
@@ -556,9 +574,9 @@ TEST_P(KeyProtocolModesTest, MIGRATE_TO_DEAD_TARGET_FAILS) {
         auto r = co_await redis.migrate("127.0.0.1", 16380, key, 0, 500, true);
         EXPECT_FALSE(r.ok()) << "MIGRATE to a dead target must fail, not return OK";
         const std::string err(r.error());
-        EXPECT_TRUE(err.find("Connection") != std::string::npos || err.find("refused") != std::string::npos ||
-                    err.find("timeout") != std::string::npos || err.find("IOERR") != std::string::npos ||
-                    err.find("IO") != std::string::npos)
+        EXPECT_TRUE(err.find("Connection") != std::string::npos || err.find("refused") != std::string::npos
+                    || err.find("timeout") != std::string::npos || err.find("IOERR") != std::string::npos
+                    || err.find("IO") != std::string::npos)
             << "expected a connection-class error, got: " << err;
         // The key must still be present locally since the migration failed.
         auto ex = co_await redis.exists(key);
@@ -580,7 +598,10 @@ TEST_P(KeyProtocolModesTest, SORT) {
 
         auto sorted = co_await redis.sortKey(key);
         EXPECT_TRUE(sorted.ok()) << sorted.error();
-        if (!(sorted.result().size() == 4u)) { ADD_FAILURE() << "precondition failed: sorted.result().size() == 4u"; co_return; }
+        if (!(sorted.result().size() == 4u)) {
+            ADD_FAILURE() << "precondition failed: sorted.result().size() == 4u";
+            co_return;
+        }
         EXPECT_EQ(sorted.result()[0], "1");
         EXPECT_EQ(sorted.result()[1], "2");
         EXPECT_EQ(sorted.result()[2], "3");
@@ -588,7 +609,10 @@ TEST_P(KeyProtocolModesTest, SORT) {
 
         auto sorted_ro = co_await redis.sortKeyRo(key);
         EXPECT_TRUE(sorted_ro.ok()) << sorted_ro.error();
-        if (!(sorted_ro.result().size() == 4u)) { ADD_FAILURE() << "precondition failed: sorted_ro.result().size() == 4u"; co_return; }
+        if (!(sorted_ro.result().size() == 4u)) {
+            ADD_FAILURE() << "precondition failed: sorted_ro.result().size() == 4u";
+            co_return;
+        }
         EXPECT_EQ(sorted_ro.result()[0], "1");
 
         const std::string dest  = protocol_key("sort_dest");
@@ -604,9 +628,9 @@ TEST_P(KeyProtocolModesTest, SORT) {
 // WAITAOF requires Redis 7.2+: probe via the reply and skip on older servers rather than
 // tolerating "unknown command" as a pass.
 TEST_P(KeyProtocolModesTest, WAITAOF) {
-    bool completed = false;
+    bool completed   = false;
     bool unsupported = false;
-    auto test_task = [this, &completed, &unsupported]() -> qb::io::async::task<void> {
+    auto test_task   = [this, &completed, &unsupported]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         auto r = co_await redis.waitaof(0, 0, 100);
         if (!r.ok()) {
@@ -615,8 +639,7 @@ TEST_P(KeyProtocolModesTest, WAITAOF) {
             // is disabled errors with "WAITAOF cannot be used when numlocal is set but
             // appendonly is disabled."; with num_local=0 (as here) the command succeeds
             // even when AOF is off, so this branch is for the unknown-command case.
-            unsupported = err.find("unknown command") != std::string::npos ||
-                          err.find("AOF") != std::string::npos;
+            unsupported = err.find("unknown command") != std::string::npos || err.find("AOF") != std::string::npos;
             EXPECT_TRUE(unsupported) << "unexpected WAITAOF error: " << err;
         } else {
             // WAITAOF replies with a two-element integer array [numlocal, numreplicas]
@@ -626,8 +649,7 @@ TEST_P(KeyProtocolModesTest, WAITAOF) {
             // mode with num_local=0 both are 0.
             // ASSERT_* (a bare `return;`) is ill-formed in a coroutine; guard with co_return.
             if (r.result().size() != 2u) {
-                ADD_FAILURE() << "WAITAOF must return [numlocal, numreplicas], got size "
-                              << r.result().size();
+                ADD_FAILURE() << "WAITAOF must return [numlocal, numreplicas], got size " << r.result().size();
                 completed = true;
                 co_return;
             }

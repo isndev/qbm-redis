@@ -67,8 +67,8 @@ namespace {
 parse_score(std::string_view s, double &out) {
     if (!s.empty() && s.front() == '(')
         s.remove_prefix(1);
-    const char *begin = s.data();
-    const char *end   = s.data() + s.size();
+    const char *begin    = s.data();
+    const char *end      = s.data() + s.size();
     const auto [ptr, ec] = std::from_chars(begin, end, out);
     return ec == std::errc{} && ptr == end;
 }
@@ -199,7 +199,7 @@ TEST(IntervalScoreFormat, NaNScoreFormatsAsNan) {
     // double_to_redis only special-cases ±inf; NaN flows through to_chars, which
     // emits the lowercase token "nan". Pin this so a future formatter change
     // (e.g. throwing, or emitting "0") is caught here, not silently in Redis.
-    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double   nan = std::numeric_limits<double>::quiet_NaN();
     score_interval i(nan, nan, BoundType::CLOSED);
     EXPECT_EQ(i.lower(), "nan");
     EXPECT_EQ(i.upper(), "nan");

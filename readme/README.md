@@ -71,7 +71,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
   units, exposed through `std::chrono`-unit overloads, and are **not** forced onto `qb::duration`:
 
   | Granularity | Commands | Argument type |
-      |---|---|---|
+        |---|---|---|
   | Seconds | `EXPIRE`, `EXPIREAT`, `SETEX`, `GETEX` (`EX`) | `std::chrono::seconds` (or the raw `long long` overload) |
   | Milliseconds | `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX` (`PX`), `WAIT`, `RESTORE` TTL, `MIGRATE` | `std::chrono::milliseconds` (or the raw `long long` overload) |
 

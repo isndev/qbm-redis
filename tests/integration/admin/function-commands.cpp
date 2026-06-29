@@ -35,8 +35,8 @@
 #include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 // ProtocolMode / ProtocolModesTestBase / macros from redis_integration_fixture.h (global re-export).
 
@@ -61,11 +61,10 @@ protected:
 INSTANTIATE_PROTOCOL_MODES(FunctionTest);
 
 // A Lua library with one normal and one no-writes function, used by the positive flow.
-constexpr const char *kLibCode =
-    "#!lua name=qbtestlib\n"
-    "redis.register_function('qbtest_echo', function(keys, args) return args[1] end)\n"
-    "redis.register_function{function_name='qbtest_roecho', "
-    "callback=function(keys, args) return args[1] end, flags={'no-writes'}}\n";
+constexpr const char *kLibCode = "#!lua name=qbtestlib\n"
+                                 "redis.register_function('qbtest_echo', function(keys, args) return args[1] end)\n"
+                                 "redis.register_function{function_name='qbtest_roecho', "
+                                 "callback=function(keys, args) return args[1] end, flags={'no-writes'}}\n";
 
 // =============== POSITIVE END-TO-END FLOW ===============
 
@@ -99,8 +98,7 @@ TEST_P(FunctionTest, LoadFcallListStatsDelete) {
         EXPECT_TRUE(stats.ok()) << stats.error();
         EXPECT_TRUE(stats.result().is_object());
         EXPECT_TRUE(stats.result().contains("engines"));
-        EXPECT_NE(stats.result()["engines"].dump().find("LUA"), std::string::npos)
-            << stats.result()["engines"].dump();
+        EXPECT_NE(stats.result()["engines"].dump().find("LUA"), std::string::npos) << stats.result()["engines"].dump();
 
         // DELETE the library, then FCALL must now fail with "Function not found".
         auto del = co_await redis.function_delete("qbtestlib");
@@ -109,8 +107,7 @@ TEST_P(FunctionTest, LoadFcallListStatsDelete) {
         auto gone = co_await redis.fcall<std::string>("qbtest_echo", {}, {"x"});
         EXPECT_FALSE(gone.ok());
         if (!gone.ok())
-            EXPECT_NE(std::string(gone.error()).find("Function not found"), std::string::npos)
-                << gone.error();
+            EXPECT_NE(std::string(gone.error()).find("Function not found"), std::string::npos) << gone.error();
 
         completed = true;
     });
@@ -155,8 +152,7 @@ TEST_P(FunctionTest, LoadInvalidCodeFails) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             const std::string err{reply.error()};
-            EXPECT_TRUE(err.find("Missing library metadata") != std::string::npos
-                        || err.find("syntax error") != std::string::npos
+            EXPECT_TRUE(err.find("Missing library metadata") != std::string::npos || err.find("syntax error") != std::string::npos
                         || err.find("ERR") != std::string::npos)
                 << err;
         }
@@ -173,8 +169,7 @@ TEST_P(FunctionTest, DeleteMissingLibraryFails) {
         auto reply = co_await redis.function_delete("nonexistent_library");
         EXPECT_FALSE(reply.ok());
         if (!reply.ok())
-            EXPECT_NE(std::string(reply.error()).find("Library not found"), std::string::npos)
-                << reply.error();
+            EXPECT_NE(std::string(reply.error()).find("Library not found"), std::string::npos) << reply.error();
         completed = true;
     });
     run_coro_test_until(completed);
@@ -203,8 +198,7 @@ TEST_P(FunctionTest, RestoreInvalidPayloadFails) {
         EXPECT_FALSE(reply.ok());
         if (!reply.ok()) {
             const std::string err{reply.error()};
-            EXPECT_TRUE(err.find("payload version") != std::string::npos
-                        || err.find("invalid payload") != std::string::npos
+            EXPECT_TRUE(err.find("payload version") != std::string::npos || err.find("invalid payload") != std::string::npos
                         || err.find("ERR") != std::string::npos)
                 << err;
         }
@@ -220,7 +214,10 @@ TEST_P(FunctionTest, HelpMentionsFunction) {
 
         auto help = co_await redis.function_help();
         EXPECT_TRUE(help.ok()) << help.error();
-        if (!(!(help.result().empty()))) { ADD_FAILURE() << "precondition failed: !(help.result().empty())"; co_return; }
+        if (!(!(help.result().empty()))) {
+            ADD_FAILURE() << "precondition failed: !(help.result().empty())";
+            co_return;
+        }
         bool mentions = false;
         for (const auto &line : help.result())
             if (line.find("FUNCTION") != std::string::npos || line.find("FCALL") != std::string::npos)

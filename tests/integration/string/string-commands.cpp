@@ -28,12 +28,12 @@
  * outcome (the status, not just the protocol-level ok()). Busy-spins → run_coro_test_until.
  */
 
-#include <string>
 #include <gtest/gtest.h>
+#include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -60,7 +60,10 @@ TEST_P(StringProtocolModesTest, APPEND) {
 
         auto reply3 = co_await redis.get(key);
         EXPECT_TRUE(reply3.ok()) << reply3.error();
-        if (!(reply3.result().has_value())) { ADD_FAILURE() << "precondition failed: reply3.result().has_value()"; co_return; }
+        if (!(reply3.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply3.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply3.result(), "Hello World");
 
         completed = true;
@@ -117,7 +120,10 @@ TEST_P(StringProtocolModesTest, GET_AND_GETRANGE) {
 
         auto reply1 = co_await redis.get(key);
         EXPECT_TRUE(reply1.ok()) << reply1.error();
-        if (!(reply1.result().has_value())) { ADD_FAILURE() << "precondition failed: reply1.result().has_value()"; co_return; }
+        if (!(reply1.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply1.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply1.result(), value);
 
         auto reply2 = co_await redis.get(protocol_key("nonexistent"));
@@ -160,12 +166,18 @@ TEST_P(StringProtocolModesTest, GETSET) {
         CO_IGNORE(co_await redis.set(key, "old_value"));
         auto reply2 = co_await redis.getset(key, "new_value");
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().has_value())) { ADD_FAILURE() << "precondition failed: reply2.result().has_value()"; co_return; }
+        if (!(reply2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply2.result(), "old_value");
 
         auto reply3 = co_await redis.get(key);
         EXPECT_TRUE(reply3.ok()) << reply3.error();
-        if (!(reply3.result().has_value())) { ADD_FAILURE() << "precondition failed: reply3.result().has_value()"; co_return; }
+        if (!(reply3.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply3.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply3.result(), "new_value");
 
         completed = true;
@@ -251,10 +263,22 @@ TEST_P(StringProtocolModesTest, MGET_MSET) {
 
         auto reply2 = co_await redis.mget({key1, key2, key3, protocol_key("nonexistent")});
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().size() == 4u)) { ADD_FAILURE() << "precondition failed: reply2.result().size() == 4u"; co_return; }
-        if (!(reply2.result()[0].has_value())) { ADD_FAILURE() << "precondition failed: reply2.result()[0].has_value()"; co_return; }
-        if (!(reply2.result()[1].has_value())) { ADD_FAILURE() << "precondition failed: reply2.result()[1].has_value()"; co_return; }
-        if (!(reply2.result()[2].has_value())) { ADD_FAILURE() << "precondition failed: reply2.result()[2].has_value()"; co_return; }
+        if (!(reply2.result().size() == 4u)) {
+            ADD_FAILURE() << "precondition failed: reply2.result().size() == 4u";
+            co_return;
+        }
+        if (!(reply2.result()[0].has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result()[0].has_value()";
+            co_return;
+        }
+        if (!(reply2.result()[1].has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result()[1].has_value()";
+            co_return;
+        }
+        if (!(reply2.result()[2].has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result()[2].has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply2.result()[0], "value1");
         EXPECT_EQ(*reply2.result()[1], "value2");
         EXPECT_EQ(*reply2.result()[2], "value3");
@@ -287,8 +311,14 @@ TEST_P(StringProtocolModesTest, MSETNX) {
         auto reply4 = co_await redis.get(key2);
         auto reply5 = co_await redis.get(key3);
         EXPECT_TRUE(reply3.ok() && reply4.ok() && reply5.ok());
-        if (!(reply3.result().has_value())) { ADD_FAILURE() << "precondition failed: reply3.result().has_value()"; co_return; }
-        if (!(reply4.result().has_value())) { ADD_FAILURE() << "precondition failed: reply4.result().has_value()"; co_return; }
+        if (!(reply3.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply3.result().has_value()";
+            co_return;
+        }
+        if (!(reply4.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply4.result().has_value()";
+            co_return;
+        }
         EXPECT_FALSE(reply5.result().has_value());
         EXPECT_EQ(*reply3.result(), "value1");
         EXPECT_EQ(*reply4.result(), "value2");
@@ -313,12 +343,15 @@ TEST_P(StringProtocolModesTest, SETEX) {
 
         auto reply2 = co_await redis.get(key);
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().has_value())) { ADD_FAILURE() << "precondition failed: reply2.result().has_value()"; co_return; }
+        if (!(reply2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply2.result(), "value");
 
         auto ttl = co_await redis.ttl(key);
         EXPECT_TRUE(ttl.ok()) << ttl.error();
-        EXPECT_GT(ttl.result(), 90);  // set to 100s; allow for command latency
+        EXPECT_GT(ttl.result(), 90); // set to 100s; allow for command latency
         EXPECT_LE(ttl.result(), 100);
 
         completed = true;
@@ -340,7 +373,10 @@ TEST_P(StringProtocolModesTest, PSETEX) {
 
         auto reply2 = co_await redis.get(key);
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().has_value())) { ADD_FAILURE() << "precondition failed: reply2.result().has_value()"; co_return; }
+        if (!(reply2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply2.result(), "value");
 
         auto pttl = co_await redis.pttl(key);
@@ -386,7 +422,10 @@ TEST_P(StringProtocolModesTest, SET_WITH_CONDITIONS) {
         EXPECT_TRUE(nx_fail.ok()) << nx_fail.error();
         EXPECT_FALSE(nx_fail.result().ok()) << "NX on an existing key must return nil, not OK";
         auto after_nx = co_await redis.get(nx_key);
-        if (!(after_nx.ok() && after_nx.result().has_value())) { ADD_FAILURE() << "precondition failed: after_nx.ok() && after_nx.result().has_value()"; co_return; }
+        if (!(after_nx.ok() && after_nx.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: after_nx.ok() && after_nx.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*after_nx.result(), "v") << "failed NX must not overwrite the value";
 
         // XX on the existing key → OK and overwrites.
@@ -394,7 +433,10 @@ TEST_P(StringProtocolModesTest, SET_WITH_CONDITIONS) {
         EXPECT_TRUE(xx_ok.ok()) << xx_ok.error();
         EXPECT_TRUE(xx_ok.result().ok()) << "XX on an existing key must set (+OK)";
         auto after_xx = co_await redis.get(nx_key);
-        if (!(after_xx.ok() && after_xx.result().has_value())) { ADD_FAILURE() << "precondition failed: after_xx.ok() && after_xx.result().has_value()"; co_return; }
+        if (!(after_xx.ok() && after_xx.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: after_xx.ok() && after_xx.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*after_xx.result(), "v3");
 
         // XX on a missing key → nil (status not OK), key stays absent.
@@ -428,7 +470,10 @@ TEST_P(StringProtocolModesTest, SETNX) {
 
         auto reply3 = co_await redis.get(key);
         EXPECT_TRUE(reply3.ok()) << reply3.error();
-        if (!(reply3.result().has_value())) { ADD_FAILURE() << "precondition failed: reply3.result().has_value()"; co_return; }
+        if (!(reply3.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply3.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply3.result(), "value1");
 
         completed = true;
@@ -450,7 +495,10 @@ TEST_P(StringProtocolModesTest, SETRANGE) {
 
         auto reply2 = co_await redis.get(key);
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().has_value())) { ADD_FAILURE() << "precondition failed: reply2.result().has_value()"; co_return; }
+        if (!(reply2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply2.result(), "Hello Redis");
 
         completed = true;
@@ -493,7 +541,10 @@ TEST_P(StringProtocolModesTest, GETDEL) {
         CO_IGNORE(co_await redis.set(key, "to_delete"));
         auto reply2 = co_await redis.getdel(key);
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().has_value())) { ADD_FAILURE() << "precondition failed: reply2.result().has_value()"; co_return; }
+        if (!(reply2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply2.result(), "to_delete");
 
         auto ex_reply = co_await redis.exists(key);
@@ -515,7 +566,10 @@ TEST_P(StringProtocolModesTest, GETEX) {
 
         auto reply1 = co_await redis.getex(key, 5000LL);
         EXPECT_TRUE(reply1.ok()) << reply1.error();
-        if (!(reply1.result().has_value())) { ADD_FAILURE() << "precondition failed: reply1.result().has_value()"; co_return; }
+        if (!(reply1.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply1.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply1.result(), "value");
 
         auto pttl_reply = co_await redis.pttl(key);
@@ -524,7 +578,10 @@ TEST_P(StringProtocolModesTest, GETEX) {
 
         auto reply2 = co_await redis.getex(key, std::chrono::milliseconds{10000});
         EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().has_value())) { ADD_FAILURE() << "precondition failed: reply2.result().has_value()"; co_return; }
+        if (!(reply2.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: reply2.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*reply2.result(), "value");
 
         auto reply3 = co_await redis.getex(protocol_key("nonexistent_getex"), 1000LL);

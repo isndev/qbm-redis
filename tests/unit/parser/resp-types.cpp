@@ -32,10 +32,10 @@
  * @ingroup Redis
  */
 
+#include <gtest/gtest.h>
 #include <memory>
 #include <optional>
 #include <string>
-#include <gtest/gtest.h>
 
 #include "../parser/types.h"
 

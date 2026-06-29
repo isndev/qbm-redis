@@ -34,8 +34,8 @@
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::redis::test;
 
@@ -86,11 +86,20 @@ TEST_P(BitmapProtocolModesTest, BITFIELD) {
         auto r = co_await redis.bitfield(key, {"SET", "u4", "0", "100", "GET", "u4", "0"});
         EXPECT_TRUE(r.ok()) << r.error();
         const auto &res = r.result();
-        if (!(res.size() == 2u)) { ADD_FAILURE() << "precondition failed: res.size() == 2u"; co_return; }
-        if (!(res[0].has_value())) { ADD_FAILURE() << "precondition failed: res[0].has_value()"; co_return; }
-        if (!(res[1].has_value())) { ADD_FAILURE() << "precondition failed: res[1].has_value()"; co_return; }
-        EXPECT_EQ(res[0].value(), 0);  // previous value
-        EXPECT_EQ(res[1].value(), 4);  // 100 mod 16 (u4 wraps)
+        if (!(res.size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: res.size() == 2u";
+            co_return;
+        }
+        if (!(res[0].has_value())) {
+            ADD_FAILURE() << "precondition failed: res[0].has_value()";
+            co_return;
+        }
+        if (!(res[1].has_value())) {
+            ADD_FAILURE() << "precondition failed: res[1].has_value()";
+            co_return;
+        }
+        EXPECT_EQ(res[0].value(), 0); // previous value
+        EXPECT_EQ(res[1].value(), 4); // 100 mod 16 (u4 wraps)
 
         completed = true;
     });
@@ -109,8 +118,14 @@ TEST_P(BitmapProtocolModesTest, BITFIELD_RO) {
 
         auto r = co_await redis.bitfieldRo(key, {"GET", "u8", "0"});
         EXPECT_TRUE(r.ok()) << r.error();
-        if (!(r.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: r.result().size() == 1u"; co_return; }
-        if (!(r.result()[0].has_value())) { ADD_FAILURE() << "precondition failed: r.result()[0].has_value()"; co_return; }
+        if (!(r.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: r.result().size() == 1u";
+            co_return;
+        }
+        if (!(r.result()[0].has_value())) {
+            ADD_FAILURE() << "precondition failed: r.result()[0].has_value()";
+            co_return;
+        }
         EXPECT_EQ(r.result()[0].value(), 42);
 
         completed = true;
@@ -140,7 +155,10 @@ TEST_P(BitmapProtocolModesTest, BITOP) {
         EXPECT_TRUE(r_and.ok()) << r_and.error();
         EXPECT_EQ(r_and.result(), 3);
         auto get_and = co_await redis.get(destkey);
-        if (!(get_and.ok() && get_and.result().has_value())) { ADD_FAILURE() << "precondition failed: get_and.ok() && get_and.result().has_value()"; co_return; }
+        if (!(get_and.ok() && get_and.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: get_and.ok() && get_and.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*get_and.result(), std::string("\x0F\x00\x00", 3));
 
         // OR: 0xFF|0x0F=0xFF, 0x00|0xF0=0xF0, 0xFF|0x00=0xFF → "\xFF\xF0\xFF".
@@ -148,7 +166,10 @@ TEST_P(BitmapProtocolModesTest, BITOP) {
         EXPECT_TRUE(r_or.ok()) << r_or.error();
         EXPECT_EQ(r_or.result(), 3);
         auto get_or = co_await redis.get(destkey);
-        if (!(get_or.ok() && get_or.result().has_value())) { ADD_FAILURE() << "precondition failed: get_or.ok() && get_or.result().has_value()"; co_return; }
+        if (!(get_or.ok() && get_or.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: get_or.ok() && get_or.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*get_or.result(), std::string("\xFF\xF0\xFF", 3));
 
         // XOR: 0xFF^0x0F=0xF0, 0x00^0xF0=0xF0, 0xFF^0x00=0xFF → "\xF0\xF0\xFF".
@@ -156,7 +177,10 @@ TEST_P(BitmapProtocolModesTest, BITOP) {
         EXPECT_TRUE(r_xor.ok()) << r_xor.error();
         EXPECT_EQ(r_xor.result(), 3);
         auto get_xor = co_await redis.get(destkey);
-        if (!(get_xor.ok() && get_xor.result().has_value())) { ADD_FAILURE() << "precondition failed: get_xor.ok() && get_xor.result().has_value()"; co_return; }
+        if (!(get_xor.ok() && get_xor.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: get_xor.ok() && get_xor.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*get_xor.result(), std::string("\xF0\xF0\xFF", 3));
 
         // NOT (unary): ~"\xFF\x00\xFF" = "\x00\xFF\x00" (3 bytes, no padding involved).
@@ -164,7 +188,10 @@ TEST_P(BitmapProtocolModesTest, BITOP) {
         EXPECT_TRUE(r_not.ok()) << r_not.error();
         EXPECT_EQ(r_not.result(), 3);
         auto get_not = co_await redis.get(destkey);
-        if (!(get_not.ok() && get_not.result().has_value())) { ADD_FAILURE() << "precondition failed: get_not.ok() && get_not.result().has_value()"; co_return; }
+        if (!(get_not.ok() && get_not.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: get_not.ok() && get_not.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*get_not.result(), std::string("\x00\xFF\x00", 3));
 
         completed = true;

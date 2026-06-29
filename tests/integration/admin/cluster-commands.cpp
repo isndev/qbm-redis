@@ -36,8 +36,8 @@
 #include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 // ProtocolMode / ProtocolModesTestBase / macros from redis_integration_fixture.h (global re-export).
 
@@ -58,8 +58,7 @@ TEST_P(ClusterStandaloneTest, IntrospectionRejectedWhenDisabled) {
         auto expect_disabled = [](const auto &r) {
             EXPECT_FALSE(r.ok());
             if (!r.ok())
-                EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos)
-                    << r.error();
+                EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos) << r.error();
         };
 
         expect_disabled(co_await redis.cluster_info());
@@ -84,12 +83,11 @@ TEST_P(ClusterStandaloneTest, MutationRejectedWhenDisabled) {
     qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
 
-        const std::string dummy_id = "0000000000000000000000000000000000000000";
+        const std::string dummy_id        = "0000000000000000000000000000000000000000";
         auto              expect_disabled = [](const auto &r) {
             EXPECT_FALSE(r.ok());
             if (!r.ok())
-                EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos)
-                    << r.error();
+                EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos) << r.error();
         };
 
         expect_disabled(co_await redis.cluster_meet("127.0.0.1", 7000));
@@ -125,8 +123,7 @@ TEST_P(ClusterStandaloneTest, RedirectVerbsRejectedWhenDisabled) {
         auto expect_disabled = [](const auto &r) {
             EXPECT_FALSE(r.ok());
             if (!r.ok())
-                EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos)
-                    << r.error();
+                EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos) << r.error();
         };
 
         expect_disabled(co_await redis.asking());

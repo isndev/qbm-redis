@@ -33,8 +33,8 @@
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 // ProtocolMode / ProtocolModesTestBase / macros from redis_integration_fixture.h (global re-export).
 
@@ -65,7 +65,10 @@ TEST_P(AclTest, CatCategoriesAndCommands) {
 
         auto cats = co_await redis.acl_cat();
         EXPECT_TRUE(cats.ok()) << cats.error();
-        if (!(!(cats.result().empty()))) { ADD_FAILURE() << "precondition failed: !(cats.result().empty())"; co_return; }
+        if (!(!(cats.result().empty()))) {
+            ADD_FAILURE() << "precondition failed: !(cats.result().empty())";
+            co_return;
+        }
 
         bool has_string = false, has_keyspace = false;
         for (const auto &c : cats.result()) {
@@ -81,12 +84,14 @@ TEST_P(AclTest, CatCategoriesAndCommands) {
         auto cmds = co_await redis.command<qb::json>("ACL", "CAT", "string");
         EXPECT_TRUE(cmds.ok()) << cmds.error();
         EXPECT_TRUE(cmds.result().is_array());
-        if (!(!(cmds.result().empty()))) { ADD_FAILURE() << "precondition failed: !(cmds.result().empty())"; co_return; }
+        if (!(!(cmds.result().empty()))) {
+            ADD_FAILURE() << "precondition failed: !(cmds.result().empty())";
+            co_return;
+        }
         bool found = false;
         for (const auto &cmd : cmds.result()) {
             const std::string name = cmd.get<std::string>();
-            if (name == "incr" || name == "decr" || name == "getex" || name == "getrange"
-                || name == "strlen") {
+            if (name == "incr" || name == "decr" || name == "getex" || name == "getrange" || name == "strlen") {
                 found = true;
                 break;
             }
@@ -130,7 +135,10 @@ TEST_P(AclTest, ListUsersWhoami) {
         auto list = co_await redis.acl_list();
         EXPECT_TRUE(list.ok()) << list.error();
         EXPECT_TRUE(list.result().is_array());
-        if (!(!(list.result().empty()))) { ADD_FAILURE() << "precondition failed: !(list.result().empty())"; co_return; }
+        if (!(!(list.result().empty()))) {
+            ADD_FAILURE() << "precondition failed: !(list.result().empty())";
+            co_return;
+        }
         bool found_default = false;
         for (const auto &rule : list.result())
             if (rule.get<std::string>().find("user default") != std::string::npos)
@@ -182,7 +190,10 @@ TEST_P(AclTest, HelpMentionsAcl) {
 
         auto help = co_await redis.acl_help();
         EXPECT_TRUE(help.ok()) << help.error();
-        if (!(!(help.result().empty()))) { ADD_FAILURE() << "precondition failed: !(help.result().empty())"; co_return; }
+        if (!(!(help.result().empty()))) {
+            ADD_FAILURE() << "precondition failed: !(help.result().empty())";
+            co_return;
+        }
         bool mentions = false;
         for (const auto &line : help.result())
             if (line.find("ACL") != std::string::npos)

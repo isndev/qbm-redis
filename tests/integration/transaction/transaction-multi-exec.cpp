@@ -34,8 +34,8 @@
 #include <gtest/gtest.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../redis.h"
 #include "../../shared/redis_integration_fixture.h"
+#include "../redis.h"
 
 using namespace qb::io;
 using namespace std::chrono;
@@ -74,7 +74,10 @@ TEST_P(TransactionTest, MULTI_EXEC) {
         // EXEC runs the queued commands atomically and returns their replies in order.
         auto exec_reply = co_await redis.exec<std::string>();
         EXPECT_TRUE(exec_reply.ok()) << exec_reply.error();
-        if (!(exec_reply.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: exec_reply.result().size() == 2u"; co_return; }
+        if (!(exec_reply.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: exec_reply.result().size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(exec_reply.result()[0], "OK");
         EXPECT_EQ(exec_reply.result()[1], "OK");
         EXPECT_FALSE(redis.is_in_multi());
@@ -84,8 +87,14 @@ TEST_P(TransactionTest, MULTI_EXEC) {
         auto value2_reply = co_await redis.get(key2);
         EXPECT_TRUE(value1_reply.ok());
         EXPECT_TRUE(value2_reply.ok());
-        if (!(value1_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value1_reply.result().has_value()"; co_return; }
-        if (!(value2_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value2_reply.result().has_value()"; co_return; }
+        if (!(value1_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value1_reply.result().has_value()";
+            co_return;
+        }
+        if (!(value2_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value2_reply.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*value1_reply.result(), "value1");
         EXPECT_EQ(*value2_reply.result(), "value2");
 
@@ -165,7 +174,10 @@ TEST_P(TransactionTest, WATCH_ABORTS_ON_CONCURRENT_WRITE) {
         // The concurrent writer's value won.
         auto value_reply = co_await redis.get(key);
         EXPECT_TRUE(value_reply.ok());
-        if (!(value_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value_reply.result().has_value()"; co_return; }
+        if (!(value_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value_reply.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*value_reply.result(), "modified");
 
         auto unwatch_reply = co_await redis.unwatch();
@@ -208,8 +220,14 @@ TEST_P(TransactionTest, WATCH_MULTIPLE_ABORTS) {
 
         auto value1_reply = co_await redis.get(key1);
         auto value2_reply = co_await redis.get(key2);
-        if (!(value1_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value1_reply.result().has_value()"; co_return; }
-        if (!(value2_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value2_reply.result().has_value()"; co_return; }
+        if (!(value1_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value1_reply.result().has_value()";
+            co_return;
+        }
+        if (!(value2_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value2_reply.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*value1_reply.result(), "modified1"); // other client won
         EXPECT_EQ(*value2_reply.result(), "initial2");  // untouched, pre-MULTI value
 
@@ -242,14 +260,23 @@ TEST_P(TransactionTest, WATCH_SUCCESS) {
 
         auto exec_reply = co_await redis.exec<std::string>();
         EXPECT_TRUE(exec_reply.ok()) << exec_reply.error();
-        if (!(exec_reply.result().size() == 2u)) { ADD_FAILURE() << "precondition failed: exec_reply.result().size() == 2u"; co_return; }
+        if (!(exec_reply.result().size() == 2u)) {
+            ADD_FAILURE() << "precondition failed: exec_reply.result().size() == 2u";
+            co_return;
+        }
         EXPECT_EQ(exec_reply.result()[0], "OK");
         EXPECT_EQ(exec_reply.result()[1], "OK");
 
         auto value1_reply = co_await redis.get(key1);
         auto value2_reply = co_await redis.get(key2);
-        if (!(value1_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value1_reply.result().has_value()"; co_return; }
-        if (!(value2_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value2_reply.result().has_value()"; co_return; }
+        if (!(value1_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value1_reply.result().has_value()";
+            co_return;
+        }
+        if (!(value2_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value2_reply.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*value1_reply.result(), "updated1");
         EXPECT_EQ(*value2_reply.result(), "updated2");
 
@@ -288,11 +315,17 @@ TEST_P(TransactionTest, UNWATCH_THEN_EXEC) {
 
         auto exec_reply = co_await redis.exec<std::string>();
         EXPECT_TRUE(exec_reply.ok()) << exec_reply.error();
-        if (!(exec_reply.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: exec_reply.result().size() == 1u"; co_return; }
+        if (!(exec_reply.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: exec_reply.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(exec_reply.result()[0], "OK");
 
         auto value_reply = co_await redis.get(key);
-        if (!(value_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value_reply.result().has_value()"; co_return; }
+        if (!(value_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value_reply.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*value_reply.result(), "new_value");
 
         completed = true;
@@ -316,8 +349,7 @@ TEST_P(TransactionTest, EXEC_WITHOUT_MULTI_ERRORS) {
 
         auto exec_reply = co_await redis.exec<std::string>();
         EXPECT_FALSE(exec_reply.ok());
-        EXPECT_NE(exec_reply.error().find("EXEC without MULTI"), std::string::npos)
-            << "actual error: " << exec_reply.error();
+        EXPECT_NE(exec_reply.error().find("EXEC without MULTI"), std::string::npos) << "actual error: " << exec_reply.error();
         EXPECT_FALSE(redis.is_in_multi());
 
         completed = true;
@@ -339,8 +371,7 @@ TEST_P(TransactionTest, NESTED_MULTI_REJECTED) {
         // MULTI inside MULTI: server replies with an error, not "+QUEUED".
         auto nested = co_await redis.multi();
         EXPECT_FALSE(nested.ok());
-        EXPECT_NE(nested.error().find("MULTI calls can not be nested"), std::string::npos)
-            << "actual error: " << nested.error();
+        EXPECT_NE(nested.error().find("MULTI calls can not be nested"), std::string::npos) << "actual error: " << nested.error();
 
         // The first transaction is still open server-side: the rejected nested
         // MULTI does NOT abort it (confirmed via redis-cli — the queued command
@@ -355,7 +386,10 @@ TEST_P(TransactionTest, NESTED_MULTI_REJECTED) {
         EXPECT_EQ((co_await redis.set(key, "v")).result().str(), "QUEUED");
         auto exec_reply = co_await redis.exec<std::string>();
         EXPECT_TRUE(exec_reply.ok()) << exec_reply.error();
-        if (!(exec_reply.result().size() == 1u)) { ADD_FAILURE() << "precondition failed: exec_reply.result().size() == 1u"; co_return; }
+        if (!(exec_reply.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: exec_reply.result().size() == 1u";
+            co_return;
+        }
         EXPECT_EQ(exec_reply.result()[0], "OK");
 
         completed = true;
@@ -391,20 +425,28 @@ TEST_P(TransactionTest, EXEC_TIME_ERROR_PARTIAL_FAILURE) {
         // surrounding SETs (Redis has no transactional rollback for exec-time errors).
         // Typed parsing of the homogeneous vector would throw on the error element, so
         // we inspect the raw EXEC array directly to see per-entry outcomes.
-        auto exec_reply = co_await redis.exec<std::string>();
-        const auto &raw = exec_reply.raw();
-        if (!(raw != nullptr)) { ADD_FAILURE() << "precondition failed: raw != nullptr"; co_return; }
+        auto        exec_reply = co_await redis.exec<std::string>();
+        const auto &raw        = exec_reply.raw();
+        if (!(raw != nullptr)) {
+            ADD_FAILURE() << "precondition failed: raw != nullptr";
+            co_return;
+        }
         EXPECT_TRUE(raw->is_array());
-        if (!(raw->as_array().size() == 3u)) { ADD_FAILURE() << "precondition failed: raw->as_array().size() == 3u"; co_return; }
+        if (!(raw->as_array().size() == 3u)) {
+            ADD_FAILURE() << "precondition failed: raw->as_array().size() == 3u";
+            co_return;
+        }
         // entry 0: SET ok_key "first" → +OK ; entry 1: INCR on string → -ERR ; entry 2: SET → +OK
         EXPECT_TRUE(raw->as_array()[0]->is_string());
-        EXPECT_TRUE(raw->as_array()[1]->is_error())
-            << "middle command should have errored at exec time";
+        EXPECT_TRUE(raw->as_array()[1]->is_error()) << "middle command should have errored at exec time";
         EXPECT_TRUE(raw->as_array()[2]->is_string());
 
         // The non-failing commands still applied: last SET wins.
         auto value_reply = co_await redis.get(ok_key);
-        if (!(value_reply.result().has_value())) { ADD_FAILURE() << "precondition failed: value_reply.result().has_value()"; co_return; }
+        if (!(value_reply.result().has_value())) {
+            ADD_FAILURE() << "precondition failed: value_reply.result().has_value()";
+            co_return;
+        }
         EXPECT_EQ(*value_reply.result(), "second");
 
         completed = true;

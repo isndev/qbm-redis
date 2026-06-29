@@ -39,18 +39,18 @@
  */
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <limits>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <gtest/gtest.h>
 
+#include "../../shared/resp_corpus.h"
 #include "../parser/parser.h"
 #include "../parser/serializer.h"
 #include "../reply.h"
-#include "../../shared/resp_corpus.h"
 
 using namespace qb::redis::parser;
 namespace corpus = qb::redis::test::corpus;
@@ -243,7 +243,7 @@ TEST_F(Resp2ParserTest, Array_WithNullElement) {
 
 // Deep nesting — deduped from doubled depth-50 / depth-6 pair into one walk.
 TEST_F(Resp2ParserTest, Array_DeepNestingWalk) {
-    std::string data = corpus::gen::deeply_nested_array(50);
+    std::string data   = corpus::gen::deeply_nested_array(50);
     auto        result = parse(data, config);
     ASSERT_TRUE(result.has_value());
 
@@ -743,7 +743,7 @@ protected:
 
 TEST_F(LimitTest, NestingTooDeepArray) {
     config.max_nesting_depth = 2;
-    auto result = parse("*1\r\n*1\r\n*1\r\n:1\r\n", config); // 3 levels
+    auto result              = parse("*1\r\n*1\r\n*1\r\n:1\r\n", config); // 3 levels
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().code(), ParseErrorCode::NESTING_TOO_DEEP);
 }
@@ -793,17 +793,17 @@ TEST_F(LimitTest, ExactBufferSizeBoundaries) {
 
 TEST(ProtocolGating, Resp2RejectsEveryResp3Type) {
     ParserConfig resp2;
-    resp2.protocol_version = ProtocolVersion::RESP2;
+    resp2.protocol_version     = ProtocolVersion::RESP2;
     const char *resp3_frames[] = {
-        "_\r\n",                  // Null
-        "#t\r\n",                 // Boolean
-        ",1.5\r\n",               // Double
-        "(12345678901234567890\r\n", // BigNumber
-        "!5\r\nerror\r\n",        // BulkError
-        "=15\r\ntxt:some text\r\n", // Verbatim
-        "%1\r\n+key\r\n+val\r\n", // Map
-        "~1\r\n+elem\r\n",        // Set
-        ">1\r\n+msg\r\n",         // Push
+        "_\r\n",                        // Null
+        "#t\r\n",                       // Boolean
+        ",1.5\r\n",                     // Double
+        "(12345678901234567890\r\n",    // BigNumber
+        "!5\r\nerror\r\n",              // BulkError
+        "=15\r\ntxt:some text\r\n",     // Verbatim
+        "%1\r\n+key\r\n+val\r\n",       // Map
+        "~1\r\n+elem\r\n",              // Set
+        ">1\r\n+msg\r\n",               // Push
         "|1\r\n+key\r\n+val\r\n:1\r\n", // Attribute
     };
     for (const char *f : resp3_frames) {
@@ -914,10 +914,8 @@ TEST_F(SerializerTest, FreeHelpers) {
 class CommandBuilderTest : public ::testing::Test {};
 
 TEST_F(CommandBuilderTest, BasicAndInteger) {
-    EXPECT_EQ(CommandBuilder("SET").arg("mykey").arg("myvalue").build(),
-              "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$7\r\nmyvalue\r\n");
-    EXPECT_EQ(CommandBuilder("EXPIRE").arg("mykey").arg(60).build(),
-              "*3\r\n$6\r\nEXPIRE\r\n$5\r\nmykey\r\n$2\r\n60\r\n");
+    EXPECT_EQ(CommandBuilder("SET").arg("mykey").arg("myvalue").build(), "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$7\r\nmyvalue\r\n");
+    EXPECT_EQ(CommandBuilder("EXPIRE").arg("mykey").arg(60).build(), "*3\r\n$6\r\nEXPIRE\r\n$5\r\nmykey\r\n$2\r\n60\r\n");
 }
 
 TEST_F(CommandBuilderTest, ArgOverloadsAndCount) {
@@ -978,8 +976,9 @@ protected:
 };
 
 TEST_F(RoundTripTest, ScalarBytesAreStable) {
-    for (std::string original : {std::string("+Hello\r\n"), std::string(":12345\r\n"), std::string("$5\r\nhello\r\n"),
-                                 std::string("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n")}) {
+    for (std::string original :
+         {std::string("+Hello\r\n"), std::string(":12345\r\n"), std::string("$5\r\nhello\r\n"),
+          std::string("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n")}) {
         auto parsed = parse(original, config);
         ASSERT_TRUE(parsed.has_value()) << original;
         EXPECT_EQ(Serializer::serialize(*parsed), original);
@@ -1050,8 +1049,8 @@ TEST_F(RoundTripTest, BinaryAndControlCharsPreserved) {
     ASSERT_TRUE(bin.has_value());
     EXPECT_EQ(bin->as_bulk_string().value, binary);
 
-    for (const std::string &str : {std::string("\r\n"), std::string("\r"), std::string("\n"), std::string("$100\r\n"),
-                                   std::string("*5\r\n"), std::string("+OK\r\n")}) {
+    for (const std::string &str :
+         {std::string("\r\n"), std::string("\r"), std::string("\n"), std::string("$100\r\n"), std::string("*5\r\n"), std::string("+OK\r\n")}) {
         auto r = parse(Serializer::serialize(Value(BulkString{str})), config);
         ASSERT_TRUE(r.has_value()) << "Failed for: " << str;
         EXPECT_EQ(r->as_bulk_string().value, str) << "Mismatch for: " << str;
@@ -1141,7 +1140,7 @@ TEST(ParserHardening, ParseAllFaultsOnCorruptTopLevelByte) {
     auto values = parser.parse_all();
     EXPECT_TRUE(values.empty());
     EXPECT_TRUE(parser.has_error());
-    EXPECT_FALSE(parser.is_parsing()); // FAULT excluded from is_parsing()
+    EXPECT_FALSE(parser.is_parsing());    // FAULT excluded from is_parsing()
     EXPECT_FALSE(parser.feed("+OK\r\n")); // faulted parser refuses input
 }
 
