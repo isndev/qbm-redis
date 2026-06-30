@@ -91,7 +91,7 @@ and the `EXEC`, the server aborts the transaction: `EXEC` returns a nil array an
 | `watch`        | `Reply<status>`              | `Reply<status> &&`              |
 | `unwatch`      | `Reply<status>`              | `Reply<status> &&`              |
 
-`qb::redis::status` (defined in `types.h:334`) wraps a Redis simple-string reply such as `"OK"`. It converts to `bool` (
+`qb::redis::status` (defined in `types.h:475`) wraps a Redis simple-string reply such as `"OK"`. It converts to `bool` (
 `true` when the string is `"OK"`), to `std::string`, and exposes `.str()` and `.ok()`. Read the outcome through the
 surrounding `Reply`: `reply.ok()` for success, `reply.result()` (alias `reply.value()`) for the payload, `reply.error()`
 for the message on failure.
@@ -100,7 +100,7 @@ For `exec<Result>`, you pick `Result` to match what your queued commands return.
 status strings, so `exec<std::string>()` yields a `std::vector<std::string>` of `"OK"` values — one element per queued
 command, in order.
 
-<!-- src: qbm/redis/types.h:334-352, qbm/redis/reply.h:1052-1091 -->
+<!-- src: qbm/redis/types.h:475-526, qbm/redis/reply.h:1148-1227 -->
 
 > **Time units:** No method in this group takes a time argument. Connect and command timeouts and the `RetryPolicy`
 > delays are `qb::duration` and live on the client, not here. Redis command arguments that *do* carry time (for example
@@ -181,7 +181,7 @@ qb::io::async::task<void> run_tx(qb::redis::tcp::client &redis) {
 > prefer the pipeline path and read the raw EXEC array through `Reply<pipeline_result>.raw()`: per-command
 `parser::Value`
 > results are move-only and are not cloned into a typed vector. See [pipeline_and_await.md](./pipeline_and_await.md). (
-`qbm/redis/types.h:286-297`, `qbm/redis/reply.cpp:405-407`.)
+`qbm/redis/types.h:397-408`, `qbm/redis/reply.cpp:444-462`.)
 
 ### `DISCARD`
 
@@ -317,10 +317,10 @@ transaction is gone. After a reconnect, treat the connection as having **no** tr
 need one.
 
 > `reset_transaction_state()` is one of three same-named `reset` surfaces in the client; do not confuse it with the
-> others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:185`) and the server-facing `RESET` command
-> in [connection.md](./connection.md) (`connection_commands.h:330`). This one only clears the client-side MULTI flag.
+> others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:195`) and the server-facing `RESET` command
+> in [connection.md](./connection.md) (`connection_commands.h:300-315`). This one only clears the client-side MULTI flag.
 
-<!-- src: qbm/redis/commands/transaction_commands.h:267-275, qbm/redis/redis.h:803 -->
+<!-- src: qbm/redis/commands/transaction_commands.h:267-275, qbm/redis/redis.h:912 -->
 
 ---
 

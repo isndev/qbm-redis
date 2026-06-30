@@ -54,7 +54,7 @@ It is covered below alongside the cursor form.
 ### `score_member` — the member/score pair
 
 ```cpp
-// qbm/redis/types.h:237
+// qbm/redis/types.h:348
 struct score_member {
     double      score{};
     std::string member;
@@ -71,7 +71,7 @@ Score and lex ranges are expressed with the interval class templates in `qbm/red
 semantics for you. Two aliases cover the common cases:
 
 ```cpp
-// qbm/redis/types.h:170-171
+// qbm/redis/types.h:273-275
 using score_interval = qb::redis::BoundedInterval<double>;       // numeric score bounds
 using lex_interval   = qb::redis::BoundedInterval<std::string>;  // lexicographical bounds
 
@@ -89,7 +89,7 @@ are templated on `Interval`. Left/right-bounded and unbounded variants exist (`L
 ### `LimitOptions` — pagination for range-by-score / range-by-lex
 
 ```cpp
-// qbm/redis/types.h:178
+// qbm/redis/types.h:282
 struct LimitOptions {
     long long offset = 0;
     long long count  = -1;
@@ -142,13 +142,13 @@ redis.bzpopmax(keys, 0);                          // block forever
 Scores and increments stay native (`double`); ranks, counts, and cardinalities are integers (`long long`). Connect and
 command deadlines remain `qb::duration` at the client level — see [connection.md](./connection.md).
 
-<!-- src: qbm/redis/commands/sorted_set_commands.h:138, 167-188 (bzpopmax chrono overload), 199, 228-249 (bzpopmin chrono overload), 1358-1384 (bzmpop, raw long long only) -->
+<!-- src: qbm/redis/commands/sorted_set_commands.h:135, 164 (bzpopmax chrono overload), 192, 221 (bzpopmin chrono overload), 1384 (bzmpop, raw long long only) -->
 
 ---
 
 ## Reply types at a glance
 
-`Reply<T>` is the uniform envelope (`qbm/redis/reply.h:1052`): `reply.ok()` reports success, `reply.result()` (alias
+`Reply<T>` is the uniform envelope (`qbm/redis/reply.h:1148`): `reply.ok()` reports success, `reply.result()` (alias
 `reply.value()`) holds the parsed payload, `reply.error()` holds the server error string, and `Reply<T>` is contextually
 convertible to `bool` (explicit). In this group the payloads are standard-library types (`std::vector`, `std::optional`,
 `std::pair`, `std::tuple`); the one exception is `zscan`, whose `scan<...>.items` is a **qb-core** `qb::unordered_map`.
@@ -171,7 +171,7 @@ A score-bearing read returns `std::vector<score_member>` because the implementat
 unconditionally for those commands. The non-scored siblings (`zrangebylex`, `zinter`, `zdiff`, `zrandmemberCount`)
 deliberately omit it and return `std::vector<std::string>`.
 
-<!-- src: qbm/redis/commands/sorted_set_commands.h:562-563, 635-639, 1044-1045, 1171-1172, 1327; qbm/redis/types.h:354-359 -->
+<!-- src: qbm/redis/commands/sorted_set_commands.h:559, 630, 808, 1043, 1330; qbm/redis/types.h:348 -->
 
 ---
 
@@ -223,10 +223,10 @@ redis.zadd([](qb::redis::Reply<long long> &&r) {
 Returns the number of members in the sorted set (`0` for a missing key).
 
 ```cpp
-// Coroutine — qbm/redis/commands/sorted_set_commands.h:293
+// Coroutine — qbm/redis/commands/sorted_set_commands.h:287
 auto zcard(const std::string &key);
 
-// Callback — qbm/redis/commands/sorted_set_commands.h:309
+// Callback — qbm/redis/commands/sorted_set_commands.h:301
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zcard(Func &&func, const std::string &key);
@@ -244,11 +244,11 @@ if (r.ok()) qb::io::cout() << r.result() << " members\n";
 Counts members whose score falls inside a score interval.
 
 ```cpp
-// Coroutine — qbm/redis/commands/sorted_set_commands.h:325
+// Coroutine — qbm/redis/commands/sorted_set_commands.h:316
 template <typename Interval>
 auto zcount(const std::string &key, const Interval &interval);
 
-// Callback — qbm/redis/commands/sorted_set_commands.h:344
+// Callback — qbm/redis/commands/sorted_set_commands.h:333
 template <typename Func, typename Interval>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zcount(Func &&func, const std::string &key, const Interval &interval);
@@ -286,10 +286,10 @@ auto r = co_await redis.zlexcount("board", i);
 Returns the score of `member`, or an empty optional when the member or key is absent.
 
 ```cpp
-// Coroutine — qbm/redis/commands/sorted_set_commands.h:960
+// Coroutine — qbm/redis/commands/sorted_set_commands.h:971
 auto zscore(const std::string &key, const std::string &member);
 
-// Callback — qbm/redis/commands/sorted_set_commands.h:977
+// Callback — qbm/redis/commands/sorted_set_commands.h:987
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<double>> &&>, Derived &>
 zscore(Func &&func, const std::string &key, const std::string &member);
@@ -431,14 +431,14 @@ Returns members within a **lexicographical** interval, **without** scores (`std:
 all members share one score.
 
 ```cpp
-// Coroutine — qbm/redis/commands/sorted_set_commands.h:566 / :815
+// Coroutine — qbm/redis/commands/sorted_set_commands.h:573 / :823
 template <typename Interval>
 auto zrangebylex(const std::string &key, Interval const &interval,
                  const LimitOptions &opts = {});
 auto zrevrangebylex(const std::string &key, Interval const &interval,
                     const LimitOptions &opt = {});
 
-// Callback — qbm/redis/commands/sorted_set_commands.h:587 / :836
+// Callback — qbm/redis/commands/sorted_set_commands.h:591 / :841
 template <typename Func, typename Interval>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
 zrangebylex(Func &&func, const std::string &key, Interval const &interval,
@@ -459,12 +459,12 @@ Stores the result of a range query from `src` into `dst`. Bounds and trailing op
 number of members stored.
 
 ```cpp
-// Coroutine — qbm/redis/commands/sorted_set_commands.h:1334
+// Coroutine — qbm/redis/commands/sorted_set_commands.h:1346
 auto zrangestore(const std::string &dst, const std::string &src,
                  const std::string &min, const std::string &max,
                  const std::vector<std::string> &options = {});
 
-// Callback — qbm/redis/commands/sorted_set_commands.h:1343
+// Callback — qbm/redis/commands/sorted_set_commands.h:1366
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zrangestore(Func &&func, const std::string &dst, const std::string &src,
@@ -557,11 +557,11 @@ is the popped members. `COUNT` is emitted only when `count > 1`. **Returns `deri
 never invokes your callback — when `keys` is empty.**
 
 ```cpp
-// Coroutine — qbm/redis/commands/sorted_set_commands.h:1208
+// Coroutine — qbm/redis/commands/sorted_set_commands.h:1201
 auto zmpop(const std::vector<std::string> &keys, const std::string &min_or_max,
            long long count = 1);
 
-// Callback — qbm/redis/commands/sorted_set_commands.h:1217
+// Callback — qbm/redis/commands/sorted_set_commands.h:1218
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func,
     Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
@@ -618,7 +618,7 @@ if (m.ok() && m.result().has_value())
 <!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:672-678, 695-702 -->
 
 > `bzmpop` (like `zmpop`) returns `derived()` and never fires your callback when `keys` is empty (
-`sorted_set_commands.h:1374`). Guard against empty key lists before calling.
+`sorted_set_commands.h:1403`). Guard against empty key lists before calling.
 
 ### `ZRANDMEMBER key [count]` — `zrandmember`, `zrandmemberCount`, `zrandmemberWithScores`
 
@@ -630,7 +630,7 @@ diverge from the snake_case norm):
 - `zrandmemberWithScores(key, count)` → `std::vector<score_member>`.
 
 ```cpp
-// Coroutine — qbm/redis/commands/sorted_set_commands.h:1260 / :1283 / :1298
+// Coroutine — qbm/redis/commands/sorted_set_commands.h:1267 / :1295 / :1308
 auto zrandmember(const std::string &key);
 auto zrandmemberCount(const std::string &key, long long count);
 auto zrandmemberWithScores(const std::string &key, long long count);
@@ -708,11 +708,11 @@ Returns the cardinality of the intersection without materializing it. The option
 counts (`LIMIT` is emitted only when set).
 
 ```cpp
-// Coroutine — qbm/redis/commands/sorted_set_commands.h:1180
+// Coroutine — qbm/redis/commands/sorted_set_commands.h:1165
 auto zintercard(const std::vector<std::string> &keys,
                 std::optional<long long> limit = std::nullopt);
 
-// Callback — qbm/redis/commands/sorted_set_commands.h:1188
+// Callback — qbm/redis/commands/sorted_set_commands.h:1181
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zintercard(Func &&func, const std::vector<std::string> &keys,
@@ -733,11 +733,11 @@ Incrementally iterates members and their scores. The cursor form returns
 without issuing a command).
 
 ```cpp
-// Cursor form, coroutine — qbm/redis/commands/sorted_set_commands.h:902
+// Cursor form, coroutine — qbm/redis/commands/sorted_set_commands.h:918
 auto zscan(const std::string &key, long long cursor, const std::string &pattern = "*",
            long long count = 10);
 
-// Cursor form, callback — qbm/redis/commands/sorted_set_commands.h:922
+// Cursor form, callback — qbm/redis/commands/sorted_set_commands.h:936
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func,
     Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>, Derived &>

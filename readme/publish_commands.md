@@ -23,7 +23,7 @@ the methods below are called on a live client through its public alias `qb::redi
 `make_coro_command<T>(...)`, which own argument serialization, I/O, and connection lifetime (
 see [connection.md](./connection.md)).
 
-<!-- src: qbm/redis/commands/publish_commands.h:37-43 (CRTP derived()), redis.h:1439 (tcp::client alias) -->
+<!-- src: qbm/redis/commands/publish_commands.h:37-43 (CRTP derived()), redis.h:1618 (tcp::client alias) -->
 
 ```cpp
 #include <redis/redis.h>            // umbrella header; pulls in publish_commands.h
@@ -63,7 +63,7 @@ durability, or consumer groups, use Redis Streams instead (see your stream comma
 - `reply.result()` (alias `reply.value()`) — the `long long` subscriber count.
 - `reply.error()` — the error message string when `!reply.ok()`.
 
-<!-- src: qbm/redis/reply.h:1052-1091 (Reply ok/result/value/error) -->
+<!-- src: qbm/redis/reply.h:1162-1229 (Reply ok/result/value/error) -->
 
 ---
 

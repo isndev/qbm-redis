@@ -59,7 +59,7 @@ seconds-versus-milliseconds boundary documented for key-expiry commands does not
 ### Where these methods come from
 
 `module_commands<Derived>` is a header-only CRTP mixin (`module_commands.h:34`). It is one of the bases of
-`qb::redis::detail::Redis<QB_IO_>` (`redis.h:613`), so `qb::redis::tcp::client` and `qb::redis::tcp::ssl::client` expose
+`qb::redis::detail::Redis<QB_IO_>` (`redis.h:719`), so `qb::redis::tcp::client` and `qb::redis::tcp::ssl::client` expose
 these four methods directly. The pub/sub consumers (`tcp::cb_consumer` / `tcp::co_consumer`) do **not** — they inherit
 only `connection_commands` and `subscription_commands`. Each method forwards to the inherited command machinery:
 
@@ -71,7 +71,7 @@ The reply type `T` differs per command (`qb::json`, `status`, `std::vector<std::
 
 ### Reading a `Reply<T>`
 
-Every command resolves to `qb::redis::Reply<T>` (`reply.h:1052`):
+Every command resolves to `qb::redis::Reply<T>` (`reply.h:1155`):
 
 - `reply.ok()` / `explicit operator bool` — `true` when the command round-tripped successfully.
 - `reply.result()` (or its alias `reply.value()`) — the typed payload `T`.
@@ -88,7 +88,7 @@ See [error_handling.md](./error_handling.md) for the typed error hierarchy.
 
 ### The `status` reply type
 
-`module_load` and `module_unload` reply with `qb::redis::status` (`types.h:334`), a thin wrapper over the server's
+`module_load` and `module_unload` reply with `qb::redis::status` (`types.h:475`), a thin wrapper over the server's
 simple-string reply. `status::ok()` and its `operator bool` are `true` only when the string is exactly `"OK"`. So with
 `Reply<status>` there are two layers to check — `reply.ok()` (did the command round-trip) and `reply.result().ok()` (was
 the status `"OK"`):
@@ -102,7 +102,7 @@ if (r.ok() && r.result().ok()) {
 
 ### The `qb::json` reply type
 
-`module_list` replies with `qb::json` (which is `nlohmann::json`; `qb/json.h:104`) — an array of objects, one per loaded
+`module_list` replies with `qb::json` (which is `nlohmann::json` via `using namespace nlohmann`; `qb/json.h:283`) — an array of objects, one per loaded
 module. The reply is the server's own `MODULE LIST` payload passed through verbatim, so the available fields are
 server-version-dependent. The only field the test asserts is `name`, a string (`integration/admin/module-commands.cpp:58`); a
 typical server also reports a numeric version under `ver`. Read it with the standard `nlohmann::json`-style API (
@@ -258,7 +258,7 @@ if (r.ok() && r.result().ok())
 // Coroutine — module_commands.h:147
 auto module_help();                                // -> redis_awaiter yielding Reply<std::vector<std::string>>
 
-// Callback — module_commands.h:162
+// Callback — module_commands.h:157
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
 module_help(Func &&func);
@@ -319,4 +319,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified against: qbm/redis/commands/module_commands.h, qbm/redis/types.h:334 (status), qbm/redis/reply.h:1052 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 2.6.0 -->
+<!-- Verified against: qbm/redis/commands/module_commands.h, qbm/redis/types.h:475 (status), qbm/redis/reply.h:1155 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 2.6.0 -->

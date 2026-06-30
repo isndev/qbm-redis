@@ -75,7 +75,7 @@ A geo distance is a length, not a time, so it never touches the framework time m
 | `GeoUnit::MI` | `mi`       | miles            |
 | `GeoUnit::FT` | `ft`       | feet             |
 
-<!-- src: qbm/redis/types.h:61, qbm/redis/redis.cpp:347 -->
+<!-- src: qbm/redis/types.h:60, qbm/redis/redis.cpp:354 -->
 
 `GEODIST`, `GEORADIUS`, `GEORADIUSBYMEMBER`, and `GEOSEARCH` all default to `GeoUnit::M`. The radius argument itself is
 a `double` in the chosen unit. Do not reach for `qb::duration` / `std::chrono` here — these are distances, and the only
@@ -104,7 +104,7 @@ struct geo_pos {
 };
 ```
 
-<!-- src: qbm/redis/types.h:188 -->
+<!-- src: qbm/redis/types.h:292 -->
 
 Two corrections against older notes. First, the position-returning commands (`geohash`, `geopos`) yield a **vector
 of `std::optional`**: a `std::nullopt` element means the member at that index is absent from the index, so check each
@@ -137,7 +137,7 @@ co_await redis.georadius(key, 13.361389, 38.115556, 200,
                          std::vector<std::string>{"ASC"});
 ```
 
-<!-- src: qbm/redis/commands/geo_commands.h:226, qbm/redis/reply.h:857 -->
+<!-- src: qbm/redis/commands/geo_commands.h:226, qbm/redis/reply.h:928 -->
 
 You own the spelling and ordering of these tokens. The same vector reaches `geosearch` too — its callback overload
 appends `options` after the `BYRADIUS <radius> <unit>` tokens, so `COUNT`/`ASC`/`WITH*` are forwarded there as well.
@@ -153,7 +153,7 @@ at a lower level or use a sorted-set read instead.
 All signatures below are the public methods of `geo_commands<Derived>`. Every callback overload **except `geodist`** is
 SFINAE-gated on `std::is_invocable_v<Func, Reply<T>&&>` for that command's `T`; a handler with the wrong `Reply<T>`
 signature drops out of overload resolution, so the call fails to compile (no viable overload) rather than mismatching at
-runtime. `geodist`'s callback overload (geo_commands.h:110-112) is the lone exception: it returns a plain `Derived&`
+runtime. `geodist`'s callback overload (geo_commands.h:105-109) is the lone exception: it returns a plain `Derived&`
 with no `std::enable_if` guard, so a wrong-typed handler still binds the overload and the type error surfaces deeper (
 inside `command<std::optional<double>>`) rather than as a clean "no viable overload".
 

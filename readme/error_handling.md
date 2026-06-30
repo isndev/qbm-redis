@@ -68,7 +68,7 @@ reply.
 
 ### The reply model: `Reply<T>`
 
-<!-- src: qbm/redis/reply.h:1051-1092 -->
+<!-- src: qbm/redis/reply.h:1154-1230 -->
 
 Every command returns a `Reply<T>`, where `T` is the decoded result type (`long long` for `INCR`,
 `std::optional<std::string>` for `GET`, `std::vector<std::string>` for `LRANGE`, and so on).
@@ -95,13 +95,13 @@ The accessors you use:
 
 `Reply<T>` is the *only* outcome channel. `reply.error()` is a `std::string` that the dispatch layer copies before any
 internal buffer is moved or freed, so it is always safe to read and store — it is never a view into reclaimed storage (
-`reply.h:1056`, `reply.h:1142-1157`).
+`reply.h:1159`, `reply.h:1289`).
 
 ### Coroutine and callback paths return the same `Reply<T>`
 
-<!-- src: qbm/redis/redis.h:534,563 -->
+<!-- src: qbm/redis/redis.h:665-668 -->
 
-The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:563`). The callback overload invokes your
+The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:665-668`). The callback overload invokes your
 handler with `Reply<T>&&`. The check is identical on both paths:
 
 ```cpp
@@ -135,7 +135,7 @@ redis.incr([](qb::redis::Reply<long long> &&reply) {
 
 ### RESP error replies become `ok() == false`, not exceptions
 
-<!-- src: qbm/redis/reply.h:1136-1158 -->
+<!-- src: qbm/redis/reply.h:1286-1292 -->
 
 When the server returns a RESP error frame, the reply dispatcher (`TReply::operator()`) recognizes it, copies the
 message, and constructs `Reply{ok=false}` — it does *not* throw:
@@ -151,16 +151,16 @@ if (raw->is_error()) {
 
 So a `WRONGTYPE` against a key, a `NOAUTH` before authentication, or a script syntax error all surface as
 `reply.ok() == false` with the server's text in `reply.error()`. This is a documented, deliberate contract: callers
-branch on `ok()`, never on a caught exception (`reply.h:1142`).
+branch on `ok()`, never on a caught exception (`reply.h:1290`).
 
 A RESP error frame carries a prefix that the parser classifies into `ReplyErrorType` — `ERR`, `MOVED`, or `ASK` (
-`reply.h:62`). `MOVED` and `ASK` are Redis Cluster redirects; this client does not follow them automatically. If you run
+`reply.h:56`). `MOVED` and `ASK` are Redis Cluster redirects; this client does not follow them automatically. If you run
 against a cluster, inspect `reply.error()` for the redirect target and re-issue against the correct node.
 See [cluster_commands.md](./cluster_commands.md).
 
 ### The parse seam: where exceptions live, and why you never see them
 
-<!-- src: qbm/redis/reply.h:1150-1158 -->
+<!-- src: qbm/redis/reply.h:1294-1301 -->
 
 After a non-error reply arrives, the dispatcher calls `parse<T>(*raw)` to decode it into `T`. The typed parsers throw on
 a shape or type mismatch — but the dispatcher catches every `qb::redis::Error` subclass at that exact seam and folds it
@@ -181,85 +181,85 @@ The exception hierarchy (all in `reply.h`, all deriving from `qb::redis::Error :
 
 | Class                                          | Thrown by                                                                                  | Meaning                                                                                                                                                                                                    |
 |------------------------------------------------|--------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ProtoError`                                   | `parse<double>` (`reply.h:339`), `parse_scan_reply` (`reply.h:534,552`), container parsers | reply shape is wrong (e.g. "not a double reply", odd-length flat array)                                                                                                                                    |
-| `ReplyParseError` (: `ProtoError`)             | the typed `parse()` overloads (`reply.h:294,314,409,…`)                                    | reply type does not match the expected type; the message names both                                                                                                                                        |
-| `CommandError`                                 | the JSON parsers, `parse<json_value>` / `parse<qb::json>` (`reply.cpp:415,492`)            | a JSON command's reply was a server error                                                                                                                                                                  |
-| `SecurityError`                                | `to_redis_string` (`reply.h:807,816`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB)                                                                                                                                              |
+| `ProtoError`                                   | `parse<double>` (`reply.h:344-368`), `parse_scan_reply` (`reply.h:586-610`), container parsers | reply shape is wrong (e.g. "not a double reply", odd-length flat array)                                                                                                                                    |
+| `ReplyParseError` (: `ProtoError`)             | the typed `parse()` overloads (`reply.h:317,339,449,…`)                                    | reply type does not match the expected type; the message names both                                                                                                                                        |
+| `CommandError`                                 | the JSON parsers, `parse<json_value>` / `parse<qb::json>` (`reply.cpp:471,549`)            | a JSON command's reply was a server error                                                                                                                                                                  |
+| `SecurityError`                                | `to_redis_string` (`reply.h:870,880`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB)                                                                                                                                              |
 | `ConnectionError`, `AuthError`, `TimeoutError` | nothing (declared, currently unthrown)                                                     | reserved lifecycle types; connect/auth/deadline failures reach you as `reply.error()` strings (`"disconnected"`, `"command timed out"`), never as these exceptions — do not write `catch` clauses for them |
 
 Because the dispatcher catches `const Error&`, these names matter for *reading the message text*, not for `catch` blocks
 in your code. The one place an exception can still escape the parse path is a non-`qb::redis::Error` thrown by a custom
 parser; in practice the parsers avoid throwing standard exceptions at all (e.g. stream-id decoding parses each half with
 `qb::to_number<long long>`, which returns `std::nullopt` rather than throwing on an out-of-range or malformed value, and
-the parser folds that `nullopt` into a `ProtoError`) before anything reaches the boundary (`reply.h:1153`, `reply.cpp`
-stream-id path).
+the parser folds that `nullopt` into a `ProtoError`) before anything reaches the boundary (`reply.h:1297`,
+`reply.cpp:182-183` stream-id path).
 
 ### Numeric-parse strictness
 
-<!-- src: qbm/redis/reply.h:319-340,531-554; qbm/redis/parser/parser.h:689-751 -->
+<!-- src: qbm/redis/reply.h:344-368,586-610; qbm/redis/parser/parser.h:782-849 -->
 
 Numeric decoding is strict on purpose, at two layers. The RESP parser validates integers and doubles as it reads the
 wire, and the typed `parse()` overloads re-validate when converting a string reply to a number.
 
 - **Integers** are parsed with a hand-rolled, overflow-checked routine that rejects any non-digit and any value outside
-  `int64_t`, with an explicit special case for `INT64_MIN` (`parser/parser.h:689-726`). An overflowing or malformed `:`
+  `int64_t`, with an explicit special case for `INT64_MIN` (`parser/parser.h:782-823`). An overflowing or malformed `:`
   -line is `INVALID_INTEGER`, a fatal protocol error.
 - **Doubles** use `std::from_chars` and require the *whole* string to be consumed. A reply like `"1.5junk"` is rejected,
-  not silently read as `1.5`. The literals `inf`, `+inf`, `-inf`, and `nan` are accepted (`parser/parser.h:730-751`).
-  The reply-side `parse<double>` applies the same full-consume rule (`reply.h:336-337`) and falls back to
+  not silently read as `1.5`. The literals `inf`, `+inf`, `-inf`, and `nan` are accepted (`parser/parser.h:827-849`).
+  The reply-side `parse<double>` applies the same full-consume rule (`reply.h:360-366`) and falls back to
   `ProtoError("not a double reply")`.
 - **SCAN cursors** are unsigned 64-bit reverse-binary bucket indices that can legitimately set the high bit. The scan
   parser uses `std::from_chars` over the full unsigned range — a cursor above `INT64_MAX` is valid, not an error — and
-  rejects any non-numeric cursor with `ProtoError("Invalid cursor")` (`reply.h:541-554`).
+  rejects any non-numeric cursor with `ProtoError("Invalid cursor")` (`reply.h:597-610`).
 
 The practical consequence: a reply that is *almost* a number is treated as corrupt, not coerced. You get a clear
 `Reply{ok=false}` rather than a plausible-looking wrong value.
 
 ### Containment 1 — the `noexcept` `onMessage` boundary
 
-<!-- src: qbm/redis/redis.h:156-183 -->
+<!-- src: qbm/redis/redis.h:166-187 -->
 
 The protocol's `onMessage(std::size_t)` runs under the libev C callback and is declared `noexcept final` (
-`redis.h:156`). An exception escaping it would call `std::terminate`. The framework provides defense in depth:
+`redis.h:166`). An exception escaping it would call `std::terminate`. The framework provides defense in depth:
 
 1. Each pending reply is dispatched to the owning IO handler inside a `try { … } catch (...) { … }`. The per-handler
    path already catches `std::exception` gracefully; this outer `catch (...)` is a backstop for anything it misses — for
    example, a user callback that throws a non-`std` type. A single bad reply or a throwing callback is logged and
-   dropped; the remaining pending replies still dispatch (`redis.h:174-179`).
+   dropped; the remaining pending replies still dispatch (`redis.h:183-187`).
 2. The command-reply dispatch in the client (`on(message&&)`) wraps the handler call in
    `try { … } catch (const std::exception&) { … }` for the same reason — it also runs under the libev read dispatch (
-   `redis.h:767-771`).
+   `redis.h:875-879`).
 3. The disconnect drain (`on(disconnected&&)`) catches both `const std::exception&` and `...`, because a failing
-   callback may legitimately re-issue a command and that nested call could throw (`redis.h:790-801`).
+   callback may legitimately re-issue a command and that nested call could throw (`redis.h:899-910`).
 
 The contract for *your* callbacks: a throw will not crash the process, but it will cause that reply to be dropped with
 only a log line. Handle your own errors inside the callback; do not rely on the backstop as control flow.
 
 ### Containment 2 — the sticky parser fault on a corrupt terminator
 
-<!-- src: qbm/redis/parser/parser.h:129-158,227-239; qbm/redis/redis.h:111-154 -->
+<!-- src: qbm/redis/parser/parser.h:130-216,308-319; qbm/redis/redis.h:122-185 -->
 
 The streaming `RespParser` separates two failure modes precisely, because conflating them stalls the connection:
 
 - **`INCOMPLETE_DATA`** is the only retryable code. On it, `parse()`/`parse_all()` consume **zero** bytes: the
   non-destructive `ViewBuffer` position is not committed, so the exact same bytes are re-parsed once more data is fed. A
-  half-arrived bulk string or a simple line missing its CRLF simply waits (`parser/parser.h:141-148`,
-  `parser/parser.h:201-215`). Keep feeding; this is not an error.
+  half-arrived bulk string or a simple line missing its CRLF simply waits (`parser/parser.h:161-167`,
+  `parser/parser.h:207-220`). Keep feeding; this is not an error.
 - **Any other code** is a fatal protocol error. `parse_all()` sets `_state = State::FAULT`, after which `feed()` returns
   `false` and `parse()` returns `PROTOCOL_ERROR "Parser in error state"`. The fault is **sticky**: only `reset()` clears
-  it (`parser/parser.h:146`, `parser/parser.h:114`).
+  it (`parser/parser.h:95`, `parser/parser.h:118`).
 
 The corrupt-terminator fault is the canonical trigger. RESP requires a fixed-length payload (`$`, `!`, `=`) and the
 single-byte types (`_`, `#`) to be followed by exactly `\r\n`. `expect_crlf()` distinguishes "fewer than two bytes
 available" (→ `INCOMPLETE_DATA`, retry) from "two bytes present that are not `\r\n`" (→ `PROTOCOL_ERROR`, fatal).
 Treating a wrong terminator as incomplete would wait forever for bytes that can never make the terminator valid (
-`parser/parser.h:227-239`). The same strictness rejects a negative aggregate length other than the `-1` null marker —
-corrupt input like `%-7\r\n` faults rather than being swallowed as a valid reply (`parser/parser.h:442-448`).
+`parser/parser.h:308-319`). The same strictness rejects a negative aggregate length other than the `-1` null marker —
+corrupt input like `%-7\r\n` faults rather than being swallowed as a valid reply (`parser/parser.h:518-527`).
 
 The protocol layer acts on the fault. After `parse_all()`, `getMessageSize()` checks `_parser.has_error()`; if set, it
 calls `not_ok()`, clears the pending queue, and returns `0`, which tears the connection down instead of looping forever
-on a byte the parser cannot advance past (`redis.h:142-147`). A feed failure (buffer overflow) takes the same
-`not_ok()` + reset path (`redis.h:122-128`).
+on a byte the parser cannot advance past (`redis.h:151-156`). A feed failure (buffer overflow) takes the same
+`not_ok()` + reset path (`redis.h:131-137`).
 
 When the connection is torn down, `on(disconnected&&)` fails every pending command. Auto-reconnect (if enabled)
 re-establishes the socket, but does **not** replay in-flight commands or re-issue subscriptions — those callers already
@@ -267,7 +267,7 @@ saw `Reply{ok=false}`, and your application must re-send (see [connection.md](./
 
 ### Resource limits that produce a fault
 
-<!-- src: qbm/redis/parser/parser.h:243,476,571,591,611,631,661 -->
+<!-- src: qbm/redis/parser/parser.h:43-45,325-326,556,654,675,696,717 -->
 
 The parser enforces hard caps to bound memory against a hostile or buggy peer. Exceeding any of them yields a fatal
 `ParseErrorCode`, which faults the parser and drops the connection:
@@ -285,18 +285,18 @@ honored from `ParserConfig`.
 
 ### Server-side reply types are a separate, non-throwing surface
 
-<!-- src: qbm/redis/server_reply.h:46-219 -->
+<!-- src: qbm/redis/server_reply.h:100-355 -->
 
 `server_reply.h` defines a parallel, exception-free extraction surface used by server-side handlers and advanced
 decoders. It does not interact with the client `Reply<T>` flow, but it shares the same philosophy:
 
 - `ValueExtractor` wraps a `parser::Value` and returns `std::optional<…>` accessors (`as_string`, `as_integer`,
   `as_double`, `as_bool`, `as_array`, `as_map`, `as_set`) plus `is_null()` / `is_error()` / `get_error_message()`. A
-  type mismatch is `std::nullopt`, never a throw (`server_reply.h:79-153`).
+  type mismatch is `std::nullopt`, never a throw (`server_reply.h:100-257`).
 - The free `extract_*` helpers return `qb::expected<T, std::string>` — a value or an error message, with
-  `unexpected("not a string")`-style diagnostics (`server_reply.h:160-219`).
+  `unexpected("not a string")`-style diagnostics (`server_reply.h:269-414`).
 - `AsyncResult<T>` is a coroutine-friendly `expected`-backed wrapper with `is_ok()` / `value()` / `error()` (
-  `server_reply.h:230-268`).
+  `server_reply.h:304-355`).
 
 Reach for these when you decode a `reply.raw()` by hand and want an optional/`expected` result instead of the typed
 `parse<T>` path that throws-then-catches.
@@ -307,7 +307,7 @@ Reach for these when you decode a `reply.raw()` by hand and want an optional/`ex
 
 ### Distinguishing nil, error, and value on a `GET`
 
-<!-- src: qbm/redis/reply.h:399-404 (optional parser) -->
+<!-- src: qbm/redis/reply.h:437-442 (optional parser) -->
 
 `GET` decodes to `std::optional<std::string>`: a missing key is a RESP nil that parses to `std::nullopt` with
 `ok() == true`. Do not confuse "key absent" with "command failed":
@@ -340,7 +340,7 @@ if (!r)
 
 ### A command timeout surfaces as a failed reply
 
-<!-- src: qbm/redis/redis.h:670-676 (is_blocking_command), 774-801 (disconnect drain), 882-892 (set_command_timeout/getter) -->
+<!-- src: qbm/redis/redis.h:776-781 (is_blocking_command), 882-913 (disconnect drain), 1013-1024 (set_command_timeout/getter) -->
 
 `command_timeout` defaults to `qb::duration::zero()` (disabled). It is a connection-health watchdog, not a per-command
 timer: when the deadline trips, the client drops the whole connection and fails **every** pending reply with

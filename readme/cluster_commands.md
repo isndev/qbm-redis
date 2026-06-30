@@ -23,12 +23,12 @@ in [Command API model](./commands_overview.md); this page lists the methods.
 There is **no** blocking, value-returning form. A method such as `cluster_bumpepoch()` returns an awaiter, not a
 `status` — you `co_await` it (or pump the loop with `qb::io::async::run_sync(...)` from non-coroutine code, as shown
 in [Command API model](./commands_overview.md#synchronous-use-in-tests-and-scripts)). The callback overload is
-SFINAE-gated on the handler accepting `Reply<T>&&` for that command's `T` (`cluster_commands.h:69`).
+SFINAE-gated on the handler accepting `Reply<T>&&` for that command's `T` (`cluster_commands.h:64-67`).
 
 These are thin RESP wrappers around the server-side `CLUSTER` subcommands. They carry no client-side validation of
 subcommand strings or slot ranges and no extra guard rails: `cluster_reset`, `cluster_failover`, and `cluster_setslot`
 mutate live cluster topology, and an invalid `cluster_setslot` subcommand or `cluster_reset` mode is passed straight to
-the server and only fails there (`cluster_commands.h:210,242,879`). Against a standalone (non-cluster) server most of
+the server and only fails there (`cluster_commands.h:212,841,843`). Against a standalone (non-cluster) server most of
 these return an error reply rather than throwing; the snippets below check `reply.ok()` accordingly.
 
 No command in this group takes a time argument, so the EXPIRE-seconds / PEXPIRE-milliseconds unit boundary documented
@@ -54,7 +54,7 @@ reply surface.
 
 ### `qb::redis::status`
 
-`status` (`types.h:334`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`types.h:475`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK". The status
 commands here are routinely tested with `reply.ok()` (the reply arrived without a protocol/transport error) rather than
 the value, because a standalone server answers them with a cluster-disabled error.
@@ -86,7 +86,7 @@ Redirect handling is manual — see [Error handling](./error_handling.md) and th
 ### Per-connection redirect verbs
 
 `asking()`, `readonly()`, and `readwrite()` are top-level Redis commands, not `CLUSTER` subcommands (
-`cluster_commands.h:535,560,585`). They mark connection-level state: `asking()` tells the connection to accept the next
+`cluster_commands.h:482,507,532`). They mark connection-level state: `asking()` tells the connection to accept the next
 command against a slot that is `MIGRATING` (the ASK-redirection protocol during slot migration); `readonly()` /
 `readwrite()` toggle whether a replica connection serves reads.
 
@@ -107,7 +107,7 @@ if (!co_await redis.connect())
 
 Each command shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
 `Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (
-`cluster_commands.h:69`).
+`cluster_commands.h:64-67`).
 
 ## Topology inspection
 
@@ -252,7 +252,7 @@ auto reply = co_await redis.cluster_replicas(master_node_id);
 ### `cluster_slaves`
 
 `CLUSTER SLAVES node-id` — the deprecated alias of `cluster_replicas`; prefer `cluster_replicas` (
-`cluster_commands.h:937`). Same signature and `qb::json` reply.
+`cluster_commands.h:879`). Same signature and `qb::json` reply.
 
 ```cpp
 auto cluster_slaves(const std::string &node_id);              // -> Reply<qb::json>
@@ -393,7 +393,7 @@ auto reply = co_await redis.cluster_replicate(master_node_id);
 
 `CLUSTER FAILOVER [FORCE|TAKEOVER]` — have a replica perform a manual failover of its master. The `option` argument
 defaults to empty (coordinated failover); pass `"FORCE"` or `"TAKEOVER"` for the unconditional variants. When `option`
-is empty the wrapper omits it from the wire command (`cluster_commands.h:261`).
+is empty the wrapper omits it from the wire command (`cluster_commands.h:242`).
 
 ```cpp
 auto cluster_failover(const std::string &option = "");       // -> Reply<status>
@@ -560,7 +560,7 @@ auto reply = co_await redis.cluster_flushslots();
 ### `cluster_setslot`
 
 `CLUSTER SETSLOT slot MIGRATING|IMPORTING|STABLE|NODE [node-id]` — set the migration state of a single slot. `node_id`
-defaults to empty and is omitted from the wire command when empty (`cluster_commands.h:903`); it is required for the
+defaults to empty and is omitted from the wire command when empty (`cluster_commands.h:840`); it is required for the
 `NODE` and `MIGRATING`/`IMPORTING` subcommands. The subcommand string is forwarded without client-side validation.
 
 ```cpp
@@ -639,7 +639,7 @@ redis.cluster_keyslot([](qb::redis::Reply<long long> &&r) {
 }, "user:1000");
 ```
 
-<!-- src: qbm/redis/commands/cluster_commands.h:441-445 -->
+<!-- src: qbm/redis/commands/cluster_commands.h:407-411 -->
 
 The callback overload returns the client (`Derived&`), so calls chain. Drain enqueued handlers with `redis.await()` or
 your own event loop — see [Pipelining and `await()`](./pipeline_and_await.md) via

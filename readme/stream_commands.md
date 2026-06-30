@@ -28,7 +28,7 @@ flowchart LR
     C2 -- "XACK" --> DONE
 ```
 
-These commands are defined by the `qb::redis::stream_commands<Derived>` CRTP mixin (`stream_commands.h:33`), which
+These commands are defined by the `qb::redis::stream_commands<Derived>` CRTP mixin (`stream_commands.h:34`), which
 `qb::redis::tcp::client` inherits along with every other command group. You call the methods directly on a connected
 client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to get a
 `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the client for
@@ -55,24 +55,24 @@ navigate yourself.
 | `qb::redis::stream_entry_list` | a list of entries with their fields              | `xrange`, `xrevrange`, `xclaim`                                                                                  |
 | `qb::json`                     | loosely structured server data                   | `xread`, `xreadgroup`, `xpending`, `xautoclaim`, `xinfo_stream`, `xinfo_groups`, `xinfo_consumers`, `xinfo_help` |
 
-`qb::redis::Reply<T>` (`reply.h:1052`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1155`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. You read a successful payload through `reply.result()` after checking `reply.ok()`.
 
 ### `qb::redis::stream_id`
 
-`stream_id` (`types.h:202`) is `{ long long timestamp; long long sequence; }` with `to_string()` (renders
+`stream_id` (`types.h:306`) is `{ long long timestamp; long long sequence; }` with `to_string()` (renders
 `"<timestamp>-<sequence>"`), full equality, and an ordering `operator<`. `XADD` returns one of these. To feed an ID back
 into a later command (e.g. `xdel`, `xack`), pass `id.to_string()` or build the `"<ts>-<seq>"` string yourself.
 
 ### `qb::redis::stream_entry` and `stream_entry_list`
 
-`stream_entry` (`types.h:220`) is `{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`.
-`stream_entry_list` (`types.h:225`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
+`stream_entry` (`types.h:327`) is `{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`.
+`stream_entry_list` (`types.h:332`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
 `XCLAIM`. You iterate it directly: `entry.id` is the entry ID and `entry.fields` is the field map.
 
 ### `qb::redis::status`
 
-`status` (`types.h:334`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`types.h:475`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
 
 ### `qb::json` replies
@@ -110,20 +110,20 @@ convert to milliseconds yourself (e.g. `std::chrono::milliseconds{5000}.count()`
 ### Blocking reads suspend the command deadline
 
 `XREAD` and `XREADGROUP` are blocking commands. When `block` is set, the client suspends its own per-command deadline
-while the call is in flight, so the server-side `block` timeout governs instead (`redis.h:670`). A blocking read with
+while the call is in flight, so the server-side `block` timeout governs instead (`redis.h:733`). A blocking read with
 `block > 0` parks the connection until data arrives or the timeout elapses.
 
 ### Multi-stream validation throws synchronously
 
 The vector overloads of `xread` and `xreadgroup` validate that `keys` is non-empty and `keys.size() == ids.size()` *
-*inside the callback overload body, before dispatch**, and throw `std::invalid_argument` (`stream_commands.h:466`,
-`:553`). This is a thrown exception you must catch at the call site — it is **not** delivered as a `Reply` error. The
+*inside the callback overload body, before dispatch**, and throw `std::invalid_argument` (`stream_commands.h:515`,
+`:428`). This is a thrown exception you must catch at the call site — it is **not** delivered as a `Reply` error. The
 single-stream overloads perform no such validation.
 
 ### Naming inconsistency to respect at call sites
 
 Most consumer-group helpers are snake_case (`xgroup_create`, `xgroup_destroy`, `xgroup_delconsumer`), but the two newest
-are camelCase: `xgroupSetid` and `xgroupCreateconsumer` (`stream_commands.h:926`, `:953`). Spell them exactly as written
+are camelCase: `xgroupSetid` and `xgroupCreateconsumer` (`stream_commands.h:872`, `:911`). Spell them exactly as written
 or the call will not compile.
 
 ## Setup for the examples
@@ -147,7 +147,7 @@ outside a coroutine.
 ### `xadd`
 
 `XADD key *|id field value [field value ...]` — append an entry and return its ID.
-<!-- src: qbm/redis/commands/stream_commands.h:53,73 -->
+<!-- src: qbm/redis/commands/stream_commands.h:55,73 -->
 
 ```cpp
 auto xadd(const std::string &key,
@@ -183,7 +183,7 @@ redis.xadd([](qb::redis::Reply<qb::redis::stream_id> &&r) {
 ### `xlen`
 
 `XLEN key` — number of entries in the stream.
-<!-- src: qbm/redis/commands/stream_commands.h:110,127 -->
+<!-- src: qbm/redis/commands/stream_commands.h:108,123 -->
 
 ```cpp
 auto xlen(const std::string &key);                                       // -> Reply<long long>
@@ -203,7 +203,7 @@ if (len.ok())
 ### `xdel`
 
 `XDEL key id [id ...]` — delete entries by ID; returns the count actually removed.
-<!-- src: qbm/redis/commands/stream_commands.h:143,162 -->
+<!-- src: qbm/redis/commands/stream_commands.h:138,156 -->
 
 ```cpp
 template <typename... Ids>
@@ -227,7 +227,7 @@ if (del.ok())
 
 `XTRIM key MAXLEN [=|~] threshold` — cap the stream to a maximum length, deleting older entries; returns the number
 removed.
-<!-- src: qbm/redis/commands/stream_commands.h:335,356 -->
+<!-- src: qbm/redis/commands/stream_commands.h:312,332 -->
 
 ```cpp
 auto xtrim(const std::string &key, long long maxlen,
@@ -251,7 +251,7 @@ auto fast    = co_await redis.xtrim("mystream", 1000, true);    // approximate, 
 ### `xrange`
 
 `XRANGE key start end [COUNT count]` — entries within an ID range, oldest first.
-<!-- src: qbm/redis/commands/stream_commands.h:758,779 -->
+<!-- src: qbm/redis/commands/stream_commands.h:695,714 -->
 
 ```cpp
 auto xrange(const std::string &key, const std::string &start,
@@ -281,7 +281,7 @@ auto first_two = co_await redis.xrange("mystream", "-", "+", 2);   // COUNT 2
 ### `xrevrange`
 
 `XREVRANGE key end start [COUNT count]` — entries within an ID range, newest first.
-<!-- src: qbm/redis/commands/stream_commands.h:802,823 -->
+<!-- src: qbm/redis/commands/stream_commands.h:735,754 -->
 
 ```cpp
 auto xrevrange(const std::string &key, const std::string &end,
@@ -309,7 +309,7 @@ if (rev.ok() && !rev.result().empty())
 
 `XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]` — read entries with IDs greater than the supplied
 ones. Two overloads: single-stream and multi-stream.
-<!-- src: qbm/redis/commands/stream_commands.h:481,502,526,547 -->
+<!-- src: qbm/redis/commands/stream_commands.h:451,471,492,512 -->
 
 ```cpp
 // Single stream
@@ -353,7 +353,7 @@ auto live = co_await redis.xread("mystream", "$", std::nullopt, 5000);
 ### `xgroup_create`
 
 `XGROUP CREATE key group id [MKSTREAM]` — create a consumer group.
-<!-- src: qbm/redis/commands/stream_commands.h:181,201 -->
+<!-- src: qbm/redis/commands/stream_commands.h:173,191 -->
 
 ```cpp
 auto xgroup_create(const std::string &key, const std::string &group,
@@ -378,7 +378,7 @@ if (created.ok() && created.result())   // status converts to bool ("OK")
 ### `xgroup_destroy`
 
 `XGROUP DESTROY key group` — delete a consumer group and its PEL; returns the number of groups destroyed (`0` or `1`).
-<!-- src: qbm/redis/commands/stream_commands.h:227,244 -->
+<!-- src: qbm/redis/commands/stream_commands.h:214,230 -->
 
 ```cpp
 auto xgroup_destroy(const std::string &key, const std::string &group);   // -> Reply<long long>
@@ -398,7 +398,7 @@ auto destroyed = co_await redis.xgroup_destroy("mystream", "mygroup");
 
 `XGROUP DELCONSUMER key group consumer` — remove a consumer from a group; returns the number of pending messages the
 consumer owned.
-<!-- src: qbm/redis/commands/stream_commands.h:260,280 -->
+<!-- src: qbm/redis/commands/stream_commands.h:244,262 -->
 
 ```cpp
 auto xgroup_delconsumer(const std::string &key, const std::string &group,
@@ -416,7 +416,7 @@ auto pending = co_await redis.xgroup_delconsumer("mystream", "mygroup", "consume
 ### `xgroupSetid`
 
 `XGROUP SETID key group id [ENTRIESREAD n]` — set the group's last-delivered ID. Note the camelCase name.
-<!-- src: qbm/redis/commands/stream_commands.h:926,935 -->
+<!-- src: qbm/redis/commands/stream_commands.h:872,891 -->
 
 ```cpp
 auto xgroupSetid(const std::string &key, const std::string &group,
@@ -466,7 +466,7 @@ if (created.ok() && created.result())
 
 `XREADGROUP GROUP group consumer [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]` — read through a consumer
 group, moving delivered entries into the group's PEL. Two overloads: single-stream and multi-stream.
-<!-- src: qbm/redis/commands/stream_commands.h:385,409,435,459 -->
+<!-- src: qbm/redis/commands/stream_commands.h:358,380,402,424 -->
 
 ```cpp
 // Single stream
@@ -512,7 +512,7 @@ if (read.ok())
 
 `XACK key group id [id ...]` — acknowledge processing of one or more delivered entries, removing them from the group's
 PEL; returns the count acknowledged.
-<!-- src: qbm/redis/commands/stream_commands.h:298,319 -->
+<!-- src: qbm/redis/commands/stream_commands.h:278,298 -->
 
 ```cpp
 template <typename... Ids>
@@ -535,7 +535,7 @@ if (acked.ok())
 
 `XCLAIM key group consumer min-idle-time id [id ...] [options...]` — transfer ownership of pending entries to
 `consumer`; returns the claimed entries.
-<!-- src: qbm/redis/commands/stream_commands.h:848,874 -->
+<!-- src: qbm/redis/commands/stream_commands.h:777,801 -->
 
 ```cpp
 auto xclaim(const std::string &key, const std::string &group,
@@ -568,7 +568,7 @@ if (claimed.ok())
 
 `XAUTOCLAIM key group consumer min-idle-time start [COUNT count] [JUSTID]` — scan the PEL from `start` and claim idle
 entries in one round-trip.
-<!-- src: qbm/redis/commands/stream_commands.h:892,905 -->
+<!-- src: qbm/redis/commands/stream_commands.h:823,848 -->
 
 ```cpp
 auto xautoclaim(const std::string &key, const std::string &group,
@@ -600,7 +600,7 @@ if (claimed.ok())
 ### `xpending`
 
 `XPENDING key group [start end count] [consumer]` — inspect the group's pending entries.
-<!-- src: qbm/redis/commands/stream_commands.h:699,725 -->
+<!-- src: qbm/redis/commands/stream_commands.h:648,670 -->
 
 ```cpp
 auto xpending(const std::string &key, const std::string &group,
@@ -630,7 +630,7 @@ if (pending.ok() && pending.result().is_array())
 ### `xinfo_stream`
 
 `XINFO STREAM key` — general metadata about the stream.
-<!-- src: qbm/redis/commands/stream_commands.h:575,591 -->
+<!-- src: qbm/redis/commands/stream_commands.h:535,549 -->
 
 ```cpp
 auto xinfo_stream(const std::string &key);                               // -> Reply<qb::json>
@@ -650,7 +650,7 @@ if (info.ok())
 ### `xinfo_groups`
 
 `XINFO GROUPS key` — one record per consumer group; the JSON reply is an array.
-<!-- src: qbm/redis/commands/stream_commands.h:604,620 -->
+<!-- src: qbm/redis/commands/stream_commands.h:561,575 -->
 
 ```cpp
 auto xinfo_groups(const std::string &key);                               // -> Reply<qb::json>
@@ -670,7 +670,7 @@ if (groups.ok() && groups.result().is_array())
 ### `xinfo_consumers`
 
 `XINFO CONSUMERS key group` — one record per consumer in the group; the JSON reply is an array.
-<!-- src: qbm/redis/commands/stream_commands.h:634,651 -->
+<!-- src: qbm/redis/commands/stream_commands.h:588,604 -->
 
 ```cpp
 auto xinfo_consumers(const std::string &key, const std::string &group);  // -> Reply<qb::json>
@@ -691,7 +691,7 @@ if (consumers.ok() && consumers.result().is_array())
 ### `xinfo_help`
 
 `XINFO HELP` — the server's help text for the `XINFO` subcommands; the JSON reply is an array of strings.
-<!-- src: qbm/redis/commands/stream_commands.h:663,678 -->
+<!-- src: qbm/redis/commands/stream_commands.h:615,628 -->
 
 ```cpp
 auto xinfo_help();                                                       // -> Reply<qb::json>
@@ -709,7 +709,7 @@ auto help = co_await redis.xinfo_help();
 ### `parse_stream_id` (static helper)
 
 A static utility that parses a `"timestamp-sequence"` string into a `stream_id`.
-<!-- src: qbm/redis/commands/stream_commands.h:88 -->
+<!-- src: qbm/redis/commands/stream_commands.h:85 -->
 
 ```cpp
 static qb::redis::stream_id
@@ -718,7 +718,7 @@ parse_stream_id(const std::string &id_str);
 
 **Pitfall:** parse failures are swallowed. If `id_str` has no `-` or non-numeric halves, the method returns the default
 `stream_id{0, 0}` with no error signaled, so a caller cannot tell a genuine `0-0` ID from a parse failure (
-`stream_commands.h:88`). Prefer reading `stream_id` straight out of a typed reply (`xadd`, `xrange`) over re-parsing
+`stream_commands.h:85`). Prefer reading `stream_id` straight out of a typed reply (`xadd`, `xrange`) over re-parsing
 strings.
 
 ## Pitfalls

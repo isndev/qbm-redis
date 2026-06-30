@@ -4,8 +4,8 @@
 
 Ce roadmap prend en compte l'évolution majeure du framework QB :
 
-- **C++23** : Transition du C++17 vers le C++23 moderne
-- **Coroutines** : Implémentation imminente des coroutines C++23 (`co_await`, `co_return`) en sous-jacent de `qb-io`
+- **C++20** : Baseline C++20 du framework, avec support C++23 optionnel
+- **Coroutines** : Coroutines (`co_await`, `co_return`) déjà livrées en sous-jacent de `qb-io` (depuis 2.6.0)
 - **Impact** : Simplification drastique des patterns async actuels (callbacks → coroutines)
 
 > **Note** : Certaines features seront implémentées en deux versions : une pour l'API actuelle callback-based, et une
@@ -220,6 +220,10 @@ co_await conn->hset_async("key", "field", "value");
 ---
 
 ### P1 - Retry Policy
+
+> **Statut : livré (2.6.0).** Une `RetryPolicy` avec backoff exponentiel est déjà implémentée dans le client
+> (`struct RetryPolicy`, `connect_with_retry()`, `enable_auto_reconnect()` dans `redis.h`). Le design ci-dessous reste
+> à titre de référence ; seul le retry sur redirections cluster MOVED/ASK n'est pas encore couvert.
 
 **Objectif** : Résilience automatique sur erreurs réseau temporaires.
 
@@ -582,12 +586,12 @@ public:
 - [ ] Stats export
 - [ ] Tests multi-thread
 
-### Retry Policy (P1)
+### Retry Policy (P1) — livré (2.6.0)
 
-- [ ] Enum `RetryStrategy`
-- [ ] `calculate_delay()` helpers
-- [ ] Intégration dans `command()`
-- [ ] Tests avec mocks réseau
+- [x] `RetryPolicy` (backoff exponentiel)
+- [x] Calcul du délai (backoff + jitter)
+- [x] Intégration via `connect_with_retry()` / `enable_auto_reconnect()`
+- [x] Tests (RETRY_IMMEDIATE_SUCCESS / RETRY_EXHAUSTED, reconnect-resilience)
 
 ### Pipelining (P2)
 
@@ -600,7 +604,7 @@ public:
 
 ## 📋 Références
 
-- **[TODO_COMMANDS.md](./TODO_COMMANDS.md)** — Liste des commandes Redis non encore implémentées comme méthodes dédiées.
+- **[commands_overview.md](./readme/commands_overview.md)** — Inventaire des commandes Redis exposées comme méthodes dédiées et de leur mapping RESP.
 
 ---
 

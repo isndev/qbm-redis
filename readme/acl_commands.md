@@ -72,12 +72,12 @@ command — you never name it yourself except when you reach for the generic `co
 | `acl_load`     | `ACL LOAD`           | `status`                                          |
 | `acl_save`     | `ACL SAVE`           | `status`                                          |
 
-A `status` reply (`qb::redis::status`, [types.h:334](../types.h)) wraps the server's simple-string acknowledgement; it
+A `status` reply (`qb::redis::status`, [types.h:475](../types.h)) wraps the server's simple-string acknowledgement; it
 is truthy when the server answered `OK`. `Reply<status>` itself is truthy when the command did not error, so check both
 layers if you need to distinguish a transport error from a non-`OK` server answer —
 see [error_handling.md](./error_handling.md).
 
-<!-- src: qbm/redis/reply.h:1062 (Reply::operator bool), types.h:334 (status) -->
+<!-- src: qbm/redis/reply.h:1172 (Reply::operator bool), types.h:475 (status) -->
 
 ### Structured replies decode to `qb::json`
 
@@ -109,7 +109,7 @@ does not parse or validate these tokens; it forwards them to the server, which i
 grammar. A malformed rule is rejected by Redis, surfacing as a non-`OK` `status` (or an error on the `Reply`), not at
 compile time.
 
-<!-- src: qbm/redis/commands/acl_commands.h:401-424 -->
+<!-- src: qbm/redis/commands/acl_commands.h:375-396 -->
 
 ### `ACL DRYRUN` tests a grant without applying it
 
@@ -147,12 +147,12 @@ template <typename Func, typename... Args>
 Derived &acl_setuser(Func &&func, const std::string &username, Args &&...rules);
 ```
 
-<!-- src: qbm/redis/commands/acl_commands.h:401-424 -->
+<!-- src: qbm/redis/commands/acl_commands.h:375-396 -->
 
 Creates `username` if it does not exist, then applies each rule token in order. Returns `status` (`OK` on success).
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/commands/acl_commands.h:401 -->
+// coroutine — <!-- src: qbm/redis/commands/acl_commands.h:377 -->
 auto set = co_await redis.acl_setuser(
     "alice", "on", ">s3cr3t", "~app:*", "+@read", "+@write", "-@dangerous");
 if (set && set.result())             // Reply<status> ok AND status == "OK"
@@ -415,7 +415,7 @@ template <typename Func>
 Derived &acl_help(Func &&func);
 ```
 
-<!-- src: qbm/redis/commands/acl_commands.h:246-265 -->
+<!-- src: qbm/redis/commands/acl_commands.h:233-249 -->
 
 Returns the server's `ACL` help lines as a string vector.
 
@@ -439,7 +439,7 @@ template <typename Func> Derived &acl_load(Func &&func);
 template <typename Func> Derived &acl_save(Func &&func);
 ```
 
-<!-- src: qbm/redis/commands/acl_commands.h:341-389 -->
+<!-- src: qbm/redis/commands/acl_commands.h:321-363 -->
 
 `acl_load` reloads the rule set from the server's configured ACL file, discarding in-memory changes; `acl_save` writes
 the current in-memory rules back to that file. Both return `status` (`OK`). Both require the server to be configured

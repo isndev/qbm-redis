@@ -373,9 +373,10 @@ their native units — see [commands_overview.md](./commands_overview.md). Pub/S
   `std::nullopt` signals the channel was closed (disconnect). Treat it as the loop's exit condition.
 - **A regular `client` is not a subscriber.** Issuing `SUBSCRIBE` on `qb::redis::tcp::client` puts that connection into
   subscribe mode where ordinary commands fail. Use `cb_consumer` or `co_consumer`.
-- **`connect()` returns an awaiter, not a `bool`.** There is no `connect_sync()`, `consume()`, or `is_connected()` on
+- **`connect()` returns an awaiter, not a `bool`.** There is no `connect_sync()` or `consume()` on
   the consumer. Drive `connect()` with `co_await` or `qb::io::async::run_sync(...)`;
-  see [connection.md](./connection.md).
+  see [connection.md](./connection.md). (`is_connected()` exists — it is inherited from the connection base —
+  but prefer driving `connect()` to completion over polling it.)
 
 ---
 
