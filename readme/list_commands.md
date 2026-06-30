@@ -13,8 +13,8 @@ minimal `co_await` and callback snippet.
 
 ## Summary
 
-The list commands are defined by the `qb::redis::list_commands<Derived>` CRTP mixin (`list_commands.h:39`), which
-`qb::redis::tcp::client` inherits along with every other command group (`redis.h:600`, `redis.h:1439`). You call these
+The list commands are defined by the `qb::redis::list_commands<Derived>` CRTP mixin (`list_commands.h:36`), which
+`qb::redis::tcp::client` inherits along with every other command group (`redis.h:706`, `redis.h:1618`). You call these
 methods directly on a connected client. Each command exists in two forms that share one method name: a **coroutine**
 form you `co_await` to get a `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument
 and returns the client for chaining. The dispatch and the `Reply<T>` decoding contract are covered
@@ -26,7 +26,7 @@ property of this client.
 
 One time-related note for this group: blocking commands take a `timeout` in **seconds**, which is the native Redis
 protocol unit. Each blocking command exposes both a raw `long long` (seconds) form and a `std::chrono::seconds` overload
-that forwards `.count()` (`list_commands.h:369`, `:431`). These are protocol seconds, **not** `qb::duration`; do not
+that forwards `.count()` (`list_commands.h:340`, `:392`). These are protocol seconds, **not** `qb::duration`; do not
 substitute qb time types here.
 
 ## Concepts
@@ -43,7 +43,7 @@ substitute qb time types here.
 | `std::optional<std::pair<std::string, std::string>>`              | `{key, element}` from a blocking pop                    | `blpop`, `brpop`                                                                            |
 | `std::optional<std::pair<std::string, std::vector<std::string>>>` | `{key, elements}` from a multi-key pop                  | `lmpop`, `blmpop`                                                                           |
 
-`qb::redis::Reply<T>` (`reply.h:1052`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1155`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. Optional replies are tested with `reply.result().has_value()`.
 See [Command API model](./commands_overview.md) for the full reply surface.
 
@@ -61,7 +61,7 @@ Two enums from `types.h` parameterize this group:
 - `qb::redis::ListPosition` (`types.h:53`) — `LEFT`, `RIGHT` — selects the list end for `lmove`, `blmove`, `lmpop`, and
   `blmpop`.
 
-Both are serialized to wire keywords through `to_string(...)` (`types.h:375`, `:376`); you pass the enum, not a string.
+Both are serialized to wire keywords through `to_string(...)` (`types.h:558`, `:560`); you pass the enum, not a string.
 
 ### Variadic pushes
 
@@ -87,7 +87,7 @@ if (!co_await redis.connect())
 <!-- src: qbm/redis/readme/connection.md -->
 
 Each command below shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
-`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`list_commands.h:72`).
+`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`list_commands.h:65`).
 
 ## Length
 
@@ -377,7 +377,7 @@ if (r.result().has_value()) {
 ```
 
 > The callback overload returns the client immediately without issuing a command when `keys` is empty (
-`list_commands.h:759`), so the callback never fires. Guard against an empty key list yourself.
+`list_commands.h:682`), so the callback never fires. Guard against an empty key list yourself.
 
 ## Positional search
 
@@ -500,12 +500,12 @@ template <typename Func> Derived &blmpop(Func &&, const std::vector<std::string>
 auto r = co_await redis.blmpop({"q1", "q2"}, qb::redis::ListPosition::LEFT, 5, 2);
 ```
 
-> The `blmpop` callback overload also no-ops when `keys` is empty (`list_commands.h:802`).
+> The `blmpop` callback overload also no-ops when `keys` is empty (`list_commands.h:724`).
 
 ### `brpoplpush` (deprecated)
 
 `BRPOPLPUSH source destination timeout` — the blocking variant of `rpoplpush`. **Deprecated in this client** in favor of
-`blmove` (`list_commands.h:851`); it remains in the surface for backward compatibility. Prefer `blmove` with
+`blmove` (`list_commands.h:779`); it remains in the surface for backward compatibility. Prefer `blmove` with
 `ListPosition::RIGHT, ListPosition::LEFT`.
 
 ```cpp
@@ -528,7 +528,7 @@ template <typename Func> Derived &brpoplpush(Func &&, const std::string &source,
   `0` timeout blocks forever. The framework's connect/command timeouts are a separate, `qb::duration`-typed concern
   documented in [Connection](./connection.md).
 - **Some callback overloads silently no-op.** `lmpop`, `blmpop`, and `lpos` return the client without issuing a
-  command (so the callback never fires) when a required argument is empty (`list_commands.h:759`, `:802`, `:911`).
+  command (so the callback never fires) when a required argument is empty (`list_commands.h:682`, `:724`, `:838`).
   Validate inputs before relying on the callback.
 - **`lpos` has no scalar overload.** It always returns `std::vector<long long>` because it always sends `COUNT` on the
   wire (`list_commands.h:848-849`). For a single position, read `result().front()` after checking the vector is non-empty.

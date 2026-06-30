@@ -26,10 +26,10 @@ Each command exposes two overloads:
 - a **coroutine** form (no callback argument) that returns an awaiter yielding `Reply<T>` — drive it with `co_await`
   inside a `qb::io::async::task<...>`, or with `qb::io::async::run_sync(...)` from synchronous code;
 - a **callback** form whose **first** argument is the handler and which returns `Derived&` for chaining. Your callback
-  must accept exactly `Reply<T>&&` for the command's `T`. The variadic and scan overloads (`hdel`, `hkeys`, `hlen`,
+  must accept exactly `Reply<T>&&` for the command's `T`. Six callback overloads (`hdel`, `hkeys`, `hlen`,
   `hmget`, `hmset`, `hscan`) add an explicit `std::enable_if_t<std::is_invocable_v<Func, Reply<T>&&>, …>` gate so the
-  compiler can tell the callback overload apart from the coroutine overload; the fixed-arity commands disambiguate by
-  argument position and carry no such gate. Either way the requirement on your callback is the same.
+  compiler can tell the callback overload apart from the coroutine overload; the remaining callback overloads
+  disambiguate by argument position and carry no such gate. Either way the requirement on your callback is the same.
 
 <!-- src: qbm/redis/commands/hash_commands.h:214-237 -->
 

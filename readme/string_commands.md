@@ -15,7 +15,7 @@ string keys at bit granularity), [error_handling.md](./error_handling.md)
 
 ## What this group is
 
-`string_commands<Derived>` is a CRTP mixin (`<redis/string_commands.h>`) that injects the Redis string command surface
+`string_commands<Derived>` is a CRTP mixin (`<redis/commands/string_commands.h>`) that injects the Redis string command surface
 into the client. It is never instantiated on its own: the concrete client `qb::redis::detail::Redis<QB_IO_>` derives
 from it (alongside the other command-group mixins), so every method below is called on a live client through its public
 alias such as `qb::redis::tcp::client`. The mixin contributes only the typed command surface — argument serialization,
@@ -44,7 +44,7 @@ In both forms `T` is the command's reply payload. Read it through `qb::redis::Re
 - `reply.result()` (alias `reply.value()`) — the decoded payload of type `T`.
 - `reply.error()` — the error message string when `!reply.ok()`.
 
-<!-- src: qbm/redis/reply.h:1058-1091 (ok/result/value/error) -->
+<!-- src: qbm/redis/reply.h:1155-1230 (ok/result/value/error) -->
 
 ---
 
@@ -65,7 +65,7 @@ In both forms `T` is the command's reply payload. Read it through `qb::redis::Re
 comparison. For `std::optional<std::string>` payloads (a key that may be absent), check `reply.ok()` first, then
 `reply.result().has_value()` before dereferencing.
 
-<!-- src: qbm/redis/types.h:334-352 (status), qbm/redis/commands/string_commands.h (per-command R) -->
+<!-- src: qbm/redis/types.h:469-526 (status), qbm/redis/commands/string_commands.h (per-command R) -->
 
 ---
 
@@ -102,7 +102,7 @@ substitute `qb::duration` for the TTL arguments here. (The retired tokens `qb::T
 conditional-set flag.
 
 ```cpp
-// qb::redis::UpdateType { EXIST, NOT_EXIST, ALWAYS };  // types.h:49
+// qb::redis::UpdateType { EXIST, NOT_EXIST, ALWAYS };  // types.h:48
 auto set(const std::string &key, const std::string &val,
          UpdateType type = UpdateType::ALWAYS);                          // -> Reply<status>
 auto set(const std::string &key, const std::string &val, long long ttl_ms,
@@ -118,8 +118,9 @@ implicitly converts to the `std::chrono::milliseconds` parameter above, so it st
 sends `PX` (`30s` → `PX 30000`). For seconds-granularity TTL on the wire, use `setex`.
 
 - `UpdateType::NOT_EXIST` → `NX` (set only if the key is absent); `UpdateType::EXIST` → `XX` (set only if the key
-  exists); `UpdateType::ALWAYS` (default) sends no flag. When the `NX`/`XX` condition fails, the server replies nil and
-  `reply.ok()` is `false`.
+  exists); `UpdateType::ALWAYS` (default) sends no flag. When the `NX`/`XX` condition fails, the server replies nil:
+  `reply.ok()` stays `true` (nil is not an error), but `reply.result().ok()` is `false` (the status is an empty nil, not
+  `"OK"`). Detect a failed conditional set with `reply.result().ok()`, not `reply.ok()`.
 
 ```cpp
 // Coroutine
@@ -131,7 +132,7 @@ co_await redis.set("session:42", "active", std::chrono::seconds{30});
 
 // Conditional: acquire a lock only if the key does not exist
 auto lock = co_await redis.set("lock:job", "owner-1", UpdateType::NOT_EXIST);
-if (lock.ok()) { /* acquired */ }
+if (lock.result().ok()) { /* acquired */ }   // lock.ok() stays true even when NX fails
 
 // Callback form
 redis.set([](qb::redis::Reply<qb::redis::status>&& r) {
@@ -470,8 +471,9 @@ auto r = co_await redis.lcs("a", "b");
   `std::chrono::seconds` overload of `set`; a `std::chrono::seconds` argument is implicitly converted to the
   `std::chrono::milliseconds` overload before sending (so `set(key, val, 30s)` still sends `PX 30000`). Use `setex` when
   you specifically want `SETEX`/seconds-granularity semantics on the wire.
-- **Conditional `set` "failure" is not an error.** When `NX`/`XX` is not satisfied, the server returns nil and
-  `reply.ok()` is `false` — that is the documented signal that nothing was written, not an exception or a connection
+- **Conditional `set` "failure" is not an error.** When `NX`/`XX` is not satisfied, the server returns nil:
+  `reply.ok()` stays `true` (nil is not an error), but `reply.result().ok()` is `false` (the status is an empty nil, not
+  `"OK"`) — that `result().ok()` is the documented signal that nothing was written, not an exception or a connection
   error. The same applies to `setnx`/`msetnx`, which report it as `result() == false`.
 - **Optional payloads need two checks.** For `get`, `getset`, `getdel`, and `getex`, check `reply.ok()` (no
   protocol/connection error) and then `reply.result().has_value()` (key present) before dereferencing.

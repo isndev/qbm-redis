@@ -13,7 +13,7 @@ minimal `co_await` and callback snippet.
 
 ## Summary
 
-The key commands are defined by the `qb::redis::key_commands<Derived>` CRTP mixin (`key_commands.h:39`), which
+The key commands are defined by the `qb::redis::key_commands<Derived>` CRTP mixin (`key_commands.h:37`), which
 `qb::redis::tcp::client` inherits along with every other command group. You call these methods directly on a connected
 client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to get a
 `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the client for
@@ -48,26 +48,26 @@ below are the correct way to express expiry.)
 | `std::vector<std::string>`   | a key/value list                       | `keys`, `sortKey`, `sortKeyRo`                                                                                    |
 | `qb::redis::scan<>`          | one SCAN round-trip: `{cursor, items}` | `scan`                                                                                                            |
 
-`qb::redis::Reply<T>` (`reply.h:1052`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1155`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. Reads of TTL/count replies go through `reply.result()`; optional replies are tested with
 `reply.result().has_value()`. See [Command API model](./commands_overview.md) for the full reply surface.
 
 ### `qb::redis::status`
 
-`status` (`types.h:334`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`types.h:475`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
 
 ### `qb::redis::scan<Out>`
 
-`scan<Out>` (`types.h:356`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
+`scan<Out>` (`types.h:534`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
 `SCAN` returns one of these per round-trip; a returned `cursor` of `0` signals the iteration is complete. You loop on
 the cursor yourself (see [`scan`](#scan) below).
 
 ### Method-name renames
 
-Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:836`),
-`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:1073`, `:1105`, `:1137`). Note that `move()` is the Redis
-`MOVE` command (`key_commands.h:339`) and does not collide with the `std::move` you use in callbacks. Every other method
+Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:755`),
+`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:961`, `:987`, `:1014`). Note that `move()` is the Redis
+`MOVE` command (`key_commands.h:313`) and does not collide with the `std::move` you use in callbacks. Every other method
 matches its Redis verb in lowercase.
 
 ## Setup for the examples
@@ -88,7 +88,7 @@ if (!co_await redis.connect())
 <!-- src: qbm/redis/tests/integration/key/key-commands.cpp; qbm/redis/readme/connection.md -->
 
 Each command shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
-`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:150`).
+`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:142`).
 
 ## Existence and deletion
 
@@ -165,8 +165,8 @@ auto r = co_await redis.touch("k1", "k2", "k3");
 > **Unit boundary.** `EXPIRE`/`EXPIREAT` work in **seconds**; `PEXPIRE`/`PEXPIREAT` work in **milliseconds**. The chrono
 > overloads enforce this at the type level: `expire`/`expireat` accept only `std::chrono::seconds`, `pexpire`/
 `pexpireat`
-> accept only `std::chrono::milliseconds`, each forwarding `.count()` to the `long long` form (`key_commands.h:241`,
-`:416`, `:288`, `:464`). The raw `long long` overloads bypass the check, so prefer the chrono overloads for
+> accept only `std::chrono::milliseconds`, each forwarding `.count()` to the `long long` form (`key_commands.h:224`,
+`:269`, `:380`, `:425`). The raw `long long` overloads bypass the check, so prefer the chrono overloads for
 > self-documenting code. These are `std::chrono` protocol values, **not** `qb::duration`.
 
 ### `expire`
@@ -414,10 +414,10 @@ do {
 <!-- src: qbm/redis/tests/integration/key/key-commands.cpp:200-226 -->
 
 > **Pitfalls for the auto-iterating callback overload `scan(func, pattern)`.** It accumulates the **entire** matched
-> keyspace in memory and invokes `func` exactly once after the cursor returns to `0` (`key_commands.h:97-117`, `:662`) —
-> it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:88`,
-`:109`). And if your callback throws, the scanner catches `std::exception` and only logs a warning (
-`key_commands.h:111`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer
+> keyspace in memory and invokes `func` exactly once after the cursor returns to `0` (`key_commands.h:97-117`, `:598`) —
+> it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:84`,
+`:102`). And if your callback throws, the scanner catches `std::exception` and only logs a warning (
+`key_commands.h:106-107`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer
 > the explicit-cursor loop above.
 
 ## Renaming and copying

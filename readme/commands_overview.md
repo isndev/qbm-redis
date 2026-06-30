@@ -23,15 +23,15 @@ how the command surface is organized.
 ### Where the methods come from
 
 The client class composes a stack of CRTP mixins, one per Redis command group. `qb::redis::tcp::client` is an alias for
-`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:1439`), and that class inherits — in this order — from
+`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:1618`), and that class inherits — in this order — from
 `connection_commands`, `server_commands`, `key_commands`, `string_commands`, `list_commands`, `hash_commands`,
 `set_commands`, `sorted_set_commands`, `hyperloglog_commands`, `geo_commands`, `scripting_commands`, `publish_commands`,
 `stream_commands`, `bitmap_commands`, `transaction_commands`, `cluster_commands`, `acl_commands`, `module_commands`, and
-`function_commands` (`redis.h:595-614`). Each mixin is a `template <typename Derived>` that injects its command methods
+`function_commands` (`redis.h:700-720`). Each mixin is a `template <typename Derived>` that injects its command methods
 and routes I/O through `static_cast<Derived&>(*this)` — they are never instantiated standalone. The practical
 consequence: every Redis command appears as a flat method on the client, regardless of which group header defines it.
 
-<!-- src: qbm/redis/redis.h:595-614 (Redis<QB_IO_> base list) -->
+<!-- src: qbm/redis/redis.h:700-720 (Redis<QB_IO_> base list) -->
 
 For commands that are not yet wrapped (or that you want to issue by name), the client exposes a generic dispatcher:
 
@@ -47,7 +47,7 @@ Both forms end in the same place. The callback form pushes one reply handler ont
 command name and arguments onto the outbound pipe:
 
 ```cpp
-// redis.h:811 — the callback dispatcher, simplified
+// redis.h:935 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);
@@ -77,11 +77,11 @@ sequenceDiagram
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
-resumes your coroutine when the reply lands (`redis.h:826`, `redis.h:539`).
+resumes your coroutine when the reply lands (`redis.h:958`, `redis.h:633`).
 
 ### The reply type: `qb::redis::Reply<T>`
 
-Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1052`), where `T` is the **expected successful result type**
+Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1155`), where `T` is the **expected successful result type**
 for that command — fixed per command, never chosen by you for the wrapped methods. Examples:
 
 | Command                 | Result type `T`                           |
@@ -96,7 +96,7 @@ for that command — fixed per command, never chosen by you for the wrapped meth
 | `SCAN`                  | `qb::redis::scan<Out>`                    |
 
 `Reply<T>` carries four things: a success flag, the parsed result, the raw owning `parser::Value`, and an owned error
-string (`reply.h:1052`). Its surface:
+string (`reply.h:1155`). Its surface:
 
 - `reply.ok()` / `if (reply)` — `true` when the command was sent, a reply arrived, and it was **not** a Redis error.
 - `reply.result()` / `reply.value()` — the decoded `T` (aliases; `value()` is preferred in new code).
@@ -120,19 +120,19 @@ if (auto v = r.value_or(""); !v.empty()) {
 }
 ```
 
-<!-- src: qbm/redis/reply.h:1052-1092 (Reply<T>) -->
+<!-- src: qbm/redis/reply.h:1155-1230 (Reply<T>) -->
 
 #### `qb::redis::status` — the "OK" reply
 
 Commands that return a RESP simple string (such as `SET`, `MULTI`, `SELECT`) decode to `qb::redis::status` (
-`types.h:334`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
+`types.h:475`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
 conversion rather than comparing strings yourself. So for `Reply<status>`, `reply.ok()` confirms the command did not
 fail at the protocol level, and `reply.value().ok()` confirms the server replied `+OK`.
 
 ### How replies are decoded
 
 Decoding lives in `reply.h` and runs inside the reply handler (`TReply<Func, T>`), which takes ownership of the parsed
-RESP node and produces the `Reply<T>` (`reply.h:1122`). The handler distinguishes three cases:
+RESP node and produces the `Reply<T>` (`reply.h:1265`). The handler distinguishes three cases:
 
 1. **Disconnect / failure** — a null reply yields `Reply{ ok = false, error = "disconnected" }` (or the explicit
    `fail()` reason, e.g. `"command timed out"`).
@@ -148,7 +148,7 @@ arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the m
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/reply.h:1136-1158 (TReply::operator() decode path) -->
+<!-- src: qbm/redis/reply.h:1280-1302 (TReply::operator() decode path) -->
 
 ### Coroutine vs callback
 
@@ -228,9 +228,9 @@ units by design** — `EXPIRE` is seconds, `PEXPIRE` is milliseconds — and the
 
 ```cpp
 #include <chrono>
-// key_commands.h:241 — EXPIRE takes seconds
+// key_commands.h:224 — EXPIRE takes seconds
 co_await redis.expire("k", std::chrono::seconds{60});
-// key_commands.h:416 — PEXPIRE takes milliseconds
+// key_commands.h:380 — PEXPIRE takes milliseconds
 co_await redis.pexpire("k", std::chrono::milliseconds{1500});
 // raw integer overloads also exist, in the command's native unit
 co_await redis.expire("k", 60);          // seconds
@@ -243,7 +243,7 @@ as value types, not durations. The framework `qb::duration` type *is* used elsew
 command timeouts and the `RetryPolicy` delays (`redis.h:209-214`) — but those are transport-level deadlines, not Redis
 command arguments. See [Connection](./connection.md).
 
-<!-- src: qbm/redis/commands/key_commands.h:215-251,390-427 (expire/pexpire native-unit overloads) -->
+<!-- src: qbm/redis/commands/key_commands.h:215-251,357-392 (expire/pexpire native-unit overloads) -->
 
 ## Command groups
 
