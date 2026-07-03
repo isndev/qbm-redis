@@ -65,6 +65,7 @@ qredis_test(unit reply-json-decode unit/reply/reply-json-decode.cpp EXTRA_LABELS
 qredis_test(unit interval-formatting unit/types/interval-formatting.cpp EXTRA_LABELS types)
 qredis_test(unit value-domain-types unit/types/value-domain-types.cpp EXTRA_LABELS types)
 qredis_test(unit transaction-args-validation unit/commands/transaction-args-validation.cpp EXTRA_LABELS commands)
+qredis_test(unit empty-arg-guards unit/commands/empty-arg-guards.cpp EXTRA_LABELS commands)
 
 # SYSTEM — loopback, no daemon
 qredis_test(system reconnect-lifetime-uaf system/connection/reconnect-lifetime-uaf.cpp EXTRA_LABELS coroutine)

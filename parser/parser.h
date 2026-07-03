@@ -651,7 +651,7 @@ private:
     // Parse array: *N\r\n<elements...>
     [[nodiscard]] ParseResult<Value>
     parse_array(size_t count, ViewBuffer &view, size_t depth) {
-        if (count > 1'000'000) {
+        if (count > _config.max_array_size) {
             return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Array too large");
         }
 
@@ -672,7 +672,7 @@ private:
     // Parse set: ~N\r\n<elements...>
     [[nodiscard]] ParseResult<Value>
     parse_set(size_t count, ViewBuffer &view, size_t depth) {
-        if (count > 1'000'000) {
+        if (count > _config.max_array_size) {
             return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Set too large");
         }
 
@@ -693,7 +693,7 @@ private:
     // Parse push: >N\r\n<elements...>
     [[nodiscard]] ParseResult<Value>
     parse_push(size_t count, ViewBuffer &view, size_t depth) {
-        if (count > 1'000'000) {
+        if (count > _config.max_array_size) {
             return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Push too large");
         }
 
@@ -714,7 +714,7 @@ private:
     // Parse map: %N\r\n<key1><value1><key2><value2>...
     [[nodiscard]] ParseResult<Value>
     parse_map(size_t count, ViewBuffer &view, size_t depth) {
-        if (count > 500'000) { // N pairs = 2N elements
+        if (count > _config.max_array_size / 2) { // N pairs = 2N elements; bound by the element cap
             return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Map too large");
         }
 
@@ -745,7 +745,7 @@ private:
     // that the whole thing is returned as a single logical Value.
     [[nodiscard]] ParseResult<Value>
     parse_attribute(size_t count, ViewBuffer &view, size_t depth) {
-        if (count > 500'000) {
+        if (count > _config.max_array_size / 2) { // N pairs = 2N elements; bound by the element cap
             return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW, "Attribute too large");
         }
 

@@ -142,4 +142,41 @@ TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
     SUCCEED() << "no crash / no ASan use-after-free during mid-reconnect destruction";
 }
 
+// ASan regression for the SIBLING path: the callback-based connect() overload
+// (connect(func, uri, timeout)) whose completion lambda ALSO captures the client
+// by raw `this` and runs on a later loop iteration. qb::io::async::tcp::connect
+// self-holds that lambda in a shared_ptr<connector> to its deadline, so a client
+// destroyed mid-connect would have setup_connection() run on freed memory. The
+// coroutine connect_awaiter was guarded (test above); this overload was the gap.
+TEST(ConnectLifetime, DestroyDuringInflightCallbackConnectNoUAF) {
+    qb::io::async::init();
+
+    int               port = 0;
+    const socket_type lfd  = open_loopback_listener(port);
+    ASSERT_NE(lfd, qb::io::inet::invalid_socket);
+
+    const auto uri = qb::io::uri{"tcp://127.0.0.1:" + std::to_string(port)};
+
+    auto client = std::make_unique<qb::redis::tcp::client>(uri);
+
+    // Callback connect: registers an async connect whose completion lambda captures the client by
+    // raw `this` and fires on a LATER loop iteration. Deliberately do NOT pump the loop here, so the
+    // connect is still in flight when we destroy the client below.
+    bool cb_ran = false;
+    client->connect([&cb_ran](bool) { cb_ran = true; }, uri, 2s);
+
+    // Destroy the client while the (about-to-succeed) connect is in flight.
+    client.reset();
+
+    // Pump so the connect completes and the completion lambda fires against the freed client. With
+    // the fix its connector_alive() check short-circuits (and never calls the user callback); before
+    // the fix ASan reports heap-use-after-free in setup_connection.
+    for (int i = 0; i < 500; ++i)
+        qb::io::async::run(EVRUN_NOWAIT);
+
+    closesocket(lfd);
+    EXPECT_FALSE(cb_ran) << "completion for a destroyed client must be suppressed, not run on freed memory";
+    SUCCEED() << "no crash / no ASan use-after-free during mid-connect destruction (callback path)";
+}
+
 // No in-file main(): links the framework's shared gtest-main.

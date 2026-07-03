@@ -233,6 +233,12 @@ public:
     template <typename Func, typename... Fields>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     hdel(Func &&func, const std::string &key, Fields &&...fields) {
+        // A zero-field pack would emit `HDEL key`, which Redis rejects. Reject it client-side and
+        // resolve the callback/awaiter via fail_client (never a silent no-op / coroutine hang).
+        if (key.empty() || sizeof...(fields) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "HDEL requires at least one field");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "HDEL", key, std::forward<Fields>(fields)...);
     }
 
@@ -475,6 +481,11 @@ public:
     template <typename Func, typename... Fields>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
     hmget(Func &&func, const std::string &key, Fields &&...fields) {
+        // Empty field pack → `HMGET key`, which Redis rejects. Reject client-side (resolve callback).
+        if (key.empty() || sizeof...(fields) == 0) {
+            fail_client<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "HMGET requires at least one field");
+            return derived();
+        }
         return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "HMGET", key,
                                                                                    std::forward<Fields>(fields)...);
     }
@@ -511,6 +522,12 @@ public:
     template <typename Func, typename... FieldValues>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     hmset(Func &&func, const std::string &key, FieldValues &&...field_values) {
+        // Empty pack → `HMSET key`, which Redis rejects. Reject client-side (resolve callback). (An
+        // odd count is left to the server to reject with a clear error rather than dropped here.)
+        if (key.empty() || sizeof...(field_values) == 0) {
+            fail_client<status>(std::forward<Func>(func), "HMSET requires at least one field-value pair");
+            return derived();
+        }
         return derived().template command<status>(std::forward<Func>(func), "HMSET", key, std::forward<FieldValues>(field_values)...);
     }
 

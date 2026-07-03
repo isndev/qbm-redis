@@ -63,7 +63,7 @@ durability, or consumer groups, use Redis Streams instead (see your stream comma
 - `reply.result()` (alias `reply.value()`) — the `long long` subscriber count.
 - `reply.error()` — the error message string when `!reply.ok()`.
 
-<!-- src: qbm/redis/reply.h:1162-1229 (Reply ok/result/value/error) -->
+<!-- src: qbm/redis/reply.h:1102-1177 (Reply ok/result/value/error) -->
 
 ---
 

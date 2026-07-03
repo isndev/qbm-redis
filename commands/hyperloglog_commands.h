@@ -108,6 +108,10 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     pfcount(Func &&func, Keys &&...keys) {
+        if (sizeof...(keys) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "PFCOUNT requires at least one key");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "PFCOUNT", std::forward<Keys>(keys)...);
     }
 
@@ -142,6 +146,10 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     pfmerge(Func &&func, const std::string &destination, Keys &&...keys) {
+        if (destination.empty() || sizeof...(keys) == 0) {
+            fail_client<status>(std::forward<Func>(func), "PFMERGE requires a destination and at least one source key");
+            return derived();
+        }
         return derived().template command<status>(std::forward<Func>(func), "PFMERGE", destination, std::forward<Keys>(keys)...);
     }
 };

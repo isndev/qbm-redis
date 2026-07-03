@@ -529,9 +529,20 @@ public:
     template <std::invocable<bool> Func>
     void
     connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3)) {
+        // qb::io::async::tcp::connect self-holds this completion lambda in a shared_ptr<connector>
+        // that lives until the connect resolves or its deadline (default 3s) fires — a LATER
+        // event-loop turn. The lambda captures the client by raw `this`, so a client destroyed while
+        // the connect is in flight would have the deferred completion dereference freed memory
+        // (setup_connection writes _connected_flag/_uri/this->transport() and starts the watchers).
+        // Capture the client liveness token — ~connector sets *_alive=false — and no-op if it died,
+        // exactly like the coroutine connect_awaiter above (that path was hardened in 4833dc7; this
+        // sibling overload was missed).
+        auto alive = connector_alive();
         qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
             uri,
-            [this, uri, func = std::forward<Func>(func)](auto &&raw_io) {
+            [this, alive, uri, func = std::forward<Func>(func)](auto &&raw_io) {
+                if (!*alive)
+                    return;
                 if (raw_io.is_open()) {
                     func(this->setup_connection(uri, std::forward<decltype(raw_io)>(raw_io)));
                 } else {
@@ -1437,51 +1448,65 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
     using cb_err_t  = std::function<void(qb::redis::error &&)>;
     using cb_disc_t = std::function<void(qb::io::async::event::disconnected &&)>;
 
-    cb_msg_t  _on_message;
-    cb_err_t  _on_error;
-    cb_disc_t _on_disconnected;
+    // Sinks default to a no-op and are NEVER left empty (the ctor and setters below fall back to the
+    // no-op), so dispatch is an UNCONDITIONAL call — no per-event `if (cb)` branch. This matters for
+    // `_on_message` under a busy subscription: the happy path is a single indirect call, nothing to
+    // predict or skip. Contract (matches the documented setup order): configure the sinks BEFORE
+    // subscribing, and never reassign a sink from within its own running handler — that would free
+    // the callable whose operator() is on the stack (the modify-what-you're-executing hazard). The
+    // setup-before-subscribe flow never does this, so no per-call copy/guard is needed to defend it.
+    cb_msg_t  _on_message      = [](qb::redis::message &&) {};
+    cb_err_t  _on_error        = [](qb::redis::error &&) {};
+    cb_disc_t _on_disconnected = [](qb::io::async::event::disconnected &&) {};
 
+    // Exception safety of the user callable is handled UPSTREAM: RedisConsumer::on wraps the
+    // message/pmessage/disconnected dispatch in try/catch, and qb::protocol::redis::onMessage adds a
+    // catch(...) backstop before the libev noexcept boundary — so a throwing handler is contained
+    // and never terminates. These dispatchers therefore stay branch-free.
     void
     on(qb::redis::message &&msg) {
-        if (_on_message)
-            _on_message(std::forward<qb::redis::message>(msg));
+        _on_message(std::move(msg));
     }
 
     void
     on(qb::redis::error &&error) {
-        if (_on_error)
-            _on_error(std::forward<qb::redis::error>(error));
+        _on_error(std::move(error));
     }
 
     void
     on(qb::io::async::event::disconnected &&ev) {
-        if (_on_disconnected)
-            _on_disconnected(std::forward<qb::io::async::event::disconnected>(ev));
+        _on_disconnected(std::move(ev));
     }
 
 public:
     explicit RedisCallbackConsumer(qb::io::uri uri = {}, cb_msg_t &&on_message = cb_msg_t{}, cb_err_t &&on_error = cb_err_t{},
                                    cb_disc_t &&on_disconnected = cb_disc_t{})
-        : RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>(std::move(uri))
-        , _on_message(std::forward<cb_msg_t>(on_message))
-        , _on_error(std::forward<cb_err_t>(on_error))
-        , _on_disconnected(std::forward<cb_disc_t>(on_disconnected)) {}
+        : RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>(std::move(uri)) {
+        // Keep the no-op default unless a real callable was supplied — a passed-but-empty sink must
+        // not leave the member empty (dispatch is branch-free and would throw bad_function_call).
+        if (on_message)
+            _on_message = std::move(on_message);
+        if (on_error)
+            _on_error = std::move(on_error);
+        if (on_disconnected)
+            _on_disconnected = std::move(on_disconnected);
+    }
 
     RedisCallbackConsumer &
     on_message(cb_msg_t &&cb) {
-        _on_message = std::forward<cb_msg_t>(cb);
+        _on_message = cb ? std::move(cb) : cb_msg_t{[](qb::redis::message &&) {}};
         return *this;
     }
 
     RedisCallbackConsumer &
     on_error(cb_err_t &&cb) {
-        _on_error = std::forward<cb_err_t>(cb);
+        _on_error = cb ? std::move(cb) : cb_err_t{[](qb::redis::error &&) {}};
         return *this;
     }
 
     RedisCallbackConsumer &
     on_disconnected(cb_disc_t &&cb) {
-        _on_disconnected = std::forward<cb_disc_t>(cb);
+        _on_disconnected = cb ? std::move(cb) : cb_disc_t{[](qb::io::async::event::disconnected &&) {}};
         return *this;
     }
 };

@@ -682,59 +682,6 @@ parse_set_reply(const ReplyValue &reply) {
     return false;
 }
 
-// ============================================================================
-// Array conversion helpers
-// ============================================================================
-
-// Forward declaration
-[[nodiscard]] inline bool is_flat_array(const ReplyValue &reply);
-
-template <typename Output>
-void
-to_flat_array(const ReplyValue &reply, Output output) {
-    const auto &arr = reply.as_array();
-    if (arr.size() % 2 != 0) {
-        throw ProtoError("Flat array needs even number of elements");
-    }
-
-    using Pair       = typename iterator_type<Output>::type;
-    using FirstType  = std::remove_cvref_t<typename Pair::first_type>;
-    using SecondType = std::remove_cvref_t<typename Pair::second_type>;
-
-    for (size_t i = 0; i < arr.size(); i += 2) {
-        *output = std::make_pair(parse<FirstType>(*arr[i]), parse<SecondType>(*arr[i + 1]));
-        ++output;
-    }
-}
-
-template <typename Output>
-void
-to_array(const ReplyValue &reply, Output output) {
-    if (!is_array(reply) && !is_map(reply) && !is_set(reply)) {
-        throw ReplyParseError("ARRAY, MAP, or SET", reply);
-    }
-
-    if (is_map(reply) || (is_array(reply) && is_flat_array(reply))) {
-        to_flat_array(reply, output);
-    } else {
-        for (const auto &elem : reply.as_array()) {
-            *output = parse<typename iterator_type<Output>::type>(*elem);
-            ++output;
-        }
-    }
-}
-
-[[nodiscard]] inline bool
-is_flat_array(const ReplyValue &reply) {
-    const auto &arr = reply.as_array();
-    if (!is_array(reply) || arr.empty()) {
-        return false;
-    }
-    // Check if first element is not an array/map (flat)
-    const auto &first = *arr[0];
-    return !first.is_aggregate();
-}
-
 } // namespace reply
 
 // ============================================================================
@@ -1298,9 +1245,40 @@ public:
             // Catch all qb::redis::Error subclasses (ProtoError, CommandError, etc.)
             // e.what() is valid only for the lifetime of e, so copy it now.
             func(Reply<T>{false, {}, std::move(raw), std::string(e.what())});
+        } catch (const std::exception &e) {
+            // A non-redis exception from decoding — e.g. std::bad_alloc / std::length_error while
+            // materializing a large (but within-limit) reply under memory pressure — is NOT a
+            // qb::redis::Error. It must still be turned into a failed Reply here: this handler was
+            // already popped from the reply FIFO before being invoked, so letting the exception
+            // escape (it is only logged at the libev dispatch boundary) means func() never runs and
+            // the caller's callback / awaiting coroutine is NEVER resolved — a silent hang.
+            func(Reply<T>{false, {}, std::move(raw), std::string(e.what())});
+        } catch (...) {
+            func(Reply<T>{false, {}, std::move(raw), "unknown reply-decode error"});
         }
     }
 };
+
+/**
+ * @brief Resolve a command's callback with a client-side failure WITHOUT sending a frame.
+ *
+ * Argument guards (empty variadic pack, empty required key/member set) must reject a call that
+ * would otherwise put a malformed command on the wire (`DEL` with no keys, `SADD key` with no
+ * members, …). A bare `return derived();` does that but NEVER invokes @p func — so the callback
+ * silently never fires and, on the coroutine form, the awaiter parks forever waiting for a reply
+ * that was never sent (a hang). This invokes @p func with a failed `Reply<Ret>` carrying @p reason,
+ * so the callback fires and the coroutine resumes with `.ok() == false` — uniform across every
+ * argument guard.
+ *
+ * @tparam Ret The command's decoded reply type (`Reply<Ret>`).
+ * @param func The command's reply callback.
+ * @param reason Human-readable rejection reason surfaced in `reply.error()`.
+ */
+template <typename Ret, typename Func>
+inline void
+fail_client(Func &&func, const char *reason) {
+    std::forward<Func>(func)(Reply<Ret>{false, {}, nullptr, reason});
+}
 
 } // namespace qb::redis
 

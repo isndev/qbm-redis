@@ -168,7 +168,8 @@ public:
      * @see https://redis.io/commands/bitpos
      */
     auto
-    bitpos(const std::string &key, bool bit, long long start = 0, long long end = -1) {
+    bitpos(const std::string &key, bool bit, std::optional<long long> start = std::nullopt,
+           std::optional<long long> end = std::nullopt) {
         return derived().template make_coro_command<long long>(
             [this, key, bit, start, end](auto &&callback) { this->bitpos(std::move(callback), key, bit, start, end); });
     }
@@ -188,8 +189,17 @@ public:
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
-    bitpos(Func &&func, const std::string &key, bool bit, long long start = 0, long long end = -1) {
-        return derived().template command<long long>(std::forward<Func>(func), "BITPOS", key, bit ? 1 : 0, start, end);
+    bitpos(Func &&func, const std::string &key, bool bit, std::optional<long long> start = std::nullopt,
+           std::optional<long long> end = std::nullopt) {
+        // BITPOS key bit [start [end [BYTE|BIT]]]. The open-ended search — finding the first CLEAR
+        // bit in the implicit zero-padding PAST the end of the string — applies ONLY when `end` is
+        // omitted. Forcing a default `end = -1` silently broke it: e.g. bitpos(key, 0) on an
+        // all-ones value returned -1 instead of the bit position just past the last stored byte.
+        // So emit start/end only when the caller supplied them, and never emit `end` without
+        // `start` (Redis reads a lone trailing value as `start`). A nullopt optional is dropped
+        // from both the argument count and the payload by put_in_pipe.
+        std::optional<long long> emit_end = start.has_value() ? end : std::nullopt;
+        return derived().template command<long long>(std::forward<Func>(func), "BITPOS", key, bit ? 1 : 0, start, emit_end);
     }
 
     /**

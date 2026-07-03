@@ -71,7 +71,7 @@ The reply type `T` differs per command (`qb::json`, `status`, `std::vector<std::
 
 ### Reading a `Reply<T>`
 
-Every command resolves to `qb::redis::Reply<T>` (`reply.h:1155`):
+Every command resolves to `qb::redis::Reply<T>` (`reply.h:1102`):
 
 - `reply.ok()` / `explicit operator bool` — `true` when the command round-tripped successfully.
 - `reply.result()` (or its alias `reply.value()`) — the typed payload `T`.
@@ -319,4 +319,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified against: qbm/redis/commands/module_commands.h, qbm/redis/types.h:475 (status), qbm/redis/reply.h:1155 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 2.6.0 -->
+<!-- Verified against: qbm/redis/commands/module_commands.h, qbm/redis/types.h:475 (status), qbm/redis/reply.h:1102 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 2.6.0 -->

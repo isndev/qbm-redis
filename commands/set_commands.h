@@ -151,6 +151,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     sadd(Func &&func, const std::string &key, Members &&...members) {
         if (key.empty() || sizeof...(members) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "SADD requires at least one member");
             return derived();
         }
         return derived().template command<long long>(std::forward<Func>(func), "SADD", key, std::forward<Members>(members)...);
@@ -215,6 +216,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     sdiff(Func &&func, const std::vector<std::string> &keys) {
         if (keys.size() == 0) {
+            fail_client<std::vector<std::string>>(std::forward<Func>(func), "SDIFF requires at least one key");
             return derived();
         }
 
@@ -249,6 +251,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     sdiffstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
         if (destination.empty() || keys.size() == 0) {
+            fail_client<long long>(std::forward<Func>(func), "SDIFFSTORE requires at least one key");
             return derived();
         }
 
@@ -283,6 +286,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     sinter(Func &&func, const std::vector<std::string> &keys) {
         if (keys.size() == 0) {
+            fail_client<std::vector<std::string>>(std::forward<Func>(func), "SINTER requires at least one key");
             return derived();
         }
 
@@ -317,6 +321,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     sintercard(Func &&func, const std::vector<std::string> &keys, std::optional<long long> limit = std::nullopt) {
         if (keys.size() == 0) {
+            fail_client<long long>(std::forward<Func>(func), "SINTERCARD requires at least one key");
             return derived();
         }
         std::vector<std::string> args;
@@ -356,6 +361,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     sinterstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
         if (destination.empty() || keys.size() == 0) {
+            fail_client<long long>(std::forward<Func>(func), "SINTERSTORE requires at least one key");
             return derived();
         }
         return derived().template command<long long>(std::forward<Func>(func), "SINTERSTORE", destination, keys);
@@ -429,6 +435,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<bool>> &&>, Derived &>
     smismember(Func &&func, const std::string &key, Members &&...members) {
         if (key.empty() || sizeof...(members) == 0) {
+            fail_client<std::vector<bool>>(std::forward<Func>(func), "SMISMEMBER requires at least one member");
             return derived();
         }
         return derived().template command<std::vector<bool>>(std::forward<Func>(func), "SMISMEMBER", key, std::forward<Members>(members)...);
@@ -663,6 +670,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     srem(Func &&func, const std::string &key, Members &&...members) {
         if (key.empty() || sizeof...(members) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "SREM requires at least one member");
             return derived();
         }
         return derived().template command<long long>(std::forward<Func>(func), "SREM", key, std::forward<Members>(members)...);
@@ -759,6 +767,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     sunion(Func &&func, const std::vector<std::string> &keys) {
         if (keys.size() == 0) {
+            fail_client<std::vector<std::string>>(std::forward<Func>(func), "SUNION requires at least one key");
             return derived();
         }
         std::vector<std::string> args;
@@ -796,6 +805,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     sunionstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
         if (destination.empty() || keys.size() == 0) {
+            fail_client<long long>(std::forward<Func>(func), "SUNIONSTORE requires at least one key");
             return derived();
         }
         return derived().template command<long long>(std::forward<Func>(func), "SUNIONSTORE", destination, keys);

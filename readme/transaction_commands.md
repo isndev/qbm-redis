@@ -100,7 +100,7 @@ For `exec<Result>`, you pick `Result` to match what your queued commands return.
 status strings, so `exec<std::string>()` yields a `std::vector<std::string>` of `"OK"` values — one element per queued
 command, in order.
 
-<!-- src: qbm/redis/types.h:475-526, qbm/redis/reply.h:1148-1227 -->
+<!-- src: qbm/redis/types.h:475-526, qbm/redis/reply.h:1102-1227 -->
 
 > **Time units:** No method in this group takes a time argument. Connect and command timeouts and the `RetryPolicy`
 > delays are `qb::duration` and live on the client, not here. Redis command arguments that *do* carry time (for example
