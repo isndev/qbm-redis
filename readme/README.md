@@ -154,9 +154,14 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 - **Auto-iterating scanners and `hvals` are callback-only.** The no-cursor `sscan` / `zscan` / `hscan` overloads and
   multi-key `hvals` buffer the whole result and fire the callback once; there is no coroutine form, and a throwing
   callback is caught and logged, not propagated (`set_commands.h:725`, `hash_commands.h:574,770`).
-- **Some callbacks silently no-op.** Several set and sorted-set callback overloads return without issuing a command (so
-  the callback never fires) when a required argument is empty — for example `sadd` / `srem` with no members (
-  `set_commands.h:162`).
+- **Empty required arguments resolve as a failed `Reply`, not a bad frame.** A required-variadic / required-collection
+  command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
+  `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
+  `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:154`, `reply.h:1277`).
+- **A few callbacks still silently no-op.** The callback cursor forms `hscan` / `zscan` on an empty key, and `lpos` on
+  an empty key / element, still return without issuing a command (the callback never fires) — guard the arguments
+  yourself (`hash_commands.h:568`, `list_commands.h:856`).
 - **Multi-stream `xread` / `xreadgroup` throw synchronously.** They throw `std::invalid_argument` from the callback body
   when `keys` is empty or `keys.size() != ids.size()` — catch it; it is not delivered as a `Reply` error (
   `stream_commands.h:514,427`).
