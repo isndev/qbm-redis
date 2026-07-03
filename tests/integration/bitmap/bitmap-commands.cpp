@@ -244,6 +244,35 @@ TEST_P(BitmapProtocolModesTest, BITPOS) {
     run_coro_test_until(completed);
 }
 
+// BITPOS regression: on an ALL-ONES value, searching for a 0-bit with NO explicit end must return
+// the first position in the implicit zero-padding PAST the string (Redis's open-ended semantics).
+// The builder previously forced end=-1, which makes the range closed and returns -1 instead of 16.
+// This is the guard for the std::optional start/end fix in bitmap_commands.h.
+TEST_P(BitmapProtocolModesTest, BITPOS_OpenEndedClearBitPastAllOnes) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        const std::string key = protocol_key("bitpos_allones");
+
+        auto set_r = co_await redis.set(key, std::string("\xFF\xFF", 2));
+        EXPECT_TRUE(set_r.ok()) << set_r.error();
+
+        // No end given → open-ended search: first 0-bit is at position 16, just past the two 0xFF
+        // bytes. Pre-fix this emitted `BITPOS key 0 0 -1` (closed) and returned -1.
+        auto open_zero = co_await redis.bitpos(key, false);
+        EXPECT_TRUE(open_zero.ok()) << open_zero.error();
+        EXPECT_EQ(open_zero.result(), 16) << "open-ended BITPOS must find the clear bit past the string";
+
+        // An explicit [0, -1] range is closed: no 0-bit within the stored bytes → -1 (unchanged).
+        auto closed_zero = co_await redis.bitpos(key, false, 0, -1);
+        EXPECT_TRUE(closed_zero.ok()) << closed_zero.error();
+        EXPECT_EQ(closed_zero.result(), -1) << "explicit end makes the range closed";
+
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}
+
 // GETBIT / SETBIT — SETBIT returns the previous bit value; GETBIT reads it back.
 TEST_P(BitmapProtocolModesTest, GETBIT_SETBIT) {
     bool completed = false;

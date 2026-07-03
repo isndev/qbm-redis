@@ -589,9 +589,17 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     zrangebylex(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
+        // A negative offset means "no LIMIT clause" (documented suppress form). The three parts must
+        // then be OMITTED entirely: emitting empty strings sent `... LIMIT? "" "" ""` (empty bulks,
+        // count 1 each) which Redis rejects as a syntax error. std::optional drops a nullopt from
+        // both the arg count and the payload, so the suppress path becomes a clean `ZRANGEBYLEX
+        // key min max` with no trailing tokens.
+        const bool                 use_limit = opts.offset >= 0;
+        std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
+        std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opts.offset) : std::nullopt;
+        std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opts.count) : std::nullopt;
         return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "ZRANGEBYLEX", key, interval.lower(), interval.upper(), opts.offset >= 0 ? "LIMIT" : "",
-            opts.offset >= 0 ? std::to_string(opts.offset) : "", opts.offset >= 0 ? std::to_string(opts.count) : "");
+            std::forward<Func>(func), "ZRANGEBYLEX", key, interval.lower(), interval.upper(), limit_kw, limit_off, limit_cnt);
     }
 
     /**
@@ -625,9 +633,14 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zrangebyscore(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opts = {}) {
+        // See zrangebylex: a negative offset suppresses LIMIT and the parts must be omitted (not sent
+        // as empty bulks, which Redis rejects with a syntax error). WITHSCORES is always appended.
+        const bool                 use_limit = opts.offset >= 0;
+        std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
+        std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opts.offset) : std::nullopt;
+        std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opts.count) : std::nullopt;
         return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZRANGEBYSCORE", key, interval.lower(), interval.upper(), opts.offset >= 0 ? "LIMIT" : "",
-            opts.offset >= 0 ? std::to_string(opts.offset) : "", opts.offset >= 0 ? std::to_string(opts.count) : "", "WITHSCORES");
+            std::forward<Func>(func), "ZRANGEBYSCORE", key, interval.lower(), interval.upper(), limit_kw, limit_off, limit_cnt, "WITHSCORES");
     }
 
     /**
@@ -839,8 +852,14 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     zrevrangebylex(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
+        // Coherent with zrangebylex: a negative offset suppresses LIMIT (omit the triplet) instead of
+        // emitting `LIMIT -1 -1` (an invalid offset). Default {0,-1} still sends `LIMIT 0 -1` (= all).
+        const bool                 use_limit = opt.offset >= 0;
+        std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
+        std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opt.offset) : std::nullopt;
+        std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opt.count) : std::nullopt;
         return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZREVRANGEBYLEX", key, interval.upper(),
-                                                                    interval.lower(), "LIMIT", opt.offset, opt.count);
+                                                                    interval.lower(), limit_kw, limit_off, limit_cnt);
     }
 
     /**
@@ -873,8 +892,13 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zrevrangebyscore(Func &&func, const std::string &key, Interval const &interval, const LimitOptions &opt = {}) {
+        // Coherent with zrangebyscore: negative offset suppresses LIMIT; WITHSCORES stays before it.
+        const bool                 use_limit = opt.offset >= 0;
+        std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
+        std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opt.offset) : std::nullopt;
+        std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opt.count) : std::nullopt;
         return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZREVRANGEBYSCORE", key, interval.upper(),
-                                                                     interval.lower(), "WITHSCORES", "LIMIT", opt.offset, opt.count);
+                                                                     interval.lower(), "WITHSCORES", limit_kw, limit_off, limit_cnt);
     }
 
     /**
@@ -1216,8 +1240,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
     zmpop(Func &&func, const std::vector<std::string> &keys, const std::string &min_or_max, long long count = 1) {
-        if (keys.empty())
+        if (keys.empty()) {
+            fail_client<std::optional<std::pair<std::string, std::vector<score_member>>>>(std::forward<Func>(func), "ZMPOP requires at least one key");
             return derived();
+        }
         std::vector<std::string> opt;
         if (count > 1) {
             opt.push_back("COUNT");
@@ -1400,8 +1426,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
     bzmpop(Func &&func, const std::vector<std::string> &keys, long long timeout, const std::string &min_or_max, long long count = 1) {
-        if (keys.empty())
+        if (keys.empty()) {
+            fail_client<std::optional<std::pair<std::string, std::vector<score_member>>>>(std::forward<Func>(func), "BZMPOP requires at least one key");
             return derived();
+        }
         std::vector<std::string> opt;
         if (count > 1) {
             opt.push_back("COUNT");

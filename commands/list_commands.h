@@ -95,6 +95,10 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lpush(Func &&func, const std::string &key, Args &&...args) {
+        if (key.empty() || sizeof...(args) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "LPUSH requires at least one value");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "LPUSH", key, std::forward<Args>(args)...);
     }
 
@@ -124,6 +128,10 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lpushx(Func &&func, const std::string &key, Args &&...args) {
+        if (key.empty() || sizeof...(args) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "LPUSHX requires at least one value");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "LPUSHX", key, std::forward<Args>(args)...);
     }
 
@@ -153,6 +161,10 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     rpush(Func &&func, const std::string &key, Args &&...args) {
+        if (key.empty() || sizeof...(args) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "RPUSH requires at least one value");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "RPUSH", key, std::forward<Args>(args)...);
     }
 
@@ -182,6 +194,10 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     rpushx(Func &&func, const std::string &key, Args &&...args) {
+        if (key.empty() || sizeof...(args) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "RPUSHX requires at least one value");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "RPUSHX", key, std::forward<Args>(args)...);
     }
 
@@ -680,6 +696,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>, Derived &>
     lmpop(Func &&func, const std::vector<std::string> &keys, ListPosition position, long long count = 1) {
         if (keys.empty()) {
+            fail_client<std::optional<std::pair<std::string, std::vector<std::string>>>>(std::forward<Func>(func), "LMPOP requires at least one key");
             return derived();
         }
         std::vector<std::string> opt;
@@ -722,6 +739,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>, Derived &>
     blmpop(Func &&func, const std::vector<std::string> &keys, ListPosition position, long long timeout, long long count = 1) {
         if (keys.empty()) {
+            fail_client<std::optional<std::pair<std::string, std::vector<std::string>>>>(std::forward<Func>(func), "BLMPOP requires at least one key");
             return derived();
         }
         std::vector<std::string> opt;

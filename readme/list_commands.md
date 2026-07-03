@@ -43,7 +43,7 @@ substitute qb time types here.
 | `std::optional<std::pair<std::string, std::string>>`              | `{key, element}` from a blocking pop                    | `blpop`, `brpop`                                                                            |
 | `std::optional<std::pair<std::string, std::vector<std::string>>>` | `{key, elements}` from a multi-key pop                  | `lmpop`, `blmpop`                                                                           |
 
-`qb::redis::Reply<T>` (`reply.h:1155`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1102`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. Optional replies are tested with `reply.result().has_value()`.
 See [Command API model](./commands_overview.md) for the full reply surface.
 

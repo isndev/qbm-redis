@@ -144,6 +144,10 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<bool>> &&>, Derived &>
     script_exists(Func &&func, Keys &&...keys) {
+        if (sizeof...(keys) == 0) {
+            fail_client<std::vector<bool>>(std::forward<Func>(func), "SCRIPT EXISTS requires at least one sha1");
+            return derived();
+        }
         return derived().template command<std::vector<bool>>(std::forward<Func>(func), "SCRIPT", "EXISTS", std::forward<Keys>(keys)...);
     }
 

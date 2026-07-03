@@ -141,6 +141,10 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     del(Func &&func, Keys &&...keys) {
+        if (sizeof...(keys) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "DEL requires at least one key");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "DEL", std::forward<Keys>(keys)...);
     }
 
@@ -187,6 +191,10 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     exists(Func &&func, Keys &&...keys) {
+        if (sizeof...(keys) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "EXISTS requires at least one key");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "EXISTS", std::forward<Keys>(keys)...);
     }
 
@@ -621,6 +629,10 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     touch(Func &&func, Keys &&...keys) {
+        if (sizeof...(keys) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "TOUCH requires at least one key");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "TOUCH", std::forward<Keys>(keys)...);
     }
 
@@ -687,6 +699,10 @@ public:
     template <typename Func, typename... Keys>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     unlink(Func &&func, Keys &&...keys) {
+        if (sizeof...(keys) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "UNLINK requires at least one key");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "UNLINK", std::forward<Keys>(keys)...);
     }
 

@@ -430,6 +430,48 @@ TEST_P(SortedSetProtocolModesTest, RANGE_BY_SCORE_LIMIT) {
     run_coro_test_until(completed);
 }
 
+// ZRANGEBYSCORE / ZRANGEBYLEX regression: a NEGATIVE LimitOptions offset is the documented
+// "suppress the LIMIT clause" form. It must OMIT the LIMIT triplet entirely and return the full
+// range — the builder previously emitted empty-string args (`... "" "" "" [WITHSCORES]`), which
+// Redis rejects with a syntax error. Guards the std::optional fix in sorted_set_commands.h.
+TEST_P(SortedSetProtocolModesTest, RANGE_NEGATIVE_OFFSET_SUPPRESSES_LIMIT) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        const qb::redis::LimitOptions suppress{/*offset*/ -1, /*count*/ -1}; // negative offset => no LIMIT
+
+        // ZRANGEBYSCORE over distinct-score members.
+        std::string                          skey    = protocol_key("suppress-limit-score");
+        std::vector<qb::redis::score_member> members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}, {4.0, "d"}, {5.0, "e"}};
+        EXPECT_TRUE((co_await redis.zadd(skey, members)).ok());
+        qb::redis::score_interval interval(1.0, 5.0, qb::redis::BoundType::CLOSED);
+        auto                      by_score = co_await redis.zrangebyscore(skey, interval, suppress);
+        EXPECT_TRUE(by_score.ok()) << "negative offset must suppress LIMIT, not emit a syntax error: " << by_score.error();
+        EXPECT_EQ(by_score.result().size(), 5u) << "suppressed LIMIT must return the full score range";
+        // ZREVRANGEBYSCORE over the same set (skey still present) — pre-fix it emitted `LIMIT -1 -1`.
+        auto rev_score = co_await redis.zrevrangebyscore(skey, interval, suppress);
+        EXPECT_TRUE(rev_score.ok()) << "zrevrangebyscore negative offset must suppress LIMIT: " << rev_score.error();
+        EXPECT_EQ(rev_score.result().size(), 5u);
+        CO_IGNORE(co_await redis.del(skey));
+
+        // ZRANGEBYLEX / ZREVRANGEBYLEX need equal scores for lexicographic ordering.
+        std::string                          lkey     = protocol_key("suppress-limit-lex");
+        std::vector<qb::redis::score_member> lmembers = {{0, "a"}, {0, "b"}, {0, "c"}, {0, "d"}, {0, "e"}};
+        EXPECT_TRUE((co_await redis.zadd(lkey, lmembers)).ok());
+        auto by_lex = co_await redis.zrangebylex(lkey, qb::redis::lex_interval("a", "e", qb::redis::BoundType::CLOSED), suppress);
+        EXPECT_TRUE(by_lex.ok()) << "negative offset must suppress LIMIT (bylex): " << by_lex.error();
+        EXPECT_EQ(by_lex.result().size(), 5u);
+        // Same interval as the forward call — the builder emits upper()/lower() reversed for ZREV.
+        auto rev_lex = co_await redis.zrevrangebylex(lkey, qb::redis::lex_interval("a", "e", qb::redis::BoundType::CLOSED), suppress);
+        EXPECT_TRUE(rev_lex.ok()) << "zrevrangebylex negative offset must suppress LIMIT: " << rev_lex.error();
+        EXPECT_EQ(rev_lex.result().size(), 5u);
+        CO_IGNORE(co_await redis.del(lkey));
+
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}
+
 // ZSCAN — full set returned within a single cursor pass for a small set.
 TEST_P(SortedSetProtocolModesTest, SCAN) {
     bool completed = false;

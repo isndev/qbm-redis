@@ -576,6 +576,10 @@ public:
     template <typename Func, typename... Slots>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_addslots(Func &&func, Slots &&...slots) {
+        if (sizeof...(slots) == 0) {
+            fail_client<status>(std::forward<Func>(func), "CLUSTER ADDSLOTS requires at least one slot");
+            return derived();
+        }
         return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "ADDSLOTS", std::forward<Slots>(slots)...);
     }
 
@@ -669,6 +673,10 @@ public:
     template <typename Func, typename... Slots>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_delslots(Func &&func, Slots &&...slots) {
+        if (sizeof...(slots) == 0) {
+            fail_client<status>(std::forward<Func>(func), "CLUSTER DELSLOTS requires at least one slot");
+            return derived();
+        }
         return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "DELSLOTS", std::forward<Slots>(slots)...);
     }
 

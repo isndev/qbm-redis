@@ -71,6 +71,10 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     geoadd(Func &&func, const std::string &key, Members &&...members) {
+        if (key.empty() || sizeof...(members) == 0) {
+            fail_client<long long>(std::forward<Func>(func), "GEOADD requires at least one member");
+            return derived();
+        }
         return derived().template command<long long>(std::forward<Func>(func), "GEOADD", key, std::forward<Members>(members)...);
     }
 
@@ -140,6 +144,10 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
     geohash(Func &&func, const std::string &key, Members &&...members) {
+        if (key.empty() || sizeof...(members) == 0) {
+            fail_client<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "GEOHASH requires at least one member");
+            return derived();
+        }
         return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "GEOHASH", key,
                                                                                    std::forward<Members>(members)...);
     }
@@ -176,6 +184,10 @@ public:
     template <typename Func, typename... Members>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<geo_pos>>> &&>, Derived &>
     geopos(Func &&func, const std::string &key, Members &&...members) {
+        if (key.empty() || sizeof...(members) == 0) {
+            fail_client<std::vector<std::optional<geo_pos>>>(std::forward<Func>(func), "GEOPOS requires at least one member");
+            return derived();
+        }
         return derived().template command<std::vector<std::optional<geo_pos>>>(std::forward<Func>(func), "GEOPOS", key,
                                                                                std::forward<Members>(members)...);
     }
