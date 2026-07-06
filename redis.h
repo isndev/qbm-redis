@@ -38,6 +38,9 @@
 #include <utility>
 #include <qb/io/async.h>
 #include <qb/io/async/tcp/connector.h>
+#ifdef QB_HAS_SSL
+#include <qb/io/tcp/ssl/context.h> // qb::io::ssl::Context for make_connect_socket_() (rediss:// custom-CA / client-cert)
+#endif
 #include <qb/system/container/unordered_set.h>
 
 // Native Redis Protocol Parser (C++20/23)
@@ -306,7 +309,36 @@ private:
     bool                       _is_reconnecting = false;
     bool                       _connected_flag  = false;
     bool                       _verify_peer     = true; /**< Verify server TLS cert for rediss:// (stcp transport). */
+    std::string                _ssl_root_cert;          /**< rediss://: private CA (PEM file/dir) added to the trust store. Empty = system store. */
+    std::string                _ssl_cert;               /**< rediss://: client certificate (PEM) for mutual TLS. Empty = none. */
+    std::string                _ssl_key;                /**< rediss://: client private key (PEM) for mutual TLS. Pairs with _ssl_cert. */
     std::shared_ptr<bool>      _alive{std::make_shared<bool>(true)};
+
+    /**
+     * @brief Build the transport socket for a new connection.
+     * @details For a secure (`rediss://`) transport, mints it from a value-semantic `ssl::Context` carrying
+     *          the verify mode + optional private CA (`_ssl_root_cert`) and client certificate
+     *          (`_ssl_cert`/`_ssl_key`, mTLS); for a plain transport, a default socket. Handed to the
+     *          existing-socket `connect()` overload so the Context — not a bare `verify` bool — governs
+     *          verification (a broken Context fails CLOSED at connect, never a silent downgrade).
+     */
+    typename QB_IO_::transport_io_type
+    make_connect_socket_() const {
+        typename QB_IO_::transport_io_type sock;
+#ifdef QB_HAS_SSL
+        if constexpr (std::is_constructible_v<typename QB_IO_::transport_io_type, qb::io::ssl::Context>) {
+            auto tls = qb::io::ssl::Context::client();
+            if (!_verify_peer)
+                tls.verify(qb::io::ssl::VerifyMode::none);
+            if (!_ssl_root_cert.empty())
+                tls.trust(_ssl_root_cert);
+            if (!_ssl_cert.empty() && !_ssl_key.empty())
+                tls.identity(_ssl_cert, _ssl_key);
+            sock = typename QB_IO_::transport_io_type{std::move(tls)};
+        }
+#endif
+        return sock;
+    }
 
     void
     start_async() {
@@ -413,7 +445,7 @@ public:
             // detached task exit cleanly instead of leaking.
             auto client_alive = _client.connector_alive();
             ::qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
-                _client._uri,
+                _client.make_connect_socket_(), _client._uri,
                 [this, valid, client_alive](auto &&raw_io) {
                     if (!*valid)
                         return;
@@ -425,7 +457,7 @@ public:
                         ::qb::io::async::coro_scheduler().schedule_resume(_handle);
                     }
                 },
-                _timeout, _client._verify_peer);
+                _timeout);
         }
 
         bool
@@ -539,7 +571,7 @@ public:
         // sibling overload was missed).
         auto alive = connector_alive();
         qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
-            uri,
+            make_connect_socket_(), uri,
             [this, alive, uri, func = std::forward<Func>(func)](auto &&raw_io) {
                 if (!*alive)
                     return;
@@ -549,7 +581,7 @@ public:
                     func(false);
                 }
             },
-            timeout, _verify_peer);
+            timeout);
     }
 
     template <std::invocable<bool> Func>
@@ -575,6 +607,26 @@ public:
     [[nodiscard]] bool
     verify_peer() const noexcept {
         return _verify_peer;
+    }
+
+    /**
+     * @brief Trust a private CA (PEM file or directory) for `rediss://`, IN ADDITION to the system store,
+     *        so `verify_peer(true)` can validate a server certificate issued by an internal CA (libpq-style
+     *        `sslrootcert`). Set before connect(); empty (default) = system trust store only.
+     */
+    void
+    set_ssl_root_cert(std::string ca_file_or_dir) {
+        _ssl_root_cert = std::move(ca_file_or_dir);
+    }
+
+    /**
+     * @brief Present a client certificate + private key (PEM) for mutual TLS on `rediss://` — both are
+     *        required to take effect. Set before connect(); empty (default) = no client certificate.
+     */
+    void
+    set_ssl_client_certificate(std::string cert_file, std::string key_file) {
+        _ssl_cert = std::move(cert_file);
+        _ssl_key  = std::move(key_file);
     }
 
     /**
