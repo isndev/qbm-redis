@@ -288,11 +288,14 @@ if (!co_await redis.connect())
 #endif
 ```
 
-<!-- src: qbm/redis/redis.h:560-567, 1630 -->
+<!-- src: qbm/redis/redis.h:602-629 -->
 
 `set_verify_peer(bool)` toggles TLS chain + hostname verification; it **defaults to `true`** and must be set before
-`connect()`. `verify_peer()` reads the current setting. Verification applies to the `stcp` (TLS) transport used by
-`rediss://`; it has no effect on plaintext clients.
+`connect()`. `verify_peer()` reads the current setting. For a **private CA**, call `set_ssl_root_cert(path)` (a PEM
+file or directory trusted in addition to the system store, so `verify_peer(true)` validates an internally-issued
+certificate); for **mutual TLS**, call `set_ssl_client_certificate(cert, key)` to present a client certificate. All
+apply to the `stcp` (TLS) transport used by `rediss://`, must be set before `connect()`, and have no effect on
+plaintext clients; a bad CA/cert/key path fails the connect **closed**.
 
 ---
 
