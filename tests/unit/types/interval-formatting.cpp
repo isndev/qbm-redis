@@ -152,6 +152,14 @@ TEST(IntervalBoundedDouble, InfinityArgsOpenGetsMarker) {
     EXPECT_EQ(i.upper(), "(+inf");
 }
 
+TEST(IntervalBoundedDouble, RejectsOutOfRangeBoundType) {
+    // A BoundType value outside the four named enumerators hits the ctor's switch
+    // `default:` and throws qb::redis::Error rather than silently emitting a
+    // malformed bound. (BoundType has a fixed underlying type, so the cast itself
+    // is well-defined — the value is simply not a valid bound kind.)
+    EXPECT_THROW((score_interval(20.0, 40.0, static_cast<BoundType>(99))), qb::redis::Error);
+}
+
 // ── ADDED: to_chars round-trip stability ────────────────────────────────────
 // The score formatter (double_to_redis, redis.cpp) uses std::to_chars with 17
 // significant digits, which is the IEEE-754 round-trip-exact precision. These
@@ -302,6 +310,12 @@ TEST(IntervalBoundedString, EmptyMembers) {
     lex_interval i("", "", BoundType::CLOSED);
     EXPECT_EQ(i.lower(), "[");
     EXPECT_EQ(i.upper(), "[");
+}
+
+TEST(IntervalBoundedString, RejectsOutOfRangeBoundType) {
+    // Same contract as the double interval: an out-of-range BoundType hits the
+    // lexicographic ctor's switch `default:` and throws qb::redis::Error.
+    EXPECT_THROW((lex_interval("b", "d", static_cast<BoundType>(99))), qb::redis::Error);
 }
 
 // ============================================================================
