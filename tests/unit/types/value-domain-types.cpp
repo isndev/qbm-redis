@@ -360,3 +360,20 @@ TEST(PMessage, InheritsMessageWithPattern) {
     EXPECT_EQ(base.channel, "news.sports");
     EXPECT_EQ(base.payload, "goal");
 }
+
+// ============================================================================
+// Enum stringizers (qb::redis::to_string free functions, defined in redis.cpp) —
+// out-of-range fallback. Each switch covers only its named enumerators and then
+// `return {};`, so a value cast outside the enumerator range must stringize to the
+// empty string (never a stale token). BoundType has a fixed underlying type, so
+// the casts are well-defined; the values are simply not valid options. The valid
+// enumerators themselves are pinned in interval-formatting.cpp's EnumToString.
+// ============================================================================
+
+TEST(EnumToStringOutOfRange, ReturnsEmptyString) {
+    EXPECT_EQ(qb::redis::to_string(static_cast<qb::redis::BitOp>(99)), "");
+    EXPECT_EQ(qb::redis::to_string(static_cast<qb::redis::Aggregation>(99)), "");
+    EXPECT_EQ(qb::redis::to_string(static_cast<qb::redis::GeoUnit>(99)), "");
+    EXPECT_EQ(qb::redis::to_string(static_cast<qb::redis::InsertPosition>(99)), "");
+    EXPECT_EQ(qb::redis::to_string(static_cast<qb::redis::ListPosition>(99)), "");
+}
