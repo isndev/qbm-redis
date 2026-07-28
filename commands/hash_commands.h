@@ -565,7 +565,11 @@ public:
     template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
     hscan(Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
+        // Resolve it the way every other argument guard in this module does.
         if (key.empty()) {
+            fail_client<qb::redis::scan<Out>>(std::forward<Func>(func), "HSCAN requires a non-empty key");
             return derived();
         }
         return derived().template command<qb::redis::scan<Out>>(std::forward<Func>(func), "HSCAN", key, cursor, "MATCH", pattern, "COUNT",

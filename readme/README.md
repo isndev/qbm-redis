@@ -159,9 +159,11 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
   via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:154`, `reply.h:1277`).
-- **A few callbacks still silently no-op.** The callback cursor forms `hscan` / `zscan` on an empty key, and `lpos` on
-  an empty key / element, still return without issuing a command (the callback never fires) — guard the arguments
-  yourself (`hash_commands.h:568`, `list_commands.h:856`).
+- **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
+  (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
+  with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /
+  `sismember` / `smembers` / `smove` / `spop` / `srandmember` / `{s,h,z}scan` / `lpos` used to return silently, which
+  left the callback unfired and parked the coroutine form forever; they now behave like the rest.
 - **Multi-stream `xread` / `xreadgroup` throw synchronously.** They throw `std::invalid_argument` from the callback body
   when `keys` is empty or `keys.size() != ids.size()` — catch it; it is not delivered as a `Reply` error (
   `stream_commands.h:514,427`).

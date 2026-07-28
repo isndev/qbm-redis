@@ -181,7 +181,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     scard(Func &&func, const std::string &key) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty()) {
+            fail_client<long long>(std::forward<Func>(func), "SCARD requires a non-empty key");
             return derived();
         }
         return derived().template command<long long>(std::forward<Func>(func), "SCARD", key);
@@ -395,7 +398,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     sismember(Func &&func, const std::string &key, const std::string &member) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty() || member.empty()) {
+            fail_client<bool>(std::forward<Func>(func), "SISMEMBER requires a non-empty key and member");
             return derived();
         }
         return derived().template command<bool>(std::forward<Func>(func), "SISMEMBER", key, member);
@@ -466,7 +472,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::unordered_set<std::string>> &&>, Derived &>
     smembers(Func &&func, const std::string &key) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty()) {
+            fail_client<qb::unordered_set<std::string>>(std::forward<Func>(func), "SMEMBERS requires a non-empty key");
             return derived();
         }
         return derived().template command<qb::unordered_set<std::string>>(std::forward<Func>(func), "SMEMBERS", key);
@@ -501,7 +510,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     smove(Func &&func, const std::string &source, const std::string &destination, const std::string &member) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (source.empty() || destination.empty() || member.empty()) {
+            fail_client<bool>(std::forward<Func>(func), "SMOVE requires a non-empty source, destination and member");
             return derived();
         }
         return derived().template command<bool>(std::forward<Func>(func), "SMOVE", source, destination, member);
@@ -532,7 +544,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     spop(Func &&func, const std::string &key) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty()) {
+            fail_client<std::optional<std::string>>(std::forward<Func>(func), "SPOP requires a non-empty key");
             return derived();
         }
         return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "SPOP", key);
@@ -565,7 +580,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     spop(Func &&func, const std::string &key, long long count) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty() || count < 1) {
+            fail_client<std::vector<std::string>>(std::forward<Func>(func), "SPOP requires a non-empty key and a count >= 1");
             return derived();
         }
         return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SPOP", key, count);
@@ -597,7 +615,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     srandmember(Func &&func, const std::string &key) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty()) {
+            fail_client<std::optional<std::string>>(std::forward<Func>(func), "SRANDMEMBER requires a non-empty key");
             return derived();
         }
         return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "SRANDMEMBER", key);
@@ -631,7 +652,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     srandmember(Func &&func, const std::string &key, long long count) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty()) {
+            fail_client<std::vector<std::string>>(std::forward<Func>(func), "SRANDMEMBER requires a non-empty key");
             return derived();
         }
         return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SRANDMEMBER", key, count);
@@ -709,7 +733,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<scan<>> &&>, Derived &>
     sscan(Func &&func, const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty()) {
+            fail_client<scan<>>(std::forward<Func>(func), "SSCAN requires a non-empty key");
             return derived();
         }
         return derived().template command<scan<>>(std::forward<Func>(func), "SSCAN", key, cursor, "MATCH", pattern, "COUNT", count);
@@ -731,7 +758,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<scan<>> &&>, Derived &>
     sscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         if (key.empty()) {
+            fail_client<scan<>>(std::forward<Func>(func), "SSCAN requires a non-empty key");
             return derived();
         }
         scanner<Func>::create_and_start(derived(), key, pattern, std::forward<Func>(func));

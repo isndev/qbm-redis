@@ -23,6 +23,9 @@
 #ifndef QBM_REDIS_PARSER_PARSER_H
 #define QBM_REDIS_PARSER_PARSER_H
 
+#include <algorithm>
+#include <cstddef>
+
 #include "buffer.h"
 #include "types.h"
 
@@ -45,6 +48,21 @@ struct ParserConfig {
     size_t          max_array_size    = 1'000'000;              ///< Max aggregate element count.
     bool            strict_mode       = false;                  ///< Reject trailing data after a parse.
 };
+
+/**
+ * @brief Upper bound on how many elements a DECLARED aggregate count may pre-reserve.
+ * @details `max_array_size` bounds what a single aggregate may contain, but nothing bounds the
+ *          PRODUCT of that cap and `max_nesting_depth`: reserving the full declared count at every
+ *          level lets ~768 bytes of input (64 nested `*1000000\r\n` headers) commit ~512 MB before
+ *          the depth limit rejects the frame. The declared count is a claim by the peer, not
+ *          delivered data.
+ *
+ *          Capping the reservation keeps the optimisation where it pays — ordinary replies fit in
+ *          one allocation — while making the commitment proportional to bytes actually received.
+ *          Larger aggregates simply grow geometrically as their elements are parsed. The
+ *          `max_array_size` validity check is unaffected.
+ */
+constexpr size_t MAX_AGGREGATE_RESERVE = 4096;
 
 // ============================================================================
 // Parser state
@@ -656,7 +674,7 @@ private:
         }
 
         Array result;
-        result.elements.reserve(count);
+        result.elements.reserve(std::min(count, MAX_AGGREGATE_RESERVE));
 
         for (size_t i = 0; i < count; ++i) {
             auto elem = parse_value(view, depth + 1);
@@ -677,7 +695,7 @@ private:
         }
 
         Set result;
-        result.elements.reserve(count);
+        result.elements.reserve(std::min(count, MAX_AGGREGATE_RESERVE));
 
         for (size_t i = 0; i < count; ++i) {
             auto elem = parse_value(view, depth + 1);
@@ -698,7 +716,7 @@ private:
         }
 
         Push result;
-        result.elements.reserve(count);
+        result.elements.reserve(std::min(count, MAX_AGGREGATE_RESERVE));
 
         for (size_t i = 0; i < count; ++i) {
             auto elem = parse_value(view, depth + 1);
@@ -719,7 +737,7 @@ private:
         }
 
         Map result;
-        result.entries.reserve(count);
+        result.entries.reserve(std::min(count, MAX_AGGREGATE_RESERVE));
 
         for (size_t i = 0; i < count; ++i) {
             auto key = parse_value(view, depth + 1);
@@ -750,7 +768,7 @@ private:
         }
 
         Attribute result;
-        result.data.entries.reserve(count);
+        result.data.entries.reserve(std::min(count, MAX_AGGREGATE_RESERVE));
 
         for (size_t i = 0; i < count; ++i) {
             auto key = parse_value(view, depth + 1);
