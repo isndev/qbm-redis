@@ -27,6 +27,7 @@
 #ifndef QBM_REDIS_TESTS_SHARED_REDIS_INTEGRATION_FIXTURE_H
 #define QBM_REDIS_TESTS_SHARED_REDIS_INTEGRATION_FIXTURE_H
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <gtest/gtest.h>
@@ -64,20 +65,47 @@ redis_test_uri() {
  * the server frozen): each attempt uses a 1 s command deadline so it fails fast instead of
  * hanging, and retries until @p budget elapses. Never throws — the caller decides what a
  * false return means (integration fixtures GTEST_SKIP; see @ref RedisIntegrationTest).
+ *
+ * @note The budget is spent AT MOST ONCE per process. If a full budget elapses without a single
+ *       successful connect the daemon is taken to be absent and every later call returns false
+ *       immediately — otherwise the cost is `test cases x budget`, which overruns CTest's
+ *       integration-tier timeout instead of skipping. See the implementation comment.
  */
 [[nodiscard]] inline bool
 redis_try_connect(qb::redis::tcp::client &redis, std::chrono::seconds budget = std::chrono::seconds(20)) {
+    // A daemon that is simply ABSENT is absent for the whole process, and this helper runs once
+    // per TEST CASE (gtest builds a fresh fixture for each). Re-spending the full budget every
+    // time makes the no-daemon path cost cases x budget, which overruns ctest's 300 s
+    // integration-tier timeout well before the binary can report its skips:
+    //   connection-commands  16 cases x 20 s = 320 s  -> killed at 300.01 s
+    //   pipeline             15 cases x 20 s = 300 s  -> killed at 300.01 s
+    // Both were observed as ***Timeout rather than ***Skipped. So latch the verdict: once an
+    // attempt has burned the whole budget WITHOUT EVER CONNECTING, every later fixture in this
+    // process answers false immediately and the suite skips in seconds.
+    //
+    // The retry loop still does the job it was written for. It defends against a server that IS
+    // there but is transiently frozen by a prior test's EVAL busy-loop — in that case connect()
+    // succeeds and only the flushall fails, so `ever_connected` is true and nothing latches.
+    static std::atomic<bool> daemon_absent{false};
+    if (daemon_absent.load(std::memory_order_relaxed))
+        return false;
+
     qb::io::async::init();
-    const auto give_up = std::chrono::steady_clock::now() + budget;
+    const auto give_up        = std::chrono::steady_clock::now() + budget;
+    bool       ever_connected = false;
     for (;;) {
         redis.set_command_timeout(std::chrono::seconds(1));
         const bool connected = qb::io::async::run_sync(redis.connect());
+        ever_connected       = ever_connected || connected;
         const bool flushed   = connected && qb::io::async::run_sync(redis.flushall()).ok();
         redis.set_command_timeout(qb::duration::zero());
         if (flushed)
             return true;
-        if (std::chrono::steady_clock::now() >= give_up)
+        if (std::chrono::steady_clock::now() >= give_up) {
+            if (!ever_connected)
+                daemon_absent.store(true, std::memory_order_relaxed);
             return false;
+        }
         redis.disconnect();
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
@@ -103,8 +131,14 @@ protected:
 
     void
     TearDown() override {
-        // Best-effort cleanup; ignore the result so teardown never reds an otherwise-green
-        // test (a skipped/disconnected client just fails the flushall fast and we drop it).
+        // Best-effort cleanup; ignore the result so teardown never reds an otherwise-green test.
+        //
+        // `IsSkipped()` guard: the old comment claimed a disconnected client "just fails the
+        // flushall fast", but redis_try_connect() restores an UNBOUNDED command timeout before
+        // returning, so a command queued on a client that never connected waits on a reply that
+        // cannot arrive. Skipped tests must not pay for a cleanup they have nothing to clean.
+        if (IsSkipped())
+            return;
         (void) qb::io::async::run_sync(redis.flushall());
     }
 };
@@ -143,6 +177,10 @@ protected:
 
     void
     TearDown() override {
+        // Same IsSkipped() guard as RedisIntegrationTest::TearDown — a skipped test has a client
+        // that never connected, and flushall() on it waits on a reply that cannot arrive.
+        if (IsSkipped())
+            return;
         (void) qb::io::async::run_sync(redis.flushall());
     }
 
