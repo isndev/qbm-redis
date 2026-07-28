@@ -74,24 +74,6 @@ expect_sync_fail(const char *name, Invoke &&invoke) {
     }
 }
 
-// Drive a command whose single empty/invalid key-or-member argument trips a
-// *silent* guard — a bare `return derived();` with NO `fail_client<>()` — and
-// assert the callback did NOT fire. This is the DOCUMENTED current behaviour of
-// these one-argument guards (SCARD/SISMEMBER/SMEMBERS/SMOVE/SPOP/SRANDMEMBER/
-// {S,H,Z}SCAN/LPOS): unlike the variadic/vector guards above they do not resolve
-// the callback, so the callback API sees a silent no-op (and the coroutine form
-// would park forever). Pinning it here makes any future conversion to
-// `fail_client` a deliberate, visible change rather than an accident. `Ret` is
-// the command's decoded reply type; `invoke(cb)` calls the command with `cb`
-// plus the empty/invalid argument(s).
-template <typename Ret, typename Invoke>
-void
-expect_silent_guard(const char *name, Invoke &&invoke) {
-    bool fired = false;
-    invoke([&](qb::redis::Reply<Ret> &&) { fired = true; });
-    EXPECT_FALSE(fired) << name << ": single-argument empty/invalid guard must return silently (callback must NOT fire)";
-}
-
 } // namespace
 
 // Variadic-key commands (added guards).
@@ -203,33 +185,35 @@ TEST(EmptyArgGuards, ClusterSlotsAndPfmerge) {
     expect_sync_fail<qb::redis::status>("PFMERGE", [](auto &&cb) { unconnected_client().pfmerge(std::forward<decltype(cb)>(cb), "d"); });
 }
 
-// ── ADDED: silent single-argument guards (documented CURRENT behaviour) ──────
-// These commands reject a single empty (or otherwise invalid) key/member argument
-// with a bare `return derived();` — NO fail_client — so the callback is NEVER
-// invoked. This is the CURRENT documented behaviour, pinned here so a future
-// conversion to fail_client becomes a deliberate, visible change.
-TEST(EmptyArgGuards, SilentSetGuards) {
-    expect_silent_guard<long long>("SCARD", [](auto &&cb) { unconnected_client().scard(std::forward<decltype(cb)>(cb), ""); });
-    expect_silent_guard<bool>("SISMEMBER", [](auto &&cb) { unconnected_client().sismember(std::forward<decltype(cb)>(cb), "", ""); });
-    expect_silent_guard<qb::unordered_set<std::string>>("SMEMBERS",
+// ── Single-argument guards: now uniform with every other guard in the module ──
+// These used to reject an empty key/member with a bare `return derived();` — no
+// fail_client — so the callback was NEVER invoked and the coroutine form parked
+// forever waiting for a reply that was never sent (a hang). The previous revision
+// of this file pinned that silence deliberately, so that converting it would be a
+// visible change rather than an accident. This IS that conversion: every guard in
+// the module now resolves the callback synchronously with a failed reply.
+TEST(EmptyArgGuards, SetGuardsResolveTheCallback) {
+    expect_sync_fail<long long>("SCARD", [](auto &&cb) { unconnected_client().scard(std::forward<decltype(cb)>(cb), ""); });
+    expect_sync_fail<bool>("SISMEMBER", [](auto &&cb) { unconnected_client().sismember(std::forward<decltype(cb)>(cb), "", ""); });
+    expect_sync_fail<qb::unordered_set<std::string>>("SMEMBERS",
                                                         [](auto &&cb) { unconnected_client().smembers(std::forward<decltype(cb)>(cb), ""); });
-    expect_silent_guard<bool>("SMOVE", [](auto &&cb) { unconnected_client().smove(std::forward<decltype(cb)>(cb), "", "", ""); });
-    expect_silent_guard<std::optional<std::string>>("SPOP", [](auto &&cb) { unconnected_client().spop(std::forward<decltype(cb)>(cb), ""); });
-    expect_silent_guard<std::vector<std::string>>("SPOP_COUNT",
+    expect_sync_fail<bool>("SMOVE", [](auto &&cb) { unconnected_client().smove(std::forward<decltype(cb)>(cb), "", "", ""); });
+    expect_sync_fail<std::optional<std::string>>("SPOP", [](auto &&cb) { unconnected_client().spop(std::forward<decltype(cb)>(cb), ""); });
+    expect_sync_fail<std::vector<std::string>>("SPOP_COUNT",
                                                   [](auto &&cb) { unconnected_client().spop(std::forward<decltype(cb)>(cb), "", 1LL); });
-    expect_silent_guard<std::optional<std::string>>(
+    expect_sync_fail<std::optional<std::string>>(
         "SRANDMEMBER", [](auto &&cb) { unconnected_client().srandmember(std::forward<decltype(cb)>(cb), ""); });
-    expect_silent_guard<std::vector<std::string>>(
+    expect_sync_fail<std::vector<std::string>>(
         "SRANDMEMBER_COUNT", [](auto &&cb) { unconnected_client().srandmember(std::forward<decltype(cb)>(cb), "", 1LL); });
     // cursor is `long long`; 0LL disambiguates from the (key, pattern) SSCAN overload.
-    expect_silent_guard<qb::redis::scan<>>("SSCAN", [](auto &&cb) { unconnected_client().sscan(std::forward<decltype(cb)>(cb), "", 0LL); });
+    expect_sync_fail<qb::redis::scan<>>("SSCAN", [](auto &&cb) { unconnected_client().sscan(std::forward<decltype(cb)>(cb), "", 0LL); });
 }
 
-TEST(EmptyArgGuards, SilentListHashZSetScanGuards) {
-    expect_silent_guard<std::vector<long long>>("LPOS", [](auto &&cb) { unconnected_client().lpos(std::forward<decltype(cb)>(cb), "", ""); });
+TEST(EmptyArgGuards, ListHashZSetScanGuardsResolveTheCallback) {
+    expect_sync_fail<std::vector<long long>>("LPOS", [](auto &&cb) { unconnected_client().lpos(std::forward<decltype(cb)>(cb), "", ""); });
     // HSCAN yields scan<unordered_map<string,string>>; ZSCAN yields scan<unordered_map<string,double>>.
-    expect_silent_guard<qb::redis::scan<qb::unordered_map<std::string, std::string>>>(
+    expect_sync_fail<qb::redis::scan<qb::unordered_map<std::string, std::string>>>(
         "HSCAN", [](auto &&cb) { unconnected_client().hscan(std::forward<decltype(cb)>(cb), "", 0LL); });
-    expect_silent_guard<qb::redis::scan<qb::unordered_map<std::string, double>>>(
+    expect_sync_fail<qb::redis::scan<qb::unordered_map<std::string, double>>>(
         "ZSCAN", [](auto &&cb) { unconnected_client().zscan(std::forward<decltype(cb)>(cb), "", 0LL); });
 }

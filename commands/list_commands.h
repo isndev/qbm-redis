@@ -853,7 +853,11 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<long long>> &&>, Derived &>
     lpos(Func &&func, const std::string &key, const std::string &element, std::optional<long long> rank = std::nullopt,
          std::optional<long long> count = std::nullopt, std::optional<long long> maxlen = std::nullopt) {
+        // Never a silent no-op: a bare `return` leaves the callback unfired, and on the coroutine
+        // form the awaiter parks forever waiting for a reply that was never sent (a hang).
+        // Resolve it the way every other argument guard in this module does.
         if (key.empty() || element.empty()) {
+            fail_client<std::vector<long long>>(std::forward<Func>(func), "LPOS requires a non-empty key and element");
             return derived();
         }
         std::vector<std::string> args;

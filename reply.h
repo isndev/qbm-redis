@@ -854,7 +854,8 @@ to_redis_string(qb::allocator::pipe<char> &pipe, std::optional<T> const &opt) {
 template <typename Tuple, std::size_t... N>
 bool
 put_tuple(qb::allocator::pipe<char> &pipe, Tuple const &t, std::index_sequence<N...>) {
-    return (to_redis_string(pipe, std::get<N>(t)) && ...);
+    (to_redis_string(pipe, std::get<N>(t)), ...); // comma fold — see put_in_pipe
+    return true;
 }
 
 template <typename... Args>
@@ -1079,7 +1080,13 @@ template <typename... Args>
 void
 put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
     pipe << '*' << (redis_count(std::forward<Args>(args)) + ...) << "\r\n";
-    (to_redis_string(pipe, std::forward<Args>(args)) && ...);
+    // COMMA fold, deliberately not `&&`. The array header above is computed from redis_count();
+    // if serialization could stop early, the header would still count the arguments that were
+    // never written, and RESP has no resynchronisation point — the client's reply FIFO would be
+    // permanently misaligned against the server's. Every to_redis_string overload returns true
+    // today (all 20 of them), so `&&` happened to be harmless, but it made a silent
+    // command-truncation one `return false` away. A comma fold cannot short-circuit.
+    (to_redis_string(pipe, std::forward<Args>(args)), ...);
 }
 
 // ============================================================================

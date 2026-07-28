@@ -55,6 +55,7 @@ endfunction()
 
 # UNIT — pure logic, parallel-safe, no lock
 qredis_test(unit resp-codec unit/parser/resp-codec.cpp EXTRA_LABELS parser)
+qredis_test(unit resp-aggregate-reserve unit/parser/resp-aggregate-reserve.cpp EXTRA_LABELS parser)
 qredis_test(unit resp-buffer unit/parser/resp-buffer.cpp EXTRA_LABELS parser)
 qredis_test(unit resp-types unit/parser/resp-types.cpp EXTRA_LABELS parser)
 qredis_test(unit reply-parse unit/reply/reply-parse.cpp EXTRA_LABELS reply)
