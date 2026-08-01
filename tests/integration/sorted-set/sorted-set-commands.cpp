@@ -780,3 +780,34 @@ TEST_P(SortedSetProtocolModesTest, COUNT_AND_REMRANGEBYSCORE) {
     });
     run_coro_test_until(completed);
 }
+
+
+
+
+// Store-then-await, written with the HOUSE pattern: spawn(lambda) with no trailing (), and
+// run_coro_test_until() rather than await(). My first probe used spawn(lambda()) — the documented
+// dangling-closure anti-pattern — so it could not distinguish a framework defect from my own bug.
+TEST_P(SortedSetProtocolModesTest, AWAITER_HELD_IN_A_LOCAL_STILL_COMPLETES) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        const std::string                    key     = protocol_key("awaiter-held");
+        std::vector<qb::redis::score_member> members = {{1.0, "a"}, {2.0, "b"}, {3.0, "c"}};
+        EXPECT_TRUE((co_await redis.zadd(key, members)).ok());
+
+        auto pending_card = redis.zcard(key);          // control: no by-reference capture at all
+        auto card         = co_await pending_card;
+        EXPECT_TRUE(card.ok()) << "a stored awaiter never completed: " << card.error();
+        EXPECT_EQ(card.result(), 3);
+
+        auto pending_range = redis.zrangebyscore(key, qb::redis::score_interval(1.0, 3.0, qb::redis::BoundType::CLOSED),
+                                                 qb::redis::LimitOptions{0, -1});
+        auto range         = co_await pending_range;   // guards the by-value capture fix
+        EXPECT_TRUE(range.ok()) << "stored zrangebyscore awaiter never completed: " << range.error();
+        EXPECT_EQ(range.result().size(), 3u);
+
+        CO_IGNORE(co_await redis.del(key));
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}

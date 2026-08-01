@@ -16,6 +16,7 @@
  */
 #ifndef QBM_REDIS_HASH_COMMANDS_H
 #define QBM_REDIS_HASH_COMMANDS_H
+#include <type_traits>
 #include "../reply.h"
 
 namespace qb::redis {
@@ -46,7 +47,10 @@ private:
      *
      * Uses shared_ptr for automatic memory management. Safe even if exceptions occur.
      *
-     * @tparam Func Callback function type
+     * @tparam Func Decayed callback type; never a reference. The scanner owns its callback:
+     *              it keeps itself alive across the cursor round-trips and therefore outlives
+     *              the hscan() call that built it, so anything it merely referred to would be
+     *              long gone by the time the callback fires. See the hscan() call site.
      */
     template <typename Func>
     class scanner : public std::enable_shared_from_this<scanner<Func>> {
@@ -66,11 +70,11 @@ private:
          * @param pattern Pattern to filter hash fields
          * @param func Callback function to process results
          */
-        scanner(Derived &handler, std::string key, std::string pattern, Func &&func)
+        scanner(Derived &handler, std::string key, std::string pattern, Func func)
             : _handler(handler)
             , _key(std::move(key))
             , _pattern(std::move(pattern))
-            , _func(std::forward<Func>(func)) {}
+            , _func(std::move(func)) {}
 
         /**
          * @brief Start the scanning process
@@ -113,8 +117,8 @@ private:
          * @brief Factory method to create and start a scanner safely
          */
         static void
-        create_and_start(Derived &handler, std::string key, std::string pattern, Func &&func) {
-            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern), std::forward<Func>(func));
+        create_and_start(Derived &handler, std::string key, std::string pattern, Func func) {
+            auto ptr = std::make_shared<scanner>(handler, std::move(key), std::move(pattern), std::move(func));
             ptr->start();
         }
     };
@@ -125,7 +129,9 @@ private:
      *
      * Uses shared_ptr for automatic memory management. Safe even if exceptions occur.
      *
-     * @tparam Func Callback function type
+     * @tparam Func Decayed callback type; never a reference. Same ownership rule as scanner:
+     *              the helper stays alive until the last hvals reply lands, well after the
+     *              hvals() call that built it returned. See the hvals() call site.
      */
     template <typename Func>
     class multi_hvals : public std::enable_shared_from_this<multi_hvals<Func>> {
@@ -142,9 +148,9 @@ private:
          * @param keys Keys where the hashes are stored
          * @param func Callback function to process results
          */
-        multi_hvals(std::vector<std::string> keys, Func &&func)
+        multi_hvals(std::vector<std::string> keys, Func func)
             : _keys(std::move(keys))
-            , _func(std::forward<Func>(func))
+            , _func(std::move(func))
             , _reply{true}
             , _pending(_keys.empty() ? 1 : _keys.size()) {}
 
@@ -195,8 +201,8 @@ private:
          * @brief Factory method to create and start a multi_hvals safely
          */
         static void
-        create_and_start(Derived &handler, std::vector<std::string> keys, Func &&func) {
-            auto ptr = std::make_shared<multi_hvals>(std::move(keys), std::forward<Func>(func));
+        create_and_start(Derived &handler, std::vector<std::string> keys, Func func) {
+            auto ptr = std::make_shared<multi_hvals>(std::move(keys), std::move(func));
             ptr->start(handler);
         }
     };
@@ -593,7 +599,11 @@ public:
     template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
     hscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
-        scanner<Func>::create_and_start(derived(), key, pattern, std::forward<Func>(func));
+        // decay_t, not Func: for an lvalue callback Func deduces to `Cb&`, and the member declared
+        // `Func _func` in scanner<Cb&> is then a *reference* to the caller's functor. The scanner
+        // outlives this call (it drives the cursor across async round-trips), so that reference
+        // dangles before it is ever invoked. Decaying makes _func an owned copy.
+        scanner<std::decay_t<Func>>::create_and_start(derived(), key, pattern, std::forward<Func>(func));
         return derived();
     }
 
@@ -789,7 +799,9 @@ public:
     template <typename Func>
     Derived &
     hvals(Func &&func, std::vector<std::string> keys) {
-        multi_hvals<Func>::create_and_start(derived(), std::move(keys), std::forward<Func>(func));
+        // decay_t, not Func: see hscan above. An lvalue callback would make `Func _func` a
+        // reference into the caller's frame, and this helper outlives the call by design.
+        multi_hvals<std::decay_t<Func>>::create_and_start(derived(), std::move(keys), std::forward<Func>(func));
         return derived();
     }
 };
