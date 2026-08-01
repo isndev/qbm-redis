@@ -16,6 +16,7 @@
 #ifndef QBM_REDIS_KEY_COMMANDS_H
 #define QBM_REDIS_KEY_COMMANDS_H
 #include <chrono>
+#include <type_traits>
 #include "../reply.h"
 
 namespace qb::redis {
@@ -47,7 +48,10 @@ private:
      *
      * Uses shared_ptr for automatic memory management. Safe even if exceptions occur.
      *
-     * @tparam Func Callback function type
+     * @tparam Func Decayed callback type; never a reference. The scanner owns its callback:
+     *              it keeps itself alive across the cursor round-trips and therefore outlives
+     *              the scan() call that built it, so anything it merely referred to would be
+     *              long gone by the time the callback fires. See the scan() call site.
      */
     template <typename Func>
     class scanner : public std::enable_shared_from_this<scanner<Func>> {
@@ -66,10 +70,10 @@ private:
          * @param pattern Pattern to match keys against
          * @param func Callback function to process results
          */
-        scanner(Derived &derived, std::string pattern, Func &&func)
+        scanner(Derived &derived, std::string pattern, Func func)
             : _derived(derived)
             , _pattern(std::move(pattern))
-            , _func(std::forward<Func>(func)) {}
+            , _func(std::move(func)) {}
 
         /**
          * @brief Start the scanning process
@@ -113,8 +117,8 @@ private:
          * @brief Factory method to create and start a scanner safely
          */
         static void
-        create_and_start(Derived &derived, std::string pattern, Func &&func) {
-            auto ptr = std::make_shared<scanner>(derived, std::move(pattern), std::forward<Func>(func));
+        create_and_start(Derived &derived, std::string pattern, Func func) {
+            auto ptr = std::make_shared<scanner>(derived, std::move(pattern), std::move(func));
             ptr->start();
         }
     };
@@ -604,7 +608,11 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<>> &&>, Derived &>
     scan(Func &&func, const std::string &pattern = "*") {
-        scanner<Func>::create_and_start(derived(), pattern, std::forward<Func>(func));
+        // decay_t, not Func: for an lvalue callback Func deduces to `Cb&`, and the member declared
+        // `Func _func` in scanner<Cb&> is then a *reference* to the caller's functor. The scanner
+        // outlives this call (it drives the cursor across async round-trips), so that reference
+        // dangles before it is ever invoked. Decaying makes _func an owned copy.
+        scanner<std::decay_t<Func>>::create_and_start(derived(), pattern, std::forward<Func>(func));
         return derived();
     }
 
