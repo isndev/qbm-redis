@@ -57,8 +57,9 @@ TEST_P(ClusterStandaloneTest, IntrospectionRejectedWhenDisabled) {
 
         auto expect_disabled = [](const auto &r) {
             EXPECT_FALSE(r.ok());
-            if (!r.ok())
+            if (!r.ok()) {
                 EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos) << r.error();
+            }
         };
 
         expect_disabled(co_await redis.cluster_info());
@@ -86,8 +87,9 @@ TEST_P(ClusterStandaloneTest, MutationRejectedWhenDisabled) {
         const std::string dummy_id        = "0000000000000000000000000000000000000000";
         auto              expect_disabled = [](const auto &r) {
             EXPECT_FALSE(r.ok());
-            if (!r.ok())
+            if (!r.ok()) {
                 EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos) << r.error();
+            }
         };
 
         expect_disabled(co_await redis.cluster_meet("127.0.0.1", 7000));
@@ -122,8 +124,9 @@ TEST_P(ClusterStandaloneTest, RedirectVerbsRejectedWhenDisabled) {
 
         auto expect_disabled = [](const auto &r) {
             EXPECT_FALSE(r.ok());
-            if (!r.ok())
+            if (!r.ok()) {
                 EXPECT_NE(std::string(r.error()).find(kClusterDisabled), std::string::npos) << r.error();
+            }
         };
 
         expect_disabled(co_await redis.asking());

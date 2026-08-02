@@ -83,8 +83,9 @@ TEST_P(PubSubCoConsumerTest, ReceiveYieldsSubscribedChannelMessage) {
     // freed stack frame (the observed SEGV). We therefore (1) confirm the subscription
     // synchronously FIRST, (2) only then publish, so the message is guaranteed to land and
     // receive() completes — leaving no orphaned coroutine referencing this stack.
-    if (GetParam() == ProtocolMode::RESP3)
+    if (GetParam() == ProtocolMode::RESP3) {
         ASSERT_TRUE(qb::io::async::run_sync(co_consumer.hello(3)).ok());
+    }
     ASSERT_TRUE(qb::io::async::run_sync(co_consumer.subscribe(ch)).ok());
 
     auto recv_task = [&]() -> qb::io::async::task<void> {
@@ -125,8 +126,9 @@ TEST_P(PubSubCoConsumerTest, ReceiveYieldsPatternMessageWithChannelAndPattern) {
     // Confirm the pattern subscription synchronously BEFORE publishing (see the channel
     // test for why the ordering matters: avoids the lost-message hang + orphan-coroutine
     // SEGV).
-    if (GetParam() == ProtocolMode::RESP3)
+    if (GetParam() == ProtocolMode::RESP3) {
         ASSERT_TRUE(qb::io::async::run_sync(co_consumer.hello(3)).ok());
+    }
     ASSERT_TRUE(qb::io::async::run_sync(co_consumer.psubscribe(pat)).ok());
 
     auto recv_task = [&]() -> qb::io::async::task<void> {
@@ -165,8 +167,9 @@ TEST_P(PubSubCoConsumerTest, ReceiveLoopYieldsAllMessagesInOrder) {
 
     // Confirm the subscription synchronously BEFORE publishing the burst (ordering avoids
     // the lost-message hang + orphan-coroutine SEGV — see the channel test).
-    if (GetParam() == ProtocolMode::RESP3)
+    if (GetParam() == ProtocolMode::RESP3) {
         ASSERT_TRUE(qb::io::async::run_sync(co_consumer.hello(3)).ok());
+    }
     ASSERT_TRUE(qb::io::async::run_sync(co_consumer.subscribe(ch)).ok());
 
     auto recv_task = [&]() -> qb::io::async::task<void> {
