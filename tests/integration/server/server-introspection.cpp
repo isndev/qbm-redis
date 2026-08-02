@@ -285,12 +285,14 @@ TEST_P(ServerIntrospectionTest, DISABLED_SyncPsyncResolve) {
 
         auto sync_r = co_await redis.sync();
         // Standalone: typically an error. Either outcome is a resolved reply (no throw).
-        if (!sync_r.ok())
+        if (!sync_r.ok()) {
             EXPECT_FALSE(std::string(sync_r.error()).empty());
+        }
 
         auto psync_r = co_await redis.psync("?", -1);
-        if (!psync_r.ok())
+        if (!psync_r.ok()) {
             EXPECT_FALSE(std::string(psync_r.error()).empty());
+        }
 
         completed = true;
     });
@@ -314,12 +316,14 @@ TEST_P(ServerIntrospectionTest, DISABLED_PersistenceBgsaveLastsave) {
         // bgrewriteaof / bgsave kick off background work; tolerate the "already in progress"
         // class of error but assert the error text when it fails (never swallow).
         auto bgaof = co_await redis.bgrewriteaof();
-        if (!bgaof.ok())
+        if (!bgaof.ok()) {
             EXPECT_FALSE(std::string(bgaof.error()).empty());
+        }
 
         auto bgsave = co_await redis.bgsave();
-        if (!bgsave.ok())
+        if (!bgsave.ok()) {
             EXPECT_FALSE(std::string(bgsave.error()).empty());
+        }
 
         completed = true;
     });

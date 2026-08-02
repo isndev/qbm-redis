@@ -106,8 +106,9 @@ TEST_P(FunctionTest, LoadFcallListStatsDelete) {
 
         auto gone = co_await redis.fcall<std::string>("qbtest_echo", {}, {"x"});
         EXPECT_FALSE(gone.ok());
-        if (!gone.ok())
+        if (!gone.ok()) {
             EXPECT_NE(std::string(gone.error()).find("Function not found"), std::string::npos) << gone.error();
+        }
 
         completed = true;
     });
@@ -168,8 +169,9 @@ TEST_P(FunctionTest, DeleteMissingLibraryFails) {
 
         auto reply = co_await redis.function_delete("nonexistent_library");
         EXPECT_FALSE(reply.ok());
-        if (!reply.ok())
+        if (!reply.ok()) {
             EXPECT_NE(std::string(reply.error()).find("Library not found"), std::string::npos) << reply.error();
+        }
         completed = true;
     });
     run_coro_test_until(completed);
@@ -182,8 +184,9 @@ TEST_P(FunctionTest, KillWhenIdleFails) {
 
         auto reply = co_await redis.function_kill();
         EXPECT_FALSE(reply.ok());
-        if (!reply.ok())
+        if (!reply.ok()) {
             EXPECT_NE(std::string(reply.error()).find("NOTBUSY"), std::string::npos) << reply.error();
+        }
         completed = true;
     });
     run_coro_test_until(completed);
