@@ -7,7 +7,7 @@ A non-blocking Redis client built on qb-io: connect, run the full command surfac
 scripting, streams, and cluster operations — with the same method names for `co_await` and callback styles, over a
 native RESP2/RESP3 parser with no `hiredis` dependency.
 
-**Prerequisites:** a working qb framework checkout (see [qb/README.md](https://github.com/isndev/cube/blob/c++23/README.md)) and a reachable Redis
+**Prerequisites:** a working qb framework checkout (see [qb/README.md](https://github.com/isndev/qb/blob/main/README.md)) and a reachable Redis
 server — **See also:** [readme/README.md](./readme/README.md) (technical
 index), [readme/connection.md](./readme/connection.md), [readme/commands_overview.md](./readme/commands_overview.md), [readme/pipeline_and_await.md](./readme/pipeline_and_await.md).
 
