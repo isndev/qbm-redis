@@ -1,6 +1,6 @@
 # qbm-redis documentation map
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
 > supported)
 
 This is the table of contents for the qbm-redis narrative documentation: an asynchronous Redis client built on the qb-io
