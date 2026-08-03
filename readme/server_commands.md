@@ -82,7 +82,7 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
 
 This group has exactly **two** time-bearing arguments, and they use **different** units by design:
 
-- `debug_sleep(qb::duration)` takes the canonical [`qb::duration`](https://github.com/isndev/cube/blob/c++23/include/qb/system/time.h) (any
+- `debug_sleep(qb::duration)` takes the canonical [`qb::duration`](https://github.com/isndev/qb/blob/main/include/qb/system/time.h) (any
   `std::chrono` duration converts implicitly). The wrapper converts it to libev fractional seconds via
   `qb::detail::to_ev_seconds(delay)` before placing it on the wire, so `DEBUG SLEEP` receives a fractional-seconds
   argument. <!-- src: qbm/redis/commands/server_commands.h:689-702 (to_ev_seconds at 701) -->
@@ -325,7 +325,7 @@ qb::io::async::task<void> slowlog(qb::redis::tcp::client &redis) {
 | `DEBUG SEGFAULT` | `debug_segfault()`                     | `status`      |
 
 `debug_sleep` is the **only** command in this group that takes a [
-`qb::duration`](https://github.com/isndev/cube/blob/c++23/include/qb/system/time.h); any `std::chrono` duration converts implicitly.
+`qb::duration`](https://github.com/isndev/qb/blob/main/include/qb/system/time.h); any `std::chrono` duration converts implicitly.
 `debug_segfault` **crashes the server** — it exists for fault-injection testing only.
 
 ```cpp
