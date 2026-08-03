@@ -135,7 +135,7 @@ int main() {
 }
 ```
 
-<!-- src: qbm/redis/redis.h:404 (connect), string_commands.h:165/568, key_commands.h:137, qb/include/qb/io/async/coroutine/utils.h:278 (run_sync) -->
+<!-- src: qbm/redis/redis.h:404 (connect), string_commands.h:165/568, key_commands.h:137, qb/src/qb/io/async/coroutine/utils.h:278 (run_sync) -->
 
 Inside a coroutine you `co_await` directly. Pub/sub uses a dedicated consumer plus a separate client to publish, because
 the publishing command lives only on the full client:
@@ -235,7 +235,7 @@ You never block the qb-io thread. Reach completion one of three ways:
 - **Callback + drain:** issue callback commands, then call `redis.await()` (a non-blocking
   `listener::current.run(EVRUN_NOWAIT)` spin until the reply queue empties) or let your normal event loop tick.
 
-<!-- src: qbm/redis/redis.h:858-862 (await), qb/include/qb/io/async/coroutine/utils.h:278 (run_sync) -->
+<!-- src: qbm/redis/redis.h:858-862 (await), qb/src/qb/io/async/coroutine/utils.h:278 (run_sync) -->
 
 ### Pipelining
 
