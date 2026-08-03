@@ -55,8 +55,8 @@
 
 #include <qb/system/allocator/pipe.h>
 
-#include "../reply.h" // qb::redis::reply::parse, to_redis_string, put_in_pipe
-#include "../types.h" // score_member, map_stream_entry_list, BoundedInterval
+#include <qbm/redis/reply.h> // qb::redis::reply::parse, to_redis_string, put_in_pipe
+#include <qbm/redis/types.h> // score_member, map_stream_entry_list, BoundedInterval
 
 namespace {
 

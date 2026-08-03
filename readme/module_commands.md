@@ -28,7 +28,7 @@ Every command ships in two forms:
   `Derived &` for chaining.
 
 ```cpp
-#include <redis/redis.h>           // namespace qb::redis
+#include <qbm/redis/redis.h>           // namespace qb::redis
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -319,4 +319,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified against: qbm/redis/commands/module_commands.h, qbm/redis/types.h:475 (status), qbm/redis/reply.h:1102 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.0.0 -->
+<!-- Verified against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:475 (status), qbm/redis/src/qbm/redis/reply.h:1102 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.0.0 -->

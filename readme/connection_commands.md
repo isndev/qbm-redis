@@ -27,7 +27,7 @@ Every command ships in two forms:
   `Derived &` for chaining.
 
 ```cpp
-#include <redis/redis.h>           // namespace qb::redis
+#include <qbm/redis/redis.h>           // namespace qb::redis
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -229,7 +229,7 @@ redis.ping([](qb::redis::Reply<std::string> &&reply) {
 });
 ```
 
-<!-- src: qbm/redis/commands/connection_commands.h:175-179 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:175-179 -->
 
 ### `quit` — close the connection
 
@@ -252,7 +252,7 @@ auto r = co_await redis.quit();
 // r.ok() && r.result().ok(); the server closes the link afterward.
 ```
 
-<!-- src: qbm/redis/commands/connection_commands.h:215-232 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:215-232 -->
 
 ### `select` — switch logical database
 
@@ -336,7 +336,7 @@ if (reply.ok()) {
 ### Full handshake (coroutine)
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -360,7 +360,7 @@ qb::io::async::task<void> handshake(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: composed from qbm/redis/commands/connection_commands.h + qbm/redis/tests/integration/connection/connection-commands.cpp:166-183 (HELLO+PING) -->
+<!-- src: composed from qbm/redis/src/qbm/redis/commands/connection_commands.h + qbm/redis/tests/integration/connection/connection-commands.cpp:166-183 (HELLO+PING) -->
 
 ### Callback chaining
 
@@ -378,7 +378,7 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/commands/connection_commands.h:175-179 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:175-179 -->
 
 ---
 

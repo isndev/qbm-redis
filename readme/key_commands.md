@@ -73,7 +73,7 @@ matches its Redis verb in lowercase.
 ## Setup for the examples
 
 ```cpp
-#include <redis/redis.h>                 // namespace qb::redis
+#include <qbm/redis/redis.h>                 // namespace qb::redis
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 

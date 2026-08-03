@@ -93,7 +93,7 @@ command against a slot that is `MIGRATING` (the ASK-redirection protocol during 
 ## Setup for the examples
 
 ```cpp
-#include <redis/redis.h>                 // namespace qb::redis
+#include <qbm/redis/redis.h>                 // namespace qb::redis
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -639,7 +639,7 @@ redis.cluster_keyslot([](qb::redis::Reply<long long> &&r) {
 }, "user:1000");
 ```
 
-<!-- src: qbm/redis/commands/cluster_commands.h:407-411 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/cluster_commands.h:407-411 -->
 
 The callback overload returns the client (`Derived&`), so calls chain. Drain enqueued handlers with `redis.await()` or
 your own event loop — see [Pipelining and `await()`](./pipeline_and_await.md) via

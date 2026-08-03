@@ -60,7 +60,7 @@
 // inet::invalid_socket and the closesocket() shim. Winsock is initialised by
 // qb-io's global ws2_32 guard (linked via the qb-io / qb-redis sockets used here).
 #include <qb/io/system/sys__socket.h>
-#include "../redis.h"
+#include <qbm/redis/redis.h>
 
 using namespace qb::io;
 using namespace std::chrono_literals;

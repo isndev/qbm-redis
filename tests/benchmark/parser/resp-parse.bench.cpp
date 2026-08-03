@@ -52,7 +52,7 @@
 #include <string>
 #include <vector>
 
-#include "../parser.h" // qb::redis::parser::{parse, RespParser, Value, ...}
+#include <qbm/redis/parser.h> // qb::redis::parser::{parse, RespParser, Value, ...}
 
 namespace {
 

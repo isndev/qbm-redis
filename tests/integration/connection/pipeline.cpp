@@ -26,7 +26,7 @@
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include "../../shared/redis_integration_fixture.h"
-#include "../redis.h"
+#include <qbm/redis/redis.h>
 
 #if defined(_WIN32)
 #include <process.h>

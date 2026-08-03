@@ -34,7 +34,7 @@ None of these commands carry a `qb::duration`: their only arguments are keys and
 *not** apply here.
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -69,7 +69,7 @@ qb::io::async::task<void> hll_demo(qb::redis::tcp::client &redis) {
 cannot be instantiated on its own. It reaches the connection through `Derived` — it calls
 `derived().command<T>(func, ...)` for the callback form and `derived().make_coro_command<T>(...)` for the coroutine
 form — so you only ever use it through the composed client,
-`qb::redis::tcp::client`. <!-- src: qbm/redis/commands/hyperloglog_commands.h:35-41 -->
+`qb::redis::tcp::client`. <!-- src: qbm/redis/src/qbm/redis/commands/hyperloglog_commands.h:35-41 -->
 
 Each command therefore exists as a matched pair of overloads:
 
@@ -95,7 +95,7 @@ in [key_commands.md](./key_commands.md), not of this group.
 | `PFMERGE` | `qb::redis::status`               | simple-string reply, `"OK"` on success                                                                  |
 
 `qb::redis::status` is the simple-string reply wrapper from `types.h`; it is contextually convertible to `bool` (`true`
-when the string is exactly `"OK"`) and exposes `.ok()` and `.str()`. <!-- src: qbm/redis/types.h:469-526 -->
+when the string is exactly `"OK"`) and exposes `.ok()` and `.str()`. <!-- src: qbm/redis/src/qbm/redis/types.h:469-526 -->
 
 ---
 
@@ -118,7 +118,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
 pfadd(Func &&func, const std::string &key, Elements &&...elements);
 ```
 
-<!-- src: qbm/redis/commands/hyperloglog_commands.h:53-78 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/hyperloglog_commands.h:53-78 -->
 
 Elements are passed variadically; each must be a value the client can serialize as a command argument (a string literal,
 `std::string`, or any type with the module's argument conversion). Calling `pfadd(key)` with no elements compiles and
@@ -158,7 +158,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 pfcount(Func &&func, Keys &&...keys);
 ```
 
-<!-- src: qbm/redis/commands/hyperloglog_commands.h:88-112 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/hyperloglog_commands.h:88-112 -->
 
 The keys are taken purely variadically — there is no mandatory leading key parameter — so `pfcount()` with zero keys
 compiles and sends a bare `PFCOUNT`, which Redis rejects at runtime with an arity error. Always pass at least one key.
@@ -199,7 +199,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 pfmerge(Func &&func, const std::string &destination, Keys &&...keys);
 ```
 
-<!-- src: qbm/redis/commands/hyperloglog_commands.h:123-149 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/hyperloglog_commands.h:123-149 -->
 
 The source keys are variadic and follow the required `destination`. As with `pfcount`, passing zero source keys (
 `pfmerge(dest)`) compiles; Redis accepts it and writes an empty (or unchanged) HyperLogLog to `dest`.

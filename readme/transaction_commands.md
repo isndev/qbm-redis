@@ -10,11 +10,11 @@ client-side `is_in_multi()` hint that tracks whether a transaction is open.
 client), [commands_overview.md](./commands_overview.md) (coroutine vs. callback forms) — **See also:
 ** [pipeline_and_await.md](./pipeline_and_await.md), [scripting_commands.md](./scripting_commands.md), [error_handling.md](./error_handling.md)
 
-**Include:** `#include <redis/redis.h>` — every type below lives in namespace `qb::redis`.
+**Include:** `#include <qbm/redis/redis.h>` — every type below lives in namespace `qb::redis`.
 
 `qbm-redis` is a compiled qb module (`qbm::redis`); pull it in with `add_subdirectory(qb)` →
 `qb_load_modules("<path>/qbm")` → `target_link_libraries(app PRIVATE qbm::redis)`. The transaction surface is template
-code in `qb::redis::transaction_commands<Derived>`, mixed into the client through `<redis/redis.h>`; link the target
+code in `qb::redis::transaction_commands<Derived>`, mixed into the client through `<qbm/redis/redis.h>`; link the target
 rather than adding the include directory by hand.
 
 ---
@@ -36,7 +36,7 @@ Every method in this group exists in two forms, like the rest of the client:
 The client also exposes `is_in_multi()`, a **client-side** boolean it sets on a successful `MULTI` and clears on `EXEC`/
 `DISCARD`. It is a local hint, not a server query — see [Client-side MULTI state](#client-side-multi-state).
 
-<!-- src: qbm/redis/commands/transaction_commands.h:48-275 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:48-275 -->
 
 ---
 
@@ -100,7 +100,7 @@ For `exec<Result>`, you pick `Result` to match what your queued commands return.
 status strings, so `exec<std::string>()` yields a `std::vector<std::string>` of `"OK"` values — one element per queued
 command, in order.
 
-<!-- src: qbm/redis/types.h:475-526, qbm/redis/reply.h:1102-1227 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:475-526, qbm/redis/src/qbm/redis/reply.h:1102-1227 -->
 
 > **Time units:** No method in this group takes a time argument. Connect and command timeouts and the `RetryPolicy`
 > delays are `qb::duration` and live on the client, not here. Redis command arguments that *do* carry time (for example
@@ -128,7 +128,7 @@ template <typename Func> Derived &multi(Func &&func);
 A successful `multi()` sets the client-side `is_in_multi()` flag. The callback overload sets the flag from `reply.ok()`
 *before* invoking your callback.
 
-<!-- src: qbm/redis/commands/transaction_commands.h:60-84 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:60-84 -->
 
 ### `EXEC`
 
@@ -147,7 +147,7 @@ If `WATCH` detected a change, the server aborts and `EXEC` yields a `Reply` with
 `reply.error()` and retry the sequence.
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -181,7 +181,7 @@ qb::io::async::task<void> run_tx(qb::redis::tcp::client &redis) {
 > prefer the pipeline path and read the raw EXEC array through `Reply<pipeline_result>.raw()`: per-command
 `parser::Value`
 > results are move-only and are not cloned into a typed vector. See [pipeline_and_await.md](./pipeline_and_await.md). (
-`qbm/redis/types.h:397-408`, `qbm/redis/reply.cpp:444-462`.)
+`qbm/redis/src/qbm/redis/types.h:397-408`, `qbm/redis/src/qbm/redis/reply.cpp:444-462`.)
 
 ### `DISCARD`
 
@@ -236,7 +236,7 @@ auto bad = co_await redis.watch("");
 // bad.ok() == false; bad.error() == "Key cannot be empty"
 ```
 
-<!-- src: qbm/redis/commands/transaction_commands.h:157-227, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:149-193 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:157-227, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:149-193 -->
 
 The full CAS loop — watch, read, transact, retry on abort:
 
@@ -275,7 +275,7 @@ auto w = co_await redis.watch("balance");
 auto u = co_await redis.unwatch();             // Reply<status>; "balance" no longer watched
 ```
 
-<!-- src: qbm/redis/commands/transaction_commands.h:229-254, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:293-342 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:229-254, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:293-342 -->
 
 ### Callback form
 
@@ -284,7 +284,7 @@ Inside an actor or any callback-driven flow, drive the queue with `await()` (
 see [pipeline_and_await.md](./pipeline_and_await.md)).
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 
 redis.multi([](qb::redis::Reply<qb::redis::status> &&r) {
     // r.ok() is true once MULTI succeeded.
@@ -296,7 +296,7 @@ redis.exec<std::string>([](qb::redis::Reply<std::vector<std::string>> &&r) {
 redis.await();   // poll the loop until every handler has fired
 ```
 
-<!-- src: qbm/redis/commands/transaction_commands.h:75-84, 114-124 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:75-84, 114-124 -->
 
 ---
 
@@ -320,7 +320,7 @@ need one.
 > others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:195`) and the server-facing `RESET` command
 > in [connection.md](./connection.md) (`connection_commands.h:300-315`). This one only clears the client-side MULTI flag.
 
-<!-- src: qbm/redis/commands/transaction_commands.h:267-275, qbm/redis/redis.h:912 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:267-275, qbm/redis/src/qbm/redis/redis.h:912 -->
 
 ---
 

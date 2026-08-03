@@ -41,7 +41,7 @@
 #include <utility>
 #include <vector>
 // Resolves to qbm/redis/redis.h via the tests/ include dir (INCLUDES=tests).
-#include "../redis.h"
+#include <qbm/redis/redis.h>
 
 namespace {
 

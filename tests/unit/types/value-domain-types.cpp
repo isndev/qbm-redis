@@ -53,7 +53,7 @@
 #include <vector>
 // Umbrella header: brings in types.h (the value-domain structs under test) and
 // reply.h. Mirrors interval-formatting.cpp in this same directory.
-#include "../redis.h"
+#include <qbm/redis/redis.h>
 
 // ============================================================================
 // stream_id — to_string(), equality, inequality and the strict-weak ordering.

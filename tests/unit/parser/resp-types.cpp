@@ -37,7 +37,7 @@
 #include <optional>
 #include <string>
 
-#include "../parser/types.h"
+#include <qbm/redis/parser/types.h>
 
 using namespace qb::redis::parser;
 
