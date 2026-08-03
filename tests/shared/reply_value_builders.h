@@ -37,7 +37,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "../../reply.h"
+#include <qbm/redis/reply.h>
 
 namespace qb::redis::test {
 

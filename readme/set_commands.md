@@ -17,7 +17,7 @@ callback snippet.
 
 A Redis set is an unordered collection of unique strings — the natural shape for membership tests, tag sets, and the
 algebraic operations (difference, intersection, union) on top of them. The commands here are defined in
-`qbm/redis/commands/set_commands.h` as a CRTP mixin (`set_commands<Derived>`) that the client inherits, so you call them directly
+`qbm/redis/src/qbm/redis/commands/set_commands.h` as a CRTP mixin (`set_commands<Derived>`) that the client inherits, so you call them directly
 on a connected `qb::redis::tcp::client`: `redis.sadd(...)`, `redis.smembers(...)`, and so on. There is no `_async`
 suffix and no separate sync/async class — the overload you pick is what selects the calling style.
 
@@ -32,7 +32,7 @@ Each command exposes two overloads:
   overload apart from the coroutine overload — including for the variadic and multi-arg commands (`sadd`, `srem`,
   `smismember`, `sdiff`, `sinter`, `sunion`, `sscan`, …).
 
-<!-- src: qbm/redis/commands/set_commands.h:121-157 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:121-157 -->
 
 One operation is **callback-only** and has no coroutine form: the auto-iterating `sscan(func, key, pattern)` that walks
 every page internally. It is covered below.
@@ -46,7 +46,7 @@ remain `qb::duration` at the client level — see [connection.md](./connection.m
 
 ## Reply types at a glance
 
-`Reply<T>` is the uniform envelope (`qbm/redis/reply.h:1102-1177`): `reply.ok()` reports success, `reply.result()` (alias
+`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1102-1177`): `reply.ok()` reports success, `reply.result()` (alias
 `reply.value()`) holds the parsed payload, `reply.error()` holds the server error string, and `Reply<T>` is contextually
 convertible to `bool` (explicit). Container payloads use **qb-core** containers, not `std::`.
 
@@ -61,7 +61,7 @@ convertible to `bool` (explicit). Container payloads use **qb-core** containers,
 | `spop(key, count)`, `srandmember(key, count)`                                     | `std::vector<std::string>`                                           |
 | `sscan` (cursor form)                                                             | `qb::redis::scan<Out>`, `Out` defaults to `std::vector<std::string>` |
 
-<!-- src: qbm/redis/commands/set_commands.h:132, 167, 200, 233, 268, 301, 340, 374, 410, 445, 478, 511, 543, 576, 609, 644, 684, 744, 780; qbm/redis/types.h:534 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:132, 167, 200, 233, 268, 301, 340, 374, 410, 445, 478, 511, 543, 576, 609, 644, 684, 744, 780; qbm/redis/src/qbm/redis/types.h:534 -->
 
 > **`smembers` yields a set, not a vector.** The reply payload is `qb::unordered_set<std::string>` (
 `set_commands.h:445`), iterable but unordered with no index access. The `sdiff` / `sinter` / `sunion` family return
@@ -72,7 +72,7 @@ convertible to `bool` (explicit). Container payloads use **qb-core** containers,
 The `scan<Out>` struct has two fields — `cursor` (a `std::size_t`; `0` means iteration is complete) and `items` (the
 `Out` page, here `std::vector<std::string>`).
 
-<!-- src: qbm/redis/types.h:533-537 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:533-537 -->
 
 ---
 
@@ -81,7 +81,7 @@ The `scan<Out>` struct has two fields — `cursor` (a `std::size_t`; `0` means i
 The snippets assume a connected client inside a coroutine; see [connection.md](./connection.md) for setup.
 
 ```cpp
-#include <redis/redis.h>            // namespace qb::redis
+#include <qbm/redis/redis.h>            // namespace qb::redis
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 ```
@@ -114,7 +114,7 @@ redis.sadd([](qb::redis::Reply<long long> &&r) {
 }, "tags:42", "blue");
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:121-157; qbm/redis/tests/integration/set/set-commands.cpp:56-64 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:121-157; qbm/redis/tests/integration/set/set-commands.cpp:56-64 -->
 
 ### `SCARD key` — `scard`
 
@@ -130,7 +130,7 @@ auto n = co_await redis.scard("tags:42");
 if (n.ok()) std::cout << n.result() << " members\n";
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:159-187; qbm/redis/tests/integration/set/set-commands.cpp:66-68 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:159-187; qbm/redis/tests/integration/set/set-commands.cpp:66-68 -->
 
 ### `SREM key member [member ...]` — `srem`
 
@@ -150,7 +150,7 @@ auto removed = co_await redis.srem("tags:42", "red", "blue");
 if (removed.ok()) std::cout << removed.result() << " removed\n";
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:633-669 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:633-669 -->
 
 ### `SISMEMBER key member` — `sismember`
 
@@ -167,7 +167,7 @@ auto present = co_await redis.sismember("tags:42", "green");
 if (present.ok() && present.result()) { /* member exists */ }
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:364-396 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:364-396 -->
 
 ### `SMISMEMBER key member [member ...]` — `smismember`
 
@@ -189,7 +189,7 @@ if (flags.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:398-435; qbm/redis/tests/integration/set/set-commands.cpp:97-105 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:398-435; qbm/redis/tests/integration/set/set-commands.cpp:97-105 -->
 
 ### `SMEMBERS key` — `smembers`
 
@@ -209,7 +209,7 @@ if (members.ok())
 
 > For large sets, prefer `sscan` (below) to avoid blocking the server on a single bulk reply.
 
-<!-- src: qbm/redis/commands/set_commands.h:437-466; qbm/redis/tests/integration/set/set-commands.cpp:70-73 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:437-466; qbm/redis/tests/integration/set/set-commands.cpp:70-73 -->
 
 ### `SMOVE source destination member` — `smove`
 
@@ -229,7 +229,7 @@ auto moved = co_await redis.smove("inbox", "archive", "msg:7");
 if (moved.ok() && moved.result()) { /* relocated */ }
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:468-501 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:468-501 -->
 
 ### `SPOP key` / `SPOP key count` — `spop`
 
@@ -257,7 +257,7 @@ auto hand = co_await redis.spop("deck", 2);
 if (hand.ok()) std::cout << hand.result().size() << " cards\n";  // up to 2
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:503-565; qbm/redis/tests/integration/set/set-commands.cpp:151-183 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:503-565; qbm/redis/tests/integration/set/set-commands.cpp:151-183 -->
 
 ### `SRANDMEMBER key` / `SRANDMEMBER key count` — `srandmember`
 
@@ -283,7 +283,7 @@ auto sample = co_await redis.srandmember("deck", 3);
 if (sample.ok()) { /* sample.result() — up to 3, set unchanged */ }
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:567-631; qbm/redis/tests/integration/set/set-commands.cpp:202-234 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:567-631; qbm/redis/tests/integration/set/set-commands.cpp:202-234 -->
 
 ### `SDIFF key [key ...]` — `sdiff`
 
@@ -300,7 +300,7 @@ auto only_in_a = co_await redis.sdiff({"a", "b"});   // a − b
 if (only_in_a.ok()) { /* only_in_a.result() */ }
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:191-222 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:191-222 -->
 
 ### `SDIFFSTORE destination key [key ...]` — `sdiffstore`
 
@@ -319,7 +319,7 @@ auto n = co_await redis.sdiffstore("a_minus_b", {"a", "b"});
 if (n.ok()) std::cout << n.result() << " stored\n";
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:224-256 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:224-256 -->
 
 ### `SINTER key [key ...]` — `sinter`
 
@@ -336,7 +336,7 @@ auto common = co_await redis.sinter({"a", "b"});
 if (common.ok()) { /* common.result() */ }
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:258-290 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:258-290 -->
 
 ### `SINTERSTORE destination key [key ...]` — `sinterstore`
 
@@ -349,7 +349,7 @@ Derived &sinterstore(Func &&func, const std::string &destination,
                      const std::vector<std::string> &keys);                    // callback
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:331-362 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:331-362 -->
 
 ### `SINTERCARD numkeys key [key ...] [LIMIT limit]` — `sintercard`
 
@@ -374,7 +374,7 @@ auto capped = co_await redis.sintercard({"a", "b"}, 2LL); // stop once it reache
 if (capped.ok()) std::cout << capped.result() << '\n';    // <= 2
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:292-329; qbm/redis/tests/integration/set/set-commands.cpp:299-301, 353-367 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:292-329; qbm/redis/tests/integration/set/set-commands.cpp:299-301, 353-367 -->
 
 ### `SUNION key [key ...]` — `sunion`
 
@@ -391,7 +391,7 @@ auto all = co_await redis.sunion({"a", "b"});
 if (all.ok()) { /* all.result() */ }
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:735-768 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:735-768 -->
 
 ### `SUNIONSTORE destination key [key ...]` — `sunionstore`
 
@@ -404,7 +404,7 @@ Derived &sunionstore(Func &&func, const std::string &destination,
                      const std::vector<std::string> &keys);                    // callback
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:770-802 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:770-802 -->
 
 ### `SSCAN key cursor [MATCH pattern] [COUNT count]` — `sscan`
 
@@ -432,7 +432,7 @@ do {
 } while (cursor != 0);
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:673-708; qbm/redis/tests/integration/set/set-commands.cpp:384-388 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:673-708; qbm/redis/tests/integration/set/set-commands.cpp:384-388 -->
 
 ### `SSCAN` (auto-iterating, callback-only) — `sscan(func, key, pattern)`
 
@@ -453,7 +453,7 @@ redis.sscan([](qb::redis::Reply<qb::redis::scan<>> &&all) {
 }, "tags:42", "tag:*");
 ```
 
-<!-- src: qbm/redis/commands/set_commands.h:723-731, 42-116 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:723-731, 42-116 -->
 
 ---
 
@@ -466,19 +466,19 @@ redis.sscan([](qb::redis::Reply<qb::redis::scan<>> &&all) {
   `sdiff` / `sinter` / `sunion` and the `*store` / `sintercard` variants when the key list is empty (and the `*store`
   ones when `destination` is empty); `spop(key, count)` when `count < 1`. Do not assume your callback always runs —
   validate inputs
-  first. <!-- src: qbm/redis/commands/set_commands.h:153, 183, 217, 251, 285, 319, 358, 392, 431, 462, 497, 528, 561, 593, 627, 665, 704, 726, 761, 798 -->
+  first. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:153, 183, 217, 251, 285, 319, 358, 392, 431, 462, 497, 528, 561, 593, 627, 665, 704, 726, 761, 798 -->
 
 - **`smembers` returns a set, the algebra returns vectors.** `smembers` yields `qb::unordered_set<std::string>` (no
   index access, unordered); `sdiff` / `sinter` / `sunion` yield `std::vector<std::string>`. Pick the right container in
-  your callback signature or the overload will not match. <!-- src: qbm/redis/commands/set_commands.h:445, 200, 268, 744 -->
+  your callback signature or the overload will not match. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:445, 200, 268, 744 -->
 
 - **`spop`/`srandmember` count forms return `std::vector<std::string>`, not optionals.** Only the single-member forms
   return `std::optional<std::string>`. Reaching for `std::vector<std::optional<std::string>>` (as older docs showed)
-  will fail to compile. <!-- src: qbm/redis/commands/set_commands.h:543, 609, 511, 576 -->
+  will fail to compile. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:543, 609, 511, 576 -->
 
 - **The auto-iterating `sscan` is callback-only and fixes `COUNT` at 100.** There is no `co_await` form of the no-cursor
   `sscan`, and its page size is not user-tunable. For a tunable page size or a coroutine flow, drive the cursor-form
-  `sscan` yourself. <!-- src: qbm/redis/commands/set_commands.h:723-731, 82 -->
+  `sscan` yourself. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:723-731, 82 -->
 
 - **`smembers` materializes the whole set.** On a large set this builds one bulk reply server-side; iterate with `sscan`
   instead to bound memory and avoid stalling the server.

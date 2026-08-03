@@ -35,9 +35,9 @@ qb_register_module(
         VERSION ${PROJECT_VERSION}
         DEPENDS qb-core
         SOURCES
-        redis.cpp
-        reply.cpp
-        server_reply.cpp
+        src/qbm/redis/redis.cpp
+        src/qbm/redis/reply.cpp
+        src/qbm/redis/server_reply.cpp
         DEFINES
         QBM_REDIS_VERSION="${PROJECT_VERSION}"
         QBM_REDIS_USE_NATIVE_PARSER=1
@@ -53,8 +53,8 @@ qb_register_module(
 # a hard generate error ("INTERFACE_INCLUDE_DIRECTORIES property contains path ... which is
 # prefixed in the source directory"). It was also unused: this module's only bare-name angle
 # includes are system headers (<future>, <new>, <malloc.h>), never its own. Consumers reach
-# redis by the module prefix -- <redis/redis.h> -- through the qbm/ root that
-# qb_register_module adds for every module.
+# redis by the module prefix -- <qbm/redis/redis.h> -- through this module's own src/, which
+# qb_register_module adds as the include root and mirrors verbatim onto <includedir>.
 
 # Add tests if enabled
 if (QB_BUILD_TESTS)

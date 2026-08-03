@@ -41,7 +41,7 @@
 #include <vector>
 // Resolves to qbm/redis/redis.h via the tests/ include dir (INCLUDES=tests).
 // Pulls in the tcp::client type whose transaction_commands<> base owns watch().
-#include "../redis.h"
+#include <qbm/redis/redis.h>
 
 namespace {
 

@@ -50,7 +50,7 @@ sequenceDiagram
 ```
 
 ```cpp
-#include <redis/redis.h>            // namespace qb::redis
+#include <qbm/redis/redis.h>            // namespace qb::redis
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -91,7 +91,7 @@ target_link_libraries(your_app PRIVATE qbm::redis)
 ```
 
 ```cpp
-#include <redis/redis.h>   // brings in qb::redis::tcp::cb_consumer / co_consumer
+#include <qbm/redis/redis.h>   // brings in qb::redis::tcp::cb_consumer / co_consumer
 ```
 
 ### Pub/Sub vocabulary
@@ -105,7 +105,7 @@ target_link_libraries(your_app PRIVATE qbm::redis)
 
 ### Message and confirmation types
 
-Defined in [`types.h`](../types.h):
+Defined in [`types.h`](../src/qbm/redis/types.h):
 
 ```cpp
 namespace qb::redis {
@@ -138,7 +138,7 @@ There is no `channel_or_pattern` field and no `num_subscriptions` field — the 
 ### How a subscription command resolves
 
 `subscribe`, `unsubscribe`, `psubscribe`, and `punsubscribe` come from `qb::redis::subscription_commands` ([
-`subscription_commands.h`](../commands/subscription_commands.h)) and are inherited by both consumers. Each has two forms:
+`subscription_commands.h`](../src/qbm/redis/commands/subscription_commands.h)) and are inherited by both consumers. Each has two forms:
 
 - **Coroutine:** `co_await consumer.subscribe(channel)` yields `Reply<qb::redis::subscription>`.
 - **Callback:** `consumer.subscribe(func, channel)` registers `func` and returns the consumer reference for chaining;
@@ -156,7 +156,7 @@ The consumer absorbs the intermediate confirmations and resolves your handler on
 `on_disconnected` before (or at) construction; subscribe after `connect()` resolves.
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -188,7 +188,7 @@ qb::io::async::task<void> run(qb::redis::tcp::cb_consumer &consumer) {
 }
 ```
 
-<!-- src: qbm/redis/redis.h (RedisCallbackConsumer), qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:96-154 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h (RedisCallbackConsumer), qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:96-154 -->
 
 The callback signatures are fixed by the consumer:
 
@@ -208,7 +208,7 @@ subscribe and unsubscribe confirmations are the `Reply<qb::redis::subscription>`
 `std::nullopt` when the channel is closed (for example on disconnect).
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -228,7 +228,7 @@ qb::io::async::task<void> consume() {
 }
 ```
 
-<!-- src: qbm/redis/redis.h (RedisCoroConsumer::receive), qbm/redis/tests/integration/pubsub/pubsub-coconsumer-receive.cpp:73-113 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h (RedisCoroConsumer::receive), qbm/redis/tests/integration/pubsub/pubsub-coconsumer-receive.cpp:73-113 -->
 
 The queue holds `DEFAULT_MSG_CAPACITY` (8192) messages by default. Pass a larger capacity to the URI constructor —
 `co_consumer{uri, capacity}` — if bursty traffic can outpace your `receive()` loop, and register

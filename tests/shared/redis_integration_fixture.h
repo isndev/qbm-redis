@@ -35,7 +35,7 @@
 #include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include "../../redis.h"
+#include <qbm/redis/redis.h>
 
 #if defined(_WIN32)
 #include <process.h>

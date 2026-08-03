@@ -36,7 +36,7 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <qb/io/async.h>
-#include "../redis.h"
+#include <qbm/redis/redis.h>
 
 #ifdef QB_HAS_SSL
 

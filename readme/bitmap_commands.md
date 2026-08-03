@@ -32,7 +32,7 @@ the `qb::duration` / native-unit boundary documented for `EXPIRE` in [commands_o
 **not** apply to this group.
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
@@ -120,7 +120,7 @@ Derived &bitcount(Func &&func, const std::string &key,
                   long long start = 0, long long end = -1);
 ```
 
-<!-- src: qbm/redis/commands/bitmap_commands.h:62,81 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:62,81 -->
 
 Counts the bits set to 1 in `key`, optionally restricted to the inclusive byte range `[start, end]`. The reply is the
 count.
@@ -146,7 +146,7 @@ Derived &bitpos(Func &&func, const std::string &key, bool bit,
                 long long start = 0, long long end = -1);
 ```
 
-<!-- src: qbm/redis/commands/bitmap_commands.h:171,191 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:171,191 -->
 
 Returns the position of the first bit equal to `bit` (`true` for 1, `false` for 0) within the inclusive byte range, or
 `-1` if no such bit exists. The `bool bit` is serialized as `1`/`0` for you.
@@ -170,7 +170,7 @@ template <typename Func>  // Func invocable with Reply<long long>&&
 Derived &getbit(Func &&func, const std::string &key, long long offset);
 ```
 
-<!-- src: qbm/redis/commands/bitmap_commands.h:207,223 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:207,223 -->
 
 Returns the bit at `offset` (`0` or `1`). Offsets past the end of the string read as `0`.
 
@@ -192,7 +192,7 @@ template <typename Func>  // Func invocable with Reply<long long>&&
 Derived &setbit(Func &&func, const std::string &key, long long offset, bool value);
 ```
 
-<!-- src: qbm/redis/commands/bitmap_commands.h:240,257 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:240,257 -->
 
 Sets the bit at `offset` to `value` (`true`/`false`) and returns the bit's **previous** value. The string grows to fit
 `offset` if necessary, zero-padding the gap.
@@ -217,7 +217,7 @@ Derived &bitop(Func &&func, const std::string &operation,
                const std::string &destkey, const std::vector<std::string> &keys);
 ```
 
-<!-- src: qbm/redis/commands/bitmap_commands.h:133,150 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:133,150 -->
 
 Computes `operation` (`"AND"`/`"OR"`/`"XOR"`/`"NOT"`) across the source `keys` and stores the result in `destkey`,
 returning that string's length in bytes. `"NOT"` requires exactly one source key.
@@ -245,7 +245,7 @@ Derived &bitfield(Func &&func, const std::string &key,
                   const std::vector<std::string> &operations);
 ```
 
-<!-- src: qbm/redis/commands/bitmap_commands.h:99,115 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:99,115 -->
 
 Runs a sequence of `GET`/`SET`/`INCRBY` sub-operations (with an optional `OVERFLOW WRAP|SAT|FAIL` directive) over packed
 integer fields. The reply vector has one positional entry per value-producing sub-operation; an entry is `std::nullopt`
@@ -275,7 +275,7 @@ Derived &bitfieldRo(Func &&func, const std::string &key,
                     const std::vector<std::string> &operations);
 ```
 
-<!-- src: qbm/redis/commands/bitmap_commands.h:273,290 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:273,290 -->
 
 The read-only variant of `bitfield`: only `GET` sub-operations are valid, which makes it safe to route to read replicas.
 The reply shape matches `bitfield`.
@@ -300,7 +300,7 @@ redis.bitcount([](qb::redis::Reply<long long> &&r) {
 }, key);
 ```
 
-<!-- src: qbm/redis/commands/bitmap_commands.h:81 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:81 -->
 
 ---
 

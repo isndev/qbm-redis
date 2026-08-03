@@ -35,7 +35,7 @@
 
 #include <gtest/gtest.h>
 
-#include "../parser/parser.h"
+#include <qbm/redis/parser/parser.h>
 
 using namespace qb::redis::parser;
 

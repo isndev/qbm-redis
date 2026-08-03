@@ -28,8 +28,8 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
-#include "../reply.h"
-#include "../server_reply.h"
+#include <qbm/redis/reply.h>
+#include <qbm/redis/server_reply.h>
 
 using qb::redis::parser::Array;
 using qb::redis::parser::BulkString;

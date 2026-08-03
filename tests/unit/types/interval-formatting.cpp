@@ -43,7 +43,7 @@
 #include <string>
 // Umbrella header: pulls in types.h (interval types, BoundType, enums) and
 // reply.h (qb::redis::Error, thrown by the interval ctors on invalid BoundType).
-#include "../redis.h"
+#include <qbm/redis/redis.h>
 
 using qb::redis::BoundedInterval;
 using qb::redis::BoundType;

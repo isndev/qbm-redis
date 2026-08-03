@@ -15,7 +15,7 @@ first), [commands_overview.md](./commands_overview.md) (Reply, callbacks vs coro
 
 ## What this group is
 
-`publish_commands<Derived>` is a CRTP mixin (`<redis/publish_commands.h>`) that injects the publishing side of Redis
+`publish_commands<Derived>` is a CRTP mixin (`<qbm/redis/publish_commands.h>`) that injects the publishing side of Redis
 Pub/Sub into the client. It contributes exactly **one** command, `PUBLISH`. The mixin is never instantiated on its own:
 the concrete client `qb::redis::detail::Redis<QB_IO_>` derives from it (alongside the other command-group mixins), so
 the methods below are called on a live client through its public alias `qb::redis::tcp::client` (or
@@ -23,10 +23,10 @@ the methods below are called on a live client through its public alias `qb::redi
 `make_coro_command<T>(...)`, which own argument serialization, I/O, and connection lifetime (
 see [connection.md](./connection.md)).
 
-<!-- src: qbm/redis/commands/publish_commands.h:37-43 (CRTP derived()), redis.h:1618 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:37-43 (CRTP derived()), redis.h:1618 (tcp::client alias) -->
 
 ```cpp
-#include <redis/redis.h>            // umbrella header; pulls in publish_commands.h
+#include <qbm/redis/redis.h>            // umbrella header; pulls in publish_commands.h
 
 qb::redis::tcp::client redis{qb::io::uri{"tcp://127.0.0.1:6379"}};
 // co_await redis.connect();        // see connection.md
@@ -48,7 +48,7 @@ clients that received the message at the moment you published:
 - A count of `0` means nobody was subscribed; the message is dropped. Redis Pub/Sub does not buffer messages for absent
   subscribers, so this is not an error — `reply.ok()` is still `true`.
 
-<!-- src: qbm/redis/commands/publish_commands.h:57-83; FACTBOOK invariant publish_commands.h:57-83 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:57-83; FACTBOOK invariant publish_commands.h:57-83 -->
 
 A subscriber receives a message only if it was subscribed *before* you published. If you need at-least-once semantics,
 durability, or consumer groups, use Redis Streams instead (see your stream command reference), not Pub/Sub.
@@ -63,7 +63,7 @@ durability, or consumer groups, use Redis Streams instead (see your stream comma
 - `reply.result()` (alias `reply.value()`) — the `long long` subscriber count.
 - `reply.error()` — the error message string when `!reply.ok()`.
 
-<!-- src: qbm/redis/reply.h:1102-1177 (Reply ok/result/value/error) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1102-1177 (Reply ok/result/value/error) -->
 
 ---
 
@@ -86,7 +86,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 publish(Func &&func, const std::string &channel, const std::string &message);
 ```
 
-<!-- src: qbm/redis/commands/publish_commands.h:57-83 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:57-83 -->
 
 | Argument  | Type                              | Meaning                                |
 |:----------|:----------------------------------|:---------------------------------------|
@@ -103,7 +103,7 @@ publish(Func &&func, const std::string &channel, const std::string &message);
 ### Coroutine form
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 
 using namespace qb::redis;
@@ -126,7 +126,7 @@ qb::io::async::task<void> announce(tcp::client &redis) {
 ### Callback form
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 
 using namespace qb::redis;
 
@@ -145,7 +145,7 @@ void announce(tcp::client &redis) {
 The callback overload is SFINAE-gated on `std::is_invocable_v<Func, Reply<long long>&&>`: a lambda whose parameter is
 not `Reply<long long>&&` does not match this overload, so you cannot accidentally bind the wrong reply type.
 
-<!-- src: qbm/redis/commands/publish_commands.h:78-83 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:78-83 -->
 
 ---
 
@@ -156,7 +156,7 @@ observes a non-zero receipt count. The consumer's message-handling API is docume
 in [subscription_commands.md](./subscription_commands.md); it appears here only to make the receipt count meaningful.
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <atomic>
 

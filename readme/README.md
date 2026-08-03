@@ -16,7 +16,7 @@ door [`../README.md`](../README.md) for positioning, the build matrix, and a qui
 qbm-redis is an asynchronous Redis client that speaks the RESP protocol directly over a single non-blocking TCP (or TLS)
 session on the qb-io event loop. It implements its own RESP2/RESP3 parser, so it carries no external Redis dependency.
 The public surface lives in the `qb::redis` namespace; `qb::redis::detail` holds the implementation. The umbrella header
-is `<redis/redis.h>`.
+is `<qbm/redis/redis.h>`.
 
 The module is a **compiled library**, not header-only. The build registers it through `qb_register_module`, producing an
 archive under the alias `qbm::redis` (`qbm/redis/CMakeLists.txt`). Only `redis.cpp`, `reply.cpp`, and `server_reply.cpp`
@@ -50,7 +50,7 @@ target_link_libraries(your_app PRIVATE qbm::redis)     # links qb::core PUBLIC, 
 ```
 
 ```cpp
-#include <redis/redis.h>   // client aliases, the command surface, Reply<T>, RetryPolicy
+#include <qbm/redis/redis.h>   // client aliases, the command surface, Reply<T>, RetryPolicy
 ```
 
 The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the framework is absent, so
@@ -100,7 +100,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
 - **Generic escape hatch.** For a command without a typed wrapper, call `command<T>` with the verb and arguments:
 
   ```cpp
-  #include <redis/redis.h>
+  #include <qbm/redis/redis.h>
   // inside a coroutine, with a connected qb::redis::tcp::client redis;
   qb::redis::Reply<qb::json> r =
       co_await redis.command<qb::json>("COMMAND", "GETKEYS", "SET", "mykey", "value");

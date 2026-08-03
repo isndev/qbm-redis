@@ -31,7 +31,7 @@ The client class composes a stack of CRTP mixins, one per Redis command group. `
 and routes I/O through `static_cast<Derived&>(*this)` — they are never instantiated standalone. The practical
 consequence: every Redis command appears as a flat method on the client, regardless of which group header defines it.
 
-<!-- src: qbm/redis/redis.h:700-720 (Redis<QB_IO_> base list) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:700-720 (Redis<QB_IO_> base list) -->
 
 For commands that are not yet wrapped (or that you want to issue by name), the client exposes a generic dispatcher:
 
@@ -107,7 +107,7 @@ string (`reply.h:1102`). Its surface:
   sub-replies are only reachable through the owning array.
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 
 // GET → Reply<std::optional<std::string>>
 auto r = co_await redis.get("session:42");
@@ -120,7 +120,7 @@ if (auto v = r.value_or(""); !v.empty()) {
 }
 ```
 
-<!-- src: qbm/redis/reply.h:1102-1177 (Reply<T>) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1102-1177 (Reply<T>) -->
 
 #### `qb::redis::status` — the "OK" reply
 
@@ -148,7 +148,7 @@ arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the m
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/reply.h:1227-1259 (TReply::operator() decode path) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1227-1259 (TReply::operator() decode path) -->
 
 ### Coroutine vs callback
 
@@ -156,7 +156,7 @@ The two forms are selected by overload resolution, not by a name suffix:
 
 ```cpp
 #include <qb/io/async/coroutine.h>   // qb::io::async::task<>
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 
 // Coroutine form — no callback argument; returns an awaiter.
 qb::io::async::task<void> coro_example(qb::redis::tcp::client &redis) {
@@ -203,7 +203,7 @@ resolves:
 
 ```cpp
 #include <qb/io/async.h>
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 
 int main() {
     qb::io::async::init();
@@ -243,7 +243,7 @@ as value types, not durations. The framework `qb::duration` type *is* used elsew
 command timeouts and the `RetryPolicy` delays (`redis.h:209-214`) — but those are transport-level deadlines, not Redis
 command arguments. See [Connection](./connection.md).
 
-<!-- src: qbm/redis/commands/key_commands.h:215-251,357-392 (expire/pexpire native-unit overloads) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:215-251,357-392 (expire/pexpire native-unit overloads) -->
 
 ## Command groups
 

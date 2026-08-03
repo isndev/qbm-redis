@@ -38,7 +38,7 @@
 #include <string>
 #include <string_view>
 
-#include "../parser/buffer.h"
+#include <qbm/redis/parser/buffer.h>
 
 using namespace qb::redis::parser;
 

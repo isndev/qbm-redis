@@ -10,11 +10,11 @@ blocking the kernel, and how the `qb::redis::tcp::pipeline` helper wraps the sam
 client), [commands_overview.md](./commands_overview.md) (coroutine vs. callback forms) — **See also:
 ** [error_handling.md](./error_handling.md), [transaction_commands.md](./transaction_commands.md), [subscription_commands.md](./subscription_commands.md)
 
-**Include:** `#include <redis/redis.h>` — every type below lives in namespace `qb::redis`.
+**Include:** `#include <qbm/redis/redis.h>` — every type below lives in namespace `qb::redis`.
 
 `qbm-redis` is a compiled qb module (`qbm::redis`); pull it in with `add_subdirectory(qb)` →
 `qb_load_modules("<path>/qbm")` → `target_link_libraries(app PRIVATE qbm::redis)`. The pipelining surface is template
-code in `<redis/redis.h>`; link the target rather than adding the include directory by hand.
+code in `<qbm/redis/redis.h>`; link the target rather than adding the include directory by hand.
 
 ---
 
@@ -35,7 +35,7 @@ The coroutine forms (`co_await redis.get(...)`) enqueue one handler per command 
 suspends the coroutine until that single reply arrives, and you do not call `await()` for them.
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 
 qb::redis::tcp::client redis{qb::io::uri{"tcp://localhost:6379"}};
@@ -149,7 +149,7 @@ wrapper that holds a reference to a `Redis` client and chains the low-level `com
 - `pipe.pending_reply_count()` forwards to the client's queue depth (`redis.h:1072-1076`).
 
 ```cpp
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 
 qb::redis::tcp::pipeline pipe{redis};
 

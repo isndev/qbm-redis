@@ -48,9 +48,9 @@
 #include <vector>
 
 #include "../../shared/resp_corpus.h"
-#include "../parser/parser.h"
-#include "../parser/serializer.h"
-#include "../reply.h"
+#include <qbm/redis/parser/parser.h>
+#include <qbm/redis/parser/serializer.h>
+#include <qbm/redis/reply.h>
 
 using namespace qb::redis::parser;
 namespace corpus = qb::redis::test::corpus;

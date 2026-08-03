@@ -33,7 +33,7 @@
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include "../../shared/redis_integration_fixture.h"
-#include "../redis.h"
+#include <qbm/redis/redis.h>
 
 // ProtocolMode / ProtocolModesTestBase / INSTANTIATE_PROTOCOL_MODES / run_coro_test_until /
 // CO_IGNORE / PROTOCOL_ENSURE_RESP3_VAR come from redis_integration_fixture.h (legacy-compatible
