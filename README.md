@@ -59,8 +59,10 @@ inside a `qb::Actor` and let the actor's `VirtualCore` tick drive the same loop.
 
 ## Build and integration
 
-`qbm-redis` is registered through the framework's module helper. Add the framework, load the modules directory, then
-link the alias:
+`qbm-redis` is registered through the framework's module helper. Two supported modes, both giving the same target
+(`qbm::redis`) and the same header spelling (`<redis/redis.h>`).
+
+**Embedded** — add the framework, load the modules directory, then link the alias:
 
 ```cmake
 add_subdirectory(qb)                                # qb-core + qb-io
@@ -69,6 +71,19 @@ qb_load_modules("${CMAKE_CURRENT_SOURCE_DIR}/qbm")  # registers qbm::redis (+ si
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE qbm::redis)
 ```
+
+**Installed** — consume a `cmake --install`ed tree. No `find_package(qb)` line is needed; the module's package config
+resolves qb itself:
+
+```cmake
+find_package(qbm-redis CONFIG REQUIRED)             # find_dependency(qb) happens inside
+target_link_libraries(app PRIVATE qbm::redis)
+```
+
+Headers land under `<prefix>/include/qbm/redis/...` and the CMake files under `<prefix>/lib/cmake/qbm-redis/`;
+`<prefix>/include/qbm` is the installed spelling of the source tree's `qbm/` root, so the include line is identical in
+both modes. `qbm-redisConfig.cmake` fails at configure time if the installed qb is a different version than the one
+this module was compiled against, or disagrees with it about `QB_HAS_SSL`.
 
 <!-- src: qbm/redis/CMakeLists.txt:33-45, qb/cmake/qbFunctions.cmake (qb_register_module / qb_load_modules) -->
 
