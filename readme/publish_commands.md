@@ -15,7 +15,7 @@ first), [commands_overview.md](./commands_overview.md) (Reply, callbacks vs coro
 
 ## What this group is
 
-`publish_commands<Derived>` is a CRTP mixin (`<qbm/redis/publish_commands.h>`) that injects the publishing side of Redis
+`publish_commands<Derived>` is a CRTP mixin (`<qbm/redis/commands/publish_commands.h>`) that injects the publishing side of Redis
 Pub/Sub into the client. It contributes exactly **one** command, `PUBLISH`. The mixin is never instantiated on its own:
 the concrete client `qb::redis::detail::Redis<QB_IO_>` derives from it (alongside the other command-group mixins), so
 the methods below are called on a live client through its public alias `qb::redis::tcp::client` (or

@@ -12,6 +12,23 @@ Tracks changes on the development branch not yet part of a tagged release. The m
 
 ### Changed
 
+- **BREAKING — the public include prefix is now `<qbm/redis/...>`** (was `<redis/...>`). Every consumer
+  edits its `#include` lines: `#include <redis/redis.h>` becomes `#include <qbm/redis/redis.h>`. The CMake
+  target is unchanged (`qbm::redis`), and so is the installed location `<prefix>/include/qbm/redis/`.
+  The old spelling existed only because `qb_register_module` made this module's include root its
+  PARENT directory — the superproject's `qbm/`, which does not exist in this repository at all — and
+  mirrored it with `<prefix>/include/qbm` on the consumer's include path. That put the maximally
+  generic top-level name `redis` in every consumer's include namespace. Now the module's own `src/`
+  IS the include root and is copied verbatim to `<prefix>/include`, so `<qbm/redis/...>` is the same
+  string in this tree and in an installed prefix, and the two cannot drift.
+- **The source tree moved to `src/qbm/redis/`** — one pure `git mv`, 100 % rename detection, zero
+  content change, so `git blame` and every line-numbered citation survive intact. `commands/` and `parser/` moved with the root headers; nothing was renamed inside them, so
+  `<qbm/redis/commands/string_commands.h>` is the old `<redis/commands/string_commands.h>` with one
+  prefix changed.
+  `tests/`, `readme/`, `scripts/` and `cmake/` live BESIDE `src/`, never inside it, which is what
+  makes a stray `#include <tests/fixture.h>` impossible rather than merely unlikely.
+  The test suite now includes the shipped spelling instead of resolving `"../redis.h"` by string
+  concatenation onto a `-I <mod>/tests` flag.
 - **`project(qbm-redis VERSION ...)` is now `3.0.0`**, tracking `QB_FRAMEWORK_VERSION`. It had been
   left at `2.6.0` while the framework moved on. The module is not standalone-configurable (it calls
   `qb_register_module` / `qb_add_test`, which an installed qb does not ship), so its version can only
