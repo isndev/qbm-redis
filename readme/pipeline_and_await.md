@@ -1,6 +1,6 @@
 # Pipelining and `await()`
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
 > supported)
 
 How the client pipelines callback commands over a single connection, how `await()` drains pending replies without

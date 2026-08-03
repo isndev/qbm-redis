@@ -1,6 +1,6 @@
 # Server administration commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
 > supported)
 
 Reference for the server administration command group — the `CLIENT`, `CONFIG`, `COMMAND`, `DEBUG`, `MEMORY`, `LATENCY`,

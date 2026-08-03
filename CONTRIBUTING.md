@@ -1,4 +1,4 @@
-<!-- Verified-against: qbm-redis @ qb 2.6.0 (C++20 default, C++23 supported) -->
+<!-- Verified-against: qbm-redis @ qb 3.0.0 (C++20 default, C++23 supported) -->
 
 # Contributing to qbm-redis
 

@@ -1,6 +1,6 @@
 # qbm-redis — asynchronous Redis client
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 2.6.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
 > supported)
 
 A non-blocking Redis client built on qb-io: connect, run the full command surface, drive pub/sub, transactions,
