@@ -10,6 +10,24 @@ All notable changes to the qbm-redis module are documented here. The format is b
 Tracks changes on the development branch not yet part of a tagged release. The module version is
 **3.0.0**, in lockstep with the qb framework; see the qb CHANGELOG for what makes that release major.
 
+### Fixed
+
+- **`qbm/redis/redis.h:1631` broke any `-Werror` consumer**: `RedisCoroConsumer::on(disconnected &&e)`
+  never used `e`, so a consumer building with `-Wall -Wextra -Werror` failed on
+  `unused parameter 'e' [-Wunused-parameter]`. Nothing here saw it because CMake puts `-isystem` on an
+  IMPORTED target, which silences every `-W*` inside the module's headers — for the one configuration
+  CMake generates automatically. The parameter is now unnamed.
+- **6 installed headers were not self-contained** — each compiled only because something else was
+  included first: the four SCAN command headers (`hash`, `key`, `set`, `sorted_set`) call
+  `QB_LOG_WARN` in their scanner-callback guard without `<qb/io.h>` (the macro then survives as an
+  unexpanded call and the diagnostic is a baffling *invalid operands to binary expression*),
+  `server_commands.h` takes a `qb::duration` and calls `qb::detail::to_ev_seconds` without
+  `<qb/system/time.h>`, and `types.h` uses `qb::unordered_map` without
+  `<qb/system/container/unordered_map.h>`.
+  Both classes are now gated: the superproject's `package-consume.yml` runs
+  `qb/scripts/check-installed-headers.sh` over the `qbm` tree, once plainly and once with `--hostile`
+  (`-I` instead of `-isystem`, `-Wall -Wextra -Werror`).
+
 ### Changed
 
 - **Logging call sites use qb's prefixed `QB_LOG_*` macros** (28 sites). qb 3.0.0 renamed

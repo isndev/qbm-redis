@@ -17,6 +17,7 @@
 #ifndef QBM_REDIS_HASH_COMMANDS_H
 #define QBM_REDIS_HASH_COMMANDS_H
 #include <type_traits>
+#include <qb/io.h> // QB_LOG_WARN — the scanner callback guard below logs through it
 #include "../reply.h"
 
 namespace qb::redis {

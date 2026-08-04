@@ -31,6 +31,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <qb/system/container/unordered_map.h> // qb::unordered_map — the map replies below use it
 
 // Native C++20/23 parser (must be outside namespace)
 #include "parser.h"

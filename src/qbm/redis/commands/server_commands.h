@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 #include <qb/system/parse.h>
+#include <qb/system/time.h> // qb::duration / qb::detail::to_ev_seconds — debug_sleep() takes one
 #include "../reply.h"
 
 namespace qb::redis {
