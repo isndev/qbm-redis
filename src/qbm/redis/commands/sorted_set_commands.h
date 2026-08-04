@@ -18,6 +18,7 @@
 #include <chrono>
 #include <type_traits>
 #include <utility>
+#include <qb/io.h> // QB_LOG_WARN — the scanner callback guard below logs through it
 #include "../reply.h"
 
 namespace qb::redis {

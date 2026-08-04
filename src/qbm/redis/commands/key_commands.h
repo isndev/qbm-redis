@@ -17,6 +17,7 @@
 #define QBM_REDIS_KEY_COMMANDS_H
 #include <chrono>
 #include <type_traits>
+#include <qb/io.h> // QB_LOG_WARN — the scanner callback guard below logs through it
 #include "../reply.h"
 
 namespace qb::redis {

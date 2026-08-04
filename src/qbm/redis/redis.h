@@ -1628,7 +1628,7 @@ class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>
     }
 
     void
-    on(qb::io::async::event::disconnected &&e) {
+    on(qb::io::async::event::disconnected &&) {
         _msg_channel.close();
         // Base already cleared _replies and invoked us; no need to re-enter
     }

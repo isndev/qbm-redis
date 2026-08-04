@@ -16,6 +16,7 @@
 
 #include <type_traits>
 #include <qb/system/container/unordered_set.h> // for qb::unordered_set (previously picked up transitively via listener.h)
+#include <qb/io.h> // QB_LOG_WARN — the scanner callback guard below logs through it
 #include "../reply.h"
 
 namespace qb::redis {
