@@ -57,7 +57,7 @@
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 // Cross-platform socket layer: platform socket headers + the socket_type alias,
-// inet::invalid_socket and the closesocket() shim. Winsock is initialised by
+// inet::invalid_socket and the QB_CLOSESOCKET() shim. Winsock is initialised by
 // qb-io's global ws2_32 guard (linked via the qb-io / qb-redis sockets used here).
 #include <qb/io/system/sys__socket.h>
 #include <qbm/redis/redis.h>
@@ -138,7 +138,7 @@ TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
     for (int i = 0; i < 500; ++i)
         qb::io::async::run(EVRUN_NOWAIT);
 
-    closesocket(lfd);
+    QB_CLOSESOCKET(lfd);
     SUCCEED() << "no crash / no ASan use-after-free during mid-reconnect destruction";
 }
 
@@ -174,7 +174,7 @@ TEST(ConnectLifetime, DestroyDuringInflightCallbackConnectNoUAF) {
     for (int i = 0; i < 500; ++i)
         qb::io::async::run(EVRUN_NOWAIT);
 
-    closesocket(lfd);
+    QB_CLOSESOCKET(lfd);
     EXPECT_FALSE(cb_ran) << "completion for a destroyed client must be suppressed, not run on freed memory";
     SUCCEED() << "no crash / no ASan use-after-free during mid-connect destruction (callback path)";
 }

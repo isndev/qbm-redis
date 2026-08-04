@@ -107,7 +107,7 @@ private:
                 try {
                     _func(std::move(_reply));
                 } catch (std::exception const &e) {
-                    LOG_WARN("[qbm][redis] scanner callback failed: " << e.what());
+                    QB_LOG_WARN("[qbm][redis] scanner callback failed: " << e.what());
                 }
                 // Automatically destroyed when shared_ptr reference count reaches 0
             }
@@ -192,7 +192,7 @@ private:
             try {
                 _func(std::move(_reply));
             } catch (std::exception const &e) {
-                LOG_WARN("[qbm][redis] multi_hvals callback failed: " << e.what());
+                QB_LOG_WARN("[qbm][redis] multi_hvals callback failed: " << e.what());
             }
             // Automatically destroyed when shared_ptr reference count reaches 0
         }
