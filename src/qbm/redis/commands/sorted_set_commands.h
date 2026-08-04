@@ -111,7 +111,7 @@ private:
                 try {
                     _func(std::move(_reply));
                 } catch (std::exception const &e) {
-                    LOG_WARN("[qbm][redis] sorted_set scanner callback failed: " << e.what());
+                    QB_LOG_WARN("[qbm][redis] sorted_set scanner callback failed: " << e.what());
                 }
             }
         }

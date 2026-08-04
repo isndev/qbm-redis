@@ -186,7 +186,7 @@ public:
             try {
                 this->_io.on(message{std::move(reply_ptr)});
             } catch (...) {
-                LOG_WARN("[qbm][redis] message handler threw a non-std exception; reply dropped");
+                QB_LOG_WARN("[qbm][redis] message handler threw a non-std exception; reply dropped");
             }
         }
 
@@ -357,7 +357,7 @@ private:
     void
     on(qb::io::async::event::disconnected &&ev) {
         _connected_flag = false;
-        LOG_WARN("[qbm][redis] disconnected");
+        QB_LOG_WARN("[qbm][redis] disconnected");
         derived().on(std::forward<qb::io::async::event::disconnected>(ev));
 
         if (_reconnect_policy && !_is_reconnecting) {
@@ -368,7 +368,7 @@ private:
 
     qb::io::async::task<void>
     _reconnect_task(RetryPolicy policy, std::shared_ptr<bool> alive) {
-        LOG_INFO("[qbm][redis] auto-reconnect starting...");
+        QB_LOG_INFO("[qbm][redis] auto-reconnect starting...");
 
         const bool ok = co_await connect_with_retry(policy);
 
@@ -378,9 +378,9 @@ private:
         _is_reconnecting = false;
 
         if (ok) {
-            LOG_INFO("[qbm][redis] auto-reconnect succeeded");
+            QB_LOG_INFO("[qbm][redis] auto-reconnect succeeded");
         } else {
-            LOG_WARN("[qbm][redis] auto-reconnect failed");
+            QB_LOG_WARN("[qbm][redis] auto-reconnect failed");
         }
     }
 
@@ -897,7 +897,7 @@ private:
      */
     void
     on_command_deadline() {
-        LOG_WARN("[qbm][redis] command timeout (" << qb::detail::to_ev_seconds(_command_timeout)
+        QB_LOG_WARN("[qbm][redis] command timeout (" << qb::detail::to_ev_seconds(_command_timeout)
                                                   << "s) exceeded with no reply; dropping connection");
         _deadline_tripped = true;
         this->disconnect();
@@ -921,7 +921,7 @@ private:
             return;
         }
         if (_replies.empty()) {
-            LOG_WARN("[qbm][redis] Received unsolicited reply with no pending command, discarding");
+            QB_LOG_WARN("[qbm][redis] Received unsolicited reply with no pending command, discarding");
             return;
         }
         auto entry = std::move(_replies.front());
@@ -938,13 +938,13 @@ private:
         try {
             (*entry.handler)(std::move(msg.reply));
         } catch (const std::exception &ex) {
-            LOG_WARN("[qbm][redis] reply handler error: " << ex.what());
+            QB_LOG_WARN("[qbm][redis] reply handler error: " << ex.what());
         }
     }
 
     void
     on(qb::io::async::event::disconnected &&) {
-        LOG_WARN("[qbm][redis] disconnected by remote");
+        QB_LOG_WARN("[qbm][redis] disconnected by remote");
         _inflight_blocking = 0;
         cancel_deadline();
         // If the command deadline tripped, report it as a timeout rather than a
@@ -965,11 +965,11 @@ private:
                 else
                     (*entry.handler)(nullptr);
             } catch (const std::exception &ex) {
-                LOG_WARN("[qbm][redis] callback error: " << ex.what());
+                QB_LOG_WARN("[qbm][redis] callback error: " << ex.what());
             } catch (...) {
                 // on(disconnected) runs from dispose() under the libev C callback — a
                 // non-std exception escaping here would terminate the process.
-                LOG_WARN("[qbm][redis] callback threw a non-std exception");
+                QB_LOG_WARN("[qbm][redis] callback threw a non-std exception");
             }
         }
         transaction_commands<Redis<QB_IO_>>::reset_transaction_state();
@@ -1327,7 +1327,7 @@ private:
                     try {
                         (*handler)(std::move(msg.reply));
                     } catch (const std::exception &e) {
-                        LOG_WARN("[qbm][redis] consumer error: " << e.what());
+                        QB_LOG_WARN("[qbm][redis] consumer error: " << e.what());
                     }
                 } else {
                     throw ProtoError("Unexpected non-pub/sub reply with no pending command");
@@ -1353,14 +1353,14 @@ private:
                     try {
                         derived().on(parse<qb::redis::message>(raw));
                     } catch (const std::exception &e) {
-                        LOG_WARN("[qbm][redis] message handler error: " << e.what());
+                        QB_LOG_WARN("[qbm][redis] message handler error: " << e.what());
                     }
                     return;
                 case MsgType::PMESSAGE:
                     try {
                         derived().on(parse<qb::redis::pmessage>(raw));
                     } catch (const std::exception &e) {
-                        LOG_WARN("[qbm][redis] message handler error: " << e.what());
+                        QB_LOG_WARN("[qbm][redis] message handler error: " << e.what());
                     }
                     return;
                 case MsgType::SUBSCRIBE:
@@ -1380,7 +1380,7 @@ private:
                         // predicted. Drop this stray confirmation instead of popping and
                         // cross-resolving the unrelated command (which would silently
                         // desync the reply/command FIFO for the connection's lifetime).
-                        LOG_WARN("[qbm][redis] dropping unexpected subscription confirmation "
+                        QB_LOG_WARN("[qbm][redis] dropping unexpected subscription confirmation "
                                  "(FIFO head is a regular command)");
                         return;
                     }
@@ -1393,7 +1393,7 @@ private:
                     try {
                         (*handler)(std::move(msg.reply));
                     } catch (const std::exception &e) {
-                        LOG_WARN("[qbm][redis] consumer error: " << e.what());
+                        QB_LOG_WARN("[qbm][redis] consumer error: " << e.what());
                     }
                     return;
                 }
@@ -1407,7 +1407,7 @@ private:
                 try {
                     (*handler)(std::move(msg.reply));
                 } catch (const std::exception &e) {
-                    LOG_WARN("[qbm][redis] consumer error: " << e.what());
+                    QB_LOG_WARN("[qbm][redis] consumer error: " << e.what());
                 }
             } else {
                 throw ProtoError("Unknown message type");
@@ -1427,7 +1427,7 @@ private:
 
     void
     on(qb::io::async::event::disconnected &&e) {
-        LOG_WARN("[qbm][redis] consumer disconnected");
+        QB_LOG_WARN("[qbm][redis] consumer disconnected");
         // Predicted subscription state is meaningless across a reconnect.
         _pred_channels.clear();
         _pred_patterns.clear();
@@ -1437,11 +1437,11 @@ private:
             try {
                 (*handler)(nullptr);
             } catch (const std::exception &ex) {
-                LOG_WARN("[qbm][redis] consumer callback error: " << ex.what());
+                QB_LOG_WARN("[qbm][redis] consumer callback error: " << ex.what());
             } catch (...) {
                 // Runs from dispose() under the libev C callback: a non-std exception
                 // escaping here would terminate the process.
-                LOG_WARN("[qbm][redis] consumer callback threw a non-std exception");
+                QB_LOG_WARN("[qbm][redis] consumer callback threw a non-std exception");
             }
         }
         if constexpr (has_method_on<Derived, void, qb::io::async::event::disconnected>::value)
@@ -1450,7 +1450,7 @@ private:
 
     void
     on(qb::redis::error &&error) {
-        LOG_WARN("[qbm][redis] parse error: " << error.what);
+        QB_LOG_WARN("[qbm][redis] parse error: " << error.what);
         if constexpr (has_method_on<Derived, void, qb::redis::error>::value)
             derived().on(std::forward<qb::redis::error>(error));
     }
@@ -1608,10 +1608,10 @@ class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>
             try {
                 _on_message_dropped(std::move(msg));
             } catch (const std::exception &ex) {
-                LOG_WARN("[qbm][redis] coro consumer on_message_dropped error: " << ex.what());
+                QB_LOG_WARN("[qbm][redis] coro consumer on_message_dropped error: " << ex.what());
             }
         } else {
-            LOG_WARN("[qbm][redis] coro consumer: message dropped (buffer full)");
+            QB_LOG_WARN("[qbm][redis] coro consumer: message dropped (buffer full)");
         }
     }
 
