@@ -110,7 +110,7 @@ convert to milliseconds yourself (e.g. `std::chrono::milliseconds{5000}.count()`
 ### Blocking reads suspend the command deadline
 
 `XREAD` and `XREADGROUP` are blocking commands. When `block` is set, the client suspends its own per-command deadline
-while the call is in flight, so the server-side `block` timeout governs instead (`redis.h:733`). A blocking read with
+while the call is in flight, so the server-side `block` timeout governs instead (`redis.h:819-820,851`). A blocking read with
 `block > 0` parks the connection until data arrives or the timeout elapses.
 
 ### Multi-stream validation throws synchronously

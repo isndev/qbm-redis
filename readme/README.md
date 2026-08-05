@@ -77,7 +77,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
   | Milliseconds | `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX` (`PX`), `WAIT`, `RESTORE` TTL, `MIGRATE` | `std::chrono::milliseconds` (or the raw `long long` overload) |
 
   So `expire(key, 60s)` sets 60 seconds and `pexpire(key, 60ms)` sets 60 milliseconds (`key_commands.h:241,416`;
-  `string_commands.h:537,730,935`). Reply TTL values (`ttl`, `pttl`, `expiretime`, `pexpiretime`) are plain integers —
+  `string_commands.h:537,730,896`). Reply TTL values (`ttl`, `pttl`, `expiretime`, `pexpiretime`) are plain integers —
   the unit lives in the method name, not a wrapped type (`key_commands.h:634,446,787,808`). Stream blocking and
   idle-time arguments (`XREAD`/`XREADGROUP` `block`, `XCLAIM`/`XAUTOCLAIM` `min_idle_time`) are raw `long long`
   milliseconds with no chrono overload (`stream_commands.h:388,414,849`). Blocking-list timeouts (`BLPOP`,
@@ -153,7 +153,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   fails every pending command (`redis.h:870`).
 - **Auto-iterating scanners and `hvals` are callback-only.** The no-cursor `sscan` / `zscan` / `hscan` overloads and
   multi-key `hvals` buffer the whole result and fire the callback once; there is no coroutine form, and a throwing
-  callback is caught and logged, not propagated (`set_commands.h:725`, `hash_commands.h:574,770`).
+  callback is caught and logged, not propagated (`set_commands.h:107-108`, `hash_commands.h:574,770`).
 - **Empty required arguments resolve as a failed `Reply`, not a bad frame.** A required-variadic / required-collection
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
@@ -169,7 +169,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   `stream_commands.h:514,427`).
 - **`GETEX` unit asymmetry.** The integer overload uses `EX` (seconds) while the `std::chrono::milliseconds` overload
   uses `PX` (milliseconds) — unlike `SET`, whose integer and chrono overloads both use milliseconds (
-  `string_commands.h:935`).
+  `string_commands.h:586,880,896`).
 
 ## Examples as specification
 

@@ -248,7 +248,7 @@ The streaming `RespParser` separates two failure modes precisely, because confla
   `src/qbm/redis/parser/parser.h:207-220`). Keep feeding; this is not an error.
 - **Any other code** is a fatal protocol error. `parse_all()` sets `_state = State::FAULT`, after which `feed()` returns
   `false` and `parse()` returns `PROTOCOL_ERROR "Parser in error state"`. The fault is **sticky**: only `reset()` clears
-  it (`src/qbm/redis/parser/parser.h:95`, `src/qbm/redis/parser/parser.h:118`).
+  it (`src/qbm/redis/parser/parser.h:95`, `src/qbm/redis/parser/parser.h:112-117`).
 
 The corrupt-terminator fault is the canonical trigger. RESP requires a fixed-length payload (`$`, `!`, `=`) and the
 single-byte types (`_`, `#`) to be followed by exactly `\r\n`. `expect_crlf()` distinguishes "fewer than two bytes
