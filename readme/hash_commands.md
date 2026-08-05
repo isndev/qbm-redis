@@ -169,7 +169,7 @@ Returns the value of `field`, or an empty `std::optional` (`nil`) when the field
 // Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:278
 auto hget(const std::string &key, const std::string &field);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:295
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:306-310
 template <typename Func>
 Derived &hget(Func &&func, const std::string &key, const std::string &field);
 ```
@@ -337,7 +337,7 @@ Returns `true` if `field` exists in the hash, `false` otherwise.
 // Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:248
 auto hexists(const std::string &key, const std::string &field);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:265
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:276-280
 template <typename Func>
 Derived &hexists(Func &&func, const std::string &key, const std::string &field);
 ```
