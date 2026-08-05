@@ -99,9 +99,9 @@ internal buffer is moved or freed, so it is always safe to read and store — it
 
 ### Coroutine and callback paths return the same `Reply<T>`
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:665-668 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:728-730 -->
 
-The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:665-668`). The callback overload invokes your
+The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:728-730`). The callback overload invokes your
 handler with `Reply<T>&&`. The check is identical on both paths:
 
 ```cpp
@@ -370,7 +370,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
 
 - **Do not `try`/`catch` a `co_await` to handle Redis errors.** Command and parse failures arrive as `Reply{ok=false}`;
   a `catch` block will never fire for them. Check `reply.ok()` or `if (reply)`.
-- **Read `result()` only after checking `ok()`.** On failure, `_result` is default-constructed (`reply.h:1104`); reading
+- **Read `result()` only after checking `ok()`.** On failure, `_result` is default-constructed (`reply.h:1111`); reading
   it is meaningless, not undefined, but still a bug.
 - **`std::optional<T>` results have two falsy states.** `!reply.ok()` means the command failed;
   `reply.ok() && !reply.result().has_value()` means it succeeded with a nil (absent key). `value_or(fallback)` collapses
