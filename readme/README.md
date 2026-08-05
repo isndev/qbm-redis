@@ -96,7 +96,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
   command errors are reported as `ok() == false`; they are not thrown.
 - **Pipeline.** Issue several callback-form commands without awaiting between them; each enqueues one handler and
   replies return in FIFO order. Drain with the client's `await()` (`redis.h:987`), or `flush()` on the `tcp::pipeline`
-  wrapper (`redis.h:1088`, which itself calls `client().await()`). `pending_reply_count()` reports the queue depth.
+  wrapper (`redis.h:1151-1152`, which itself calls `client().await()`). `pending_reply_count()` reports the queue depth.
 - **Generic escape hatch.** For a command without a typed wrapper, call `command<T>` with the verb and arguments:
 
   ```cpp
@@ -158,7 +158,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
-  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:154`, `reply.h:1277`).
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:158-159`, `reply.h:1277`).
 - **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
   (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
   with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /

@@ -65,9 +65,9 @@ the cursor yourself (see [`scan`](#scan) below).
 
 ### Method-name renames
 
-Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:755`),
-`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:961`, `:987`, `:1014`). Note that `move()` is the Redis
-`MOVE` command (`key_commands.h:313`) and does not collide with the `std::move` you use in callbacks. Every other method
+Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:780`),
+`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:986`, `:987`, `:1014`). Note that `move()` is the Redis
+`MOVE` command (`key_commands.h:337-338`) and does not collide with the `std::move` you use in callbacks. Every other method
 matches its Redis verb in lowercase.
 
 ## Setup for the examples
@@ -415,7 +415,7 @@ do {
 
 > **Pitfalls for the auto-iterating callback overload `scan(func, pattern)`.** It accumulates the **entire** matched
 > keyspace in memory and invokes `func` exactly once after the cursor returns to `0` (`key_commands.h:97-117`, `:598`) —
-> it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:84`,
+> it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:87-89`,
 `:102`). And if your callback throws, the scanner catches `std::exception` and only logs a warning (
 `key_commands.h:106-107`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer
 > the explicit-cursor loop above.

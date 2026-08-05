@@ -384,13 +384,13 @@ if (r.result().has_value()) {
 ### `lpos`
 
 `LPOS key element [RANK rank] [COUNT count] [MAXLEN maxlen]` — find the index/indices of `element`. There is a single
-overload that always returns a vector of positions (`list_commands.h:848-849` always sends `COUNT`, defaulting to `0` = all
+overload that always returns a vector of positions (`list_commands.h:870-871` always sends `COUNT`, defaulting to `0` = all
 matches when `count` is `std::nullopt`); for a single-position lookup, read `result().front()` after checking the vector
 is non-empty.
 
 The optional arguments are, in order, `rank`, `count`, then `maxlen`, matching the wire order `[RANK] [COUNT] [MAXLEN]`
 shown above. `COUNT` is always emitted (defaulting to `0` = all matches when `count` is `std::nullopt`); `RANK` and
-`MAXLEN` are emitted only when supplied (`list_commands.h:850-853`).
+`MAXLEN` are emitted only when supplied (`list_commands.h:872-874`).
 
 ```cpp
 // Coroutine
@@ -531,7 +531,7 @@ template <typename Func> Derived &brpoplpush(Func &&, const std::string &source,
   command (so the callback never fires) when a required argument is empty (`list_commands.h:682`, `:724`, `:838`).
   Validate inputs before relying on the callback.
 - **`lpos` has no scalar overload.** It always returns `std::vector<long long>` because it always sends `COUNT` on the
-  wire (`list_commands.h:848-849`). For a single position, read `result().front()` after checking the vector is non-empty.
+  wire (`list_commands.h:870-871`). For a single position, read `result().front()` after checking the vector is non-empty.
 - **`brpoplpush` is deprecated.** New code should use `blmove`.
 - **Blocking commands occupy the connection.** A pending `blpop`/`brpop`/`blmove`/`blmpop` ties up the client until it
   resolves; use a dedicated client for long-lived blocking reads rather than sharing one with latency-sensitive traffic.
