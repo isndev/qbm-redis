@@ -12,6 +12,21 @@ Tracks changes on the development branch not yet part of a tagged release. The m
 
 ### Fixed
 
+- **The reconnect suite's server stall was an iteration count, so its duration scaled with the
+  host — and overrunning it was silent.** `reconnect-resilience.cpp` occupied the single-threaded
+  server with a fixed 2e8-iteration Lua `EVAL` on a comment claiming *"measured ~0.6s for 2e8 on
+  this box… it can never wedge the server indefinitely"*. The 0.6s was right and the conclusion was
+  not: an iteration count is a WORK budget. Measured on one macOS box (Redis 8.10.0), same count:
+  **601 ms** idle, **52 820 ms** under 20 CPU spinners — 10.5x past the server's 5000 ms
+  `busy-reply-threshold`, past which the server answers `-BUSY` to every other client, the next
+  case's connect times out and `GTEST_SKIP`s, **and ctest still reports the binary `Passed`**.
+  The count is now calibrated against the server under test (`calibrated_stall_iterations`): a small
+  probe `EVAL` is timed once per process and the real stall sized from the measured rate, making it
+  a DURATION on any host — under that same load, a 1977 ms probe chose 4.0e6 iterations and stalled
+  1188 ms. Bounding it from inside the script is not an option and the comment now records why:
+  Redis freezes a script's view of the clock, so `redis.call('TIME')` returns the value cached at
+  script start and only advances once the busy-script watchdog fires — a loop written to stop after
+  300 ms of TIME measured **5033 ms**, i.e. exactly the overrun it was meant to prevent.
 - **`CMakeLists.txt` had no `cmake_minimum_required()`, and a standalone configure died on an
   unhelpful error.** CMake reported `No cmake_minimum_required command is present` alongside
   `Unknown CMake command "qb_status_message"` — which reads like a missing include rather than

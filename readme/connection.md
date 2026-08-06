@@ -385,7 +385,7 @@ client.enable_auto_reconnect(qb::redis::RetryPolicy{}
 // is_connected() returns true again once a retry succeeds.
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:103-150 -->
+<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:167-214 -->
 
 `is_reconnecting()` is `true` for the lifetime of the retry loop; `is_connected()` flips back to `true` when an attempt
 lands. The retry runs on the same I/O loop — there is no extra thread.
