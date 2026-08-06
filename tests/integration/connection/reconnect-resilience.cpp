@@ -33,15 +33,18 @@
  *     DEBUG is gated behind the immutable `enable-debug-command` config (off by default, cannot be
  *     toggled at runtime), so `DEBUG SLEEP` returns an immediate "DEBUG command not allowed" error
  *     on a stock server — no stall, no race to win. The EVAL loop fully occupies the
- *     single-threaded server for a finite, sub-second window (sized in `kStallIterations`), and
- *     EVAL is not in the client's blocking-command exemption set, so the client-side command
- *     deadline genuinely applies. See the block comment on `server_busy_loop_script` for the
- *     iteration-count sizing rationale.
+ *     single-threaded server for a finite window whose LENGTH IS MEASURED, not assumed: the
+ *     iteration count is calibrated against the server under test (`calibrated_stall_iterations`)
+ *     so the stall lands near `kStallTarget` on any host instead of scaling with CPU speed. EVAL is
+ *     not in the client's blocking-command exemption set, so the client-side command deadline
+ *     genuinely applies. See the block comment above `kStallTarget` for why the bound cannot come
+ *     from inside the script.
  *   - The fixed `run_until([]{return false;}, 1200ms)` post-test recovery sleeps were removed: the
  *     EVAL loop is finite so the server frees itself when it returns, and the shared fixture's
  *     bounded connect-retry already tolerates a transiently-busy server for the next test.
  */
 
+#include <algorithm>
 #include <chrono>
 #include <gtest/gtest.h>
 #include <string>
@@ -80,15 +83,76 @@ run_until(Pred &&pred, std::chrono::milliseconds timeout = 5000ms) {
 // reconnect) until it finishes. EVAL is NOT in the client's blocking-command exemption set
 // (only B*/WAIT*/XREAD* are), so the client-side command deadline genuinely applies.
 //
-// kStallIterations is sized so the loop reliably exceeds the sub-second client deadlines
-// below (~50ms) with wide margin even on a fast CPU, while staying comfortably under the
-// 5s auto-reconnect window even on a slow CPU (measured ~0.6s for 2e8 on this box; the
-// loop is finite, so it can never wedge the server indefinitely).
-constexpr long long kStallIterations = 200000000LL; // 2e8
+// The stall has to sit inside a window: long enough to blow past the sub-second client deadlines
+// below (~50ms, plus the 50ms send-flush settle), short enough to stay well under the server's
+// `busy-reply-threshold` (5000ms by default), past which the server answers `-BUSY` to every other
+// client — including the NEXT test's connect, which then times out and `GTEST_SKIP`s while ctest
+// still reports this binary `Passed`. A stall that overruns is therefore silent.
+//
+// A fixed iteration count cannot hold that window, because it is a WORK budget and its wall time
+// scales with the host. Measured, same box (macOS, Redis 8.10.0), same 2e8 count:
+//
+//     idle                 601 ms      (matches the sizing note this replaced)
+//     20 CPU spinners   52 820 ms      10.5x OVER the 5000 ms threshold
+//
+// and calibrated, under that same load: a 1977 ms probe chose 4.0e6 iterations and stalled
+// 1188 ms — still under the threshold. Halving the fixed count to survive the loaded case would
+// put it under the client deadline on the idle one, which is why a constant cannot work.
+//
+// The bias is deliberate: a stall that comes out too SHORT fails test 8 loudly (the command
+// succeeds instead of timing out), while one that comes out too long is the silent mode above.
+//
+// Bounding it from INSIDE the script does not work either, and this is the part worth writing
+// down: Redis freezes a script's view of the clock. `redis.call('TIME')` returns the value cached
+// when the script started and only advances once the busy-script watchdog fires at
+// `busy-reply-threshold` — so a loop written to stop after 300ms of TIME measured 5033ms here, i.e.
+// exactly the overrun it was meant to prevent. The check cannot come from inside the script.
+//
+// So it comes from outside: time a small probe EVAL against THIS server once per process, and size
+// the real stall from the measured rate. That makes the stall a DURATION on every host.
+constexpr auto      kStallTarget     = 400ms;      ///< 8x the 50ms deadline, 12x under the 5s threshold
+constexpr long long kProbeIterations = 20000000LL; ///< 2e7 — ~70ms here, still sub-second on a 10x slower box
+
+inline std::string
+busy_loop_script(long long const iterations) {
+    return "local x=0 for i=1," + std::to_string(iterations) + " do x=x+1 end return x";
+}
+
+/// Iterations that take ~`kStallTarget` on the server under test. Measured once, on first use.
+[[nodiscard]] inline long long
+calibrated_stall_iterations() {
+    static const long long value = []() -> long long {
+        // Fallback if the probe cannot run: the smallest count that still beats the deadlines on a
+        // fast host. Erring short only weakens the stall; erring long is what wedges the server.
+        constexpr long long kFallback = 20000000LL;
+
+        // A bare connect, NOT `redis_try_connect` — that helper issues a FLUSHALL, and this runs
+        // in the middle of a test rather than in SetUp.
+        qb::redis::tcp::client probe{qb::io::uri{redis_test_uri()}};
+        if (!qb::io::async::run_sync(probe.connect()))
+            return kFallback; // daemon down — every test here is about to GTEST_SKIP anyway
+
+        const auto start   = std::chrono::steady_clock::now();
+        const auto reply   = qb::io::async::run_sync(probe.command<long long>("EVAL", busy_loop_script(kProbeIterations), "0"));
+        const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
+        probe.disconnect();
+
+        if (!reply.ok() || elapsed.count() <= 0)
+            return kFallback;
+
+        const auto target = std::chrono::duration_cast<std::chrono::microseconds>(kStallTarget);
+        const auto scaled = static_cast<long long>(static_cast<double>(kProbeIterations) * static_cast<double>(target.count())
+                                                   / static_cast<double>(elapsed.count()));
+        // Sanity band around the probe, so a wildly mis-measured probe (a descheduled process, a
+        // clock jump) cannot produce either a no-op stall or a multi-second one.
+        return std::clamp(scaled, kProbeIterations / 8, kProbeIterations * 100);
+    }();
+    return value;
+}
 
 inline std::string
 server_busy_loop_script() {
-    return "local x=0 for i=1," + std::to_string(kStallIterations) + " do x=x+1 end return x";
+    return busy_loop_script(calibrated_stall_iterations());
 }
 
 class ReconnectProtocolModesTest : public ProtocolModesTestBase {};
@@ -316,11 +380,16 @@ TEST_P(ReconnectProtocolModesTest, DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT) {
     });
     ASSERT_TRUE(run_until([&] { return ready; }));
 
+    // Built HERE, not inside the coroutine: the first call calibrates, and calibration drives the
+    // loop through `run_sync`, which `ensure_not_inside_ready_drain()` forbids from inside a
+    // coroutine already running under `run_ready()`.
+    const std::string stall = server_busy_loop_script();
+
     bool done = false, ok = true;
-    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
-        // A long EVAL busy-loop occupies the server for a fixed window; its reply cannot
+    qb::io::async::coro_scheduler().spawn([&, stall]() -> qb::io::async::task<void> {
+        // A long EVAL busy-loop occupies the server for a measured window; its reply cannot
         // return before we disconnect, so the pending command must complete with !ok().
-        auto r = co_await client.command<long long>("EVAL", server_busy_loop_script(), "0");
+        auto r = co_await client.command<long long>("EVAL", stall, "0");
         ok     = r.ok();
         done   = true;
     });
@@ -361,14 +430,18 @@ TEST_P(ReconnectProtocolModesTest, COMMAND_TIMEOUT_DROPS_CONNECTION) {
     client.enable_auto_reconnect(
         qb::redis::RetryPolicy{}.with_initial_delay(50ms).with_max_delay(200ms).with_connect_timeout(2s).with_jitter(false));
 
+    // Built before the spawn (calibration uses run_sync — see the note in test 7). It runs on its
+    // own short-lived client, so the 50ms deadline set above does not apply to the probe.
+    const std::string stall = server_busy_loop_script();
+
     bool        done = false;
     bool        ok   = true;
     std::string err;
-    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
+    qb::io::async::coro_scheduler().spawn([&, stall]() -> qb::io::async::task<void> {
         // A long EVAL busy-loop is not a blocking command, so the 50ms client deadline
         // applies: the server is busy and no reply arrives in time → the connection is
         // dropped and the command times out.
-        auto r = co_await client.command<long long>("EVAL", server_busy_loop_script(), "0");
+        auto r = co_await client.command<long long>("EVAL", stall, "0");
         ok     = r.ok();
         err    = r.error();
         done   = true;
