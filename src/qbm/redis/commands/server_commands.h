@@ -139,18 +139,27 @@ public:
     // =============== Client Management Commands ===============
 
     /**
-     * @brief Kills the client at the specified address
+     * @brief Kills client connections matching the given filters.
      *
-     * @param addr Client address to kill
-     * @param id Client ID to kill
-     * @param type Client type to kill
-     * @param skipme Whether to skip killing the current client
-     * @return status object with the result
+     * @param addr Client address to kill (`ADDR` filter); empty to not filter on address
+     * @param id Client ID to kill (`ID` filter); 0 to not filter on id
+     * @param type Client type to kill (`TYPE` filter); empty to not filter on type
+     * @param skipme Whether to skip killing the current client (`SKIPME` filter)
+     * @return The NUMBER of connections killed.
      * @see https://redis.io/commands/client-kill
+     *
+     * @note Redis has two reply shapes for `CLIENT KILL`: the legacy positional form
+     *       (`CLIENT KILL addr:port`) answers `+OK`, and the filter form
+     *       (`CLIENT KILL ADDR … / ID … / TYPE … / SKIPME …`) answers with an integer count.
+     *       This function always emits the FILTER form — `skipme` defaults to `true`, so even
+     *       `client_kill()` with no arguments sends `SKIPME yes` — so the reply is always an
+     *       integer. It was declared `Reply<status>`, which cannot decode one: every call, on
+     *       every argument combination, failed with "STRING or ERROR required for status".
+     *       Found by qbm/redis/tests/integration/resilience/, which is the first test to call it.
      */
     auto
     client_kill(const std::string &addr = "", long long id = 0, const std::string &type = "", bool skipme = true) {
-        return derived().template make_coro_command<status>(
+        return derived().template make_coro_command<long long>(
             [this, addr, id, type, skipme](auto &&callback) { this->client_kill(std::move(callback), addr, id, type, skipme); });
     }
 
@@ -158,7 +167,7 @@ public:
      * @brief Asynchronous version of client_kill
      *
      * @tparam Func Callback function type
-     * @param func Callback function to handle the result
+     * @param func Callback function to handle the result (the number of connections killed)
      * @param addr Client address to kill
      * @param id Client ID to kill
      * @param type Client type to kill
@@ -167,7 +176,7 @@ public:
      * @see https://redis.io/commands/client-kill
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     client_kill(Func &&func, const std::string &addr = "", long long id = 0, const std::string &type = "", bool skipme = true) {
         std::vector<std::string> args;
         if (!addr.empty()) {
@@ -186,7 +195,7 @@ public:
             args.push_back("SKIPME");
             args.push_back("yes");
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT", "KILL", args);
+        return derived().template command<long long>(std::forward<Func>(func), "CLIENT", "KILL", args);
     }
 
     /**
