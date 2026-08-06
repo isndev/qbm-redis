@@ -12,6 +12,16 @@ Tracks changes on the development branch not yet part of a tagged release. The m
 
 ### Fixed
 
+- **`CMakeLists.txt` had no `cmake_minimum_required()`, and a standalone configure died on an
+  unhelpful error.** CMake reported `No cmake_minimum_required command is present` alongside
+  `Unknown CMake command "qb_status_message"` — which reads like a missing include rather than
+  "wrong entry point". This module is built from the qb-dev superproject, which loads qb's CMake
+  helpers first; an *installed* qb ships none of them (`lib/cmake/qb/` carries only `qbConfig`,
+  `qbConfigVersion`, `qbTargets` and the `Find` modules), so pointing `CMAKE_PREFIX_PATH` at one
+  does not help — the exact mistake the old error invited. There is now a
+  `cmake_minimum_required(VERSION 3.24)` and a guard that names the constraint and points at the
+  superproject root and the `package` preset.
+
 - **`qbm/redis/redis.h:1631` broke any `-Werror` consumer**: `RedisCoroConsumer::on(disconnected &&e)`
   never used `e`, so a consumer building with `-Wall -Wextra -Werror` failed on
   `unused parameter 'e' [-Wunused-parameter]`. Nothing here saw it because CMake puts `-isystem` on an
