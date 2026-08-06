@@ -16,7 +16,9 @@
  * The oracle is a replaced global `operator new` counting bytes during the parse. It is verified
  * live before use (an elided probe allocation would make the budget assertion pass vacuously —
  * that exact trap was hit while writing the equivalent HTTP/1.1 test), and paired with a
- * behavioural check that ordinary aggregates still decode correctly.
+ * behavioural check that ordinary aggregates still decode correctly. The replacement is compiled
+ * out under ThreadSanitizer, where it is an ODR collision with the TSan runtime that broke the
+ * whole lane's link on Linux — see QB_TEST_TSAN_ACTIVE below; the behavioural check still runs.
  *
  * qb - C++ Actor Framework
  * Copyright (C) 2011-2026 isndev. All rights reserved.
@@ -43,6 +45,58 @@ namespace {
 std::atomic<bool>        g_counting{false};
 std::atomic<std::size_t> g_bytes{0};
 
+struct AllocScope {
+    AllocScope() {
+        g_bytes.store(0, std::memory_order_relaxed);
+        g_counting.store(true, std::memory_order_relaxed);
+    }
+    ~AllocScope() {
+        g_counting.store(false, std::memory_order_relaxed);
+    }
+    [[nodiscard]] static std::size_t
+    bytes() {
+        return g_bytes.load(std::memory_order_relaxed);
+    }
+};
+} // namespace
+
+// ---------------------------------------------------------------------------------------------
+// ThreadSanitizer: the allocator replacement below must NOT be compiled.
+//
+// `libclang_rt.tsan_cxx.a(tsan_new_delete.cpp.o)` defines every global `operator new` /
+// `operator delete` form as a STRONG symbol (ASan's equivalents are weak, which is why the
+// `sanitize` preset links, and there the replacement even wins so the counter stays live).
+// Defining them here too is a plain ODR collision the static linker rejects:
+//
+//   ld: multiple definition of `operator new(unsigned long)';
+//       libclang_rt.tsan_cxx-aarch64.a(tsan_new_delete.cpp.o): first defined here
+//
+// That is not local to this test: ninja stops the build, and every qbm-redis test target that
+// had not linked yet reports `(Not Run)` — 38 of them, measured on the first `sanitize-thread`
+// run this repository ever did on Linux. (macOS links because the Apple TSan runtime interposes
+// rather than defining these strongly, so the collision is Linux-only and invisible here. The
+// identical replacement in qbm/http's content-length-preallocation.cpp carries the same guard —
+// it was the one that was reported; this file is its sibling, found by running the lane.)
+//
+// Compiling it out costs the TSan lane nothing it could ever have had: with `tsan_cxx` owning
+// allocation there is no way for a replaced `operator new` to observe anything, so
+// `allocation_counter_is_live()` returns false and the byte-budget cases self-skip exactly as
+// they already do on any toolchain that intercepts first. Keeping the test in the lane keeps the
+// RESP parser under TSan's actual instrumentation, which excluding the binary would forfeit.
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define QB_TEST_TSAN_ACTIVE 1
+#endif
+#endif
+#if defined(__SANITIZE_THREAD__) // GCC spelling
+#define QB_TEST_TSAN_ACTIVE 1
+#endif
+#ifndef QB_TEST_TSAN_ACTIVE
+#define QB_TEST_TSAN_ACTIVE 0
+#endif
+
+#if !QB_TEST_TSAN_ACTIVE
+namespace {
 inline void *
 tracked_alloc_nothrow(std::size_t n) noexcept {
     if (g_counting.load(std::memory_order_relaxed))
@@ -102,21 +156,7 @@ tracked_alloc_aligned(std::size_t n, std::align_val_t a) {
     return p;
 }
 
-struct AllocScope {
-    AllocScope() {
-        g_bytes.store(0, std::memory_order_relaxed);
-        g_counting.store(true, std::memory_order_relaxed);
-    }
-    ~AllocScope() {
-        g_counting.store(false, std::memory_order_relaxed);
-    }
-    [[nodiscard]] static std::size_t
-    bytes() {
-        return g_bytes.load(std::memory_order_relaxed);
-    }
-};
 } // namespace
-
 // The replacement set must be COMPLETE. libstdc++ reaches for `operator new(size_t, nothrow_t)`
 // (std::get_temporary_buffer) and, for over-aligned types, the `align_val_t` overloads. Replacing
 // only the two plain forms left those going to the sanitizer's allocator while the plain
@@ -206,6 +246,7 @@ void
 operator delete[](void *p, std::align_val_t, const std::nothrow_t &) noexcept {
     qb_aligned_free(p);
 }
+#endif // !QB_TEST_TSAN_ACTIVE
 
 namespace {
 
