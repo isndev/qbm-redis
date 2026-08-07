@@ -12,7 +12,7 @@
  * @brief Shared skip-not-fail base for qbm-redis integration (`REQUIRES live`) tests.
  *
  * Integration tests need a live `redis:6379`. This header centralizes the ONE contract
- * the test-suite conventions mandate (docs/tests-audit/_CONVENTIONS.md §4.5):
+ * the test-suite conventions mandate (dev/tests-audit/_CONVENTIONS.md §4.5):
  *
  *   - the endpoint is overridable via the `REDIS_URI` environment variable;
  *   - if the daemon is unreachable the test is `GTEST_SKIP`-ped (never thrown / hard-failed),
