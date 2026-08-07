@@ -376,8 +376,9 @@ if (r.result().has_value()) {
 }
 ```
 
-> The callback overload returns the client immediately without issuing a command when `keys` is empty (
-`list_commands.h:682`), so the callback never fires. Guard against an empty key list yourself.
+> An empty `keys` sends no command, but the callback still fires — with `ok() == false` and a reason in
+`error()` (`list_commands.h:699`). It used to return unfired; on the coroutine form that parked the awaiter
+forever. Branch on `ok()`, not on whether your callback ran.
 
 ## Positional search
 
@@ -416,8 +417,8 @@ if (r.ok() && !r.result().empty())
 auto all = co_await redis.lpos("queue", "job2", std::nullopt, 0, 1000);
 ```
 
-> Like `lmpop`, the callback overload no-ops (returns the client without invoking the callback) when `key` or `element`
-> is empty (`list_commands.h:838-840`).
+> Like `lmpop`, an empty `key` or `element` sends no command and resolves with `ok() == false`
+> (`list_commands.h:860`) — the callback and the awaiter both run.
 
 ## Blocking operations
 
@@ -500,7 +501,8 @@ template <typename Func> Derived &blmpop(Func &&, const std::vector<std::string>
 auto r = co_await redis.blmpop({"q1", "q2"}, qb::redis::ListPosition::LEFT, 5, 2);
 ```
 
-> The `blmpop` callback overload also no-ops when `keys` is empty (`list_commands.h:724`).
+> The `blmpop` callback overload behaves identically on an empty `keys` — no command, but a resolved
+> failed reply; the coroutine form forwards to it (`list_commands.h:724`).
 
 ### `brpoplpush` (deprecated)
 
@@ -527,9 +529,9 @@ template <typename Func> Derived &brpoplpush(Func &&, const std::string &source,
 - **Blocking timeouts are protocol seconds, not `qb::duration`.** Pass `long long` seconds or `std::chrono::seconds`; a
   `0` timeout blocks forever. The framework's connect/command timeouts are a separate, `qb::duration`-typed concern
   documented in [Connection](./connection.md).
-- **Some callback overloads silently no-op.** `lmpop`, `blmpop`, and `lpos` return the client without issuing a
-  command (so the callback never fires) when a required argument is empty (`list_commands.h:682`, `:724`, `:838`).
-  Validate inputs before relying on the callback.
+- **No callback silently no-ops.** `lmpop`, `blmpop` and `lpos` used to return unfired on an empty required
+  argument — a hang on the coroutine form. They now send no command and resolve with `ok() == false`
+  (`list_commands.h:699`, `:742`, `:860`), like every other guard in this module.
 - **`lpos` has no scalar overload.** It always returns `std::vector<long long>` because it always sends `COUNT` on the
   wire (`list_commands.h:870-871`). For a single position, read `result().front()` after checking the vector is non-empty.
 - **`brpoplpush` is deprecated.** New code should use `blmove`.

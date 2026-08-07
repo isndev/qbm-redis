@@ -26,9 +26,10 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    re-establish subscriptions either.
 5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
    `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
-   resolve with `ok() == false` and a reason in `error()`. Two shapes still no-op silently and
-   must be guarded by the caller: the callback *cursor* forms of `hscan` / `zscan` on an empty
-   key, and `lpos` on an empty key or element.
+   resolve with `ok() == false` and a reason in `error()`. **There is no silent no-op left** —
+   every guard resolves the callback/awaiter, including the callback cursor forms of
+   `hscan` / `zscan` and `lpos`, which used to `return` unfired. Do not pre-guard for it, and
+   do not read "callback did not fire" as the empty-argument signal: check `ok()`.
 6. **Units are Redis's, not `std::chrono`'s, at the command boundary.** `EXPIRE`/`SETEX`/`TTL`
    are seconds and `PEXPIRE`/`PSETEX`/`PTTL` are milliseconds, natively; the chrono overloads
    are ergonomic wrappers that forward `.count()`, and a raw `long long` bypasses the

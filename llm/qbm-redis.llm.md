@@ -42,9 +42,10 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    re-establish subscriptions either.
 5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
    `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
-   resolve with `ok() == false` and a reason in `error()`. Two shapes still no-op silently and
-   must be guarded by the caller: the callback *cursor* forms of `hscan` / `zscan` on an empty
-   key, and `lpos` on an empty key or element.
+   resolve with `ok() == false` and a reason in `error()`. **There is no silent no-op left** —
+   every guard resolves the callback/awaiter, including the callback cursor forms of
+   `hscan` / `zscan` and `lpos`, which used to `return` unfired. Do not pre-guard for it, and
+   do not read "callback did not fire" as the empty-argument signal: check `ok()`.
 6. **Units are Redis's, not `std::chrono`'s, at the command boundary.** `EXPIRE`/`SETEX`/`TTL`
    are seconds and `PEXPIRE`/`PSETEX`/`PTTL` are milliseconds, natively; the chrono overloads
    are ergonomic wrappers that forward `.count()`, and a raw `long long` bypasses the
@@ -317,10 +318,10 @@ if (!r.ok()) {
   `script exists`, …) sends no frame and resolves the callback/awaiter with
   `ok()==false` (reason in `error()`) via `fail_client` — uniform, never a silent
   no-op or a malformed command.
-- **A few callbacks still silently no-op.** The callback **cursor** forms
-  `hscan`/`zscan` on an empty key, and `lpos` on an empty key/element, still
-  `return` without issuing a command or firing the callback — guard the args
-  yourself.
+- **No callback silently no-ops any more.** The callback **cursor** forms
+  `hscan`/`zscan` on an empty key, and `lpos` on an empty key/element, used to
+  `return` without firing the callback — which parked the coroutine form forever.
+  They now resolve like every other guard, with `ok()==false`.
 - **Multi-stream `xread`/`xreadgroup` throw synchronously** (`std::invalid_argument`
   from the call body) when `keys` is empty or `keys.size() != ids.size()` — catch
   it; it is not delivered as a `Reply` error.
