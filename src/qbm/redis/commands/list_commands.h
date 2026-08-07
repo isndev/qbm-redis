@@ -689,7 +689,7 @@ public:
      * @param position Where to pop from (LEFT or RIGHT).
      * @param count Number of elements to pop (optional, default 1).
      * @return Reference to the derived class.
-     * @note If @p keys is empty the command is not issued and the callback is not invoked.
+     * @note If @p keys is empty no command is issued, but the callback (and the awaiter) is still resolved with a failed Reply -- never left unfired.
      * @see https://redis.io/commands/lmpop
      */
     template <typename Func>
@@ -732,7 +732,7 @@ public:
      * @param timeout Timeout in seconds. 0 means block forever.
      * @param count Number of elements to pop (optional, default 1).
      * @return Reference to the derived class.
-     * @note If @p keys is empty the command is not issued and the callback is not invoked.
+     * @note If @p keys is empty no command is issued, but the callback (and the awaiter) is still resolved with a failed Reply -- never left unfired.
      * @see https://redis.io/commands/blmpop
      */
     template <typename Func>

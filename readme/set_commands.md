@@ -459,14 +459,14 @@ redis.sscan([](qb::redis::Reply<qb::redis::scan<>> &&all) {
 
 ## Pitfalls
 
-- **Empty arguments silently no-op the callback form.** The callback overloads return `Derived&` *without issuing a
-  command* — so your callback never fires — when required arguments are empty: `sadd` / `srem` / `smismember` when `key`
-  is empty or no members are passed; `sismember` when `key` or `member` is empty; `smove` when any of `source` /
-  `destination` / `member` is empty; `scard` / `smembers` / `spop` / `srandmember` / `sscan` when `key` is empty;
-  `sdiff` / `sinter` / `sunion` and the `*store` / `sintercard` variants when the key list is empty (and the `*store`
-  ones when `destination` is empty); `spop(key, count)` when `count < 1`. Do not assume your callback always runs —
-  validate inputs
-  first. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:153, 183, 217, 251, 285, 319, 358, 392, 431, 462, 497, 528, 561, 593, 627, 665, 704, 726, 761, 798 -->
+- **Empty arguments fail the reply — they never leave it unfired.** The callback overloads send no command when a
+  required argument is empty — `sadd` / `srem` / `smismember` with an empty `key` or no members; `sismember` with an
+  empty `key` or `member`; `smove` with any of `source` / `destination` / `member` empty; `scard` / `smembers` /
+  `spop` / `srandmember` / `sscan` with an empty `key`; `sdiff` / `sinter` / `sunion` and the `*store` / `sintercard`
+  variants with an empty key list (and the `*store` ones with an empty `destination`); `spop(key, count)` with
+  `count < 1` — but they still resolve the callback (and the awaiter) with `ok() == false` and a reason in `error()`.
+  Branch on `ok()`; do not treat "my callback did not run" as the
+  signal. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:153, 183, 217, 251, 285, 319, 358, 392, 431, 462, 497, 528, 561, 593, 627, 665, 704, 726, 761, 798 -->
 
 - **`smembers` returns a set, the algebra returns vectors.** `smembers` yields `qb::unordered_set<std::string>` (no
   index access, unordered); `sdiff` / `sinter` / `sunion` yield `std::vector<std::string>`. Pick the right container in
