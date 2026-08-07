@@ -15,6 +15,44 @@ do not restate them here.
 
 ---
 
+<!-- llms-txt:lead -->
+> qbm-redis is the Redis client of the qb C++20 actor framework: a non-blocking client that
+> speaks RESP2 and RESP3 directly over one qb-io TCP or TLS session, with **no hiredis** and no
+> external Redis dependency — the full command surface, pub/sub, transactions, scripting,
+> streams and cluster operations, with the same method names for `co_await` and callback
+> styles. A **compiled** library — link `qbm::redis` — behind one umbrella header,
+> `<qbm/redis/redis.h>`.
+
+Six rules decide whether generated qbm-redis code is correct; everything else is detail.
+
+1. **The callback is the FIRST argument, not the last.** `redis.get(cb, "k")`, never
+   `redis.get("k", cb)`. The callback overloads are SFINAE-gated on
+   `std::is_invocable_v<Func, Reply<T>&&>`, so a wrong callback signature silently fails to
+   select the overload instead of erroring where you wrote it.
+2. **The client is single-threaded.** One I/O thread, one in-flight accessor; the reply queue
+   and outbound pipe are unsynchronized. `command()` registers the reply handler *before*
+   sending bytes, so pipelining is FIFO-safe and replies match commands positionally.
+3. **`set_command_timeout` is a connection watchdog, not a per-command deadline.** On expiry
+   it drops the whole connection, because a FIFO cannot fail one command mid-queue; pending
+   commands fail with "command timed out". Blocking commands (`BLPOP`, `BRPOP`, `BLMOVE`,
+   `BLMPOP`, `BRPOPLPUSH`, `BZPOPMIN`, `BZPOPMAX`, `BZMPOP`, `WAIT`, `WAITAOF`, `XREAD`,
+   `XREADGROUP`) suspend that deadline while in flight.
+4. **Auto-reconnect replays nothing.** On a disconnect every pending reply fails and predicted
+   subscription state clears; re-subscribe and re-issue yourself. `reset()` does not
+   re-establish subscriptions either.
+5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
+   `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
+   resolve with `ok() == false` and a reason in `error()`. Two shapes still no-op silently and
+   must be guarded by the caller: the callback *cursor* forms of `hscan` / `zscan` on an empty
+   key, and `lpos` on an empty key or element.
+6. **Units are Redis's, not `std::chrono`'s, at the command boundary.** `EXPIRE`/`SETEX`/`TTL`
+   are seconds and `PEXPIRE`/`PSETEX`/`PTTL` are milliseconds, natively; the chrono overloads
+   are ergonomic wrappers that forward `.count()`, and a raw `long long` bypasses the
+   type-level unit check. Only `connect()` timeouts, `RetryPolicy` delays and
+   `set_command_timeout` are `qb::duration`. Reply containers are qb-core types, not `std::`:
+   `smembers` yields `qb::unordered_set<std::string>`, `hgetall` yields `qb::unordered_map<…>`.
+<!-- /llms-txt:lead -->
+
 ## 1. Mental model
 
 - **One client = one connection.** `qb::redis::tcp::client` owns a single
