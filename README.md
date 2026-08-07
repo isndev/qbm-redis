@@ -1,11 +1,11 @@
-# qbm-redis — asynchronous Redis client
+# qbm-redis — asynchronous Redis client for the qb Actor Framework (QBAF)
 
 > **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
 > supported)
 
-A non-blocking Redis client built on qb-io: connect, run the full command surface, drive pub/sub, transactions,
-scripting, streams, and cluster operations — with the same method names for `co_await` and callback styles, over a
-native RESP2/RESP3 parser with no `hiredis` dependency.
+A non-blocking Redis client for the qb Actor Framework (QBAF), built on qb-io: connect, run the full command surface,
+drive pub/sub, transactions, scripting, streams, and cluster operations — with the same method names for `co_await`
+and callback styles, over a native RESP2/RESP3 parser with no `hiredis` dependency.
 
 **Prerequisites:** a working qb framework checkout (see [qb/README.md](https://github.com/isndev/qb/blob/main/README.md)) and a reachable Redis
 server — **See also:** [readme/README.md](./readme/README.md) (technical
@@ -91,7 +91,7 @@ Linking `qbm::redis` is the supported way to get the `<qbm/redis/...>` headers �
 by `qb_register_module`, so you do not add it by hand. Because the target propagates `cxx_std_${QB_CXX_STANDARD}` as a
 `PUBLIC` usage requirement, linking it forces your target to the framework C++ standard — **C++20 by default, C++23
 if `QB_CXX_STANDARD=23`**. The coroutine API (`co_await`) needs at least C++20.
-<!-- src: docs-overhaul/qbm-redis/FACTBOOK.md (redis-build invariants), qb/cmake/qbConfig.cmake:140 -->
+<!-- src: qb/cmake/qbConfig.cmake:140 -->
 
 Two build-time conditions are worth knowing:
 
@@ -303,7 +303,7 @@ arguments keep native units by design** and are exposed through `std::chrono`-un
 > unit lives in the method name. Do not push these onto `qb::duration`. (The retired tokens `qb::Timestamp`,
 `qb::Duration`, `qb::TimePoint`, `to_timestamp(`, and `to_time_point(` were removed from the framework and must not
 > appear in your code.)
-<!-- src: docs-overhaul/qbm-redis/FACTBOOK.md (redis-keys-strings UNIT BOUNDARY invariants), key_commands.h:241/416/288/464, string_commands.h:537/730 -->
+<!-- src: key_commands.h:241/416/288/464, string_commands.h:537/730 -->
 
 ---
 

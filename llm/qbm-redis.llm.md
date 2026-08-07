@@ -16,11 +16,11 @@ do not restate them here.
 ---
 
 <!-- llms-txt:lead -->
-> qbm-redis is the Redis client of the qb C++20 actor framework: a non-blocking client that
-> speaks RESP2 and RESP3 directly over one qb-io TCP or TLS session, with **no hiredis** and no
-> external Redis dependency — the full command surface, pub/sub, transactions, scripting,
-> streams and cluster operations, with the same method names for `co_await` and callback
-> styles. A **compiled** library — link `qbm::redis` — behind one umbrella header,
+> qbm-redis is the Redis client of the qb Actor Framework (QBAF), C++20-first: a non-blocking
+> client that speaks RESP2 and RESP3 directly over one qb-io TCP or TLS session, with **no
+> hiredis** and no external Redis dependency — the full command surface, pub/sub, transactions,
+> scripting, streams and cluster operations, with the same method names for `co_await` and
+> callback styles. A **compiled** library — link `qbm::redis` — behind one umbrella header,
 > `<qbm/redis/redis.h>`.
 
 Six rules decide whether generated qbm-redis code is correct; everything else is detail.
