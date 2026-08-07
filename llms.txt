@@ -1,0 +1,81 @@
+# qbm-redis — asynchronous Redis client
+
+> qbm-redis is the Redis client of the qb C++20 actor framework: a non-blocking client that
+> speaks RESP2 and RESP3 directly over one qb-io TCP or TLS session, with **no hiredis** and no
+> external Redis dependency — the full command surface, pub/sub, transactions, scripting,
+> streams and cluster operations, with the same method names for `co_await` and callback
+> styles. A **compiled** library — link `qbm::redis` — behind one umbrella header,
+> `<qbm/redis/redis.h>`.
+
+Six rules decide whether generated qbm-redis code is correct; everything else is detail.
+
+1. **The callback is the FIRST argument, not the last.** `redis.get(cb, "k")`, never
+   `redis.get("k", cb)`. The callback overloads are SFINAE-gated on
+   `std::is_invocable_v<Func, Reply<T>&&>`, so a wrong callback signature silently fails to
+   select the overload instead of erroring where you wrote it.
+2. **The client is single-threaded.** One I/O thread, one in-flight accessor; the reply queue
+   and outbound pipe are unsynchronized. `command()` registers the reply handler *before*
+   sending bytes, so pipelining is FIFO-safe and replies match commands positionally.
+3. **`set_command_timeout` is a connection watchdog, not a per-command deadline.** On expiry
+   it drops the whole connection, because a FIFO cannot fail one command mid-queue; pending
+   commands fail with "command timed out". Blocking commands (`BLPOP`, `BRPOP`, `BLMOVE`,
+   `BLMPOP`, `BRPOPLPUSH`, `BZPOPMIN`, `BZPOPMAX`, `BZMPOP`, `WAIT`, `WAITAOF`, `XREAD`,
+   `XREADGROUP`) suspend that deadline while in flight.
+4. **Auto-reconnect replays nothing.** On a disconnect every pending reply fails and predicted
+   subscription state clears; re-subscribe and re-issue yourself. `reset()` does not
+   re-establish subscriptions either.
+5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
+   `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
+   resolve with `ok() == false` and a reason in `error()`. Two shapes still no-op silently and
+   must be guarded by the caller: the callback *cursor* forms of `hscan` / `zscan` on an empty
+   key, and `lpos` on an empty key or element.
+6. **Units are Redis's, not `std::chrono`'s, at the command boundary.** `EXPIRE`/`SETEX`/`TTL`
+   are seconds and `PEXPIRE`/`PSETEX`/`PTTL` are milliseconds, natively; the chrono overloads
+   are ergonomic wrappers that forward `.count()`, and a raw `long long` bypasses the
+   type-level unit check. Only `connect()` timeouts, `RetryPolicy` delays and
+   `set_command_timeout` are `qb::duration`. Reply containers are qb-core types, not `std::`:
+   `smembers` yields `qb::unordered_set<std::string>`, `hgetall` yields `qb::unordered_map<…>`.
+
+## Agent reference
+
+- [llms-full.txt](https://raw.githubusercontent.com/isndev/qbm-redis/main/llms-full.txt): both agent docs above, concatenated — one fetch, the whole machine-facing surface of this repo.
+- [qbm-redis — Concepts for Writing Correct Code](https://raw.githubusercontent.com/isndev/qbm-redis/main/llm/qbm-redis.llm.md): Asynchronous Redis client for the qb C++ actor framework.
+- [qbm-redis — Deterministic API Reference](https://raw.githubusercontent.com/isndev/qbm-redis/main/llm/qbm-redis.llm.api.md): Asynchronous Redis client for the qb C++ Actor Framework.
+
+## Project
+
+- [qbm-redis — asynchronous Redis client](https://raw.githubusercontent.com/isndev/qbm-redis/main/README.md): A non-blocking Redis client built on qb-io: connect, run the full command surface, drive pub/sub, transactions, scripting, streams, and cluster operations — with the same method names for co_await and callback styles, over a native RESP2/RE
+
+## Optional
+
+- [qbm-redis documentation map](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/README.md): This is the table of contents for the qbm-redis narrative documentation: an asynchronous Redis client built on the qb-io event loop, covering connections, the full command surface, pipelining, pub/sub, transactions, scripting, clustering, a
+- [ACL commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/acl_commands.md): Reference for the Access Control List command group — the ACL subcommands that create, modify, inspect, and delete Redis users, list command categories, audit denied commands, and generate passwords.
+- [Bitmap commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/bitmap_commands.md): Reference for the bitmap command group — BITCOUNT, BITFIELD, BITFIELD_RO, BITOP, BITPOS, GETBIT, and SETBIT — which address an ordinary Redis string as an array of bits.
+- [Cluster commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/cluster_commands.md): Reference for the Redis Cluster command group — topology inspection (CLUSTER INFO/NODES/SLOTS/SHARDS), node membership (MEET/FORGET/RESET/FAILOVER/REPLICATE), slot administration (ADDSLOTS/DELSLOTS/SETSLOT/...), and the per-connection redir
+- [Command API model](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/commands_overview.md): How qbm-redis command methods map to RESP, how replies are typed and decoded into qb::redis::Reply<T>, and how to choose between the coroutine (co_await) and callback forms that every command exposes.
+- [Connecting to Redis](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/connection.md): How qb::redis::tcp::client (and, under QB_HAS_SSL, qb::redis::tcp::ssl::client) parses a connection URI, opens an asynchronous socket, optionally authenticates and upgrades to TLS, enforces connect and command deadlines as qb::duration, and
+- [Connection commands reference](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/connection_commands.md): Reference for the connection command group — HELLO, AUTH, ECHO, PING, QUIT, SELECT, SWAPDB, and RESET — exposed by every connected qb::redis client through the connection_commands<Derived> CRTP mixin.
+- [Error handling](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/error_handling.md): How qbm-redis reports failures: the RESP reply model, the Reply<T> error result you check instead of catching, where the few exceptions live (the parse seam), and the two protocol-level containment mechanisms — the noexcept onMessage bounda
+- [Function commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/function_commands.md): Reference for the Redis Functions command group — FUNCTION LOAD/LIST/DELETE/FLUSH/KILL/STATS/DUMP/ RESTORE/HELP plus FCALL and FCALL_RO — which manage named, persistent server-side Lua libraries and invoke the functions they register.
+- [Geospatial commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/geo_commands.md): Reference for the geospatial command group — GEOADD, GEODIST, GEOHASH, GEOPOS, GEORADIUS, GEORADIUSBYMEMBER, and GEOSEARCH — which store longitude/latitude points in a sorted set and query them by distance.
+- [Hash commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/hash_commands.md): Reference for the Redis hash command group exposed by qb::redis::hash_commands<Derived> — field/value maps stored under one key, each command listed with its exact signature, arguments, reply type, and a minimal coroutine and callback snipp
+- [HyperLogLog commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/hyperloglog_commands.md): Reference for the HyperLogLog command group — PFADD, PFCOUNT, and PFMERGE — which estimate the cardinality of very large sets in a small, fixed amount of memory.
+- [Key commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/key_commands.md): Reference for the generic key-management command group — existence, deletion, expiry, type inspection, renaming, scanning, dumping/restoring, copying, sorting, and replication waits — each with its exact signature, reply type, and a minimal
+- [List commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/list_commands.md): Reference for the Redis List command group — head/tail pushes and pops, indexed access, range and trim operations, element moves between lists, blocking variants, and positional search — each with its exact signature, reply type, and a mini
+- [Module commands reference](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/module_commands.md): Reference for the module command group — MODULE LIST, MODULE LOAD, MODULE UNLOAD, and MODULE HELP — exposed by every connected qb::redis client through the module_commands<Derived> CRTP mixin.
+- [Pipelining and await()](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/pipeline_and_await.md): How the client pipelines callback commands over a single connection, how await() drains pending replies without blocking the kernel, and how the qb::redis::tcp::pipeline helper wraps the same mechanism.
+- [Publish commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/publish_commands.md): Reference for the qb::redis::publish_commands group: a single command, PUBLISH, which fans a message out to every client currently subscribed to a channel and returns how many received it, in both coroutine and callback form.
+- [Scripting commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/scripting_commands.md): Reference for the server-side Lua scripting command group — EVAL, EVALSHA, their read-only variants EVAL_RO/ EVALSHA_RO, and the SCRIPT LOAD/EXISTS/FLUSH/KILL/DEBUG cache-management subcommands — which run a Lua program atomically inside th
+- [Server administration commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/server_commands.md): Reference for the server administration command group — the CLIENT, CONFIG, COMMAND, DEBUG, MEMORY, LATENCY, SLOWLOG, MONITOR, persistence (SAVE/BGSAVE/BGREWRITEAOF), database (DBSIZE/FLUSHDB/FLUSHALL), replication (SLAVEOF/SYNC/PSYNC/FAILO
+- [Set commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/set_commands.md): Reference for the Redis set command group exposed by qb::redis::set_commands<Derived> — unordered collections of unique strings, with each command listed by its exact signature, arguments, reply type, and a minimal coroutine and callback sn
+- [Sorted set commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/sorted_set_commands.md): Reference for the Redis sorted-set (ZSET) command group exposed by qb::redis::sorted_set_commands<Derived> — each command listed with its exact signature, arguments, reply type, and a minimal coroutine and callback snippet.
+- [Stream commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/stream_commands.md): Reference for the Redis Streams command group — appending and trimming entries, range scans, blocking reads, consumer groups, claiming pending messages, and stream introspection — each with its exact signature, reply type, and a minimal co_
+- [String commands](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/string_commands.md): Reference for the qb::redis::string_commands group: the SET/GET families, atomic counters, multi-key reads and writes, range and length operations, and the expiry-aware variants, each in both coroutine and callback form.
+- [Pub/Sub subscriptions](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/subscription_commands.md): How to subscribe to Redis channels and patterns with the dedicated consumers — qb::redis::tcp::cb_consumer (callback delivery) and qb::redis::tcp::co_consumer (coroutine receive() delivery) — and how the subscribe / unsubscribe / psubscribe
+- [Transaction commands (MULTI/EXEC)](https://raw.githubusercontent.com/isndev/qbm-redis/main/readme/transaction_commands.md): Reference for the transaction command group — MULTI, EXEC, DISCARD, WATCH, and UNWATCH — together with the client-side is_in_multi() hint that tracks whether a transaction is open.
+- [Changelog](https://raw.githubusercontent.com/isndev/qbm-redis/main/CHANGELOG.md): All notable changes to the qbm-redis module are documented here.
+- [Contributing to qbm-redis](https://raw.githubusercontent.com/isndev/qbm-redis/main/CONTRIBUTING.md): qbm-redis is a module of the qb actor framework.
+- [Security policy](https://raw.githubusercontent.com/isndev/qbm-redis/main/SECURITY.md): qbm-redis is a module of the qb actor framework.
+- [QB Redis Module - Roadmap](https://raw.githubusercontent.com/isndev/qbm-redis/main/ROADMAP.md): Ce roadmap prend en compte l'évolution majeure du framework QB :
+
+<!-- generated by scripts/gen-llms-txt.py from llm/ + the files in this repo; run `python3 scripts/gen-llms-txt.py --write` after editing llm/ -->
