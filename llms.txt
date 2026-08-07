@@ -1,10 +1,10 @@
-# qbm-redis — asynchronous Redis client
+# qbm-redis — asynchronous Redis client for the qb Actor Framework (QBAF)
 
-> qbm-redis is the Redis client of the qb C++20 actor framework: a non-blocking client that
-> speaks RESP2 and RESP3 directly over one qb-io TCP or TLS session, with **no hiredis** and no
-> external Redis dependency — the full command surface, pub/sub, transactions, scripting,
-> streams and cluster operations, with the same method names for `co_await` and callback
-> styles. A **compiled** library — link `qbm::redis` — behind one umbrella header,
+> qbm-redis is the Redis client of the qb Actor Framework (QBAF), C++20-first: a non-blocking
+> client that speaks RESP2 and RESP3 directly over one qb-io TCP or TLS session, with **no
+> hiredis** and no external Redis dependency — the full command surface, pub/sub, transactions,
+> scripting, streams and cluster operations, with the same method names for `co_await` and
+> callback styles. A **compiled** library — link `qbm::redis` — behind one umbrella header,
 > `<qbm/redis/redis.h>`.
 
 Six rules decide whether generated qbm-redis code is correct; everything else is detail.
@@ -45,7 +45,7 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
 
 ## Project
 
-- [qbm-redis — asynchronous Redis client](https://raw.githubusercontent.com/isndev/qbm-redis/main/README.md): A non-blocking Redis client built on qb-io: connect, run the full command surface, drive pub/sub, transactions, scripting, streams, and cluster operations — with the same method names for co_await and callback styles, over a native RESP2/RE
+- [qbm-redis — asynchronous Redis client for the qb Actor Framework (QBAF)](https://raw.githubusercontent.com/isndev/qbm-redis/main/README.md): A non-blocking Redis client for the qb Actor Framework (QBAF), built on qb-io: connect, run the full command surface, drive pub/sub, transactions, scripting, streams, and cluster operations — with the same method names for co_await and call
 
 ## Optional
 
