@@ -277,12 +277,13 @@ The parser enforces hard caps to bound memory against a hostile or buggy peer. E
 |----------------------------------|----------------------------------------|--------------------|
 | Aggregate nesting depth          | 64 (`ParserConfig::max_nesting_depth`) | `NESTING_TOO_DEEP` |
 | Bulk / verbatim / error payload  | 512 MB (`ParserConfig::max_bulk_size`) | `BUFFER_OVERFLOW`  |
-| Array / set / push element count | 1,000,000 (hardcoded)                  | `BUFFER_OVERFLOW`  |
-| Map / attribute pair count       | 500,000 (hardcoded)                    | `BUFFER_OVERFLOW`  |
+| Array / set / push element count | 1,000,000 (`ParserConfig::max_array_size`)     | `BUFFER_OVERFLOW`  |
+| Map / attribute pair count       | 500,000 (`max_array_size / 2`)                 | `BUFFER_OVERFLOW`  |
 
-Note that the array/set/push and map/attribute caps are hardcoded literals in the parse functions;
-`ParserConfig::max_array_size` is declared but not read, so tuning it has no effect. The depth and bulk-size limits are
-honored from `ParserConfig`.
+All four limits are honored from `ParserConfig` — none is a hardcoded literal. `max_array_size`
+bounds the element count of an array, set or push directly, and the map/attribute cap is derived
+from it as `max_array_size / 2`, because *N* pairs are 2*N* elements: the two rows are one knob, not
+two. Lowering `max_array_size` therefore tightens all four aggregate caps together.
 
 ### Server-side reply types are a separate, non-throwing surface
 
