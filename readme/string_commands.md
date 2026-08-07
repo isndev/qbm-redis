@@ -102,7 +102,7 @@ substitute `qb::duration` for the TTL arguments here. (The retired tokens `qb::T
 conditional-set flag.
 
 ```cpp
-// qb::redis::UpdateType { EXIST, NOT_EXIST, ALWAYS };  // types.h:48
+// qb::redis::UpdateType { EXIST, NOT_EXIST, ALWAYS };  // types.h:49
 auto set(const std::string &key, const std::string &val,
          UpdateType type = UpdateType::ALWAYS);                          // -> Reply<status>
 auto set(const std::string &key, const std::string &val, long long ttl_ms,
