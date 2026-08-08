@@ -55,6 +55,17 @@ Tracks changes on the development branch not yet part of a tagged release. The m
 
 ### Changed
 
+- **BREAKING — `client_kill()` now replies `Reply<long long>`, was `Reply<status>`.** `CLIENT KILL`
+  answers with an *integer count of connections killed* in every form this wrapper can send: called
+  with no arguments it sends `SKIPME yes`, so the filter form — which is the integer-replying one —
+  is the only form reachable. Typing it as `status` mis-decoded that reply. The coroutine overload
+  changed at `src/qbm/redis/commands/server_commands.h:162`
+  (`make_coro_command<status>` → `make_coro_command<long long>`) and the callback overload's SFINAE
+  guard moved with it, so **an existing caller does not get a converted value — it gets no matching
+  function, a hard compile error.** Migrate by changing the awaited/handled type:
+  `auto n = co_await redis.client_kill(addr);` now yields a count, not a status. Found by
+  `tests/integration/resilience/`, the first test to call it.
+
 - **Logging call sites use qb's prefixed `QB_LOG_*` macros** (28 sites). qb 3.0.0 renamed
   `LOG_DEBUG` / `LOG_VERB` / `LOG_INFO` / `LOG_WARN` / `LOG_CRIT` to `QB_LOG_*` because the
   unprefixed spellings — three of which are also POSIX `<syslog.h>` names — reached every consumer
@@ -76,7 +87,7 @@ Tracks changes on the development branch not yet part of a tagged release. The m
   content change, so `git blame` and every line-numbered citation survive intact. `commands/` and `parser/` moved with the root headers; nothing was renamed inside them, so
   `<qbm/redis/commands/string_commands.h>` is the old `<redis/commands/string_commands.h>` with one
   prefix changed.
-  `tests/`, `readme/`, `scripts/` and `cmake/` live BESIDE `src/`, never inside it, which is what
+  `tests/`, `readme/` and `scripts/` live BESIDE `src/`, never inside it, which is what
   makes a stray `#include <tests/fixture.h>` impossible rather than merely unlikely.
   The test suite now includes the shipped spelling instead of resolving `"../redis.h"` by string
   concatenation onto a `-I <mod>/tests` flag.
@@ -92,7 +103,7 @@ Tracks changes on the development branch not yet part of a tagged release. The m
   out alone, as it is in its own CI — and cross-checked against `QB_FRAMEWORK_VERSION` whenever a qb
   tree is reachable. A version it cannot determine is a hard stop, never a skip.
 
-## [2.6.0] - 2026-06-29
+## [2.6.0] - 2026-08-02
 
 Aligned with the qb 2.6.0 framework release.
 
