@@ -469,7 +469,7 @@ do {
 <!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:325-335 -->
 
 > The callback cursor form short-circuits and returns `derived()` without issuing a command when `key` is empty (
-`hash_commands.h:551`).
+`hash_commands.h:574-581`).
 
 #### Auto-iterating form (callback-only)
 

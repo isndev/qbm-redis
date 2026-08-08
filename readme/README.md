@@ -60,7 +60,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
 ## TLS and time
 
 - **TLS** — there is no redis-specific SSL option. Transport security follows the framework-wide `QB_HAS_SSL` (derived
-  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:1628-1637`); with it
+  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:1705-1712`); with it
   off, the build emits a status note and only cleartext TCP is available. For `rediss://`, certificate and hostname
   verification is on by default; `set_verify_peer(false)` disables it and must be set before `connect()`.
 - **Time — framework side.** Connect and command timeouts and the `RetryPolicy` delays are `qb::duration`. Defaults:
@@ -77,8 +77,8 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
   | Milliseconds | `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX` (`PX`), `WAIT`, `RESTORE` TTL, `MIGRATE` | `std::chrono::milliseconds` (or the raw `long long` overload) |
 
   So `expire(key, 60s)` sets 60 seconds and `pexpire(key, 60ms)` sets 60 milliseconds (`key_commands.h:241,416`;
-  `string_commands.h:537,730,896`). Reply TTL values (`ttl`, `pttl`, `expiretime`, `pexpiretime`) are plain integers —
-  the unit lives in the method name, not a wrapped type (`key_commands.h:634,446,787,808`). Stream blocking and
+  `string_commands.h:498,676,896`). Reply TTL values (`ttl`, `pttl`, `expiretime`, `pexpiretime`) are plain integers —
+  the unit lives in the method name, not a wrapped type (`key_commands.h:655,459,812,833`). Stream blocking and
   idle-time arguments (`XREAD`/`XREADGROUP` `block`, `XCLAIM`/`XAUTOCLAIM` `min_idle_time`) are raw `long long`
   milliseconds with no chrono overload (`stream_commands.h:388,414,849`). Blocking-list timeouts (`BLPOP`,
   `BLMOVE`, ...) are seconds.

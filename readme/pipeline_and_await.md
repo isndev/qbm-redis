@@ -116,7 +116,7 @@ redis.await();
   socket.
 - It uses `listener::current.run(EVRUN_NOWAIT)`, **not** `qb::io::async::run()`. That distinction is deliberate:
   `async::run` rejects being called from inside a coroutine body, but a non-blocking drain is safe there, so a coroutine
-  may still call `await()` on a second client (`redis.h:980-984`).
+  may still call `await()` on a second client (`redis.h:1043-1047`).
 - On **disconnect**, the queue is failed: every pending handler runs with `ok() == false` and
   `error() == "disconnected"` (`reply.h:1229-1231`). If an opt-in command deadline tripped first, the failure reason is
   `"command timed out"` instead (`redis.h:889-901`). See [error_handling.md](./error_handling.md).
@@ -140,12 +140,12 @@ the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`r
 wrapper that holds a reference to a `Redis` client and chains the low-level `command<Ret>(callback, name, args...)` (
 `redis.h:935-948`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
 
-- Construct it with `pipeline pipe{redis}` over an existing client (`redis.h:1060-1061`).
+- Construct it with `pipeline pipe{redis}` over an existing client (`redis.h:1123-1124`).
 - `pipe.command<Ret>(cb, "SET", k, v)` returns `*pipe` for fluent chaining (`redis.h:1143-1146`).
-- For the typed mixin methods (`set`, `get`, …), reach the client with `pipe.client()` (`redis.h:1063-1070`); the wrapper
+- For the typed mixin methods (`set`, `get`, …), reach the client with `pipe.client()` (`redis.h:1126-1133`); the wrapper
   itself only exposes `command<Ret>`.
 - `pipe.flush()` drains by calling `client().await()` — it is **unrelated** to the Redis `FLUSHDB`/`FLUSHALL` commands (
-  `redis.h:1086-1090`).
+  `redis.h:1149-1153`).
 - `pipe.pending_reply_count()` forwards to the client's queue depth (`redis.h:1137-1138`).
 
 ```cpp

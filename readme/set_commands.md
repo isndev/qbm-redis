@@ -64,7 +64,7 @@ convertible to `bool` (explicit). Container payloads use **qb-core** containers,
 <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:132, 167, 200, 233, 268, 301, 340, 374, 410, 445, 478, 511, 543, 576, 609, 644, 684, 744, 780; qbm/redis/src/qbm/redis/types.h:534 -->
 
 > **`smembers` yields a set, not a vector.** The reply payload is `qb::unordered_set<std::string>` (
-`set_commands.h:445`), iterable but unordered with no index access. The `sdiff` / `sinter` / `sunion` family return
+`set_commands.h:478`), iterable but unordered with no index access. The `sdiff` / `sinter` / `sunion` family return
 `std::vector<std::string>` instead. `spop(key, count)` and `srandmember(key, count)` return a *
 *`std::vector<std::string>`** — not a vector of `std::optional`. The single-member `spop(key)` / `srandmember(key)`
 > return `std::optional<std::string>` because the source set may be empty.
