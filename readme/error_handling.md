@@ -255,7 +255,7 @@ single-byte types (`_`, `#`) to be followed by exactly `\r\n`. `expect_crlf()` d
 available" (→ `INCOMPLETE_DATA`, retry) from "two bytes present that are not `\r\n`" (→ `PROTOCOL_ERROR`, fatal).
 Treating a wrong terminator as incomplete would wait forever for bytes that can never make the terminator valid (
 `src/qbm/redis/parser/parser.h:308-319`). The same strictness rejects a negative aggregate length other than the `-1` null marker —
-corrupt input like `%-7\r\n` faults rather than being swallowed as a valid reply (`src/qbm/redis/parser/parser.h:518-527`).
+corrupt input like `%-7\r\n` faults rather than being swallowed as a valid reply (`src/qbm/redis/parser/parser.h:536-545`).
 
 The protocol layer acts on the fault. After `parse_all()`, `getMessageSize()` checks `_parser.has_error()`; if set, it
 calls `not_ok()`, clears the pending queue, and returns `0`, which tears the connection down instead of looping forever

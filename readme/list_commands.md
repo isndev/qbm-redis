@@ -14,7 +14,7 @@ minimal `co_await` and callback snippet.
 ## Summary
 
 The list commands are defined by the `qb::redis::list_commands<Derived>` CRTP mixin (`list_commands.h:36`), which
-`qb::redis::tcp::client` inherits along with every other command group (`redis.h:706`, `redis.h:1618`). You call these
+`qb::redis::tcp::client` inherits along with every other command group (`redis.h:769`, `redis.h:1695`). You call these
 methods directly on a connected client. Each command exists in two forms that share one method name: a **coroutine**
 form you `co_await` to get a `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument
 and returns the client for chaining. The dispatch and the `Reply<T>` decoding contract are covered

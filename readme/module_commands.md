@@ -59,7 +59,7 @@ seconds-versus-milliseconds boundary documented for key-expiry commands does not
 ### Where these methods come from
 
 `module_commands<Derived>` is a header-only CRTP mixin (`module_commands.h:34`). It is one of the bases of
-`qb::redis::detail::Redis<QB_IO_>` (`redis.h:719`), so `qb::redis::tcp::client` and `qb::redis::tcp::ssl::client` expose
+`qb::redis::detail::Redis<QB_IO_>` (`redis.h:782`), so `qb::redis::tcp::client` and `qb::redis::tcp::ssl::client` expose
 these four methods directly. The pub/sub consumers (`tcp::cb_consumer` / `tcp::co_consumer`) do **not** — they inherit
 only `connection_commands` and `subscription_commands`. Each method forwards to the inherited command machinery:
 
