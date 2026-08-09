@@ -170,7 +170,7 @@ template <typename Func>  // Func invocable with Reply<long long>&&
 Derived &getbit(Func &&func, const std::string &key, long long offset);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:207,223 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:222,238 -->
 
 Returns the bit at `offset` (`0` or `1`). Offsets past the end of the string read as `0`.
 
@@ -192,7 +192,7 @@ template <typename Func>  // Func invocable with Reply<long long>&&
 Derived &setbit(Func &&func, const std::string &key, long long offset, bool value);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:240,257 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:255,272 -->
 
 Sets the bit at `offset` to `value` (`true`/`false`) and returns the bit's **previous** value. The string grows to fit
 `offset` if necessary, zero-padding the gap.
@@ -275,7 +275,7 @@ Derived &bitfieldRo(Func &&func, const std::string &key,
                     const std::vector<std::string> &operations);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:273,290 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:288,305 -->
 
 The read-only variant of `bitfield`: only `GET` sub-operations are valid, which makes it safe to route to read replicas.
 The reply shape matches `bitfield`.
