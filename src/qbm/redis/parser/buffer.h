@@ -377,26 +377,7 @@ private:
             return false; // Exceeds max capacity
         }
 
-        // Grown by allocating a fresh vector and swapping it in, rather than by
-        // _buffer.resize(new_capacity), and that is deliberate — do not "simplify" it
-        // back. The two are equivalent (resize() keeps the existing bytes and
-        // value-initialises the tail; so does a value-initialised vector plus a copy of
-        // the old bytes), but GCC 14 at -O3 mis-attributes resize()'s appended range to
-        // the OLD allocation. Inlining parse() -> RespParser ctor -> InputBuffer(16384)
-        // -> feed -> append -> ensure_space makes the old size a compile-time 16384, and
-        // GCC then reports the first appended element as
-        //     error: array subscript 16384 is outside array bounds of 'char [16384]'
-        //            [-Werror=array-bounds=]
-        // against std::_Construct, naming the 16384-byte object the constructor
-        // allocated. It is a false positive — resize() reallocates before it appends —
-        // but QB_TESTS_WERROR defaults to QB_CI, so it is fatal on every runner and
-        // invisible on the maintainer's clang. Guarding the resize() with
-        // `if (new_capacity > _buffer.size())` was tried first and does NOT silence it:
-        // GCC's complaint is about which allocation is written, not about a zero-length
-        // append. Naming the destination separately removes the ambiguity.
-        std::vector<char> grown(new_capacity);
-        std::memcpy(grown.data(), _buffer.data(), _buffer.size());
-        _buffer.swap(grown);
+        _buffer.resize(new_capacity);
         return true;
     }
 
