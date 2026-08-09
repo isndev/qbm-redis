@@ -198,22 +198,7 @@ public:
         // So emit start/end only when the caller supplied them, and never emit `end` without
         // `start` (Redis reads a lone trailing value as `start`). A nullopt optional is dropped
         // from both the argument count and the payload by put_in_pipe.
-        // Built by an explicit guarded assignment rather than `start.has_value() ? end
-        // : std::nullopt`, and that is deliberate — do not "simplify" it back. The
-        // ternary merges `end` (whose payload is genuinely uninitialised while
-        // disengaged) with a nullopt_t temporary; GCC 14 at -O3 loses the
-        // engaged-implies-initialised correlation across the awaiter frame and reports
-        //     error: '*(const long long int*)((char*)&emit_end + offsetof(...))' may be
-        //            used uninitialized [-Werror=maybe-uninitialized]
-        // at qbm/redis/src/qbm/redis/reply.h:849, i.e. inside to_redis_string's
-        // `if (opt) ... opt.value()`. It is a false positive, but QB_TESTS_WERROR
-        // defaults to QB_CI so it is fatal on every runner and invisible on the
-        // maintainer's clang. This spelling writes the payload only from a value GCC
-        // can see initialised, and is the same set of emitted arguments.
-        std::optional<long long> emit_end;
-        if (start.has_value() && end.has_value()) {
-            emit_end = *end;
-        }
+        std::optional<long long> emit_end = start.has_value() ? end : std::nullopt;
         return derived().template command<long long>(std::forward<Func>(func), "BITPOS", key, bit ? 1 : 0, start, emit_end);
     }
 
