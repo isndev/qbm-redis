@@ -118,7 +118,7 @@ redis.await();
   `async::run` rejects being called from inside a coroutine body, but a non-blocking drain is safe there, so a coroutine
   may still call `await()` on a second client (`redis.h:1043-1047`).
 - On **disconnect**, the queue is failed: every pending handler runs with `ok() == false` and
-  `error() == "disconnected"` (`reply.h:1229-1231`). If an opt-in command deadline tripped first, the failure reason is
+  `error() == "disconnected"` (`reply.h:1234-1237`). If an opt-in command deadline tripped first, the failure reason is
   `"command timed out"` instead (`redis.h:889-901`). See [error_handling.md](./error_handling.md).
 
 ```cpp
