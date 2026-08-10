@@ -342,7 +342,7 @@ if (!r)
 
 ### A command timeout surfaces as a failed reply
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:839-844 (is_blocking_command), 945-976 (disconnect drain), 1075-1088 (set_command_timeout/getter) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:839-844 (is_blocking_command), :945-976 (disconnect drain), :1075-1088 (set_command_timeout/getter) -->
 
 `command_timeout` defaults to `qb::duration::zero()` (disabled). It is a connection-health watchdog, not a per-command
 timer: when the deadline trips, the client drops the whole connection and fails **every** pending reply with

@@ -121,7 +121,7 @@ qb::io::async::task<void> announce(tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/pubsub/pubsub-fanout.cpp:93-138 (the co_await publish call at 121) -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-fanout.cpp:93-138,121 (in that order: the whole test; the co_await publish call) -->
 
 ### Callback form
 

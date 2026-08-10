@@ -164,7 +164,7 @@ Notes:
   `client_no_touch` map `true`/`false` to `YES`/`NO` or `ON`/`OFF`
   respectively. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:313-317, 1701-1713, 1762-1795 -->
 - `client_reply`'s `mode` (`ON`/`OFF`/`SKIP`) is passed through
-  unvalidated. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1796-1818 -->
+  unvalidated. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1804-1816 -->
 - `client_list()` yields a `qb::json` **string** holding the raw `CLIENT LIST` text block (one client per line), not a
   parsed array — the payload is line-delimited text, not JSON, so the wrapper boxes it verbatim. Parse the lines
   yourself, or call `client_info()` for the current connection. `client_tracking_info()`, by contrast, is a RESP map and
@@ -350,10 +350,10 @@ qb::io::async::task<void> debug(qb::redis::tcp::client &redis) {
 
 `save()` blocks the server until the RDB snapshot is written; prefer `bgsave()` in production. `bgsave(true)` sends
 `BGSAVE SCHEDULE`. `lastsave()` returns the Unix timestamp (seconds) of the last successful
-save. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1055-1169 -->
+save. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1055-1161 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:304-327 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:306-331 -->
 qb::io::async::task<void> persist(qb::redis::tcp::client &redis) {
     co_await redis.bgsave();                           // background snapshot
     co_await redis.bgsave(true);                       // BGSAVE SCHEDULE
@@ -395,10 +395,10 @@ qb::io::async::task<void> db(qb::redis::tcp::client &redis) {
 `info()` returns the textual `INFO` payload boxed as a `qb::json` **string** (`result().is_string()` is `true`) —
 like `CLIENT LIST`. Use `result().get<std::string>()` and parse the lines yourself; pass a section name (`"memory"`,
 `"replication"`, ...) to narrow the text. `time()`'s two overloads return **different** types — see the [
-`TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only). <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1266-1285 (info), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
+`TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only). <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1266-1287 (info), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
 
 ```cpp
-// <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1266-1285 (info), 1290-1314 (time coroutine) -->
+// <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1266-1287 (info), :1299-1323 (time coroutine) -->
 qb::io::async::task<void> server_info(qb::redis::tcp::client &redis) {
     auto info = co_await redis.info("server");         // Reply<qb::json>
     qb::io::cout() << info.result().dump() << std::endl;
@@ -426,7 +426,7 @@ cluster API ([cluster_commands.md](./cluster_commands.md)) for managed topology,
 `shutdown()` with no argument sends `SHUTDOWN`; pass `"SAVE"` or `"NOSAVE"` to control the final snapshot. `SHUTDOWN` *
 *stops the server**: the connection drops and you will typically see a connection error rather than a status reply.
 `SYNC`/`PSYNC` are internal replication primitives and are rarely called
-directly. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:929-947 (slaveof always emits host+port), 1003 (sync), 1029 (psync), 1617 (failover), 895-916 (shutdown) -->
+directly. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:929-947 (slaveof always emits host+port), :1003 (sync), :1029 (psync), :1617 (failover), :895-916 (shutdown) -->
 
 ```cpp
 qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
