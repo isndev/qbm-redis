@@ -85,7 +85,7 @@ This group has exactly **two** time-bearing arguments, and they use **different*
 - `debug_sleep(qb::duration)` takes the canonical [`qb::duration`](https://github.com/isndev/qb/blob/main/include/qb/system/time.h) (any
   `std::chrono` duration converts implicitly). The wrapper converts it to libev fractional seconds via
   `qb::detail::to_ev_seconds(delay)` before placing it on the wire, so `DEBUG SLEEP` receives a fractional-seconds
-  argument. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:698-711 (to_ev_seconds at 701) -->
+  argument. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:698-711 (to_ev_seconds at :711) -->
 - `client_pause(long long timeout, ...)` takes a **raw `long long` of milliseconds** — the native `CLIENT PAUSE` unit —
   **not** a `qb::duration`. This is a deliberate native-unit boundary, distinct from
   `debug_sleep`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:273-293 -->

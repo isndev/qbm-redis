@@ -84,7 +84,7 @@ qb::redis::lex_interval   lex("b", "e", qb::redis::BoundType::LEFT_OPEN);     //
 are templated on `Interval`. Left/right-bounded and unbounded variants exist (`LeftBoundedInterval`,
 `RightBoundedInterval`, `UnboundedInterval`) for half-open and full-range queries.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:54-171; qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:232, 377, 464 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:54-171; qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:232, 377, 465 -->
 
 ### `LimitOptions` — pagination for range-by-score / range-by-lex
 
@@ -102,7 +102,7 @@ the wire `LIMIT offset count` clause is emitted only when `offset >= 0`, and a n
 `offset == 0`, so `LIMIT 0 -1` — offset 0 with `count == -1`, meaning *all* — **is** emitted by default; pass a negative
 offset to suppress the clause. The reverse variants differ from their forward siblings only in bound order on the wire.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:601, 646, 865, 904 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:602, 647, 866, 905 -->
 
 ### `UpdateType` — the NX/XX flag for `zadd`
 

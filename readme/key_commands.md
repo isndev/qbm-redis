@@ -163,11 +163,13 @@ auto r = co_await redis.touch("k1", "k2", "k3");
 ## Expiration
 
 > **Unit boundary.** `EXPIRE`/`EXPIREAT` work in **seconds**; `PEXPIRE`/`PEXPIREAT` work in **milliseconds**. The chrono
-> overloads enforce this at the type level: `expire`/`expireat` accept only `std::chrono::seconds`, `pexpire`/
-`pexpireat`
-> accept only `std::chrono::milliseconds`, each forwarding `.count()` to the `long long` form (`key_commands.h:224`,
-`:269`, `:380`, `:425`). The raw `long long` overloads bypass the check, so prefer the chrono overloads for
-> self-documenting code. These are `std::chrono` protocol values, **not** `qb::duration`.
+> overloads enforce this at the type level, and the *relative* and *absolute* commands take different shapes: `expire`
+> takes a `std::chrono::seconds` **duration** and `pexpire` a `std::chrono::milliseconds` one, each forwarding
+> `.count()` to the `long long` form (`key_commands.h:237-238`, `key_commands.h:393-394`); `expireat` and `pexpireat`
+> take a `std::chrono::time_point<std::chrono::system_clock, …>` at the matching precision and forward
+> `.time_since_epoch().count()` (`key_commands.h:282-283`, `key_commands.h:438-439`). The raw `long long` overloads
+> bypass the check, so prefer the chrono overloads for self-documenting code. These are `std::chrono` protocol values,
+> **not** `qb::duration`.
 
 ### `expire`
 
@@ -414,10 +416,12 @@ do {
 <!-- src: qbm/redis/tests/integration/key/key-commands.cpp:200-226 -->
 
 > **Pitfalls for the auto-iterating callback overload `scan(func, pattern)`.** It accumulates the **entire** matched
-> keyspace in memory and invokes `func` exactly once after the cursor returns to `0` (`key_commands.h:97-117`, `:598`) —
+> keyspace in memory and invokes `func` exactly once after the cursor returns to `0` (`key_commands.h:98-115`,
+`key_commands.h:609-618`) —
 > it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:87-89`,
-`:102`). And if your callback throws, the scanner catches `std::exception` and only logs a warning (
-`key_commands.h:106-107`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer
+`key_commands.h:105-107`) — unlike the single-iteration overload, which does pass `COUNT` (`key_commands.h:602`). And if
+your callback throws, the scanner catches `std::exception` and only logs a warning (
+`key_commands.h:111-112`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer
 > the explicit-cursor loop above.
 
 ## Renaming and copying

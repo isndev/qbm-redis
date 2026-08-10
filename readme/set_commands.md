@@ -61,7 +61,7 @@ convertible to `bool` (explicit). Container payloads use **qb-core** containers,
 | `spop(key, count)`, `srandmember(key, count)`                                     | `std::vector<std::string>`                                           |
 | `sscan` (cursor form)                                                             | `qb::redis::scan<Out>`, `Out` defaults to `std::vector<std::string>` |
 
-<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:132, 167, 200, 233, 268, 301, 340, 374, 410, 445, 478, 511, 543, 576, 609, 644, 684, 744, 780; qbm/redis/src/qbm/redis/types.h:534 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:137, 173, 209, 243, 279, 313, 353, 388, 427, 463, 499, 535, 570, 606, 642, 680, 721, 791, 828; qbm/redis/src/qbm/redis/types.h:534 -->
 
 > **`smembers` yields a set, not a vector.** The reply payload is `qb::unordered_set<std::string>` (
 `set_commands.h:478`), iterable but unordered with no index access. The `sdiff` / `sinter` / `sunion` family return
@@ -466,19 +466,19 @@ redis.sscan([](qb::redis::Reply<qb::redis::scan<>> &&all) {
   variants with an empty key list (and the `*store` ones with an empty `destination`); `spop(key, count)` with
   `count < 1` — but they still resolve the callback (and the awaiter) with `ok() == false` and a reason in `error()`.
   Branch on `ok()`; do not treat "my callback did not run" as the
-  signal. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:153, 183, 217, 251, 285, 319, 358, 392, 431, 462, 497, 528, 561, 593, 627, 665, 704, 726, 761, 798 -->
+  signal. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:157, 188, 225, 260, 295, 330, 370, 405, 447, 479, 517, 551, 587, 622, 659, 700, 740, 765, 807, 845 -->
 
 - **`smembers` returns a set, the algebra returns vectors.** `smembers` yields `qb::unordered_set<std::string>` (no
   index access, unordered); `sdiff` / `sinter` / `sunion` yield `std::vector<std::string>`. Pick the right container in
-  your callback signature or the overload will not match. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:445, 200, 268, 744 -->
+  your callback signature or the overload will not match. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:463, 209, 279, 791 -->
 
 - **`spop`/`srandmember` count forms return `std::vector<std::string>`, not optionals.** Only the single-member forms
   return `std::optional<std::string>`. Reaching for `std::vector<std::optional<std::string>>` (as older docs showed)
-  will fail to compile. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:543, 609, 511, 576 -->
+  will fail to compile. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:570, 642, 535, 606 -->
 
 - **The auto-iterating `sscan` is callback-only and fixes `COUNT` at 100.** There is no `co_await` form of the no-cursor
   `sscan`, and its page size is not user-tunable. For a tunable page size or a coroutine flow, drive the cursor-form
-  `sscan` yourself. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:723-731, 82 -->
+  `sscan` yourself. <!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:765-778, 87 -->
 
 - **`smembers` materializes the whole set.** On a large set this builds one bulk reply server-side; iterate with `sscan`
   instead to bound memory and avoid stalling the server.

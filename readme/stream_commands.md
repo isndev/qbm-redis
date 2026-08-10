@@ -117,7 +117,7 @@ while the call is in flight, so the server-side `block` timeout governs instead 
 
 The vector overloads of `xread` and `xreadgroup` validate that `keys` is non-empty and `keys.size() == ids.size()` *
 *inside the callback overload body, before dispatch**, and throw `std::invalid_argument` (`stream_commands.h:515`,
-`:428`). This is a thrown exception you must catch at the call site — it is **not** delivered as a `Reply` error. The
+`stream_commands.h:428`). This is a thrown exception you must catch at the call site — it is **not** delivered as a `Reply` error. The
 single-stream overloads perform no such validation.
 
 ### Naming inconsistency to respect at call sites
