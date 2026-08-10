@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:703 (public inheritance), redis.h:1618 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:766 (public inheritance), qbm/redis/src/qbm/redis/redis.h:1695 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -60,7 +60,7 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
 
 - **`qb::redis::status`** — the `OK`-style simple-string reply. It converts implicitly to `std::string` and to `bool`,
   where the `bool`/`ok()` value is `true` **only** when the server string is exactly `"OK"`. Test success with `.ok()` (
-  or the `bool` conversion), not by comparing against arbitrary strings. <!-- src: qbm/redis/src/qbm/redis/types.h:468-514 -->
+  or the `bool` conversion), not by comparing against arbitrary strings. <!-- src: qbm/redis/src/qbm/redis/types.h:476-527 -->
 - **`long long`** — counts and timestamps (`DBSIZE`, `COMMAND COUNT`, `LASTSAVE`, `CLIENT ID`, `MEMORY USAGE`,
   `LATENCY RESET`).
 - **`std::string`** — opaque human-readable blobs (`MEMORY DOCTOR`, `DEBUG OBJECT`, `CLIENT INFO`, `LATENCY DOCTOR`/
@@ -157,12 +157,12 @@ Notes:
   type is `long long`. (It was `status`, which cannot decode an integer — every call failed with "STRING or ERROR required
   for status" until the first test called it.) It emits `ADDR addr`, `ID id`, `TYPE type` only for non-default arguments, and `SKIPME yes` when `skipme`
   is `true`. `type` is a raw string (`normal`/`master`/`replica`/`pubsub`) — it is not validated
-  client-side. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:140-193 -->
+  client-side. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:140-199 -->
 - `client_pause`'s `timeout` is **milliseconds** (native unit), not a `qb::duration`. `mode` is `"ALL"` or
   `"WRITE"`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:273-293 -->
 - `client_tracking(true)` sends `CLIENT TRACKING ON`; `false` sends `OFF`. `client_caching`, `client_no_evict`,
   `client_no_touch` map `true`/`false` to `YES`/`NO` or `ON`/`OFF`
-  respectively. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:312-329, 1745-1785 -->
+  respectively. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:313-317, 1701-1713, 1762-1795 -->
 - `client_reply`'s `mode` (`ON`/`OFF`/`SKIP`) is passed through
   unvalidated. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1796-1818 -->
 - `client_list()` yields a `qb::json` **string** holding the raw `CLIENT LIST` text block (one client per line), not a
@@ -171,7 +171,7 @@ Notes:
   comes back as a JSON object. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1347-1363 (client_list), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:51-75 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:51-75,103-111 -->
 qb::io::async::task<void> clients(qb::redis::tcp::client &redis) {
     co_await redis.client_setname("worker-1");
     auto name = co_await redis.client_getname();      // Reply<std::optional<std::string>>
@@ -218,7 +218,7 @@ redis.monitor([](qb::redis::Reply<std::string> &&line) {
 | `CONFIG REWRITE`   | `config_rewrite()`                                                   | `status`                                           |
 
 `config_get` accepts a glob (`"*max*"`) and returns one pair per matched parameter. The wrapper folds the flat RESP
-array into pairs for you. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:377-415 -->
+array into pairs for you. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:362-393 -->
 
 ```cpp
 // <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:145-188 -->
@@ -251,7 +251,7 @@ See the [`COMMAND` named-overload note](#commands-named-overload-actually-issues
 with a non-empty vector returns `COMMAND INFO` data.
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:211-249 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:252-292,295-324 -->
 qb::io::async::task<void> introspect(qb::redis::tcp::client &redis) {
     auto n = co_await redis.command_count();          // Reply<long long>
     qb::io::cout() << "command count: " << n.result() << std::endl;
@@ -426,7 +426,7 @@ cluster API ([cluster_commands.md](./cluster_commands.md)) for managed topology,
 `shutdown()` with no argument sends `SHUTDOWN`; pass `"SAVE"` or `"NOSAVE"` to control the final snapshot. `SHUTDOWN` *
 *stops the server**: the connection drops and you will typically see a connection error rather than a status reply.
 `SYNC`/`PSYNC` are internal replication primitives and are rarely called
-directly. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:929-947 (slaveof always emits host+port), 1002 (sync), 1028 (psync), 1616 (failover), 895-916 (shutdown) -->
+directly. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:929-947 (slaveof always emits host+port), 1003 (sync), 1029 (psync), 1617 (failover), 895-916 (shutdown) -->
 
 ```cpp
 qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
@@ -459,7 +459,7 @@ qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
   Restrict these with ACLs (see [acl_commands.md](./acl_commands.md)).
 - **`memory_info` is not reachable here.** The header carries a private INFO-to-`memory_info` parser and a `memory_info`
   struct, but no public command in this group exposes them — `info()` returns `qb::json`. Do not write code against
-  `memory_info` expecting `info()` to populate it. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:52, types.h -->
+  `memory_info` expecting `info()` to populate it. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:55-56, qbm/redis/src/qbm/redis/types.h:378 -->
 
 ---
 

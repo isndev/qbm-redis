@@ -22,12 +22,12 @@ code in `<qbm/redis/redis.h>`; link the target rather than adding the include di
 
 Pipelining is a property of the client, not a separate object. Every callback command — `redis.set(cb, …)`,
 `redis.get(cb, …)`, or the low-level `redis.command<Ret>(cb, "SET", …)` — pushes one reply handler onto a FIFO queue and
-writes one RESP request to the outbound pipe, in call order (`redis.h:935-948`). Redis answers in request order, so the
+writes one RESP request to the outbound pipe, in call order (`redis.h:998-1011`). Redis answers in request order, so the
 queue stays positionally consistent. Issue several commands back-to-back without waiting, then call `await()` once to
 run the loop until every handler has fired.
 
 `await()` is a non-blocking drain: it spins `qb::io::async::listener::current.run(EVRUN_NOWAIT)` while the reply queue
-is non-empty and returns the client by reference (`redis.h:987-991`). It does not block the thread in the kernel; each
+is non-empty and returns the client by reference (`redis.h:1049-1054`). It does not block the thread in the kernel; each
 iteration is a single poll. The calling stack runs synchronously until every enqueued callback has been invoked — with a
 success, a Redis error, or a disconnect failure.
 
@@ -66,7 +66,7 @@ sequenceDiagram
 ```
 
 > The client is **not thread-safe.** Use one client from a single I/O thread / strand (one concurrent accessor at a
-> time). The reply queue and outbound pipe are unsynchronized (`redis.h:689-690`).
+> time). The reply queue and outbound pipe are unsynchronized (`redis.h:752-753`).
 
 ---
 
@@ -76,7 +76,7 @@ sequenceDiagram
 
 The client holds an internal `std::queue<PendingReply>` (`redis.h:805`). Each callback command registers its handler *
 *before** sending bytes, so a fast or synchronous delivery can never run ahead of the queued handler (
-`redis.h:939-945`). Because Redis preserves request order on a single connection, the head of the queue always matches
+`redis.h:1002-1008`). Because Redis preserves request order on a single connection, the head of the queue always matches
 the next reply on the wire.
 
 `pending_reply_count()` returns the current queue depth (`redis.h:1057-1059`) — useful for tests and for confirming a
@@ -95,7 +95,7 @@ redis.await();
 
 Awaiting each command in sequence pays one network round trip per command. Pipelining sends the whole batch first and
 reads the replies as a group, so the batch costs roughly one round trip regardless of size. Callbacks still fire in send
-order (`redis.h:942, 864-865`):
+order (`redis.h:927-928,939`):
 
 ```cpp
 std::vector<int> order;
@@ -119,7 +119,7 @@ redis.await();
   may still call `await()` on a second client (`redis.h:1043-1047`).
 - On **disconnect**, the queue is failed: every pending handler runs with `ok() == false` and
   `error() == "disconnected"` (`reply.h:1234-1237`). If an opt-in command deadline tripped first, the failure reason is
-  `"command timed out"` instead (`redis.h:889-901`). See [error_handling.md](./error_handling.md).
+  `"command timed out"` instead (`redis.h:888-904,963-964`). See [error_handling.md](./error_handling.md).
 
 ```cpp
 redis.ping([](qb::redis::Reply<std::string> &&r) {
@@ -138,7 +138,7 @@ while (redis.pending_reply_count() > 0)
 `qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:1697`);
 the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:1705-1708`). It is a thin, optional
 wrapper that holds a reference to a `Redis` client and chains the low-level `command<Ret>(callback, name, args...)` (
-`redis.h:935-948`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
+`redis.h:998-1011`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
 
 - Construct it with `pipeline pipe{redis}` over an existing client (`redis.h:1123-1124`).
 - `pipe.command<Ret>(cb, "SET", k, v)` returns `*pipe` for fluent chaining (`redis.h:1143-1146`).
@@ -180,11 +180,11 @@ pipe.flush();  // drains both
 ## Pitfalls
 
 - **Do not call `await()` from another thread.** Drain from the same thread / loop that drives the client's I/O. The
-  reply queue and outbound pipe are unsynchronized (`redis.h:689-690, 847-848`).
+  reply queue and outbound pipe are unsynchronized (`redis.h:752-753,805`).
 - **`flush()` is not a Redis command.** It runs the event loop until pending replies land; it never sends `FLUSHDB` or
-  `FLUSHALL` (`redis.h:1114-1115, 1086-1090`).
+  `FLUSHALL` (`redis.h:1114-1115,1149-1153`).
 - **`await()` on an empty queue returns immediately.** It is safe to call with nothing pending — the `while` loop body
-  never runs (`redis.h:988`).
+  never runs (`redis.h:1051`).
 - **Coroutine commands do not need `await()`.** A `co_await redis.get(...)` suspends the coroutine until its reply
   arrives; calling `await()` for it is unnecessary. Use `await()` only for the callback form, or
   `qb::io::async::run_sync(...)` to drive a coroutine from synchronous code.

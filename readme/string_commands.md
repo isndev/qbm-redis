@@ -65,7 +65,7 @@ In both forms `T` is the command's reply payload. Read it through `qb::redis::Re
 comparison. For `std::optional<std::string>` payloads (a key that may be absent), check `reply.ok()` first, then
 `reply.result().has_value()` before dereferencing.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:469-526 (status), qbm/redis/src/qbm/redis/commands/string_commands.h (per-command R) -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:476-527 (status), qbm/redis/src/qbm/redis/commands/string_commands.h (per-command R) -->
 
 ---
 
@@ -90,7 +90,7 @@ The connection and command **timeouts** (`set_command_timeout`, connect timeout)
 substitute `qb::duration` for the TTL arguments here. (The retired tokens `qb::Timestamp`, `qb::Duration`,
 `qb::TimePoint`, `to_timestamp(`, and `to_time_point(` no longer exist — never use them.)
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:627-694 (setex), 448-516 (psetex), 553-587 (set PX), 829-897 (getex EX vs PX) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:627-694 (setex), 448-516 (psetex), 553-625 (set PX), 829-897 (getex EX vs PX) -->
 
 ---
 

@@ -23,7 +23,7 @@ the methods below are called on a live client through its public alias `qb::redi
 `make_coro_command<T>(...)`, which own argument serialization, I/O, and connection lifetime (
 see [connection.md](./connection.md)).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:37-43 (CRTP derived()), redis.h:1618 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:37-42 (the CRTP derived accessor), redis.h:1695 (tcp::client alias) -->
 
 ```cpp
 #include <qbm/redis/redis.h>            // umbrella header; pulls in publish_commands.h
@@ -48,7 +48,7 @@ clients that received the message at the moment you published:
 - A count of `0` means nobody was subscribed; the message is dropped. Redis Pub/Sub does not buffer messages for absent
   subscribers, so this is not an error — `reply.ok()` is still `true`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:57-83; FACTBOOK invariant publish_commands.h:57-83 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:56-79 (also a FACTBOOK invariant) -->
 
 A subscriber receives a message only if it was subscribed *before* you published. If you need at-least-once semantics,
 durability, or consumer groups, use Redis Streams instead (see your stream command reference), not Pub/Sub.
@@ -86,7 +86,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 publish(Func &&func, const std::string &channel, const std::string &message);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:57-83 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:56-79 -->
 
 | Argument  | Type                              | Meaning                                |
 |:----------|:----------------------------------|:---------------------------------------|
@@ -121,7 +121,7 @@ qb::io::async::task<void> announce(tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/pubsub/pubsub-fanout.cpp:93-138 (co_await publisher.publish(ch, msg)) -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-fanout.cpp:93-138 (the co_await publish call at 121) -->
 
 ### Callback form
 
@@ -145,7 +145,7 @@ void announce(tcp::client &redis) {
 The callback overload is SFINAE-gated on `std::is_invocable_v<Func, Reply<long long>&&>`: a lambda whose parameter is
 not `Reply<long long>&&` does not match this overload, so you cannot accidentally bind the wrong reply type.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:78-83 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:75-79 -->
 
 ---
 

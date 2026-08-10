@@ -47,7 +47,7 @@ Both forms end in the same place. The callback form pushes one reply handler ont
 command name and arguments onto the outbound pipe:
 
 ```cpp
-// redis.h:935 — the callback dispatcher, simplified
+// redis.h:998-1011 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);
@@ -77,7 +77,7 @@ sequenceDiagram
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
-resumes your coroutine when the reply lands (`redis.h:958`, `redis.h:633`).
+resumes your coroutine when the reply lands (`redis.h:1090-1094`, `redis.h:716-726`).
 
 ### The reply type: `qb::redis::Reply<T>`
 
@@ -125,14 +125,14 @@ if (auto v = r.value_or(""); !v.empty()) {
 #### `qb::redis::status` — the "OK" reply
 
 Commands that return a RESP simple string (such as `SET`, `MULTI`, `SELECT`) decode to `qb::redis::status` (
-`types.h:475`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
+`types.h:476`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
 conversion rather than comparing strings yourself. So for `Reply<status>`, `reply.ok()` confirms the command did not
 fail at the protocol level, and `reply.value().ok()` confirms the server replied `+OK`.
 
 ### How replies are decoded
 
 Decoding lives in `reply.h` and runs inside the reply handler (`TReply<Func, T>`), which takes ownership of the parsed
-RESP node and produces the `Reply<T>` (`reply.h:1212`). The handler distinguishes three cases:
+RESP node and produces the `Reply<T>` (`reply.h:1219`). The handler distinguishes three cases:
 
 1. **Disconnect / failure** — a null reply yields `Reply{ ok = false, error = "disconnected" }` (or the explicit
    `fail()` reason, e.g. `"command timed out"`).
@@ -148,7 +148,7 @@ arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the m
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1227-1259 (TReply::operator() decode path) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1233-1266 (the TReply call-operator decode path) -->
 
 ### Coroutine vs callback
 
@@ -228,9 +228,9 @@ units by design** — `EXPIRE` is seconds, `PEXPIRE` is milliseconds — and the
 
 ```cpp
 #include <chrono>
-// key_commands.h:224 — EXPIRE takes seconds
+// key_commands.h:236-239 — EXPIRE takes seconds
 co_await redis.expire("k", std::chrono::seconds{60});
-// key_commands.h:380 — PEXPIRE takes milliseconds
+// key_commands.h:392-395 — PEXPIRE takes milliseconds
 co_await redis.pexpire("k", std::chrono::milliseconds{1500});
 // raw integer overloads also exist, in the command's native unit
 co_await redis.expire("k", 60);          // seconds
@@ -240,10 +240,10 @@ co_await redis.pexpire("k", 1500);       // milliseconds
 This unit split is intentional and matches the Redis command semantics; do **not** treat it as a bug to "fix" by
 funneling these onto `qb::duration`. Reply-side TTL values (from `TTL`/`PTTL`) arrive as RESP integers and are surfaced
 as value types, not durations. The framework `qb::duration` type *is* used elsewhere in the client — for `connect()` and
-command timeouts and the `RetryPolicy` delays (`redis.h:209-214`) — but those are transport-level deadlines, not Redis
+command timeouts and the `RetryPolicy` delays (`redis.h:220-227`) — but those are transport-level deadlines, not Redis
 command arguments. See [Connection](./connection.md).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:215-251,357-392 (expire/pexpire native-unit overloads) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:213-249,369-405 (expire/pexpire native-unit overloads) -->
 
 ## Command groups
 

@@ -32,7 +32,7 @@ the client inherits, so you call them directly on a connected `qb::redis::tcp::c
 selects the calling style. Calling the mixin in isolation is not supported; it relies on the host client supplying
 `command<T>(...)` and `make_coro_command<T>(...)`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:37-47 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:38-39,256,564 -->
 
 Each command exposes two overloads:
 
@@ -54,7 +54,7 @@ It is covered below alongside the cursor form.
 ### `score_member` — the member/score pair
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:348
+// qbm/redis/src/qbm/redis/types.h:349-354
 struct score_member {
     double      score{};
     std::string member;
@@ -71,11 +71,11 @@ Score and lex ranges are expressed with the interval class templates in `qbm/red
 semantics for you. Two aliases cover the common cases:
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:273-275
+// qbm/redis/src/qbm/redis/types.h:273-276
 using score_interval = qb::redis::BoundedInterval<double>;       // numeric score bounds
 using lex_interval   = qb::redis::BoundedInterval<std::string>;  // lexicographical bounds
 
-// Construct with a BoundType: CLOSED, OPEN, LEFT_OPEN, RIGHT_OPEN  (types.h:54)
+// Construct with a BoundType: CLOSED, OPEN, LEFT_OPEN, RIGHT_OPEN  (types.h:55)
 qb::redis::score_interval scores(20.0, 40.0, qb::redis::BoundType::CLOSED);   // [20,40]
 qb::redis::lex_interval   lex("b", "e", qb::redis::BoundType::LEFT_OPEN);     // (b,e]
 ```
@@ -84,12 +84,12 @@ qb::redis::lex_interval   lex("b", "e", qb::redis::BoundType::LEFT_OPEN);     //
 are templated on `Interval`. Left/right-bounded and unbounded variants exist (`LeftBoundedInterval`,
 `RightBoundedInterval`, `UnboundedInterval`) for half-open and full-range queries.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:54-171; qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:232, 377, 465 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:55,77-271; qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:232, 377, 465 -->
 
 ### `LimitOptions` — pagination for range-by-score / range-by-lex
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:282
+// qbm/redis/src/qbm/redis/types.h:283-286
 struct LimitOptions {
     long long offset = 0;
     long long count  = -1;
@@ -107,7 +107,7 @@ offset to suppress the clause. The reverse variants differ from their forward si
 ### `UpdateType` — the NX/XX flag for `zadd`
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:48
+// qbm/redis/src/qbm/redis/types.h:49
 enum class UpdateType { EXIST, NOT_EXIST, ALWAYS };
 ```
 
@@ -120,7 +120,7 @@ use `zincrby` to add-or-increment a single member.
 ### `Aggregation` — score combination for store/intersect commands
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:56
+// qbm/redis/src/qbm/redis/types.h:57
 enum class Aggregation { SUM, MIN, MAX };  // default SUM
 ```
 
@@ -169,11 +169,14 @@ convertible to `bool` (explicit). In this group the payloads are standard-librar
 | `bzpopmax`, `bzpopmin`                                                                                                                                                           | `std::optional<std::tuple<std::string, std::string, double>>`      |
 | `zmpop`, `bzmpop`                                                                                                                                                                | `std::optional<std::pair<std::string, std::vector<score_member>>>` |
 
-A score-bearing read returns `std::vector<score_member>` because the implementation appends `WITHSCORES` on the wire
-unconditionally for those commands. The non-scored siblings (`zrangebylex`, `zinter`, `zdiff`, `zrandmemberCount`)
-deliberately omit it and return `std::vector<std::string>`.
+Seven of the score-bearing reads return `std::vector<score_member>` because the implementation appends `WITHSCORES` to
+the wire command unconditionally: `zrange`, `zrangebyscore`, `zrevrange`, `zrevrangebyscore`, `zdiffWithScores`,
+`zinterWithScores`, `zrandmemberWithScores`. **`zpopmax`/`zpopmin` are not among them** — they decode to the same
+`std::vector<score_member>` while sending only `key` and `count`, because `ZPOPMAX`/`ZPOPMIN` return member/score pairs
+natively (`sorted_set_commands.h:506`, `:534`). The non-scored siblings (`zrangebylex`, `zinter`, `zdiff`,
+`zrandmemberCount`) deliberately omit `WITHSCORES` and return `std::vector<std::string>`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:563, 651, 829, 909, 1084, 1373; qbm/redis/src/qbm/redis/types.h:348 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:564, 652, 830, 910, 1085, 1194, 1374; qbm/redis/src/qbm/redis/types.h:349 -->
 
 ---
 
@@ -325,7 +328,7 @@ auto r = co_await redis.zmscore("board", {"a", "b", "nonexistent"});
 if (r.ok()) { /* r.result()[2] == std::nullopt */ }
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:620-636 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:662-678 -->
 
 ### `ZINCRBY key increment member` — `zincrby`
 
@@ -452,7 +455,7 @@ qb::redis::lex_interval i("b", "e", qb::redis::BoundType::LEFT_OPEN); // (b,e]
 auto r = co_await redis.zrangebylex("board", i);
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:464-488 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:506-521 -->
 
 ### `ZRANGESTORE dst src min max [...]` — `zrangestore`
 
@@ -478,7 +481,7 @@ zrangestore(Func &&func, const std::string &dst, const std::string &src,
 auto r = co_await redis.zrangestore("dst", "src", "1", "3", {"BYSCORE"});
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:662-667 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:705-709 -->
 
 ### `ZREM key member [member ...]` — `zrem`
 
@@ -524,7 +527,7 @@ qb::redis::lex_interval i("c", "e", qb::redis::BoundType::CLOSED);
 auto b = co_await redis.zremrangebylex("board", i);             // [c,e]
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:297-300, 491-493 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:297-300, 532-537 -->
 
 ### `ZPOPMIN` / `ZPOPMAX key [count]` — `zpopmin`, `zpopmax`
 
@@ -580,7 +583,7 @@ if (r.ok() && r.result().has_value()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:601-613 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:643-650 -->
 
 ### Blocking pops — `bzpopmin`, `bzpopmax`, `bzmpop`
 
@@ -618,7 +621,7 @@ if (m.ok() && m.result().has_value())
     qb::io::cout() << m.result()->second.size() << " popped\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:672-678, 695-702 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:712-720, 739-745; qbm/redis/tests/integration/resilience/coro-cancel-and-connection-loss.cpp:366-382 -->
 
 > `bzmpop` (like `zmpop`) rejects an empty `keys` list client-side: no frame is sent and the reply resolves at once with
 `ok() == false` and `error() == "BZMPOP requires at least one key"` (`sorted_set_commands.h:1446-1449`). It never blocks
@@ -646,7 +649,7 @@ auto few    = co_await redis.zrandmemberCount("board", 2);  // std::vector<std::
 auto scored = co_await redis.zrandmemberWithScores("board", 2);
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:638-660 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:680-702 -->
 
 ### `ZUNIONSTORE` / `ZINTERSTORE` / `ZDIFFSTORE dest numkeys key [...]` — `zunionstore`, `zinterstore`, `zdiffstore`
 
@@ -679,7 +682,7 @@ auto i = co_await redis.zinterstore("inter", {"set1", "set2"});
 auto d = co_await redis.zdiffstore("diff",  {"set1", "set2"});
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:351-359, 534-537 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:351-359, 576-579 -->
 
 ### `ZINTER` / `ZDIFF numkeys key [...]` — `zinter`, `zinterWithScores`, `zdiff`, `zdiffWithScores`
 
@@ -704,7 +707,7 @@ auto names  = co_await redis.zdiff({"set1", "set2"});          // std::vector<st
 auto scored = co_await redis.zdiffWithScores({"set1", "set2"}); // std::vector<score_member>
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:517-532, 558-577 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:559-573, 600-618 -->
 
 ### `ZINTERCARD numkeys key [...] [LIMIT n]` — `zintercard`
 
@@ -727,7 +730,7 @@ zintercard(Func &&func, const std::vector<std::string> &keys,
 auto r = co_await redis.zintercard({"set1", "set2"});
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:579-581 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:621-623 -->
 
 ### `ZSCAN key cursor [MATCH pattern] [COUNT count]` — `zscan`
 
@@ -762,7 +765,7 @@ do {
 } while (cursor != 0);
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:443-445 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:485-487 -->
 
 **Callback-only auto-iterating form.** `zscan(func, key, pattern)` (no cursor) drives the cursor internally — it
 allocates a `shared_ptr`-managed scanner that keeps itself alive across the async round-trips (hardcoded page size
@@ -784,7 +787,7 @@ redis.zscan([](qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, d
 }, "board", "*");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:49-127, 993-1002 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:49-128, 993-1002 -->
 
 ---
 

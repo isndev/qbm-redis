@@ -21,8 +21,18 @@ llm/qbm-redis.llm.api.md	symbol:qb_load_modules	qb's own CMake function, defined
 llm/qbm-redis.llm.md	symbol:init	`qb::io::async::init()` — qb-io's per-thread loop initialiser, qb/src/qb/io/async/listener.h:966. The sentence names it as the thing to call once from synchronous code.
 llm/qbm-redis.llm.md	symbol:run_sync	`qb::io::async::run_sync(...)` — qb-io's synchronous pump, qb/src/qb/io/async/listener.h. Named in the same sentence, for the same reason.
 
-# The three below are the content rule inferring a citation's subject from the nearest
-# backticked word where that word is not the subject.  Each citation is correct.
+# The one below is the content rule inferring a citation's subject from the nearest
+# backticked word where that word is not the subject.  The citation is correct.
+#
+# It used to be three.  The other two — `redis.h:290-290` for the connector class and
+# `types.h:336-336` for `struct score` — are gone because the citations they excused were
+# WIDENED to hold their own subject rather than baselined around it: the connector heading now
+# cites `redis.h:292-315`, the class declaration through the state members the sentence lists
+# (`_uri` :307, `std::optional<RetryPolicy> _reconnect_policy` :308, the two connection-state
+# flags :309-310, `_verify_peer` :311, the `_alive` liveness token :315), and the score row now
+# cites `types.h:337-354`, `struct score` (337-346) through `struct score_member` (349-354).
+# Note what the deleted rationales asserted: "`struct score` is types.h:336" and "`score_member`
+# is :348".  Both were one line low when they were written — 337 and 349 — so the prose that
+# justified the exception was itself mis-citing the header.  Nothing gates that prose; read it
+# against the source before trusting it, and re-derive it whenever an entry moves.
 llm/qbm-redis.llm.api.md	redis.h:763-763	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:763. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.
-llm/qbm-redis.llm.api.md	redis.h:290-290	correct: `class connector` is redis.h:293, inside the 4-line tolerance of 290. `connector` itself occurs too often in the file to locate anything.
-llm/qbm-redis.llm.api.md	types.h:336-336	correct: `struct score` is qbm/redis/src/qbm/redis/types.h:336 (and `score_member` is :348, the sibling target). A table row `A / B | f.h:N/M` hands both targets the last name.

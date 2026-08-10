@@ -13,7 +13,7 @@ per-connection redirect verbs (`ASKING/READONLY/READWRITE`) — each with its ex
 
 ## Summary
 
-The cluster commands are defined by the `qb::redis::cluster_commands<Derived>` CRTP mixin (`cluster_commands.h:35`),
+The cluster commands are defined by the `qb::redis::cluster_commands<Derived>` CRTP mixin (`cluster_commands.h:34`),
 which `qb::redis::tcp::client` inherits along with every other command group. You call these methods directly on a
 connected client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to
 get a `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the
@@ -28,7 +28,7 @@ SFINAE-gated on the handler accepting `Reply<T>&&` for that command's `T` (`clus
 These are thin RESP wrappers around the server-side `CLUSTER` subcommands. They carry no client-side validation of
 subcommand strings or slot ranges and no extra guard rails: `cluster_reset`, `cluster_failover`, and `cluster_setslot`
 mutate live cluster topology, and an invalid `cluster_setslot` subcommand or `cluster_reset` mode is passed straight to
-the server and only fails there (`cluster_commands.h:212,841,843`). Against a standalone (non-cluster) server most of
+the server and only fails there (`cluster_commands.h:212,849,851`). Against a standalone (non-cluster) server most of
 these return an error reply rather than throwing; the snippets below check `reply.ok()` accordingly.
 
 No command in this group takes a time argument, so the EXPIRE-seconds / PEXPIRE-milliseconds unit boundary documented
@@ -54,7 +54,7 @@ reply surface.
 
 ### `qb::redis::status`
 
-`status` (`types.h:475`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`types.h:476`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK". The status
 commands here are routinely tested with `reply.ok()` (the reply arrived without a protocol/transport error) rather than
 the value, because a standalone server answers them with a cluster-disabled error.
@@ -86,7 +86,7 @@ Redirect handling is manual — see [Error handling](./error_handling.md) and th
 ### Per-connection redirect verbs
 
 `asking()`, `readonly()`, and `readwrite()` are top-level Redis commands, not `CLUSTER` subcommands (
-`cluster_commands.h:482,507,532`). They mark connection-level state: `asking()` tells the connection to accept the next
+`cluster_commands.h:497,522,547`). They mark connection-level state: `asking()` tells the connection to accept the next
 command against a slot that is `MIGRATING` (the ASK-redirection protocol during slot migration); `readonly()` /
 `readwrite()` toggle whether a replica connection serves reads.
 
@@ -133,7 +133,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:153-156 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:156-159 -->
 
 ### `cluster_nodes`
 
@@ -152,7 +152,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:171-174 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:174-177 -->
 
 ### `cluster_slots`
 
@@ -170,7 +170,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:167-169 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:170-172 -->
 
 ### `cluster_shards`
 
@@ -185,7 +185,7 @@ template <typename Func> Derived &cluster_shards(Func &&);
 auto reply = co_await redis.cluster_shards();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:67 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:68 -->
 
 ### `cluster_links`
 
@@ -200,7 +200,7 @@ template <typename Func> Derived &cluster_links(Func &&);
 auto reply = co_await redis.cluster_links();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:72 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:73 -->
 
 ### `cluster_myid`
 
@@ -217,7 +217,7 @@ if (reply.ok() && !reply.result().empty())
     ; // reply.result() is a 40-char node ID
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:158-160 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:161-163 -->
 
 ### `cluster_myshardid`
 
@@ -232,7 +232,7 @@ template <typename Func> Derived &cluster_myshardid(Func &&);
 auto reply = co_await redis.cluster_myshardid();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:73 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:74 -->
 
 ### `cluster_replicas`
 
@@ -247,12 +247,12 @@ template <typename Func> Derived &cluster_replicas(Func &&, const std::string &n
 auto reply = co_await redis.cluster_replicas(master_node_id);
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:107 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:109 -->
 
 ### `cluster_slaves`
 
 `CLUSTER SLAVES node-id` — the deprecated alias of `cluster_replicas`; prefer `cluster_replicas` (
-`cluster_commands.h:879`). Same signature and `qb::json` reply.
+`cluster_commands.h:880-887`). Same signature and `qb::json` reply.
 
 ```cpp
 auto cluster_slaves(const std::string &node_id);              // -> Reply<qb::json>
@@ -263,7 +263,7 @@ template <typename Func> Derived &cluster_slaves(Func &&, const std::string &nod
 auto reply = co_await redis.cluster_slaves(master_node_id);
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:109 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:111 -->
 
 ### `cluster_count_failure_reports`
 
@@ -281,7 +281,7 @@ if (reply.ok())
     long long reports = reply.result();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:106 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:108 -->
 
 ## Slot inspection
 
@@ -301,7 +301,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:162-165 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:165-168 -->
 
 ### `cluster_countkeysinslot`
 
@@ -318,7 +318,7 @@ if (reply.ok())
     long long count = reply.result();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:176-178 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:179-181 -->
 
 ### `cluster_getkeysinslot`
 
@@ -336,7 +336,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:71 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:72 -->
 
 ## Node membership
 
@@ -357,7 +357,7 @@ if (!reply.ok())
     ; // e.g. cluster support disabled on a standalone server
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:93 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:95 -->
 
 ### `cluster_forget`
 
@@ -372,7 +372,7 @@ template <typename Func> Derived &cluster_forget(Func &&, const std::string &nod
 auto reply = co_await redis.cluster_forget(node_id);
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:94 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:96 -->
 
 ### `cluster_replicate`
 
@@ -387,7 +387,7 @@ template <typename Func> Derived &cluster_replicate(Func &&, const std::string &
 auto reply = co_await redis.cluster_replicate(master_node_id);
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:97 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:99 -->
 
 ### `cluster_failover`
 
@@ -405,12 +405,12 @@ auto reply = co_await redis.cluster_failover();          // coordinated
 // auto reply = co_await redis.cluster_failover("FORCE");
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:96 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:98 -->
 
 ### `cluster_reset`
 
 `CLUSTER RESET [HARD|SOFT]` — reset a cluster node, dropping its known nodes and assigned slots. The `mode` argument
-defaults to `"SOFT"`; the value is forwarded to the server without client-side validation (`cluster_commands.h:210`).
+defaults to `"SOFT"`; the value is forwarded to the server without client-side validation (`cluster_commands.h:211-212`).
 
 ```cpp
 auto cluster_reset(const std::string &mode = "SOFT");        // -> Reply<status>
@@ -422,7 +422,7 @@ auto reply = co_await redis.cluster_reset();             // SOFT
 // auto reply = co_await redis.cluster_reset("HARD");
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:95 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:97 -->
 
 ### `cluster_saveconfig`
 
@@ -437,7 +437,7 @@ template <typename Func> Derived &cluster_saveconfig(Func &&);
 auto reply = co_await redis.cluster_saveconfig();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:98 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:100 -->
 
 ### `cluster_set_config_epoch`
 
@@ -452,7 +452,7 @@ template <typename Func> Derived &cluster_set_config_epoch(Func &&, long long ep
 auto reply = co_await redis.cluster_set_config_epoch(1);
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:99 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:101 -->
 
 ### `cluster_bumpepoch`
 
@@ -469,7 +469,7 @@ if (!reply.ok())
     ; // cluster support disabled / unknown command on a standalone server
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:100 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:102 -->
 
 ## Slot administration
 
@@ -490,7 +490,7 @@ Derived &cluster_addslots(Func &&, Slots &&...slots);
 auto reply = co_await redis.cluster_addslots(0, 1, 2);
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:101 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:103 -->
 
 ### `cluster_addslotsrange`
 
@@ -507,7 +507,7 @@ Derived &cluster_addslotsrange(Func &&, const std::vector<std::pair<int, int>> &
 auto reply = co_await redis.cluster_addslotsrange({{0, 5000}, {5001, 10000}});
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:102 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:104 -->
 
 ### `cluster_delslots`
 
@@ -523,7 +523,7 @@ Derived &cluster_delslots(Func &&, Slots &&...slots);
 auto reply = co_await redis.cluster_delslots(0, 1, 2);
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:103 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:105 -->
 
 ### `cluster_delslotsrange`
 
@@ -540,7 +540,7 @@ Derived &cluster_delslotsrange(Func &&, const std::vector<std::pair<int, int>> &
 auto reply = co_await redis.cluster_delslotsrange({{0, 5000}});
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:104 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:106 -->
 
 ### `cluster_flushslots`
 
@@ -555,12 +555,12 @@ template <typename Func> Derived &cluster_flushslots(Func &&);
 auto reply = co_await redis.cluster_flushslots();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:105 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:107 -->
 
 ### `cluster_setslot`
 
 `CLUSTER SETSLOT slot MIGRATING|IMPORTING|STABLE|NODE [node-id]` — set the migration state of a single slot. `node_id`
-defaults to empty and is omitted from the wire command when empty (`cluster_commands.h:840`); it is required for the
+defaults to empty and is omitted from the wire command when empty (`cluster_commands.h:848-849`); it is required for the
 `NODE` and `MIGRATING`/`IMPORTING` subcommands. The subcommand string is forwarded without client-side validation.
 
 ```cpp
@@ -575,7 +575,7 @@ Derived &cluster_setslot(Func &&, int slot, const std::string &subcommand,
 auto reply = co_await redis.cluster_setslot(0, "NODE", target_node_id);
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:108 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:110 -->
 
 ## Per-connection redirect verbs
 
@@ -595,7 +595,7 @@ template <typename Func> Derived &asking(Func &&);
 auto reply = co_await redis.asking();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:129 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:132 -->
 
 ### `readonly`
 
@@ -610,7 +610,7 @@ template <typename Func> Derived &readonly(Func &&);
 auto reply = co_await redis.readonly();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:130 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:133 -->
 
 ### `readwrite`
 
@@ -625,7 +625,7 @@ template <typename Func> Derived &readwrite(Func &&);
 auto reply = co_await redis.readwrite();
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:131 -->
+<!-- src: qbm/redis/tests/integration/admin/cluster-commands.cpp:134 -->
 
 ## Callback form
 

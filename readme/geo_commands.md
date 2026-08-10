@@ -75,7 +75,7 @@ A geo distance is a length, not a time, so it never touches the framework time m
 | `GeoUnit::MI` | `mi`       | miles            |
 | `GeoUnit::FT` | `ft`       | feet             |
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:60, qbm/redis/src/qbm/redis/redis.cpp:354 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:61, qbm/redis/src/qbm/redis/redis.cpp:354 -->
 
 `GEODIST`, `GEORADIUS`, `GEORADIUSBYMEMBER`, and `GEOSEARCH` all default to `GeoUnit::M`. The radius argument itself is
 a `double` in the chosen unit. Do not reach for `qb::duration` / `std::chrono` here — these are distances, and the only
@@ -104,7 +104,7 @@ struct geo_pos {
 };
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:292 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:293-298 -->
 
 Two corrections against older notes. First, the position-returning commands (`geohash`, `geopos`) yield a **vector
 of `std::optional`**: a `std::nullopt` element means the member at that index is absent from the index, so check each
@@ -137,7 +137,7 @@ co_await redis.georadius(key, 13.361389, 38.115556, 200,
                          std::vector<std::string>{"ASC"});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:226, qbm/redis/src/qbm/redis/reply.h:928 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:237-238, qbm/redis/src/qbm/redis/reply.h:875-890 -->
 
 You own the spelling and ordering of these tokens. The same vector reaches `geosearch` too — its callback overload
 appends `options` after the `BYRADIUS <radius> <unit>` tokens, so `COUNT`/`ASC`/`WITH*` are forwarded there as well.
@@ -153,7 +153,7 @@ at a lower level or use a sorted-set read instead.
 All signatures below are the public methods of `geo_commands<Derived>`. Every callback overload **except `geodist`** is
 SFINAE-gated on `std::is_invocable_v<Func, Reply<T>&&>` for that command's `T`; a handler with the wrong `Reply<T>`
 signature drops out of overload resolution, so the call fails to compile (no viable overload) rather than mismatching at
-runtime. `geodist`'s callback overload (geo_commands.h:105-109) is the lone exception: it returns a plain `Derived&`
+runtime. `geodist`'s callback overload (geo_commands.h:109-111) is the lone exception: it returns a plain `Derived&`
 with no `std::enable_if` guard, so a wrong-typed handler still binds the overload and the type error surfaces deeper (
 inside `command<std::optional<double>>`) rather than as a clean "no viable overload".
 
@@ -199,7 +199,7 @@ Derived &geodist(Func &&func, const std::string &key, const std::string &member1
                  const std::string &member2, GeoUnit unit = GeoUnit::M);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:88,107 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:92,111 -->
 
 Returns the distance between `member1` and `member2` in `unit` (default meters). The result is `std::nullopt` when
 either member is missing from the index, so test `.has_value()` before dereferencing.
@@ -228,7 +228,7 @@ template <typename Func, typename... Members>  // Func invocable with Reply<std:
 Derived &geohash(Func &&func, const std::string &key, Members &&...members);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:122,142 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:126,146 -->
 
 Returns the standard geohash string for each requested member, in request order. An element is `std::nullopt` when that
 member is absent.
@@ -256,7 +256,7 @@ template <typename Func, typename... Members>  // Func invocable with Reply<std:
 Derived &geopos(Func &&func, const std::string &key, Members &&...members);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:158,178 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:166,186 -->
 
 Returns the `{longitude, latitude}` of each requested member, in request order. An element is `std::nullopt` when that
 member is absent. Note Redis re-encodes the stored geohash, so the returned coordinates differ slightly from the values
@@ -288,7 +288,7 @@ Derived &georadius(Func &&func, const std::string &key, double longitude, double
                    const std::vector<std::string> &options = {});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:198,223 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:210,235 -->
 
 Returns the names of all members within `radius` (in `unit`) of the `(longitude, latitude)` center. The reply is member
 names only; pass raw `options` tokens for `WITHDIST` / `COUNT` / `ASC` / `DESC` as shown
@@ -319,7 +319,7 @@ Derived &georadiusbymember(Func &&func, const std::string &key, const std::strin
                            const std::vector<std::string> &options = {});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:243,266 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:255,278 -->
 
 Same as `georadius`, but the center is the position of an existing `member` rather than an explicit coordinate. The
 member itself is included in the result.
@@ -348,7 +348,7 @@ Derived &geosearch(Func &&func, const std::string &key, const std::string &membe
                    const std::vector<std::string> &options = {});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:285,308 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:297,320 -->
 
 Emits `GEOSEARCH key FROMMEMBER <member> BYRADIUS <radius> <unit>` followed by any `options` tokens, and returns the
 member names within that circle. This is a deliberately narrow wrapper over the full `GEOSEARCH`: the center is always

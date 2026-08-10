@@ -69,7 +69,7 @@ qb::io::async::task<void> hll_demo(qb::redis::tcp::client &redis) {
 cannot be instantiated on its own. It reaches the connection through `Derived` — it calls
 `derived().command<T>(func, ...)` for the callback form and `derived().make_coro_command<T>(...)` for the coroutine
 form — so you only ever use it through the composed client,
-`qb::redis::tcp::client`. <!-- src: qbm/redis/src/qbm/redis/commands/hyperloglog_commands.h:35-41 -->
+`qb::redis::tcp::client`. <!-- src: qbm/redis/src/qbm/redis/commands/hyperloglog_commands.h:38-44,59-61,79 -->
 
 Each command therefore exists as a matched pair of overloads:
 
@@ -95,7 +95,7 @@ in [key_commands.md](./key_commands.md), not of this group.
 | `PFMERGE` | `qb::redis::status`               | simple-string reply, `"OK"` on success                                                                  |
 
 `qb::redis::status` is the simple-string reply wrapper from `types.h`; it is contextually convertible to `bool` (`true`
-when the string is exactly `"OK"`) and exposes `.ok()` and `.str()`. <!-- src: qbm/redis/src/qbm/redis/types.h:469-526 -->
+when the string is exactly `"OK"`) and exposes `.ok()` and `.str()`. <!-- src: qbm/redis/src/qbm/redis/types.h:470-527 -->
 
 ---
 
@@ -161,9 +161,11 @@ pfcount(Func &&func, Keys &&...keys);
 <!-- src: qbm/redis/src/qbm/redis/commands/hyperloglog_commands.h:88-112 -->
 
 The keys are taken purely variadically — there is no mandatory leading key parameter — so `pfcount()` with zero keys
-compiles and sends a bare `PFCOUNT`, which Redis rejects at runtime with an arity error. Always pass at least one key.
-The result is a plain integer; it is never wrapped in `std::optional`, and a non-existent key counts as cardinality `0`
-rather than an error.
+compiles. It never reaches the server: the callback overload rejects an empty pack **client-side** with
+`fail_client<long long>(func, "PFCOUNT requires at least one key")` and returns, so the handler fires (and the awaiting
+coroutine resumes) with `.ok() == false` and that text in `.error()` (`hyperloglog_commands.h:111-114`). Always pass at
+least one key. The result is a plain integer; it is never wrapped in `std::optional`, and a non-existent key counts as
+cardinality `0` rather than an error.
 
 ```cpp
 // Coroutine — union of two keys
@@ -202,7 +204,10 @@ pfmerge(Func &&func, const std::string &destination, Keys &&...keys);
 <!-- src: qbm/redis/src/qbm/redis/commands/hyperloglog_commands.h:123-149 -->
 
 The source keys are variadic and follow the required `destination`. As with `pfcount`, passing zero source keys (
-`pfmerge(dest)`) compiles; Redis accepts it and writes an empty (or unchanged) HyperLogLog to `dest`.
+`pfmerge(dest)`) compiles — and, as with `pfcount`, it never reaches the server: the callback overload rejects an empty
+`destination` **or** an empty source pack client-side with
+`fail_client<status>(func, "PFMERGE requires a destination and at least one source key")`
+(`hyperloglog_commands.h:149-152`), so you get a failed `Reply<status>` rather than an empty HyperLogLog at `dest`.
 
 ```cpp
 // Coroutine
@@ -234,9 +239,13 @@ redis.pfmerge(
 - **No `std::vector` parameters.** Earlier docs showed `pfcount(const std::vector<std::string> &keys)` and
   `pfmerge(dest, const std::vector<std::string> &sourcekeys)`. The real signatures take keys *variadically* (
   `Keys &&...keys`); pass the keys directly as arguments, not as a vector.
-- **`pfcount()` and `pfmerge(dest)` with no keys compile but can fail at runtime.** The variadic packs have no mandatory
-  leading key beyond `pfmerge`'s `destination`, so a zero-key `pfcount()` issues a bare `PFCOUNT` and Redis returns an
-  arity error. There is no compile-time guard; always supply at least one key.
+- **`pfcount()` and `pfmerge(dest)` with no keys compile, and fail *client-side*.** The variadic packs have no mandatory
+  leading key beyond `pfmerge`'s `destination`, so there is no compile-time guard — but neither call ever reaches Redis:
+  each callback overload tests the pack and routes an empty one through `fail_client`, which resolves the callback (and
+  therefore the awaiter) with a failed `Reply<T>` carrying
+  `"PFCOUNT requires at least one key"` (`hyperloglog_commands.h:111-114`) or
+  `"PFMERGE requires a destination and at least one source key"` (`hyperloglog_commands.h:149-152`).
+  Always supply at least one key.
 - **`PFADD` returning `false` is success, not failure.** Check `.ok()` to detect a transport or protocol error. A
   `false` *result* means the elements were already represented — the call succeeded and changed nothing. Do not treat
   `result() == false` as an error.

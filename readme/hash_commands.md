@@ -26,12 +26,14 @@ Each command exposes two overloads:
 - a **coroutine** form (no callback argument) that returns an awaiter yielding `Reply<T>` — drive it with `co_await`
   inside a `qb::io::async::task<...>`, or with `qb::io::async::run_sync(...)` from synchronous code;
 - a **callback** form whose **first** argument is the handler and which returns `Derived&` for chaining. Your callback
-  must accept exactly `Reply<T>&&` for the command's `T`. Six callback overloads (`hdel`, `hkeys`, `hlen`,
-  `hmget`, `hmset`, `hscan`) add an explicit `std::enable_if_t<std::is_invocable_v<Func, Reply<T>&&>, …>` gate so the
-  compiler can tell the callback overload apart from the coroutine overload; the remaining callback overloads
-  disambiguate by argument position and carry no such gate. Either way the requirement on your callback is the same.
+  must accept exactly `Reply<T>&&` for the command's `T`. **Seven** callback overloads across six command names
+  (`hdel`, `hkeys`, `hlen`, `hmget`, `hmset`, and *both* `hscan` forms) add an explicit
+  `std::enable_if_t<std::is_invocable_v<Func, Reply<T>&&>, …>` gate so the compiler can tell the callback overload apart
+  from the coroutine overload (`hash_commands.h:241`, `:427`, `:454`, `:489`, `:530`, `:573`, `:601`); the remaining
+  callback overloads disambiguate by argument position and return a plain `Derived &` with no such gate
+  (`hash_commands.h:277`, `:307`, `:399`). Either way the requirement on your callback is the same.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/hash_commands.h:214-237 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/hash_commands.h:221-223,240-242 -->
 
 Two operations are **callback-only** and have no coroutine form: the pattern-only auto-iterating
 `hscan(func, key, pattern)`, and the multi-key `hvals(func, std::vector<std::string> keys)` fan-out. Both are covered
@@ -46,9 +48,11 @@ remain `qb::duration` at the client level — see [connection.md](./connection.m
 
 ## Reply types at a glance
 
-`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1102`): `reply.ok()` reports success, `reply.result()` (alias
+`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1102-1177`): `reply.ok()` reports success, `reply.result()` (alias
 `reply.value()`) holds the parsed payload, `reply.error()` holds the server error string, and `Reply<T>` is contextually
-convertible to `bool` (explicit). Container payloads use **qb-core** containers, not `std::`.
+convertible to `bool` (explicit). Container payloads are **mixed**: `hgetall` (and the default `Out` of `hscan`) uses
+a qb-core container, `qb::unordered_map<std::string, std::string>`; `hkeys`, `hvals`, `hmget` and `hget` are all `std::`
+types. Read the table below rather than assuming either family.
 
 | Command(s)                                   | Reply payload `T`                                                                       |
 |----------------------------------------------|-----------------------------------------------------------------------------------------|
@@ -62,7 +66,7 @@ convertible to `bool` (explicit). Container payloads use **qb-core** containers,
 | `hmset`                                      | `qb::redis::status`                                                                     |
 | `hscan` (cursor form)                        | `qb::redis::scan<Out>`, `Out` defaults to `qb::unordered_map<std::string, std::string>` |
 
-<!-- src: qbm/redis/src/qbm/redis/commands/hash_commands.h:216, 337, 427, 589, 710, 369, 248, 650, 278, 307; qbm/redis/src/qbm/redis/types.h:475, 534 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/hash_commands.h:223, 350, 440, 621, 742, 382, 261, 682, 291, 320, 412, 771, 470, 511, 552-554; qbm/redis/src/qbm/redis/types.h:476, 534-538 -->
 
 ---
 
@@ -82,17 +86,17 @@ Sets `field` to `value` in the hash at `key`. Returns the number of **new** fiel
 existing field).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:589
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:620-621
 auto hset(const std::string &key, const std::string &field, const std::string &val);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:607
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:637-639
 template <typename Func>
 Derived &hset(Func &&func, const std::string &key, const std::string &field,
               const std::string &val);
 ```
 
 A `std::pair<std::string, std::string>` overload exists for both forms — `hset(key, {field, value})` — and forwards to
-the field/value version (`hash_commands.h:620`, `:636`).
+the field/value version (`hash_commands.h:651-652`, `:666-668`).
 
 ```cpp
 // Coroutine
@@ -113,16 +117,16 @@ redis.hset([](qb::redis::Reply<long long> &&r) {
 Sets `field` only if it does not already exist. Returns `true` when the field was set, `false` when it already existed.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:650
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:681-682
 auto hsetnx(const std::string &key, const std::string &field, const std::string &val);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:668
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:698-700
 template <typename Func>
 Derived &hsetnx(Func &&func, const std::string &key, const std::string &field,
                 const std::string &val);
 ```
 
-A `std::pair` overload exists for both forms (`hash_commands.h:681`, `:697`).
+A `std::pair` overload exists for both forms (`hash_commands.h:712-713`, `:727-729`).
 
 ```cpp
 // Coroutine
@@ -142,11 +146,11 @@ for `"OK"`).
 `long long`.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:493
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:509-511
 template <typename... FieldValues>
 auto hmset(const std::string &key, FieldValues &&...field_values);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:513
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:529-531
 template <typename Func, typename... FieldValues>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 hmset(Func &&func, const std::string &key, FieldValues &&...field_values);
@@ -166,10 +170,10 @@ Returns the value of `field`, or an empty `std::optional` (`nil`) when the field
 `result().has_value()` before dereferencing.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:278
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:290-291
 auto hget(const std::string &key, const std::string &field);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:306-310
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:306-308
 template <typename Func>
 Derived &hget(Func &&func, const std::string &key, const std::string &field);
 ```
@@ -194,11 +198,11 @@ Returns one optional per requested field, in request order. Missing fields are e
 length always matches the field count.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:457
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:468-470
 template <typename... Fields>
 auto hmget(const std::string &key, Fields &&...fields);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:477
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:488-490
 template <typename Func, typename... Fields>
 std::enable_if_t<
     std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
@@ -222,10 +226,10 @@ Returns every field/value pair as a `qb::unordered_map<std::string, std::string>
 still `ok()`).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:307
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:319-320
 auto hgetall(const std::string &key);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:323
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:334-336
 template <typename Func>
 Derived &hgetall(Func &&func, const std::string &key);
 ```
@@ -245,10 +249,10 @@ if (r.ok())
 Returns all field names as `std::vector<std::string>`.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:399
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:411-412
 auto hkeys(const std::string &key);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:415
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:426-428
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
 hkeys(Func &&func, const std::string &key);
@@ -264,10 +268,10 @@ if (r.ok()) { /* r.result() == {"field1", "field2", ...} */ }
 Returns all values as `std::vector<std::string>`.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:739
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:770-771
 auto hvals(const std::string &key);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:755
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:785-787
 template <typename Func>
 Derived &hvals(Func &&func, const std::string &key);
 ```
@@ -286,7 +290,7 @@ A second `hvals` callback overload takes a `std::vector<std::string>` of keys an
 `std::vector<std::string>` — there are no key boundaries in the result. There is **no coroutine form** of this overload.
 
 ```cpp
-// Callback only — qbm/redis/src/qbm/redis/commands/hash_commands.h:770
+// Callback only — qbm/redis/src/qbm/redis/commands/hash_commands.h:800-802
 template <typename Func>
 Derived &hvals(Func &&func, std::vector<std::string> keys);
 ```
@@ -297,7 +301,7 @@ redis.hvals([](qb::redis::Reply<std::vector<std::string>> &&r) {
 }, std::vector<std::string>{"user:1", "user:2", "user:3"});
 ```
 
-Semantics to know (`hash_commands.h:130-202`):
+Semantics to know (`hash_commands.h:137-209`):
 
 - Success is folded with logical-AND across the per-key replies (`_reply.ok() &= reply.ok()`); one failing key makes the
   whole reply not-ok.
@@ -311,11 +315,11 @@ Semantics to know (`hash_commands.h:130-202`):
 Removes one or more fields. Returns the number of fields actually removed (absent fields are not counted).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:216
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:221-223
 template <typename... Fields>
 auto hdel(const std::string &key, Fields &&...fields);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:235
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:240-242
 template <typename Func, typename... Fields>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 hdel(Func &&func, const std::string &key, Fields &&...fields);
@@ -334,10 +338,10 @@ if (r.ok())
 Returns `true` if `field` exists in the hash, `false` otherwise.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:248
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:260-261
 auto hexists(const std::string &key, const std::string &field);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:276-280
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:276-278
 template <typename Func>
 Derived &hexists(Func &&func, const std::string &key, const std::string &field);
 ```
@@ -352,10 +356,10 @@ if (r.ok() && r.result()) { /* present */ }
 Returns the number of fields in the hash as `long long` (0 for an absent key).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:427
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:439-440
 auto hlen(const std::string &key);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:442
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:453-455
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 hlen(Func &&func, const std::string &key);
@@ -371,10 +375,10 @@ if (r.ok()) { /* r.result() == field count */ }
 Returns the string length of the value stored at `field` as `long long` (0 if the field or key is absent).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:710
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:741-742
 auto hstrlen(const std::string &key, const std::string &field);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:727
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:757-759
 template <typename Func>
 Derived &hstrlen(Func &&func, const std::string &key, const std::string &field);
 ```
@@ -392,10 +396,10 @@ Increments the integer value of `field` by a signed `long long` and returns the 
 negative increment to decrement.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:337
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:349-350
 auto hincrby(const std::string &key, const std::string &field, long long increment);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:355
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:366-368
 template <typename Func>
 Derived &hincrby(Func &&func, const std::string &key, const std::string &field,
                  long long increment);
@@ -415,10 +419,10 @@ Increments the float value of `field` by a `double` and returns the value after 
 decrement.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:369
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:381-382
 auto hincrbyfloat(const std::string &key, const std::string &field, double increment);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:387
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:398-400
 template <typename Func>
 Derived &hincrbyfloat(Func &&func, const std::string &key, const std::string &field,
                       double increment);
@@ -438,17 +442,19 @@ distinct overload families.
 #### Cursor form (coroutine or callback)
 
 You drive the cursor yourself: start at cursor `0`, and repeat until the returned cursor is `0` again. The reply payload
-is `qb::redis::scan<Out>` (`types.h:534`), a struct with `cursor` (`std::size_t`) and `items` (the container `Out`).
-`Out` defaults to `qb::unordered_map<std::string, std::string>`. `pattern` defaults to `"*"` and `count` defaults to
-`10` (a server hint, not a hard limit).
+is `qb::redis::scan<Out>` (`types.h:534-538`), a struct with `cursor` (`std::size_t`) and `items` (the container
+`Out`). Note that `Out` defaults differently per call site: the `scan` template's own default is
+`std::vector<std::string>` (`types.h:534`), but **both** `hscan` overloads re-default it to
+`qb::unordered_map<std::string, std::string>` (`hash_commands.h:552`, `:572`), which is what you get here.
+`pattern` defaults to `"*"` and `count` defaults to `10` (a server hint, not a hard limit).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:530
+// Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:552-554
 template <typename Out = qb::unordered_map<std::string, std::string>>
 auto hscan(const std::string &key, long long cursor,
            const std::string &pattern = "*", long long count = 10);
 
-// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:550
+// Callback — qbm/redis/src/qbm/redis/commands/hash_commands.h:572-574
 template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
 std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
 hscan(Func &&func, const std::string &key, long long cursor,
@@ -468,8 +474,9 @@ do {
 
 <!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:325-335 -->
 
-> The callback cursor form short-circuits and returns `derived()` without issuing a command when `key` is empty (
-`hash_commands.h:574-581`).
+> The callback cursor form sends nothing when `key` is empty — but it does not go silent: it routes through
+> `fail_client` with `"HSCAN requires a non-empty key"` and then returns `derived()`, so the handler runs with
+> `ok() == false` and an awaiting coroutine resumes instead of parking (`hash_commands.h:578-581`).
 
 #### Auto-iterating form (callback-only)
 
@@ -477,7 +484,7 @@ The pattern-only overload (no `cursor`) runs the full cursor loop for you and in
 matching field/value pair collected. There is **no coroutine form** of this overload.
 
 ```cpp
-// Callback only — qbm/redis/src/qbm/redis/commands/hash_commands.h:574
+// Callback only — qbm/redis/src/qbm/redis/commands/hash_commands.h:600-602
 template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
 std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
 hscan(Func &&func, const std::string &key, const std::string &pattern = "*");
@@ -490,7 +497,7 @@ redis.hscan([](qb::redis::Reply<qb::redis::scan<>> &&r) {
 }, "user:1", "*");
 ```
 
-Behavior to know (`hash_commands.h:51-120`):
+Behavior to know (`hash_commands.h:56-125`):
 
 - The internal scanner hardcodes a per-call `COUNT` of **100**, independent of any value you might want — the auto form
   gives you no way to tune the page size. (The cursor form's `count` defaults to 10 and is tunable.)
@@ -516,9 +523,10 @@ Behavior to know (`hash_commands.h:51-120`):
   propagate.
 - **The auto-iterating `hscan` page size is fixed at 100.** If you need a different `COUNT`, use the cursor form and run
   the loop yourself.
-- **Container types are qb-core, not `std::`.** `hgetall` yields `qb::unordered_map<std::string, std::string>` and the
-  default `hscan` `Out` is the same. Include the client header (which pulls them in transitively) and do not assume
-  `std::unordered_map`.
+- **Only the map-shaped replies are qb-core.** `hgetall` yields `qb::unordered_map<std::string, std::string>`
+  (`hash_commands.h:320`) and the default `hscan` `Out` is the same (`hash_commands.h:552`) — do not assume
+  `std::unordered_map` there. Every other multi-value reply in this group *is* a `std::` type (`hkeys`/`hvals` →
+  `std::vector<std::string>`, `hmget` → `std::vector<std::optional<std::string>>`), so the rule does not generalize.
 - **The client is not thread-safe.** Drive one client from a single I/O thread / strand; the reply queue and outbound
   pipe are unsynchronized (see [connection.md](./connection.md)).
 - **No expiry on fields in this group.** Per-field TTLs (`HEXPIRE` and friends) are not part of this mixin. Set a TTL on

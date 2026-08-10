@@ -40,7 +40,7 @@ thread or strand.
 
 You consume qbm-redis through the qb module loader, not `find_package`:
 
-<!-- src: qbm/redis/README.md:66-70 -->
+<!-- src: qbm/redis/README.md:68-72 -->
 
 ```cmake
 add_subdirectory(qb)                                   # the framework first
@@ -66,7 +66,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
 - **Time — framework side.** Connect and command timeouts and the `RetryPolicy` delays are `qb::duration`. Defaults:
   `RetryPolicy.initial_delay` 100 ms, `max_delay` 30 s, `connect_timeout` 3 s; `connect()` default timeout 3 s;
   `command_timeout` is `qb::duration::zero()` (disabled). `set_command_timeout` is a connection-health watchdog, not a
-  per-command timer: on deadline it drops the whole connection (`redis.h:1013,836`). `debug_sleep` also takes
+  per-command timer: on deadline it drops the whole connection (`redis.h:1062-1082,888-904`). `debug_sleep` also takes
   `qb::duration`.
 - **Time — Redis-protocol side (a documented boundary, not a bug).** Redis command time arguments keep their native wire
   units, exposed through `std::chrono`-unit overloads, and are **not** forced onto `qb::duration`:
@@ -76,11 +76,11 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
   | Seconds | `EXPIRE`, `EXPIREAT`, `SETEX`, `GETEX` (`EX`) | `std::chrono::seconds` (or the raw `long long` overload) |
   | Milliseconds | `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX` (`PX`), `WAIT`, `RESTORE` TTL, `MIGRATE` | `std::chrono::milliseconds` (or the raw `long long` overload) |
 
-  So `expire(key, 60s)` sets 60 seconds and `pexpire(key, 60ms)` sets 60 milliseconds (`key_commands.h:241,416`;
+  So `expire(key, 60s)` sets 60 seconds and `pexpire(key, 60ms)` sets 60 milliseconds (`key_commands.h:237-238,393-394`;
   `string_commands.h:498,676,896`). Reply TTL values (`ttl`, `pttl`, `expiretime`, `pexpiretime`) are plain integers —
   the unit lives in the method name, not a wrapped type (`key_commands.h:655,459,812,833`). Stream blocking and
   idle-time arguments (`XREAD`/`XREADGROUP` `block`, `XCLAIM`/`XAUTOCLAIM` `min_idle_time`) are raw `long long`
-  milliseconds with no chrono overload (`stream_commands.h:388,414,849`). Blocking-list timeouts (`BLPOP`,
+  milliseconds with no chrono overload (`stream_commands.h:426,513,801,848`). Blocking-list timeouts (`BLPOP`,
   `BLMOVE`, ...) are seconds.
 
 ## API at a glance
@@ -95,7 +95,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
 - **Check the result.** `Reply<T>` carries a status and a typed value: `r.ok()`, `r.result()`, `r.error()`. Redis
   command errors are reported as `ok() == false`; they are not thrown.
 - **Pipeline.** Issue several callback-form commands without awaiting between them; each enqueues one handler and
-  replies return in FIFO order. Drain with the client's `await()` (`redis.h:987`), or `flush()` on the `tcp::pipeline`
+  replies return in FIFO order. Drain with the client's `await()` (`redis.h:1049-1054`), or `flush()` on the `tcp::pipeline`
   wrapper (`redis.h:1151-1152`, which itself calls `client().await()`). `pending_reply_count()` reports the queue depth.
 - **Generic escape hatch.** For a command without a typed wrapper, call `command<T>` with the verb and arguments:
 
@@ -147,18 +147,18 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 ## Pitfalls
 
 - **Auto-reconnect does not replay work.** On disconnect, all pending replies fail and predicted subscription state is
-  cleared. After a reconnect you must re-subscribe and re-issue any in-flight commands yourself (`redis.h:883,1369`).
+  cleared. After a reconnect you must re-subscribe and re-issue any in-flight commands yourself (`redis.h:945-960,1428-1446`).
 - **`set_command_timeout` drops the connection.** It is a health watchdog, not a per-command deadline: because FIFO
   pipelining cannot fail one mid-queue command without desyncing later replies, tripping the deadline disconnects and
-  fails every pending command (`redis.h:870`).
+  fails every pending command (`redis.h:888-904,945-960`).
 - **Auto-iterating scanners and `hvals` are callback-only.** The no-cursor `sscan` / `zscan` / `hscan` overloads and
   multi-key `hvals` buffer the whole result and fire the callback once; there is no coroutine form, and a throwing
-  callback is caught and logged, not propagated (`set_commands.h:107-108`, `hash_commands.h:574,770`).
+  callback is caught and logged, not propagated (`set_commands.h:107-108`, `hash_commands.h:600-609,800-807`).
 - **Empty required arguments resolve as a failed `Reply`, not a bad frame.** A required-variadic / required-collection
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
-  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:158-159`, `reply.h:1277`).
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:158-159`, `reply.h:1284-1288`).
 - **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
   (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
   with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /
@@ -166,7 +166,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   left the callback unfired and parked the coroutine form forever; they now behave like the rest.
 - **Multi-stream `xread` / `xreadgroup` throw synchronously.** They throw `std::invalid_argument` from the callback body
   when `keys` is empty or `keys.size() != ids.size()` — catch it; it is not delivered as a `Reply` error (
-  `stream_commands.h:514,427`).
+  `stream_commands.h:514-515,427-428`).
 - **`GETEX` unit asymmetry.** The integer overload uses `EX` (seconds) while the `std::chrono::milliseconds` overload
   uses `PX` (milliseconds) — unlike `SET`, whose integer and chrono overloads both use milliseconds (
   `string_commands.h:586,880,896`).
@@ -175,7 +175,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 
 The integration tests under [`../tests/`](../tests/) are executable documentation and run in both RESP2 and RESP3 modes.
 When a signature or behavior is unclear, grep a test and read it — for example `integration/connection/pipeline.cpp` drives `connect` /
-`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:301`).
+`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:301-302`).
 
 ## See also
 
