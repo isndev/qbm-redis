@@ -39,7 +39,7 @@ qb::io::async::task<void> example(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: derived from qbm/redis/tests/integration/admin/module-commands.cpp:48-85 -->
+<!-- src: qbm/redis/tests/integration/admin/module-commands.cpp:48-85 (derived) -->
 
 This command group carries **no time arguments** — none of its parameters are durations, so the
 seconds-versus-milliseconds boundary documented for key-expiry commands does not apply here. Connect and command
@@ -48,7 +48,7 @@ seconds-versus-milliseconds boundary documented for key-expiry commands does not
 > `MODULE LOAD` **executes server-side native code.** A loaded module runs in the server's address space with no
 > sandbox — it can register commands, allocate memory, and crash or compromise the server. Treat `module_load` like any
 > other privileged admin operation: the module is a thin RESP wrapper and performs no authorization of its own; gate it
-> behind Redis ACLs and trusted input. (`module_commands.h:85`; FACTBOOK invariant on destructive admin commands.)
+> behind Redis ACLs and trusted input. (`module_commands.h:105`; FACTBOOK invariant on destructive admin commands.)
 
 > The client is **not thread-safe.** Issue module commands from a single I/O thread / strand, like every other command.
 
@@ -71,7 +71,7 @@ The reply type `T` differs per command (`qb::json`, `status`, `std::vector<std::
 
 ### Reading a `Reply<T>`
 
-Every command resolves to `qb::redis::Reply<T>` (`reply.h:1102`):
+Every command resolves to `qb::redis::Reply<T>` (`reply.h:1109`):
 
 - `reply.ok()` / `explicit operator bool` — `true` when the command round-tripped successfully.
 - `reply.result()` (or its alias `reply.value()`) — the typed payload `T`.
@@ -88,7 +88,7 @@ See [error_handling.md](./error_handling.md) for the typed error hierarchy.
 
 ### The `status` reply type
 
-`module_load` and `module_unload` reply with `qb::redis::status` (`types.h:475`), a thin wrapper over the server's
+`module_load` and `module_unload` reply with `qb::redis::status` (`types.h:476`), a thin wrapper over the server's
 simple-string reply. `status::ok()` and its `operator bool` are `true` only when the string is exactly `"OK"`. So with
 `Reply<status>` there are two layers to check — `reply.ok()` (did the command round-trip) and `reply.result().ok()` (was
 the status `"OK"`):
@@ -128,10 +128,10 @@ callable accepts the matching `Reply<T> &&`.
 ### `module_list` — enumerate loaded modules
 
 ```cpp
-// Coroutine — module_commands.h:52
+// Coroutine — module_commands.h:56
 auto module_list();                                // -> redis_awaiter yielding Reply<qb::json>
 
-// Callback — module_commands.h:67
+// Callback — module_commands.h:68
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
 module_list(Func &&func);
@@ -166,7 +166,7 @@ redis.module_list([](qb::redis::Reply<qb::json> &&reply) {
 });
 ```
 
-<!-- src: derived from module_commands.h:67-71 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:67-71 (derived) -->
 
 ### `module_load` — load a module
 
@@ -212,7 +212,7 @@ auto r2 = co_await redis.module_load(
     "/opt/redis/modules/redisearch.so", "MAXSEARCHRESULTS", "100000");
 ```
 
-<!-- src: derived from module_commands.h:85-91 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:85-91 (derived) -->
 
 > `module_load` runs untrusted native code in the server process. See the security note above.
 
@@ -222,7 +222,7 @@ auto r2 = co_await redis.module_load(
 // Coroutine — module_commands.h:117
 auto module_unload(const std::string &name);       // -> redis_awaiter yielding Reply<status>
 
-// Callback — module_commands.h:133
+// Callback — module_commands.h:130
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 module_unload(Func &&func, const std::string &name);
@@ -250,12 +250,12 @@ if (r.ok() && r.result().ok())
     qb::io::cout() << "ReJSON unloaded" << std::endl;
 ```
 
-<!-- src: derived from module_commands.h:117-123 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:117-123 (derived) -->
 
 ### `module_help` — fetch help text
 
 ```cpp
-// Coroutine — module_commands.h:147
+// Coroutine — module_commands.h:144
 auto module_help();                                // -> redis_awaiter yielding Reply<std::vector<std::string>>
 
 // Callback — module_commands.h:157
@@ -291,8 +291,10 @@ see [connection.md](./connection.md)).
 ## Pitfalls
 
 - **`MODULE` may be unsupported.** A server compiled without the modules API rejects the whole family with an
-  `unknown command 'MODULE'` error. That surfaces as `!reply.ok()` (or, on the rare path where the driver raises, a
-  caught `std::exception`); always handle the not-supported branch, as the tests do (`integration/admin/module-commands.cpp:90-106`).
+  `unknown command 'MODULE'` error. That surfaces as `!reply.ok()` with the server text in `reply.error()`: the reply
+  dispatcher turns a RESP error frame into a failed `Reply` and never throws it at your call site (`reply.h:1240-1246`),
+  so there is nothing to `catch`. Always handle the not-supported branch the way the tests do — by asserting
+  `!reply.ok()` and matching the error text (`integration/admin/module-commands.cpp:90-106`).
 - **Two-layer success check for `status` replies.** For `module_load`/`module_unload`, `reply.ok()` only tells you the
   command round-tripped. You must also check `reply.result().ok()` to confirm the server returned `"OK"`. A
   loaded-but-init-failed module can round-trip with a non-`"OK"` status.
@@ -319,4 +321,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:475 (status), qbm/redis/src/qbm/redis/reply.h:1102 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.0.0 -->
+<!-- Verified against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:476 (status), qbm/redis/src/qbm/redis/reply.h:1109 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.0.0 -->

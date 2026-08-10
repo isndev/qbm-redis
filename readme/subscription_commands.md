@@ -349,7 +349,7 @@ EXPECT_TRUE(pub.ok());                       // Reply<long long>: subscriber cou
 co_await qb::io::async::sleep(std::chrono::milliseconds(100));   // let on_message run
 ```
 
-<!-- src: qbm/redis/tests/integration/pubsub/pubsub-coconsumer-receive.cpp:161-195 -->
+<!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:123-135 -->
 
 `qb::io::async::sleep(...)` takes a `std::chrono` duration. Connect and command timeouts elsewhere in the client are
 `qb::duration`; Redis command *arguments* that carry time (such as `EXPIRE` seconds versus `PEXPIRE` milliseconds) keep

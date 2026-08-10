@@ -53,7 +53,7 @@ boundary documented for key-expiry commands does not apply here. Connect and com
 
 ### Where these methods come from
 
-`connection_commands<Derived>` is a header-only CRTP mixin (`connection_commands.h:34`). It is one of the bases of
+`connection_commands<Derived>` is a header-only CRTP mixin (`connection_commands.h:33`). It is one of the bases of
 `qb::redis::detail::Redis<QB_IO_>`, so `qb::redis::tcp::client`, `qb::redis::tcp::ssl::client`, and the pub/sub
 consumers all expose these eight methods directly. Each method forwards to the inherited command machinery:
 
@@ -155,7 +155,9 @@ auth(Func &&func, const std::string &user, const std::string &password);
 
 Two argument shapes: one string is the legacy `requirepass` form (authenticates as the `default` user); two strings are
 the ACL `user` + `password` form. A rejected credential resolves with `ok() == false` and the server message (
-`WRONGPASS`, `NOPERM`) in `error()`; the dedicated typed error is `qb::redis::AuthError`. Credentials are **not** stored
+`WRONGPASS`, `NOPERM`) in `error()`. A `qb::redis::AuthError` class is declared (`reply.h:118`) but nothing in the
+module ever constructs or throws it — a rejected `auth` reaches you only as `reply.error()` text, so do not write a
+`catch` clause for it. Credentials are **not** stored
 on the client, so auto-reconnect does not re-authenticate — re-issue `auth(...)` yourself after a reconnect (
 see [connection.md](./connection.md)).
 
@@ -326,7 +328,7 @@ if (reply.ok()) {
 <!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:187-204 -->
 
 > Three unrelated APIs share the name `reset`/`reset_*` in this module — the protocol parser's `redis<IO_>::reset()` (
-`redis.h:195`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:273`), and this user-facing
+`redis.h:198`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:273`), and this user-facing
 `RESET` command. This page documents only the last one.
 
 ---
@@ -360,7 +362,7 @@ qb::io::async::task<void> handshake(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: composed from qbm/redis/src/qbm/redis/commands/connection_commands.h + qbm/redis/tests/integration/connection/connection-commands.cpp:166-183 (HELLO+PING) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h; qbm/redis/tests/integration/connection/connection-commands.cpp:166-183 (HELLO+PING, composed) -->
 
 ### Callback chaining
 

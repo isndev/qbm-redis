@@ -13,7 +13,7 @@ minimal `co_await` and callback snippet.
 
 ## Summary
 
-The key commands are defined by the `qb::redis::key_commands<Derived>` CRTP mixin (`key_commands.h:37`), which
+The key commands are defined by the `qb::redis::key_commands<Derived>` CRTP mixin (`key_commands.h:39`), which
 `qb::redis::tcp::client` inherits along with every other command group. You call these methods directly on a connected
 client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to get a
 `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the client for
@@ -48,25 +48,25 @@ below are the correct way to express expiry.)
 | `std::vector<std::string>`   | a key/value list                       | `keys`, `sortKey`, `sortKeyRo`                                                                                    |
 | `qb::redis::scan<>`          | one SCAN round-trip: `{cursor, items}` | `scan`                                                                                                            |
 
-`qb::redis::Reply<T>` (`reply.h:1102`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1109`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. Reads of TTL/count replies go through `reply.result()`; optional replies are tested with
 `reply.result().has_value()`. See [Command API model](./commands_overview.md) for the full reply surface.
 
 ### `qb::redis::status`
 
-`status` (`types.h:475`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`types.h:476`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
 
 ### `qb::redis::scan<Out>`
 
-`scan<Out>` (`types.h:534`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
+`scan<Out>` (`types.h:534-538`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
 `SCAN` returns one of these per round-trip; a returned `cursor` of `0` signals the iteration is complete. You loop on
 the cursor yourself (see [`scan`](#scan) below).
 
 ### Method-name renames
 
 Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:780`),
-`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:986`, `:987`, `:1014`). Note that `move()` is the Redis
+`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:986`, `:1012`, `:1039`). Note that `move()` is the Redis
 `MOVE` command (`key_commands.h:337-338`) and does not collide with the `std::move` you use in callbacks. Every other method
 matches its Redis verb in lowercase.
 
@@ -88,7 +88,7 @@ if (!co_await redis.connect())
 <!-- src: qbm/redis/tests/integration/key/key-commands.cpp; qbm/redis/readme/connection.md -->
 
 Each command shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
-`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:142`).
+`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:147`).
 
 ## Existence and deletion
 
@@ -190,7 +190,7 @@ auto r = co_await redis.expire("session", 30s);   // seconds
 if (r.ok() && r.result()) { /* timeout applied */ }
 ```
 
-<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 (EXPIRE_LIFECYCLE: expire(key, std::chrono::seconds{30})) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 (EXPIRE_LIFECYCLE, expire with std::chrono::seconds{30}) -->
 
 ### `pexpire`
 
@@ -207,7 +207,7 @@ template <typename Func> Derived &pexpire(Func &&, const std::string &key, const
 auto r = co_await redis.pexpire("session", 30000ms);   // milliseconds
 ```
 
-<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 (EXPIRE_LIFECYCLE: pexpire(key, std::chrono::milliseconds{30000})) -->
+<!-- src: qbm/redis/tests/integration/key/key-commands.cpp:321-370 (EXPIRE_LIFECYCLE, pexpire with std::chrono::milliseconds{30000}) -->
 
 ### `expireat`
 

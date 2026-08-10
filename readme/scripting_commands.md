@@ -82,7 +82,7 @@ from `keys.size()`. You pass the `keys` and `args` vectors separately and the li
 you migrate code from a raw client and *also* pass a `numkeys` argument, the command is malformed. The same auto-
 `numkeys` rule applies to `evalsha`, `evalRo`, and `evalshaRo`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:80-81 (keys.size()) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:80-81 (the derived key count) -->
 
 ### `EVAL` versus `EVALSHA`, and the script cache
 
@@ -213,7 +213,7 @@ Derived &evalRo(Func &&func, const std::string &script,
                 const std::vector<std::string> &args = {});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:228-261 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:242-265 -->
 
 Same contract as `eval`, mapped to `EVAL_RO`. The server rejects any write the script attempts, so this is safe to route
 to a replica.
@@ -241,7 +241,7 @@ Derived &evalshaRo(Func &&func, const std::string &sha1,
                    const std::vector<std::string> &args = {});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:263-296 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:277-300 -->
 
 `EVALSHA_RO`: the read-only variant addressed by SHA1.
 
@@ -262,7 +262,7 @@ template <typename Func>
 Derived &script_load(Func &&func, std::string const &script);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:200-226 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:211-230 -->
 
 Loads `script` into the cache **without** executing it and returns its SHA1, ready for `evalsha`/`evalshaRo`.
 
@@ -307,7 +307,7 @@ template <typename Func>
 Derived &script_flush(Func &&func);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:150-173 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:160-177 -->
 
 Removes every cached script. After a flush, outstanding `EVALSHA` calls fail with `NOSCRIPT` until you reload. The
 `ASYNC`/`SYNC` modifier is not exposed by this overload.
@@ -328,7 +328,7 @@ template <typename Func>
 Derived &script_kill(Func &&func);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:175-198 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:185-202 -->
 
 Kills the script currently executing, **provided it has not yet performed a write**. If it has, the server refuses (
 atomicity would be broken) and you must restart the node. With no script running, the call returns a `NOTBUSY` error.
@@ -349,7 +349,7 @@ template <typename Func>
 Derived &scriptDebug(Func &&func, const std::string &mode);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:298-323 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:309-327 -->
 
 Sets the script-debugging mode on the connection. `mode` is a free-form `std::string`; the only meaningful values are
 `"YES"` (enable asynchronous, non-blocking debugging — dataset changes made by the debugged script are rolled back),
@@ -376,7 +376,7 @@ auto reply = co_await redis.scriptDebug("NO");   // Reply<status>
 - **`script_kill` cannot stop a writing script.** It works only before the script's first write. Past that point your
   only recovery is restarting the node, so keep scripts short and bounded.
 - **`scriptDebug` mode is unvalidated.** Only `YES`/`SYNC`/`NO` are valid; a typo reaches the server verbatim and fails
-  there, not at the call site. <!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:322 -->
+  there, not at the call site. <!-- src: qbm/redis/src/qbm/redis/commands/scripting_commands.h:326 -->
 - **Key ownership in a cluster.** Every key a script touches must be declared in `keys` *and* hash to the same slot, or
   the cluster rejects the command. This is a Redis Cluster rule, not a client check.
 - **No reconnect replay.** If the connection drops, in-flight scripts are not re-sent and the cache state on a

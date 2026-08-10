@@ -18,11 +18,16 @@ llm/qbm-redis.llm.api.md	cluster_commands.h:34-34	403efb70a077	class cluster_com
 llm/qbm-redis.llm.api.md	connection_commands.h:33-33	2370285d9c1b	class connection_commands {
 llm/qbm-redis.llm.api.md	function_commands.h:35-35	76bf3c2ae507	class function_commands {
 llm/qbm-redis.llm.api.md	geo_commands.h:34-34	b05338421762	class geo_commands {
-llm/qbm-redis.llm.api.md	hash_commands.h:36-36	e5c3be79eca7	*/
+llm/qbm-redis.llm.api.md	hash_commands.h:38-38	ccdadcdf88ba	class hash_commands {
 llm/qbm-redis.llm.api.md	hyperloglog_commands.h:39-39	2b36cc8752b2	class hyperloglog_commands {
-llm/qbm-redis.llm.api.md	key_commands.h:37-37	e5c3be79eca7	*/
+llm/qbm-redis.llm.api.md	key_commands.h:39-39	b028456ff379	class key_commands {
 llm/qbm-redis.llm.api.md	list_commands.h:36-36	2bc003d3c0ef	class list_commands {
 llm/qbm-redis.llm.api.md	module_commands.h:34-34	d8e23f3ea583	class module_commands {
+llm/qbm-redis.llm.api.md	parser/types.h:119-119	b620bd5229ca	using ParseResult = expected<T, ParseError>;
+llm/qbm-redis.llm.api.md	parser/types.h:136-136	bb7a54deeb3d	namespace type_id {
+llm/qbm-redis.llm.api.md	parser/types.h:43-43	5d9f6306792e	enum class ProtocolVersion { RESP2 = 2, RESP3 = 3 };
+llm/qbm-redis.llm.api.md	parser/types.h:50-50	fbe1faa57c66	enum class ParseErrorCode {
+llm/qbm-redis.llm.api.md	parser/types.h:66-66	1f85eaa019e5	class ParseError {
 llm/qbm-redis.llm.api.md	publish_commands.h:37-37	3c65ae0990bb	class publish_commands {
 llm/qbm-redis.llm.api.md	redis.h:1119-1119	fe3c529f759a	class RedisPipeline {
 llm/qbm-redis.llm.api.md	redis.h:1175-1175	cd678de7f8c1	class RedisConsumer
@@ -33,21 +38,21 @@ llm/qbm-redis.llm.api.md	redis.h:1688-1688	5b0051a25645	using database = detail:
 llm/qbm-redis.llm.api.md	redis.h:1694-1694	e19a828745ea	struct tcp {
 llm/qbm-redis.llm.api.md	redis.h:1706-1706	97c8e8c3b177	struct ssl {
 llm/qbm-redis.llm.api.md	redis.h:1719-1719	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
-llm/qbm-redis.llm.api.md	redis.h:217-217	3ac19ea1a29d	* Used by connect_with_retry() and enable_auto_reconnect() to control
-llm/qbm-redis.llm.api.md	redis.h:290-290	aa8f8f82c624	* @tparam Derived CRTP derived class (Redis or RedisConsumer)
+llm/qbm-redis.llm.api.md	redis.h:220-220	faac5b76e250	struct RetryPolicy {
+llm/qbm-redis.llm.api.md	redis.h:292-315	3f8d47bb9ce5	template <typename QB_IO_, typename Derived>
 llm/qbm-redis.llm.api.md	redis.h:410-413	76c91e8904ff	* @struct connect_awaiter
 llm/qbm-redis.llm.api.md	redis.h:696-696	0657b2a52a29	class redis_awaiter {
 llm/qbm-redis.llm.api.md	redis.h:737-737	351bb30df879	make_redis_awaiter(Func &&operation) {
 llm/qbm-redis.llm.api.md	redis.h:763-763	4ab5c6be2991	class Redis
-llm/qbm-redis.llm.api.md	redis.h:80-80	95ba6ba2b576	* @tparam IO_ The underlying I/O connector type (CRTP)
-llm/qbm-redis.llm.api.md	redis.h:94-94	d3e64f3b1d1f	* Uses unique_ptr for clear ownership semantics. The handler takes ow...
+llm/qbm-redis.llm.api.md	redis.h:82-83	fec8f2f5d4ae	template <typename IO_>
+llm/qbm-redis.llm.api.md	redis.h:97-99	39cb75f31c29	struct message {
 llm/qbm-redis.llm.api.md	reply.h:102-102	f053ab3c6ce5	class ConnectionError : public Error {
-llm/qbm-redis.llm.api.md	reply.h:1080-1080	e9cede9b80ea	void
+llm/qbm-redis.llm.api.md	reply.h:1081-1081	1a5512b24cb3	put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
 llm/qbm-redis.llm.api.md	reply.h:1096-1099	e905742f3f34	template <typename T>
-llm/qbm-redis.llm.api.md	reply.h:1102-1102	098c53385744	* @struct Reply
+llm/qbm-redis.llm.api.md	reply.h:1108-1109	08ef64174d03	template <typename T>
 llm/qbm-redis.llm.api.md	reply.h:118-118	7ecd93eaad38	class AuthError : public Error {
-llm/qbm-redis.llm.api.md	reply.h:1189-1189	da39a3ee5e6b	(blank)
-llm/qbm-redis.llm.api.md	reply.h:1212-1212	3e409f60925a	/**
+llm/qbm-redis.llm.api.md	reply.h:1196-1196	910efe302e14	class IReply {
+llm/qbm-redis.llm.api.md	reply.h:1218-1219	4d349f3ac8e9	template <typename Func, typename T>
 llm/qbm-redis.llm.api.md	reply.h:1284-1288	d2914eb92b29	template <typename Ret, typename Func>
 llm/qbm-redis.llm.api.md	reply.h:134-134	1f4c9e70302c	class CommandError : public Error {
 llm/qbm-redis.llm.api.md	reply.h:150-150	3d0bb61a8d05	class TimeoutError : public Error {
@@ -55,25 +60,31 @@ llm/qbm-redis.llm.api.md	reply.h:166-166	71dfda1919a5	class ReplyParseError : pu
 llm/qbm-redis.llm.api.md	reply.h:193-193	e097c35dc8d6	struct ParseTag {};
 llm/qbm-redis.llm.api.md	reply.h:200-284	7611438c6046	is_string(const ReplyValue &reply) noexcept {
 llm/qbm-redis.llm.api.md	reply.h:252-270	9a3bfd0790c5	is_array_or_push(const ReplyValue &reply) noexcept {
-llm/qbm-redis.llm.api.md	reply.h:305-305	05db48c9fb90	[[nodiscard]] inline T
+llm/qbm-redis.llm.api.md	reply.h:305-306	8f2f13b0d1e9	[[nodiscard]] inline T
 llm/qbm-redis.llm.api.md	reply.h:411-411	1b2ae6a805a2	[[nodiscard]] qb::redis::message                   parse(ParseTag<qb:...
 llm/qbm-redis.llm.api.md	reply.h:47-47	f5e697d07586	using ReplyValue = parser::Value;
 llm/qbm-redis.llm.api.md	reply.h:56-56	7ddf13c124a6	enum class ReplyErrorType { ERR, MOVED, ASK };
+llm/qbm-redis.llm.api.md	reply.h:588-588	472864e3962c	parse_scan_reply(const ReplyValue &reply, Output output) {
 llm/qbm-redis.llm.api.md	reply.h:62-62	8eb7bb1bf680	class Error : public std::exception {
 llm/qbm-redis.llm.api.md	reply.h:658-658	00035867105e	[[nodiscard]] std::string type_to_string(const parser::Value &value);
 llm/qbm-redis.llm.api.md	reply.h:665-665	52e3fe26a3ea	to_status(const ReplyValue &reply) {
+llm/qbm-redis.llm.api.md	reply.h:677-677	7da5abd61f5b	parse_set_reply(const ReplyValue &reply) {
+llm/qbm-redis.llm.api.md	reply.h:704-757	0d7f15b1fc4b	redis_count(const char (&)[N]) noexcept {
 llm/qbm-redis.llm.api.md	reply.h:786-786	5a2e88e33883	constexpr std::size_t REDIS_MAX_STRING_SIZE = 512 * 1024 * 1024; // 5...
 llm/qbm-redis.llm.api.md	reply.h:788-788	942df14650e3	class SecurityError : public Error {
+llm/qbm-redis.llm.api.md	reply.h:795-795	700a3550088e	is_valid_redis_string_size(const std::string &s) {
+llm/qbm-redis.llm.api.md	reply.h:805-893	bf0ab527d6ad	to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
 llm/qbm-redis.llm.api.md	reply.h:86-86	8fb3eba7b399	class ProtoError : public Error {
 llm/qbm-redis.llm.api.md	scripting_commands.h:36-36	ad1c3b4f6a52	class scripting_commands {
-llm/qbm-redis.llm.api.md	server_commands.h:41-41	b6c5dda73cdb	template <typename Derived>
+llm/qbm-redis.llm.api.md	server_commands.h:42-42	6b7e173c7bf2	class server_commands {
 llm/qbm-redis.llm.api.md	server_reply.h:100-100	85cf63923001	class ValueExtractor {
 llm/qbm-redis.llm.api.md	server_reply.h:269-293	a02c82cf95cb	[[nodiscard]] expected<std::string, std::string> extract_string(const...
 llm/qbm-redis.llm.api.md	server_reply.h:305-305	212d4c1ba27a	class AsyncResult {
 llm/qbm-redis.llm.api.md	server_reply.h:396-396	7bdeb8dc521d	[[nodiscard]] expected<stream_id, std::string> extract_stream_id(cons...
+llm/qbm-redis.llm.api.md	server_reply.h:414-414	8dedd23607ff	[[nodiscard]] expected<score_member, std::string> extract_score_membe...
 llm/qbm-redis.llm.api.md	server_reply.h:46-46	f62abfceba6a	struct ServerReply {
-llm/qbm-redis.llm.api.md	set_commands.h:35-35	e5c3be79eca7	*/
-llm/qbm-redis.llm.api.md	sorted_set_commands.h:37-37	e5c3be79eca7	*/
+llm/qbm-redis.llm.api.md	set_commands.h:37-37	abd3bbcd2d8d	class set_commands {
+llm/qbm-redis.llm.api.md	sorted_set_commands.h:39-39	3ca9c8d4c2be	class sorted_set_commands {
 llm/qbm-redis.llm.api.md	src/qbm/redis/parser/types.h:453-453	2cba24c099e9	struct Value : ValueBase {
 llm/qbm-redis.llm.api.md	stream_commands.h:35-35	4816175b91eb	class stream_commands {
 llm/qbm-redis.llm.api.md	stream_commands.h:85-85	20a4409c5b05	parse_stream_id(const std::string &id_str) {

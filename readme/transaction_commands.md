@@ -91,7 +91,7 @@ and the `EXEC`, the server aborts the transaction: `EXEC` returns a nil array an
 | `watch`        | `Reply<status>`              | `Reply<status> &&`              |
 | `unwatch`      | `Reply<status>`              | `Reply<status> &&`              |
 
-`qb::redis::status` (defined in `types.h:475`) wraps a Redis simple-string reply such as `"OK"`. It converts to `bool` (
+`qb::redis::status` (defined in `types.h:476`) wraps a Redis simple-string reply such as `"OK"`. It converts to `bool` (
 `true` when the string is `"OK"`), to `std::string`, and exposes `.str()` and `.ok()`. Read the outcome through the
 surrounding `Reply`: `reply.ok()` for success, `reply.result()` (alias `reply.value()`) for the payload, `reply.error()`
 for the message on failure.
@@ -100,7 +100,7 @@ For `exec<Result>`, you pick `Result` to match what your queued commands return.
 status strings, so `exec<std::string>()` yields a `std::vector<std::string>` of `"OK"` values — one element per queued
 command, in order.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:475-526, qbm/redis/src/qbm/redis/reply.h:1102-1227 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:476-527, qbm/redis/src/qbm/redis/reply.h:1102-1227 -->
 
 > **Time units:** No method in this group takes a time argument. Connect and command timeouts and the `RetryPolicy`
 > delays are `qb::duration` and live on the client, not here. Redis command arguments that *do* carry time (for example
@@ -128,7 +128,7 @@ template <typename Func> Derived &multi(Func &&func);
 A successful `multi()` sets the client-side `is_in_multi()` flag. The callback overload sets the flag from `reply.ok()`
 *before* invoking your callback.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:60-84 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:57-85 -->
 
 ### `EXEC`
 
@@ -296,7 +296,7 @@ redis.exec<std::string>([](qb::redis::Reply<std::vector<std::string>> &&r) {
 redis.await();   // poll the loop until every handler has fired
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:75-84, 114-124 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:69-85,112-122 -->
 
 ---
 
@@ -317,10 +317,10 @@ transaction is gone. After a reconnect, treat the connection as having **no** tr
 need one.
 
 > `reset_transaction_state()` is one of three same-named `reset` surfaces in the client; do not confuse it with the
-> others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:195`) and the server-facing `RESET` command
+> others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:197-200`) and the server-facing `RESET` command
 > in [connection.md](./connection.md) (`connection_commands.h:300-315`). This one only clears the client-side MULTI flag.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:267-275, qbm/redis/src/qbm/redis/redis.h:912 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:267-275, qbm/redis/src/qbm/redis/redis.h:975 -->
 
 ---
 

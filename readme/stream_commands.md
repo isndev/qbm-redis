@@ -28,7 +28,7 @@ flowchart LR
     C2 -- "XACK" --> DONE
 ```
 
-These commands are defined by the `qb::redis::stream_commands<Derived>` CRTP mixin (`stream_commands.h:34`), which
+These commands are defined by the `qb::redis::stream_commands<Derived>` CRTP mixin (`stream_commands.h:34-35`), which
 `qb::redis::tcp::client` inherits along with every other command group. You call the methods directly on a connected
 client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to get a
 `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the client for
@@ -55,24 +55,24 @@ navigate yourself.
 | `qb::redis::stream_entry_list` | a list of entries with their fields              | `xrange`, `xrevrange`, `xclaim`                                                                                  |
 | `qb::json`                     | loosely structured server data                   | `xread`, `xreadgroup`, `xpending`, `xautoclaim`, `xinfo_stream`, `xinfo_groups`, `xinfo_consumers`, `xinfo_help` |
 
-`qb::redis::Reply<T>` (`reply.h:1102`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1102-1177`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. You read a successful payload through `reply.result()` after checking `reply.ok()`.
 
 ### `qb::redis::stream_id`
 
-`stream_id` (`types.h:306`) is `{ long long timestamp; long long sequence; }` with `to_string()` (renders
+`stream_id` (`types.h:307-325`) is `{ long long timestamp; long long sequence; }` with `to_string()` (renders
 `"<timestamp>-<sequence>"`), full equality, and an ordering `operator<`. `XADD` returns one of these. To feed an ID back
 into a later command (e.g. `xdel`, `xack`), pass `id.to_string()` or build the `"<ts>-<seq>"` string yourself.
 
 ### `qb::redis::stream_entry` and `stream_entry_list`
 
-`stream_entry` (`types.h:327`) is `{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`.
-`stream_entry_list` (`types.h:332`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
+`stream_entry` (`types.h:328-331`) is `{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`.
+`stream_entry_list` (`types.h:333`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
 `XCLAIM`. You iterate it directly: `entry.id` is the entry ID and `entry.fields` is the field map.
 
 ### `qb::redis::status`
 
-`status` (`types.h:475`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`types.h:476-527`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
 
 ### `qb::json` replies
@@ -109,9 +109,13 @@ convert to milliseconds yourself (e.g. `std::chrono::milliseconds{5000}.count()`
 
 ### Blocking reads suspend the command deadline
 
-`XREAD` and `XREADGROUP` are blocking commands. When `block` is set, the client suspends its own per-command deadline
-while the call is in flight, so the server-side `block` timeout governs instead (`redis.h:819-820,851`). A blocking read with
-`block > 0` parks the connection until data arrives or the timeout elapses.
+`XREAD` and `XREADGROUP` are blocking commands, and the client classes them as such **unconditionally** — they sit in
+the `is_blocking_command` set alongside `BLPOP`/`BLMOVE`/`BZMPOP` whether or not you pass `block` (`redis.h:831-844`,
+whose comment calls the unconditional treatment deliberately conservative). While one is in flight,
+`_inflight_blocking` is non-zero and the client's own per-command deadline is suspended, so the server-side `block`
+timeout governs instead (`redis.h:819-820`, `:851`). A blocking read with `block > 0` parks the connection until data
+arrives or the timeout elapses; a *non*-blocking `xread` is likewise exempt from the client deadline, which is a
+deliberate loss of protection, not an oversight.
 
 ### Multi-stream validation throws synchronously
 
