@@ -7,8 +7,8 @@ Reference for the Redis Streams command group — appending and trimming entries
 groups, claiming pending messages, and stream introspection — each with its exact signature, reply type, and a minimal
 `co_await` and callback snippet.
 
-**Prerequisites:** [Command API model](./commands_overview.md) · [Connection](./connection.md) — **See also:
-** [Publish commands](./publish_commands.md) · [Subscription commands](./subscription_commands.md) · [Error handling](./error_handling.md) · [Pipelining and
+**Prerequisites:** [Command API model](./commands_overview.md) · [Connection](./connection.md) — **See also:**
+[Publish commands](./publish_commands.md) · [Subscription commands](./subscription_commands.md) · [Error handling](./error_handling.md) · [Pipelining and
 `await()`](./pipeline_and_await.md)
 
 ## Summary
@@ -60,20 +60,23 @@ an explicit `operator bool()`. You read a successful payload through `reply.resu
 
 ### `qb::redis::stream_id`
 
-`stream_id` (`types.h:307-325`) is `{ long long timestamp; long long sequence; }` with `to_string()` (renders
-`"<timestamp>-<sequence>"`), full equality, and an ordering `operator<`. `XADD` returns one of these. To feed an ID back
-into a later command (e.g. `xdel`, `xack`), pass `id.to_string()` or build the `"<ts>-<seq>"` string yourself.
+`stream_id` (`src/qbm/redis/types.h:307-325`) is `{ long long timestamp; long long sequence; }` with `to_string()`
+(renders `"<timestamp>-<sequence>"`), full equality, and an ordering `operator<`. `XADD` returns one of these. To feed
+an ID back into a later command (e.g. `xdel`, `xack`), pass `id.to_string()` or build the `"<ts>-<seq>"` string
+yourself.
 
 ### `qb::redis::stream_entry` and `stream_entry_list`
 
-`stream_entry` (`types.h:328-331`) is `{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`.
-`stream_entry_list` (`types.h:333`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
+`stream_entry` (`src/qbm/redis/types.h:328-331`) is
+`{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`. `stream_entry_list`
+(`src/qbm/redis/types.h:333`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
 `XCLAIM`. You iterate it directly: `entry.id` is the entry ID and `entry.fields` is the field map.
 
 ### `qb::redis::status`
 
-`status` (`types.h:476-527`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
-`std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
+`status` (`src/qbm/redis/types.h:476-527`) wraps a status string. It converts to `bool` (true when the string is
+`"OK"`), to `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said
+OK".
 
 ### `qb::json` replies
 
@@ -119,8 +122,8 @@ deliberate loss of protection, not an oversight.
 
 ### Multi-stream validation throws synchronously
 
-The vector overloads of `xread` and `xreadgroup` validate that `keys` is non-empty and `keys.size() == ids.size()` *
-*inside the callback overload body, before dispatch**, and throw `std::invalid_argument` (`stream_commands.h:515`,
+The vector overloads of `xread` and `xreadgroup` validate that `keys` is non-empty and `keys.size() == ids.size()`
+**inside the callback overload body, before dispatch**, and throw `std::invalid_argument` (`stream_commands.h:515`,
 `stream_commands.h:428`). This is a thrown exception you must catch at the call site — it is **not** delivered as a `Reply` error. The
 single-stream overloads perform no such validation.
 
@@ -499,8 +502,8 @@ Derived &xreadgroup(Func &&func, const std::vector<std::string> &keys,
 ```
 
 For the single-stream overload, `key` comes first, then `group`, `consumer`, and `id`. Use `id == ">"` to fetch entries
-never delivered to any consumer of the group, or a concrete ID to re-read this consumer's pending history. `block` is *
-*milliseconds**. The multi-stream overload throws `std::invalid_argument` synchronously if `keys` is empty or
+never delivered to any consumer of the group, or a concrete ID to re-read this consumer's pending history. `block` is
+**milliseconds**. The multi-stream overload throws `std::invalid_argument` synchronously if `keys` is empty or
 `keys.size() != ids.size()`. The `NOACK` option is not exposed.
 
 ```cpp

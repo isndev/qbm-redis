@@ -8,8 +8,8 @@ under one key, each command listed with its exact signature, arguments, reply ty
 snippet.
 
 **Prerequisites:** [../README.md](../README.md) (install, `qb_load_modules`,
-`qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) — **See also:
-** [string_commands.md](./string_commands.md), [key_commands.md](./key_commands.md), [error_handling.md](./error_handling.md), [pipeline_and_await.md](./pipeline_and_await.md)
+`qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) — **See also:**
+[string_commands.md](./string_commands.md), [key_commands.md](./key_commands.md), [error_handling.md](./error_handling.md), [pipeline_and_await.md](./pipeline_and_await.md)
 
 ---
 
@@ -285,8 +285,8 @@ if (r.ok()) { /* r.result() == {"value1", "value2", ...} */ }
 
 #### `hvals` multi-key fan-out (callback-only)
 
-A second `hvals` callback overload takes a `std::vector<std::string>` of keys and issues one `HVALS` per key *
-*concurrently**, then fires your callback **once** with all values concatenated into a single flat
+A second `hvals` callback overload takes a `std::vector<std::string>` of keys and issues one `HVALS` per key
+**concurrently**, then fires your callback **once** with all values concatenated into a single flat
 `std::vector<std::string>` — there are no key boundaries in the result. There is **no coroutine form** of this overload.
 
 ```cpp
@@ -307,8 +307,8 @@ Semantics to know (`hash_commands.h:137-209`):
   whole reply not-ok.
 - An **empty** keys vector still completes once, with an ok and empty result.
 - The fan-out is built on an internal `shared_ptr`-managed helper that keeps itself alive across the round-trips. An
-  exception thrown from **your** callback is caught and logged (`LOG_WARN`), **not** propagated — do not rely on
-  callback exceptions surfacing to the caller.
+  exception thrown from **your** callback is caught and logged through `QB_LOG_WARN` (`hash_commands.h:196`), **not**
+  propagated — do not rely on callback exceptions surfacing to the caller.
 
 ### `HDEL key field [field ...]` — `hdel`
 
@@ -442,9 +442,9 @@ distinct overload families.
 #### Cursor form (coroutine or callback)
 
 You drive the cursor yourself: start at cursor `0`, and repeat until the returned cursor is `0` again. The reply payload
-is `qb::redis::scan<Out>` (`types.h:534-538`), a struct with `cursor` (`std::size_t`) and `items` (the container
-`Out`). Note that `Out` defaults differently per call site: the `scan` template's own default is
-`std::vector<std::string>` (`types.h:534`), but **both** `hscan` overloads re-default it to
+is `qb::redis::scan<Out>` (`src/qbm/redis/types.h:534-538`), a struct with `cursor` (`std::size_t`) and `items` (the
+container `Out`). Note that `Out` defaults differently per call site: the `scan` template's own default is
+`std::vector<std::string>` (`src/qbm/redis/types.h:534`), but **both** `hscan` overloads re-default it to
 `qb::unordered_map<std::string, std::string>` (`hash_commands.h:552`, `:572`), which is what you get here.
 `pattern` defaults to `"*"` and `count` defaults to `10` (a server hint, not a hard limit).
 
@@ -503,8 +503,8 @@ Behavior to know (`hash_commands.h:56-125`):
   gives you no way to tune the page size. (The cursor form's `count` defaults to 10 and is tunable.)
 - It is built on a `shared_ptr`-managed helper that keeps itself alive across the async cursor round-trips, so the call
   is safe even though it returns before iteration finishes.
-- An exception thrown from **your** callback is caught and logged (`LOG_WARN`), **not** propagated. Do not rely on
-  callback exceptions surfacing.
+- An exception thrown from **your** callback is caught and logged through `QB_LOG_WARN` (`hash_commands.h:111`),
+  **not** propagated. Do not rely on callback exceptions surfacing.
 
 ---
 

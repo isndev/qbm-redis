@@ -151,9 +151,11 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 - **`set_command_timeout` drops the connection.** It is a health watchdog, not a per-command deadline: because FIFO
   pipelining cannot fail one mid-queue command without desyncing later replies, tripping the deadline disconnects and
   fails every pending command (`redis.h:888-904,945-960`).
-- **Auto-iterating scanners and `hvals` are callback-only.** The no-cursor `sscan` / `zscan` / `hscan` overloads and
-  multi-key `hvals` buffer the whole result and fire the callback once; there is no coroutine form, and a throwing
-  callback is caught and logged, not propagated (`set_commands.h:107-108`, `hash_commands.h:600-609,800-807`).
+- **Auto-iterating scanners and `hvals` are callback-only.** All four no-cursor overloads — key-space `scan` plus
+  `sscan` / `zscan` / `hscan` — and multi-key `hvals` buffer the whole result and fire the callback once; there is no
+  coroutine form, so `co_await redis.scan("prefix*")` does not compile (only the cursor-taking
+  `scan(cursor, pattern, count)` is awaitable), and a throwing callback is caught and logged, not propagated
+  (`key_commands.h:609-618`, `:590`, `:109-113`, `set_commands.h:107-108`, `hash_commands.h:600-609,800-807`).
 - **Empty required arguments resolve as a failed `Reply`, not a bad frame.** A required-variadic / required-collection
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,

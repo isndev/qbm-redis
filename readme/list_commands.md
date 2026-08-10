@@ -7,8 +7,8 @@ Reference for the Redis List command group — head/tail pushes and pops, indexe
 element moves between lists, blocking variants, and positional search — each with its exact signature, reply type, and a
 minimal `co_await` and callback snippet.
 
-**Prerequisites:** [Command API model](./commands_overview.md) · [Connection](./connection.md) — **See also:
-** [Key commands](./key_commands.md) · [String commands](./string_commands.md) · [Error handling](./error_handling.md) · [Pipelining and
+**Prerequisites:** [Command API model](./commands_overview.md) · [Connection](./connection.md) — **See also:**
+[Key commands](./key_commands.md) · [String commands](./string_commands.md) · [Error handling](./error_handling.md) · [Pipelining and
 `await()`](./pipeline_and_await.md)
 
 ## Summary
@@ -25,9 +25,10 @@ index-based access (`LINDEX`) and range scans (`LRANGE`, `LPOS`) are O(N). This 
 property of this client.
 
 One time-related note for this group: blocking commands take a `timeout` in **seconds**, which is the native Redis
-protocol unit. Each blocking command exposes both a raw `long long` (seconds) form and a `std::chrono::seconds` overload
-that forwards `.count()` (`list_commands.h:355-357`, `:407-409`). These are protocol seconds, **not** `qb::duration`; do not
-substitute qb time types here.
+protocol unit. Every blocking command has a raw `long long` (seconds) form; only `blpop` and `brpop` add a
+`std::chrono::seconds` overload that forwards `.count()` (`list_commands.h:355-357`, `:407-409`). `blmpop`, `blmove` and
+`brpoplpush` take `long long` seconds only (`list_commands.h:722,764,801`) — this module declares no chrono overload for
+them. These are protocol seconds, **not** `qb::duration`; do not substitute qb time types here.
 
 ## Concepts
 
@@ -54,14 +55,15 @@ See [Command API model](./commands_overview.md) for the full reply surface.
 
 ### Enums
 
-Two enums from `types.h` parameterize this group:
+Two enums from `src/qbm/redis/types.h` parameterize this group:
 
-- `qb::redis::InsertPosition` (`types.h:51`) — `BEFORE`, `AFTER` — selects where `linsert` places the element relative
-  to the pivot.
-- `qb::redis::ListPosition` (`types.h:53`) — `LEFT`, `RIGHT` — selects the list end for `lmove`, `blmove`, `lmpop`, and
-  `blmpop`.
+- `qb::redis::InsertPosition` (`src/qbm/redis/types.h:51`) — `BEFORE`, `AFTER` — selects where `linsert` places the
+  element relative to the pivot.
+- `qb::redis::ListPosition` (`src/qbm/redis/types.h:53`) — `LEFT`, `RIGHT` — selects the list end for `lmove`,
+  `blmove`, `lmpop`, and `blmpop`.
 
-Both are serialized to wire keywords through `to_string(...)` (`types.h:559`, `:561`); you pass the enum, not a string.
+Both are serialized to wire keywords through `to_string(...)` (`src/qbm/redis/types.h:559`, `:561`); you pass the enum,
+not a string.
 
 ### Variadic pushes
 
@@ -422,9 +424,10 @@ auto all = co_await redis.lpos("queue", "job2", std::nullopt, 0, 1000);
 
 ## Blocking operations
 
-Blocking commands park the *connection* until an element is available or the timeout elapses. The `timeout` is in *
-*seconds** as a `long long`, with a `0` value meaning block indefinitely; each blocking pop also offers a
-`std::chrono::seconds` overload that forwards `.count()`. These are native Redis protocol seconds, not `qb::duration` —
+Blocking commands park the *connection* until an element is available or the timeout elapses. The `timeout` is in
+**seconds** as a `long long`, with a `0` value meaning block indefinitely; `blpop` and `brpop` also offer a
+`std::chrono::seconds` overload that forwards `.count()` (`list_commands.h:355-357`, `:407-409`) — `blmpop`, `blmove`
+and `brpoplpush` do not. These are native Redis protocol seconds, not `qb::duration` —
 see [Connection](./connection.md) for how the framework's own connect/command timeouts (which *are* `qb::duration`)
 differ. Use the coroutine form so a blocked command suspends the actor's coroutine rather than stalling the event loop.
 
@@ -526,9 +529,9 @@ template <typename Func> Derived &brpoplpush(Func &&, const std::string &source,
 - **Pop result type depends on the overload.** `lpop(key)` / `rpop(key)` yield `Reply<std::optional<std::string>>`;
   `lpop(key, count)` / `rpop(key, count)` yield `Reply<std::vector<std::string>>`. Pick the overload by call shape, not
   by a flag.
-- **Blocking timeouts are protocol seconds, not `qb::duration`.** Pass `long long` seconds or `std::chrono::seconds`; a
-  `0` timeout blocks forever. The framework's connect/command timeouts are a separate, `qb::duration`-typed concern
-  documented in [Connection](./connection.md).
+- **Blocking timeouts are protocol seconds, not `qb::duration`.** Pass `long long` seconds — or `std::chrono::seconds`
+  on `blpop`/`brpop`, the only two with that overload; a `0` timeout blocks forever. The framework's connect/command
+  timeouts are a separate, `qb::duration`-typed concern documented in [Connection](./connection.md).
 - **No callback silently no-ops.** `lmpop`, `blmpop` and `lpos` used to return unfired on an empty required
   argument — a hang on the coroutine form. They now send no command and resolve with `ok() == false`
   (`list_commands.h:699`, `:742`, `:860`), like every other guard in this module.

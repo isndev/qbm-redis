@@ -101,7 +101,7 @@ Two build-time conditions are worth knowing:
   TCP-only — the `#ifdef QB_HAS_SSL` block in `redis.h` is excluded, and CMake prints an informational message rather
   than failing.
 
-<!-- src: qbm/redis/CMakeLists.txt:21-29, qbm/redis/src/qbm/redis/redis.h:1449-1460 -->
+<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:1705-1716 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
 
 ---
 

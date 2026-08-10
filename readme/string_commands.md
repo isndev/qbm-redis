@@ -90,7 +90,7 @@ The connection and command **timeouts** (`set_command_timeout`, connect timeout)
 substitute `qb::duration` for the TTL arguments here. (The retired tokens `qb::Timestamp`, `qb::Duration`,
 `qb::TimePoint`, `to_timestamp(`, and `to_time_point(` no longer exist — never use them.)
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:627-694 (setex), 448-516 (psetex), 553-625 (set PX), 829-897 (getex EX vs PX) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:627-694 (setex), :448-516 (psetex), :553-625 (set PX), :829-897 (getex EX vs PX) -->
 
 ---
 

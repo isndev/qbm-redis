@@ -8,8 +8,8 @@ unique strings, with each command listed by its exact signature, arguments, repl
 callback snippet.
 
 **Prerequisites:** [../README.md](../README.md) (install, `qb_load_modules`,
-`qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) — **See also:
-** [sorted_set_commands.md](./sorted_set_commands.md), [hash_commands.md](./hash_commands.md), [key_commands.md](./key_commands.md), [error_handling.md](./error_handling.md), [pipeline_and_await.md](./pipeline_and_await.md)
+`qbm::redis`), [connection.md](./connection.md), [commands_overview.md](./commands_overview.md) — **See also:**
+[sorted_set_commands.md](./sorted_set_commands.md), [hash_commands.md](./hash_commands.md), [key_commands.md](./key_commands.md), [error_handling.md](./error_handling.md), [pipeline_and_await.md](./pipeline_and_await.md)
 
 ---
 
@@ -68,8 +68,8 @@ than assuming either family.
 
 > **`smembers` yields a set, not a vector.** The reply payload is `qb::unordered_set<std::string>` (
 `set_commands.h:478`), iterable but unordered with no index access. The `sdiff` / `sinter` / `sunion` family return
-`std::vector<std::string>` instead. `spop(key, count)` and `srandmember(key, count)` return a *
-*`std::vector<std::string>`** — not a vector of `std::optional`. The single-member `spop(key)` / `srandmember(key)`
+`std::vector<std::string>` instead. `spop(key, count)` and `srandmember(key, count)` return a
+**`std::vector<std::string>`** — not a vector of `std::optional`. The single-member `spop(key)` / `srandmember(key)`
 > return `std::optional<std::string>` because the source set may be empty.
 
 The `scan<Out>` struct has two fields — `cursor` (a `std::size_t`; `0` means iteration is complete) and `items` (the
@@ -248,9 +248,11 @@ template <typename Func>
 Derived &spop(Func &&func, const std::string &key, long long count);            // callback, count
 ```
 
-A `count < 1` (or an empty `key`) is rejected by the callback form before anything is sent: it routes through
-`fail_client` with `"SPOP requires a non-empty key and a count >= 1"`, so your handler *does* run — with `ok() == false`
-— and the awaiter resumes rather than parking (`set_commands.h:590-593`). See [Pitfalls](#pitfalls).
+Both callback overloads reject bad arguments before anything is sent, and they say different things. The no-count
+`spop(func, key)` rejects only an empty `key`, through `fail_client` with `"SPOP requires a non-empty key"`
+(`set_commands.h:554-556`). The count form `spop(func, key, count)` rejects an empty `key` **or** a `count < 1`, with
+`"SPOP requires a non-empty key and a count >= 1"` (`set_commands.h:590-592`). Either way your handler *does* run — with
+`ok() == false` — and the awaiter resumes rather than parking. See [Pitfalls](#pitfalls).
 
 ```cpp
 auto one = co_await redis.spop("deck");

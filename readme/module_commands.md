@@ -39,7 +39,7 @@ qb::io::async::task<void> example(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/admin/module-commands.cpp:48-85 (derived) -->
+<!-- src: qbm/redis/tests/integration/admin/module-commands.cpp:48-63 (derived) -->
 
 This command group carries **no time arguments** — none of its parameters are durations, so the
 seconds-versus-milliseconds boundary documented for key-expiry commands does not apply here. Connect and command
@@ -128,10 +128,10 @@ callable accepts the matching `Reply<T> &&`.
 ### `module_list` — enumerate loaded modules
 
 ```cpp
-// Coroutine — module_commands.h:56
+// Coroutine — module_commands.h:57
 auto module_list();                                // -> redis_awaiter yielding Reply<qb::json>
 
-// Callback — module_commands.h:68
+// Callback — module_commands.h:70
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
 module_list(Func &&func);
@@ -166,17 +166,17 @@ redis.module_list([](qb::redis::Reply<qb::json> &&reply) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:67-71 (derived) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:68-72 (derived) -->
 
 ### `module_load` — load a module
 
 ```cpp
-// Coroutine — module_commands.h:85
+// Coroutine — module_commands.h:87
 template <typename... Args>
 auto module_load(const std::string &path, Args&&... args);
                                                    // -> redis_awaiter yielding Reply<status>
 
-// Callback — module_commands.h:102
+// Callback — module_commands.h:104
 template <typename Func, typename... Args>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 module_load(Func &&func, const std::string &path, Args&&... args);
@@ -219,10 +219,10 @@ auto r2 = co_await redis.module_load(
 ### `module_unload` — unload a module
 
 ```cpp
-// Coroutine — module_commands.h:117
+// Coroutine — module_commands.h:118
 auto module_unload(const std::string &name);       // -> redis_awaiter yielding Reply<status>
 
-// Callback — module_commands.h:130
+// Callback — module_commands.h:132
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 module_unload(Func &&func, const std::string &name);
@@ -250,15 +250,15 @@ if (r.ok() && r.result().ok())
     qb::io::cout() << "ReJSON unloaded" << std::endl;
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:117-123 (derived) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:117-120 (derived) -->
 
 ### `module_help` — fetch help text
 
 ```cpp
-// Coroutine — module_commands.h:144
+// Coroutine — module_commands.h:145
 auto module_help();                                // -> redis_awaiter yielding Reply<std::vector<std::string>>
 
-// Callback — module_commands.h:157
+// Callback — module_commands.h:159
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
 module_help(Func &&func);

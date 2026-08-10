@@ -65,9 +65,9 @@ qb::io::async::task<void> bitmap_demo(qb::redis::tcp::client &redis) {
 | `bitop`                   | `long long`                             | byte length of the string stored at `destkey` |
 | `bitfield` / `bitfieldRo` | `std::vector<std::optional<long long>>` | one entry per sub-operation                   |
 
-Two points worth correcting against older notes: `getbit`/`setbit` resolve to `Reply<long long>` carrying `0`/`1`, **not
-** `Reply<bool>`; and `bitop` returns the destination string's *length in bytes*, not a status. Read the value through
-`reply.result()` once `reply.ok()` (or the contextual `bool`) is true.
+Two points worth correcting against older notes: `getbit`/`setbit` resolve to `Reply<long long>` carrying `0`/`1`,
+**not** `Reply<bool>`; and `bitop` returns the destination string's *length in bytes*, not a status. Read the value
+through `reply.result()` once `reply.ok()` (or the contextual `bool`) is true.
 See [commands_overview.md](./commands_overview.md) and [error_handling.md](./error_handling.md) for the full `Reply<T>`
 contract.
 
@@ -100,9 +100,10 @@ a Redis error in the `Reply` (`reply.ok() == false`, message in `reply.error()`)
 ### BITOP operation strings
 
 `bitop` takes its operation as a raw `std::string` — `"AND"`, `"OR"`, `"XOR"`, or `"NOT"`. A `BitOp` enum and
-`qb::redis::to_string(BitOp)` exist (`types.h:59,551`), but this method does **not** use them, so the spelling is unvalidated
-until the server rejects it. `"NOT"` is unary: pass exactly one source key. The other operations accept one or more. The
-destination length equals the length of the longest input string; shorter inputs are zero-extended.
+`qb::redis::to_string(BitOp)` exist (`src/qbm/redis/types.h:59,551`), but this method does **not** use them, so the
+spelling is unvalidated until the server rejects it. `"NOT"` is unary: pass exactly one source key. The other
+operations accept one or more. The destination length equals the length of the longest input string; shorter inputs are
+zero-extended.
 
 ---
 

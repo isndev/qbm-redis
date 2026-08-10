@@ -30,8 +30,8 @@ command is exposed in two forms, both fully asynchronous:
 
 There is no blocking variant — the older "Sync" signatures and the `*_async` method names never existed in this module.
 None of these commands carry a `qb::duration`: their only arguments are keys and string elements, so the
-`qb::duration` / native-unit boundary documented for `EXPIRE` in [commands_overview.md](./commands_overview.md) does *
-*not** apply here.
+`qb::duration` / native-unit boundary documented for `EXPIRE` in [commands_overview.md](./commands_overview.md) does
+**not** apply here.
 
 ```cpp
 #include <qbm/redis/redis.h>
