@@ -23,7 +23,7 @@ the methods below are called on a live client through its public alias `qb::redi
 `make_coro_command<T>(...)`, which own argument serialization, I/O, and connection lifetime (
 see [connection.md](./connection.md)).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:37-42 (the CRTP derived accessor), redis.h:1695 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:37-42 (the CRTP derived accessor), redis.h:1698 (tcp::client alias) -->
 
 ```cpp
 #include <qbm/redis/redis.h>            // umbrella header; pulls in publish_commands.h
