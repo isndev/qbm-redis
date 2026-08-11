@@ -93,7 +93,7 @@ blocked_clients(qb::redis::tcp::client &c) {
     auto info = qb::io::async::run_sync(c.info("clients"));
     if (!info.ok())
         return -1;
-    const std::string body = info.result().is_string() ? info.result().get<std::string>() : info.result().dump();
+    const std::string                 body = info.result().is_string() ? info.result().get<std::string>() : info.result().dump();
     static constexpr std::string_view kKey = "blocked_clients:";
     const auto                        pos  = body.find(kKey);
     if (pos == std::string::npos)
@@ -180,8 +180,7 @@ TEST_F(RedisResilienceTest, CoroutineDestroyedWhileParkedOnBlockingCommand) {
 
     bool        orphan_resumed = false, orphan_ok = false;
     std::string orphan_from;
-    auto        orphan = qb::io::async::coro_scheduler().spawn_tracked(
-        park_on_blpop(&redis, orphan_key, &orphan_resumed, &orphan_ok, &orphan_from));
+    auto orphan = qb::io::async::coro_scheduler().spawn_tracked(park_on_blpop(&redis, orphan_key, &orphan_resumed, &orphan_ok, &orphan_from));
     ASSERT_TRUE(orphan) << "spawn_tracked returned an empty handle — nothing was parked";
     void *const orphan_frame = orphan.address();
 
@@ -199,7 +198,7 @@ TEST_F(RedisResilienceTest, CoroutineDestroyedWhileParkedOnBlockingCommand) {
 
     bool        heir_resumed = false, heir_ok = false;
     std::string heir_from;
-    auto heir = qb::io::async::coro_scheduler().spawn_tracked(park_on_blpop(&redis, heir_key, &heir_resumed, &heir_ok, &heir_from));
+    auto        heir = qb::io::async::coro_scheduler().spawn_tracked(park_on_blpop(&redis, heir_key, &heir_resumed, &heir_ok, &heir_from));
     ASSERT_TRUE(heir);
     EXPECT_EQ(heir.address(), orphan_frame)
         << "the coroutine frame pool did not hand the cancelled frame back to the next spawn, so the recycled-frame hazard is NOT "
@@ -284,7 +283,7 @@ TEST_F(RedisResilienceTest, ServerSideClientKillResolvesTheInFlightCommand) {
 
     bool        resumed = false, ok = true;
     std::string from;
-    auto handle = qb::io::async::coro_scheduler().spawn_tracked(park_on_blpop(&redis, key, &resumed, &ok, &from));
+    auto        handle = qb::io::async::coro_scheduler().spawn_tracked(park_on_blpop(&redis, key, &resumed, &ok, &from));
     ASSERT_TRUE(handle);
 
     // Positive evidence that the command really is parked server-side before we pull the socket.

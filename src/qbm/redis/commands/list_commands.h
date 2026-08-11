@@ -689,14 +689,16 @@ public:
      * @param position Where to pop from (LEFT or RIGHT).
      * @param count Number of elements to pop (optional, default 1).
      * @return Reference to the derived class.
-     * @note If @p keys is empty no command is issued, but the callback (and the awaiter) is still resolved with a failed Reply -- never left unfired.
+     * @note If @p keys is empty no command is issued, but the callback (and the awaiter) is still resolved with a failed Reply -- never left
+     * unfired.
      * @see https://redis.io/commands/lmpop
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>, Derived &>
     lmpop(Func &&func, const std::vector<std::string> &keys, ListPosition position, long long count = 1) {
         if (keys.empty()) {
-            fail_client<std::optional<std::pair<std::string, std::vector<std::string>>>>(std::forward<Func>(func), "LMPOP requires at least one key");
+            fail_client<std::optional<std::pair<std::string, std::vector<std::string>>>>(std::forward<Func>(func),
+                                                                                         "LMPOP requires at least one key");
             return derived();
         }
         std::vector<std::string> opt;
@@ -732,14 +734,16 @@ public:
      * @param timeout Timeout in seconds. 0 means block forever.
      * @param count Number of elements to pop (optional, default 1).
      * @return Reference to the derived class.
-     * @note If @p keys is empty no command is issued, but the callback (and the awaiter) is still resolved with a failed Reply -- never left unfired.
+     * @note If @p keys is empty no command is issued, but the callback (and the awaiter) is still resolved with a failed Reply -- never left
+     * unfired.
      * @see https://redis.io/commands/blmpop
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<std::string>>>> &&>, Derived &>
     blmpop(Func &&func, const std::vector<std::string> &keys, ListPosition position, long long timeout, long long count = 1) {
         if (keys.empty()) {
-            fail_client<std::optional<std::pair<std::string, std::vector<std::string>>>>(std::forward<Func>(func), "BLMPOP requires at least one key");
+            fail_client<std::optional<std::pair<std::string, std::vector<std::string>>>>(std::forward<Func>(func),
+                                                                                         "BLMPOP requires at least one key");
             return derived();
         }
         std::vector<std::string> opt;
