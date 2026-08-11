@@ -177,7 +177,7 @@ the wire command unconditionally: `zrange`, `zrangebyscore`, `zrevrange`, `zrevr
 natively (`sorted_set_commands.h:506`, `:534`). The non-scored siblings (`zrangebylex`, `zinter`, `zdiff`,
 `zrandmemberCount`) deliberately omit `WITHSCORES` and return `std::vector<std::string>`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:564, 652, 830, 910, 1085, 1194, 1374; qbm/redis/src/qbm/redis/types.h:349 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:564, 651-652, 830, 910, 1084, 1193, 1374; qbm/redis/src/qbm/redis/types.h:349 -->
 
 ---
 
@@ -292,10 +292,10 @@ auto r = co_await redis.zlexcount("board", i);
 Returns the score of `member`, or an empty optional when the member or key is absent.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1012-1013
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1011-1012
 auto zscore(const std::string &key, const std::string &member);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1027-1029
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1026-1028
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<double>> &&>, Derived &>
 zscore(Func &&func, const std::string &key, const std::string &member);
@@ -564,11 +564,11 @@ command reaches the wire, and your callback (or the awaiting coroutine) is resol
 `error() == "ZMPOP requires at least one key"`.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1242-1243
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1241-1242
 auto zmpop(const std::vector<std::string> &keys, const std::string &min_or_max,
            long long count = 1);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1258-1260
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1257-1259
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func,
     Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
@@ -622,10 +622,10 @@ if (m.ok() && m.result().has_value())
     qb::io::cout() << m.result()->second.size() << " popped\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:712-720, 739-745; qbm/redis/tests/integration/resilience/coro-cancel-and-connection-loss.cpp:366-382 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:712-720, 739-745; qbm/redis/tests/integration/resilience/coro-cancel-and-connection-loss.cpp:365-381 -->
 
 > `bzmpop` (like `zmpop`) rejects an empty `keys` list client-side: no frame is sent and the reply resolves at once with
-`ok() == false` and `error() == "BZMPOP requires at least one key"` (`sorted_set_commands.h:1446-1449`). It never blocks
+`ok() == false` and `error() == "BZMPOP requires at least one key"` (`sorted_set_commands.h:1446-1450`). It never blocks
 on an empty list, so the mistake surfaces as an immediate failed reply rather than as a timeout.
 
 ### `ZRANDMEMBER key [count]` — `zrandmember`, `zrandmemberCount`, `zrandmemberWithScores`
@@ -659,7 +659,7 @@ cardinality of the stored set. `zunionstore`/`zinterstore` accept optional per-s
 `zdiffstore` takes neither.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:381-382 / :420-421 / :1096-1097
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:381-382 / :420-421 / :1095-1096
 auto zunionstore(const std::string &destination, const std::vector<std::string> &keys,
                  const std::vector<double> &weights = {},
                  Aggregation type = Aggregation::SUM);
@@ -668,7 +668,7 @@ auto zinterstore(const std::string &destination, const std::vector<std::string> 
                  Aggregation type = Aggregation::SUM);
 auto zdiffstore(const std::string &destination, const std::vector<std::string> &keys);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:400-402 / :439-441 / :1111-1113
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:400-402 / :439-441 / :1110-1112
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zunionstore(Func &&func, const std::string &destination,
@@ -692,7 +692,7 @@ Return the intersection or difference **without** storing it. The plain forms re
 `zdiff` takes only keys.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1126-1127 / :1140-1141 / :1042-1043 / :1054-1055
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1125-1126 / :1139-1140 / :1041-1042 / :1053-1054
 auto zinter(const std::vector<std::string> &keys,
             const std::vector<double> &weights = {},
             Aggregation type = Aggregation::SUM);
@@ -716,11 +716,11 @@ Returns the cardinality of the intersection without materializing it. The option
 counts (`LIMIT` is emitted only when set).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1206-1207
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1205-1206
 auto zintercard(const std::vector<std::string> &keys,
                 std::optional<long long> limit = std::nullopt);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1221-1223
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1220-1222
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zintercard(Func &&func, const std::vector<std::string> &keys,
@@ -774,7 +774,7 @@ allocates a `shared_ptr`-managed scanner that keeps itself alive across the asyn
 **no coroutine equivalent** of this overload.
 
 ```cpp
-// Callback only — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:994-996
+// Callback only — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:993-995
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func,
     Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>, Derived &>
@@ -788,7 +788,7 @@ redis.zscan([](qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, d
 }, "board", "*");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:49-128, 993-1002 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:49-128, 992-1001 -->
 
 ---
 

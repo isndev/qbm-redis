@@ -79,7 +79,7 @@ entry is `std::nullopt` when that sub-operation produced no value — most notab
 `getbit`/`setbit` take a bit `offset` (a `long long`); bit 0 is the most-significant bit of the first byte. `bitcount`
 takes inclusive `start`/`end` offsets that default to the whole string (`long long start = 0, long long end = -1` —
 `bitmap_commands.h:62,81`); negative values count back from the end. **`bitpos` does not share those defaults**: its
-`start`/`end` are `std::optional<long long>` defaulting to `std::nullopt` (`bitmap_commands.h:171,192`), and an unset
+`start`/`end` are `std::optional<long long>` defaulting to `std::nullopt` (`bitmap_commands.h:171,191`), and an unset
 optional is dropped from the emitted command altogether. In this binding those offsets are **byte** offsets — the Redis
 7+ `BYTE|BIT` modifier is not exposed, so the range is interpreted byte-wise.
 
@@ -154,7 +154,7 @@ Derived &bitpos(Func &&func, const std::string &key, bool bit,
                 std::optional<long long> end   = std::nullopt);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:170-172,190-193 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:170-171,189-192 -->
 
 Returns the position of the first bit equal to `bit` (`true` for 1, `false` for 0), or `-1` if no such bit exists. The
 `bool bit` is serialized as `1`/`0` for you.
@@ -163,7 +163,7 @@ Returns the position of the first bit equal to `bit` (`true` for 1, `false` for 
 unset optional is dropped from both the argument count and the payload, so `bitpos(key, false)` emits a bare
 `BITPOS key 0` and keeps Redis's open-ended search. The callback overload also refuses to emit `end` without `start`
 (Redis reads a lone trailing value as `start`), building the emitted `end` through a guarded assignment rather than a
-ternary. <!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:194-217 -->
+ternary. <!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:193-216 -->
 
 ```cpp
 co_await redis.set(key, std::string("\xFF\x00\xFF", 3));
@@ -188,7 +188,7 @@ template <typename Func>  // Func invocable with Reply<long long>&&
 Derived &getbit(Func &&func, const std::string &key, long long offset);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:231-232,246-248 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:230-231,245-247 -->
 
 Returns the bit at `offset` (`0` or `1`). Offsets past the end of the string read as `0`.
 
@@ -210,7 +210,7 @@ template <typename Func>  // Func invocable with Reply<long long>&&
 Derived &setbit(Func &&func, const std::string &key, long long offset, bool value);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:264-265,280-282 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:263-264,279-281 -->
 
 Sets the bit at `offset` to `value` (`true`/`false`) and returns the bit's **previous** value. The string grows to fit
 `offset` if necessary, zero-padding the gap.
@@ -293,7 +293,7 @@ Derived &bitfieldRo(Func &&func, const std::string &key,
                     const std::vector<std::string> &operations);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:297-298,313-315 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/bitmap_commands.h:296-297,312-314 -->
 
 The read-only variant of `bitfield`: only `GET` sub-operations are valid, which makes it safe to route to read replicas.
 The reply shape matches `bitfield`.
@@ -337,7 +337,7 @@ redis.bitcount([](qb::redis::Reply<long long> &&r) {
 - **Byte-wise ranges only.** `start`/`end` are byte offsets; the `BYTE|BIT` modifier from Redis 7 is not surfaced. To
   address sub-byte ranges, compute bit math yourself or use `BITFIELD`.
 - **Do not pass `0, -1` to `bitpos` "for the default".** Its `start`/`end` are `std::optional<long long>` defaulting to
-  `std::nullopt` (`bitmap_commands.h:171-172,192-193`), and an explicit `end` — `-1` included — closes the range. On an
+  `std::nullopt` (`bitmap_commands.h:171,191-192`), and an explicit `end` — `-1` included — closes the range. On an
   all-ones value, `bitpos(key, false)` returns the clear bit just past the string while `bitpos(key, false, 0, -1)`
   returns `-1`. Only `bitcount` has the `0`/`-1` defaults (`bitmap_commands.h:62,81`).
 - **No time units here.** Nothing in this group takes a duration. TTLs on a bitmap key are set with the string/key
