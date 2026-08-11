@@ -168,8 +168,7 @@ public:
      * @see https://redis.io/commands/bitpos
      */
     auto
-    bitpos(const std::string &key, bool bit, std::optional<long long> start = std::nullopt,
-           std::optional<long long> end = std::nullopt) {
+    bitpos(const std::string &key, bool bit, std::optional<long long> start = std::nullopt, std::optional<long long> end = std::nullopt) {
         return derived().template make_coro_command<long long>(
             [this, key, bit, start, end](auto &&callback) { this->bitpos(std::move(callback), key, bit, start, end); });
     }

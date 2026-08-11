@@ -309,9 +309,9 @@ private:
     bool                       _is_reconnecting = false;
     bool                       _connected_flag  = false;
     bool                       _verify_peer     = true; /**< Verify server TLS cert for rediss:// (stcp transport). */
-    std::string                _ssl_root_cert;          /**< rediss://: private CA (PEM file/dir) added to the trust store. Empty = system store. */
-    std::string                _ssl_cert;               /**< rediss://: client certificate (PEM) for mutual TLS. Empty = none. */
-    std::string                _ssl_key;                /**< rediss://: client private key (PEM) for mutual TLS. Pairs with _ssl_cert. */
+    std::string                _ssl_root_cert; /**< rediss://: private CA (PEM file/dir) added to the trust store. Empty = system store. */
+    std::string                _ssl_cert;      /**< rediss://: client certificate (PEM) for mutual TLS. Empty = none. */
+    std::string                _ssl_key;       /**< rediss://: client private key (PEM) for mutual TLS. Pairs with _ssl_cert. */
     std::shared_ptr<bool>      _alive{std::make_shared<bool>(true)};
 
     /**
@@ -898,7 +898,7 @@ private:
     void
     on_command_deadline() {
         QB_LOG_WARN("[qbm][redis] command timeout (" << qb::detail::to_ev_seconds(_command_timeout)
-                                                  << "s) exceeded with no reply; dropping connection");
+                                                     << "s) exceeded with no reply; dropping connection");
         _deadline_tripped = true;
         this->disconnect();
     }
@@ -1381,7 +1381,7 @@ private:
                         // cross-resolving the unrelated command (which would silently
                         // desync the reply/command FIFO for the connection's lifetime).
                         QB_LOG_WARN("[qbm][redis] dropping unexpected subscription confirmation "
-                                 "(FIFO head is a regular command)");
+                                    "(FIFO head is a regular command)");
                         return;
                     }
                     if (front.remaining > 1) {
@@ -1507,9 +1507,12 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
     // subscribing, and never reassign a sink from within its own running handler — that would free
     // the callable whose operator() is on the stack (the modify-what-you're-executing hazard). The
     // setup-before-subscribe flow never does this, so no per-call copy/guard is needed to defend it.
-    cb_msg_t  _on_message      = [](qb::redis::message &&) {};
-    cb_err_t  _on_error        = [](qb::redis::error &&) {};
-    cb_disc_t _on_disconnected = [](qb::io::async::event::disconnected &&) {};
+    cb_msg_t _on_message = [](qb::redis::message &&) {
+    };
+    cb_err_t _on_error = [](qb::redis::error &&) {
+    };
+    cb_disc_t _on_disconnected = [](qb::io::async::event::disconnected &&) {
+    };
 
     // Exception safety of the user callable is handled UPSTREAM: RedisConsumer::on wraps the
     // message/pmessage/disconnected dispatch in try/catch, and qb::protocol::redis::onMessage adds a

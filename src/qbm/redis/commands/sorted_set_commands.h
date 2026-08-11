@@ -603,8 +603,8 @@ public:
         std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
         std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opts.offset) : std::nullopt;
         std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opts.count) : std::nullopt;
-        return derived().template command<std::vector<std::string>>(
-            std::forward<Func>(func), "ZRANGEBYLEX", key, interval.lower(), interval.upper(), limit_kw, limit_off, limit_cnt);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZRANGEBYLEX", key, interval.lower(),
+                                                                    interval.upper(), limit_kw, limit_off, limit_cnt);
     }
 
     /**
@@ -648,8 +648,8 @@ public:
         std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
         std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opts.offset) : std::nullopt;
         std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opts.count) : std::nullopt;
-        return derived().template command<std::vector<score_member>>(
-            std::forward<Func>(func), "ZRANGEBYSCORE", key, interval.lower(), interval.upper(), limit_kw, limit_off, limit_cnt, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZRANGEBYSCORE", key, interval.lower(),
+                                                                     interval.upper(), limit_kw, limit_off, limit_cnt, "WITHSCORES");
     }
 
     /**
@@ -971,8 +971,7 @@ public:
         // form the awaiter parks forever waiting for a reply that was never sent (a hang).
         // Resolve it the way every other argument guard in this module does.
         if (key.empty()) {
-            fail_client<qb::redis::scan<qb::unordered_map<std::string, double>>>(std::forward<Func>(func),
-                                                                                 "ZSCAN requires a non-empty key");
+            fail_client<qb::redis::scan<qb::unordered_map<std::string, double>>>(std::forward<Func>(func), "ZSCAN requires a non-empty key");
             return derived();
         }
         return derived().template command<qb::redis::scan<qb::unordered_map<std::string, double>>>(std::forward<Func>(func), "ZSCAN", key,
@@ -1259,7 +1258,8 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
     zmpop(Func &&func, const std::vector<std::string> &keys, const std::string &min_or_max, long long count = 1) {
         if (keys.empty()) {
-            fail_client<std::optional<std::pair<std::string, std::vector<score_member>>>>(std::forward<Func>(func), "ZMPOP requires at least one key");
+            fail_client<std::optional<std::pair<std::string, std::vector<score_member>>>>(std::forward<Func>(func),
+                                                                                          "ZMPOP requires at least one key");
             return derived();
         }
         std::vector<std::string> opt;
@@ -1445,7 +1445,8 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
     bzmpop(Func &&func, const std::vector<std::string> &keys, long long timeout, const std::string &min_or_max, long long count = 1) {
         if (keys.empty()) {
-            fail_client<std::optional<std::pair<std::string, std::vector<score_member>>>>(std::forward<Func>(func), "BZMPOP requires at least one key");
+            fail_client<std::optional<std::pair<std::string, std::vector<score_member>>>>(std::forward<Func>(func),
+                                                                                          "BZMPOP requires at least one key");
             return derived();
         }
         std::vector<std::string> opt;

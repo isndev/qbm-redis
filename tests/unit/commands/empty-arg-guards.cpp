@@ -105,8 +105,8 @@ TEST(EmptyArgGuards, HyperLogLogAndScripting) {
 
 // Required key-VECTOR commands (converted guards): the vector-argument form.
 TEST(EmptyArgGuards, KeyVectorCommands) {
-    expect_sync_fail<std::vector<std::string>>("SDIFF",
-                                               [](auto &&cb) { unconnected_client().sdiff(std::forward<decltype(cb)>(cb), std::vector<std::string>{}); });
+    expect_sync_fail<std::vector<std::string>>(
+        "SDIFF", [](auto &&cb) { unconnected_client().sdiff(std::forward<decltype(cb)>(cb), std::vector<std::string>{}); });
     expect_sync_fail<std::optional<std::pair<std::string, std::vector<qb::redis::score_member>>>>(
         "ZMPOP", [](auto &&cb) { unconnected_client().zmpop(std::forward<decltype(cb)>(cb), std::vector<std::string>{}, "MIN"); });
 }
@@ -118,8 +118,8 @@ TEST(EmptyArgGuards, KeyVectorCommands) {
 TEST(EmptyArgGuards, SetVectorFailClient) {
     expect_sync_fail<std::vector<std::string>>(
         "SINTER", [](auto &&cb) { unconnected_client().sinter(std::forward<decltype(cb)>(cb), std::vector<std::string>{}); });
-    expect_sync_fail<long long>(
-        "SINTERCARD", [](auto &&cb) { unconnected_client().sintercard(std::forward<decltype(cb)>(cb), std::vector<std::string>{}); });
+    expect_sync_fail<long long>("SINTERCARD",
+                                [](auto &&cb) { unconnected_client().sintercard(std::forward<decltype(cb)>(cb), std::vector<std::string>{}); });
     expect_sync_fail<long long>(
         "SINTERSTORE", [](auto &&cb) { unconnected_client().sinterstore(std::forward<decltype(cb)>(cb), "d", std::vector<std::string>{}); });
     expect_sync_fail<long long>(
@@ -132,8 +132,7 @@ TEST(EmptyArgGuards, SetVectorFailClient) {
 
 // SMISMEMBER: present key, empty member pack.
 TEST(EmptyArgGuards, SetMembershipNoMembers) {
-    expect_sync_fail<std::vector<bool>>("SMISMEMBER",
-                                        [](auto &&cb) { unconnected_client().smismember(std::forward<decltype(cb)>(cb), "k"); });
+    expect_sync_fail<std::vector<bool>>("SMISMEMBER", [](auto &&cb) { unconnected_client().smismember(std::forward<decltype(cb)>(cb), "k"); });
 }
 
 // LPUSHX / RPUSHX: present key, empty value pack.
@@ -196,15 +195,15 @@ TEST(EmptyArgGuards, SetGuardsResolveTheCallback) {
     expect_sync_fail<long long>("SCARD", [](auto &&cb) { unconnected_client().scard(std::forward<decltype(cb)>(cb), ""); });
     expect_sync_fail<bool>("SISMEMBER", [](auto &&cb) { unconnected_client().sismember(std::forward<decltype(cb)>(cb), "", ""); });
     expect_sync_fail<qb::unordered_set<std::string>>("SMEMBERS",
-                                                        [](auto &&cb) { unconnected_client().smembers(std::forward<decltype(cb)>(cb), ""); });
+                                                     [](auto &&cb) { unconnected_client().smembers(std::forward<decltype(cb)>(cb), ""); });
     expect_sync_fail<bool>("SMOVE", [](auto &&cb) { unconnected_client().smove(std::forward<decltype(cb)>(cb), "", "", ""); });
     expect_sync_fail<std::optional<std::string>>("SPOP", [](auto &&cb) { unconnected_client().spop(std::forward<decltype(cb)>(cb), ""); });
     expect_sync_fail<std::vector<std::string>>("SPOP_COUNT",
-                                                  [](auto &&cb) { unconnected_client().spop(std::forward<decltype(cb)>(cb), "", 1LL); });
-    expect_sync_fail<std::optional<std::string>>(
-        "SRANDMEMBER", [](auto &&cb) { unconnected_client().srandmember(std::forward<decltype(cb)>(cb), ""); });
-    expect_sync_fail<std::vector<std::string>>(
-        "SRANDMEMBER_COUNT", [](auto &&cb) { unconnected_client().srandmember(std::forward<decltype(cb)>(cb), "", 1LL); });
+                                               [](auto &&cb) { unconnected_client().spop(std::forward<decltype(cb)>(cb), "", 1LL); });
+    expect_sync_fail<std::optional<std::string>>("SRANDMEMBER",
+                                                 [](auto &&cb) { unconnected_client().srandmember(std::forward<decltype(cb)>(cb), ""); });
+    expect_sync_fail<std::vector<std::string>>("SRANDMEMBER_COUNT",
+                                               [](auto &&cb) { unconnected_client().srandmember(std::forward<decltype(cb)>(cb), "", 1LL); });
     // cursor is `long long`; 0LL disambiguates from the (key, pattern) SSCAN overload.
     expect_sync_fail<qb::redis::scan<>>("SSCAN", [](auto &&cb) { unconnected_client().sscan(std::forward<decltype(cb)>(cb), "", 0LL); });
 }

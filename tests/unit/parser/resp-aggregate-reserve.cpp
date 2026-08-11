@@ -258,10 +258,10 @@ allocation_counter_is_live() {
     const std::size_t           n      = opaque;
     AllocScope                  scope;
     auto                       *p = new char[n];
-    p[0]                           = 'x';
-    p[n - 1]                       = 'y';
-    const auto    seen             = AllocScope::bytes();
-    volatile char sink             = static_cast<char>(p[0] + p[n - 1]);
+    p[0]                          = 'x';
+    p[n - 1]                      = 'y';
+    const auto    seen            = AllocScope::bytes();
+    volatile char sink            = static_cast<char>(p[0] + p[n - 1]);
     (void) sink;
     delete[] p;
     return seen >= n;

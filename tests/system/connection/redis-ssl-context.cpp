@@ -70,7 +70,7 @@ TEST(RedisSslContext, SecureClientBuildsContextSocketOnConnect) {
     // verify_peer=false branch of make_connect_socket_: Context::verify(none) + trust(root_cert) + identity.
     qb::redis::tcp::ssl::client insecure{qb::io::uri{"tcp://127.0.0.1:1"}};
     insecure.set_verify_peer(false);
-    insecure.set_ssl_root_cert("qb-nonexistent-private-ca.pem");        // make_connect_socket_ -> Context::trust()
+    insecure.set_ssl_root_cert("qb-nonexistent-private-ca.pem");                     // make_connect_socket_ -> Context::trust()
     insecure.set_ssl_client_certificate("qb-nonexistent.pem", "qb-nonexistent.key"); // -> Context::identity()
     EXPECT_FALSE(qb::io::async::run_sync(insecure.connect()))
         << "connect (verify off) must fail on a refused endpoint, having exercised make_connect_socket_()";
