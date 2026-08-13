@@ -34,13 +34,16 @@ and `await()` do not.
 #include <memory>
 #include <string>
 
+// An event is relocated by memcpy, so its payload must be trivially RELOCATABLE:
+// qb::string<N> when the value is bounded, a heap-owned handle when it is not.
+// See "Payloads" below.
 struct SessionLookup : qb::Event {
-    std::string key;
-    explicit SessionLookup(std::string k) : key(std::move(k)) {}
+    qb::string<128> key;
+    explicit SessionLookup(std::string const &k) : key(k) {}
 };
 struct SessionValue : qb::Event {
-    std::string value;    // empty when the key is missing or the command failed
-    explicit SessionValue(std::string v) : value(std::move(v)) {}
+    std::shared_ptr<std::string> value;   // null when the key is missing or the command failed
+    explicit SessionValue(std::shared_ptr<std::string> v) : value(std::move(v)) {}
 };
 
 class SessionCache : public qb::Actor {
@@ -60,13 +63,15 @@ public:
 
     void on(SessionLookup const &ev) {
         auto              redis  = _redis;        // copy ALL of it BEFORE spawning
-        std::string       key    = ev.key;
+        std::string       key    = ev.key.c_str();
         const qb::ActorId sender = ev.getSource();
 
         spawn([redis, key, sender](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             auto reply = co_await redis->get(key);           // Reply<std::optional<std::string>>
-            ctx.push_to<SessionValue>(sender,
-                                      reply.ok() && reply.result() ? *reply.result() : std::string{});
+            ctx.push_to<SessionValue>(
+                sender, reply.ok() && reply.result()
+                            ? std::make_shared<std::string>(*reply.result())
+                            : nullptr);
         });
     }
 
@@ -85,6 +90,19 @@ disconnects **before** it kills.
 ---
 
 ## Concepts
+
+### Payloads
+
+One framework rule shows through in the event definitions above: **an event payload must be trivially *relocatable*,
+not merely copyable**, because the engine moves events with `memcpy` and never runs the source destructor. A by-value
+`std::string` is not — on libstdc++ a short one addresses its own inline buffer — so a bounded value goes into a
+`qb::string<N>` and an unbounded one behind a `std::shared_ptr` or a `std::vector`.
+
+The rule is **not** scoped to cross-core delivery: the source pipe `memcpy`s what it already holds when it grows,
+and `reply`/`forward` byte-recycle the event, so a same-core `push` is exposed too. There is no compile-time check
+and there cannot be one; the debug build scans for it on the cross-core hop only, so a clean debug run is evidence
+rather than proof. libc++ recomputes `data()` from `this`, which is why this corrupts on Linux while passing every
+macOS test. See [Inter-actor messaging](https://github.com/isndev/qb/blob/main/readme/4_qb_core/messaging.md).
 
 ### Who turns the loop
 
@@ -181,8 +199,8 @@ disconnecting the consumer.
 ```cpp
 // A pub/sub actor. The consume loop is scoped to the actor, and ended by disconnect().
 struct Broadcast : qb::Event {
-    std::string payload;
-    explicit Broadcast(std::string p) : payload(std::move(p)) {}
+    std::shared_ptr<std::string> payload;   // heap-owned: nothing points into the event
+    explicit Broadcast(std::string p) : payload(std::make_shared<std::string>(std::move(p))) {}
 };
 
 class EventFanout : public qb::Actor {
@@ -211,7 +229,7 @@ public:
 
     void on(Broadcast const &ev) {
         // Back on the actor's own thread, in the ordinary dispatch path.
-        qb::io::cout() << "event: " << ev.payload << '\n';
+        qb::io::cout() << "event: " << *ev.payload << '\n';
     }
 
     void on(qb::KillEvent const &) {
@@ -244,8 +262,9 @@ run_get(std::shared_ptr<qb::redis::tcp::client> redis, std::string key) {
 spawn([redis, key, sender](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
     try {
         auto reply = co_await ctx.cancellable(run_get(redis, key));
-        ctx.push_to<SessionValue>(sender,
-                                  reply.ok() && reply.result() ? *reply.result() : std::string{});
+        ctx.push_to<SessionValue>(sender, reply.ok() && reply.result()
+                                              ? std::make_shared<std::string>(*reply.result())
+                                              : nullptr);
     } catch (qb::io::async::cancelled_error const &) {
         // The actor was killed while the command was in flight.
     }
