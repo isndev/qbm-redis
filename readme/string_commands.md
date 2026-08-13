@@ -25,8 +25,10 @@ belong to the derived client (see [connection.md](./connection.md)).
 ```cpp
 #include <qbm/redis/redis.h>            // umbrella header; pulls in string_commands.h
 
+// Inside a coroutine: connect() returns an AWAITER — a discarded call connects nothing.
 qb::redis::tcp::client redis{qb::io::uri{"tcp://127.0.0.1:6379"}};
-redis.connect();                    // see connection.md
+if (!co_await redis.connect())      // see connection.md
+    co_return;
 ```
 
 Every command exists in two forms, with no `_async` suffix:

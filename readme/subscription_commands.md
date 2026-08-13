@@ -332,8 +332,16 @@ EXPECT_EQ(all.result().num, 0);
 
 ## Driving the event loop
 
-Like every `qb::redis` object, a consumer only makes progress while its `qb-io` event loop runs. Inside an actor, the
-actor's core drives it automatically. Standalone (tests, a simple `main`), drive it yourself:
+Like every `qb::redis` object, a consumer only makes progress while its `qb-io` event loop runs. Who runs it decides
+what you have to call.
+
+**Inside an actor**, the owning `VirtualCore` runs the loop once per pass and nothing else is needed. Launch the consume
+loop with `Actor::spawn` rather than `coro_scheduler().spawn`: the former joins the actor's cancellation scope and is
+counted by `has_active_coroutines()`, the latter is not tied to the actor at all. End the loop by disconnecting the
+consumer — `co_await receive()` parks on a channel that `on(disconnected)` closes, and on nothing a `kill()` can reach.
+[actors.md](./actors.md#pubsub-receive-ends-on-close) has the complete shape.
+
+**Standalone** (tests, a simple `main`), drive it yourself:
 
 - **Coroutine code** — `co_await consumer.connect()` / `co_await consumer.subscribe(...)` /
   `co_await consumer.receive()` suspend until they complete; spawn the coroutine on
@@ -382,6 +390,7 @@ their native units — see [commands_overview.md](./commands_overview.md). Pub/S
 
 ## See also
 
+- [actors.md](./actors.md) — a subscriber inside a `qb::Actor`, and why the consume loop needs `disconnect()` to end.
 - [publish_commands.md](./publish_commands.md) — `PUBLISH` and the publisher client.
 - [connection.md](./connection.md) — connecting, TLS, timeouts, reconnect.
 - [error_handling.md](./error_handling.md) — `Reply<T>`, `.ok()`, `.error()`.

@@ -280,8 +280,9 @@ auto u = co_await redis.unwatch();             // Reply<status>; "balance" no lo
 ### Callback form
 
 The callback overloads mirror the coroutine ones; they take the callback first and return the client for chaining.
-Inside an actor or any callback-driven flow, drive the queue with `await()` (
-see [pipeline_and_await.md](./pipeline_and_await.md)).
+Who drains the queue depends on whose thread the loop is on: **inside an actor, nobody — the `VirtualCore`'s own loop
+pass does it, and calling `await()` there stops every actor on the core** ([actors.md](./actors.md#callbacks-inside-an-actor)).
+In a `main()`, a test or a script, `await()` is the drain (see [pipeline_and_await.md](./pipeline_and_await.md)).
 
 ```cpp
 #include <qbm/redis/redis.h>
@@ -293,7 +294,7 @@ redis.set([](qb::redis::Reply<qb::redis::status> &&) {}, "k1", "a");  // queued
 redis.exec<std::string>([](qb::redis::Reply<std::vector<std::string>> &&r) {
     if (r.ok()) { /* r.result() holds one status per queued command */ }
 });
-redis.await();   // poll the loop until every handler has fired
+redis.await();   // main/test/script only: spins the loop until every handler has fired
 ```
 
 <!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:69-85,112-122 -->

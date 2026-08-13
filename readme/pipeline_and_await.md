@@ -179,6 +179,10 @@ pipe.flush();  // drains both
 
 ## Pitfalls
 
+- **Do not call `await()` from inside an actor.** It is a `while` loop over `listener::current.run(EVRUN_NOWAIT)` on
+  the calling thread; inside a handler that thread is the `VirtualCore`, so the core dispatches no further actor
+  events, ticks no `ICallback` and reaps nothing until every pending reply has landed — with no diagnostic. An actor
+  needs no drain at all: its own loop pass already turns the crank. See [actors.md](./actors.md#callbacks-inside-an-actor).
 - **Do not call `await()` from another thread.** Drain from the same thread / loop that drives the client's I/O. The
   reply queue and outbound pipe are unsynchronized (`redis.h:752-753,805`).
 - **`flush()` is not a Redis command.** It runs the event loop until pending replies land; it never sends `FLUSHDB` or
@@ -198,6 +202,7 @@ pipe.flush();  // drains both
 
 ## See also
 
+- [actors.md](./actors.md) — why an actor needs no drain at all, and what `await()` costs there.
 - [connection.md](./connection.md) — opening the client, connect/command deadlines as `qb::duration`.
 - [commands_overview.md](./commands_overview.md) — coroutine vs. callback dispatch and the native-unit time boundary.
 - [error_handling.md](./error_handling.md) — the `Reply<T>` error model and the `"disconnected"` / `"command timed out"`

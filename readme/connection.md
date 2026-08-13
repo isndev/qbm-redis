@@ -8,7 +8,7 @@ asynchronous socket, optionally authenticates and upgrades to TLS, enforces conn
 `qb::duration`, and what happens to in-flight work when the link drops.
 
 **Prerequisites:** [../README.md](../README.md) (install, `qb_load_modules`, `qbm::redis`) — **See also:
-** [error_handling.md](./error_handling.md), [commands_overview.md](./commands_overview.md), [pipeline_and_await.md](./pipeline_and_await.md), [subscription_commands.md](./subscription_commands.md)
+** [actors.md](./actors.md), [error_handling.md](./error_handling.md), [commands_overview.md](./commands_overview.md), [pipeline_and_await.md](./pipeline_and_await.md), [subscription_commands.md](./subscription_commands.md)
 
 ---
 
@@ -173,6 +173,24 @@ stateDiagram-v2
 
 ## Connecting
 
+### Inside an actor (the usual case)
+
+The handshake belongs in `onInit()`, where the actor is not started until the awaiter resolves — so nothing is served
+against a half-open connection, and a failed connect fails the init:
+
+```cpp
+// In a qb::Actor. See actors.md for the surrounding class and its shutdown order.
+qb::io::async::task<bool> onInit() override {
+    registerEvent<qb::KillEvent>(*this);
+    _redis = std::make_shared<qb::redis::tcp::client>(qb::io::uri{"tcp://localhost:6379"});
+    _redis->set_command_timeout(std::chrono::seconds(5));
+    co_return co_await _redis->connect(std::chrono::seconds(2));
+}
+```
+
+Nothing else on this page changes inside an actor — except that the `run_sync` form below stops the `VirtualCore`
+rather than your own thread, and nothing reports it ([actors.md](./actors.md#bridging-to-synchronous-code)).
+
 ### Coroutine connect (the idiomatic form)
 
 ```cpp
@@ -199,10 +217,10 @@ qb::io::async::task<void> open_and_use() {
 
 <!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp -->
 
-### Synchronous connect (tests, bootstrap code)
+### Synchronous connect (a `main()`, a test, a bootstrap script)
 
-From non-coroutine code, drive the awaiter with `qb::io::async::run_sync`, which pumps the event loop until the awaiter
-resolves:
+From non-coroutine code — where the thread you are about to block is your own — drive the awaiter with
+`qb::io::async::run_sync`, which pumps the event loop until the awaiter resolves:
 
 ```cpp
 #include <qbm/redis/redis.h>
@@ -484,6 +502,7 @@ a legitimately parked command.
 
 ## See also
 
+- [actors.md](./actors.md) — the client inside a `qb::Actor`: `onInit()`, `spawn`, cancellation, shutdown order
 - [error_handling.md](./error_handling.md) — `Reply<T>`, `ConnectionError`, `AuthError`, `TimeoutError`, the disconnect
   signal
 - [commands_overview.md](./commands_overview.md) — the coroutine/callback dual API and the native time-unit boundary for

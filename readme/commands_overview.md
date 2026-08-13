@@ -296,6 +296,7 @@ on the client; the table links the per-group reference pages.
 
 ## See also
 
+- [A Redis actor](./actors.md) — running these commands from inside a `qb::Actor`
 - [Connection](./connection.md) — opening a client, URIs, RESP3 via `hello(3)`, timeouts, auto-reconnect
 - [Pipelining and `await()`](./pipeline_and_await.md) — batching callback commands and draining the loop
 - [Error handling](./error_handling.md) — the `ok()`/`error()` contract and the error type taxonomy
