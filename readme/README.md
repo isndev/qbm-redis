@@ -7,8 +7,10 @@ This is the table of contents for the qbm-redis narrative documentation: an asyn
 event loop, covering connections, the full command surface, pipelining, pub/sub, transactions, scripting, clustering,
 and server administration.
 
-**Prerequisites:** working knowledge of the qb framework — see [`qb/README.md`](https://github.com/isndev/qb/blob/main/README.md) and the qb [
-`readme/`](https://github.com/isndev/qb/tree/main/readme/) docs for `qb-io` async, coroutines, and `run_sync`. **See also:** the module front
+**Prerequisites:** working knowledge of the qb framework — [`qb/README.md`](https://github.com/isndev/qb/blob/main/README.md)
+for the shape of an actor, then [Writing actors](https://github.com/isndev/qb/blob/main/readme/4_qb_core/actor.md),
+[Asynchronous work inside an actor](https://github.com/isndev/qb/blob/main/readme/5_core_io_integration/async_in_actors.md)
+and [C++20 coroutines](https://github.com/isndev/qb/blob/main/readme/3_qb_io/coroutines.md). **See also:** the module front
 door [`../README.md`](../README.md) for positioning, the build matrix, and a quickstart.
 
 ## What this module is
@@ -28,13 +30,18 @@ as a compile feature. The coroutine API requires it.
 
 Every command has two interchangeable completion models with the same method name — there is no `_async` suffix:
 
-| Model         | How work finishes                                                                                                                      | Drive it with                                                                                            |
-|---------------|----------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| **Coroutine** | Overloads *without* a callback return an awaiter; `co_await` yields `Reply<T>`.                                                        | `co_await` inside a coroutine, or `qb::io::async::run_sync(...)` from synchronous code (tests, scripts). |
-| **Callback**  | Overloads *with* a callback take a `Func` invocable with `Reply<T>&&` as the first argument and return the client for fluent chaining. | `qb::io::async::run` / `run_once`, optionally `await()` to drain pending replies.                        |
+| Model         | How work finishes                                                                                                                      | Inside an actor                                                          | Standalone (`main`, test, script)                                       |
+|---------------|----------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| **Coroutine** | Overloads *without* a callback return an awaiter; `co_await` yields `Reply<T>`.                                                        | `co_await` in `onInit()` or inside an `Actor::spawn` body                | `qb::io::async::run_sync(awaiter)`                                      |
+| **Callback**  | Overloads *with* a callback take a `Func` invocable with `Reply<T>&&` as the first argument and return the client for fluent chaining. | enqueue and return — the `VirtualCore`'s loop pass drives it, no drain    | `qb::io::async::run` / `run_once`, or `await()` to drain pending replies |
 
 Use one style per call stack. `Redis<QB_IO_>` and the consumers are not thread-safe; drive a client from a single I/O
 thread or strand.
+
+**The right-hand column is not portable to the left.** `run_sync`, `run_once` and `await()` all stop the thread they run
+on until the work finishes. In a `main()` that thread is yours; inside an actor it is the `VirtualCore`, and every other
+actor on it stops with you — silently, because nothing in the framework diagnoses it.
+[actors.md](./actors.md) is the page for the left-hand column.
 
 ## Integration in one place
 
@@ -108,12 +115,26 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
 
 ## Core concepts
 
+These five pages are the learning path; everything under **Command groups** below is a reference catalogue you look
+things up in, not a sequence you read.
+
 | Concept                                                                                 | Page                                                |
 |-----------------------------------------------------------------------------------------|-----------------------------------------------------|
+| Owning a client inside a `qb::Actor`: `onInit()`, `Actor::spawn`, cancellation, shutdown | [A Redis actor](./actors.md)                        |
 | Connecting, URIs, `hello(3)` for RESP3, `reset()`, auto-reconnect, TLS verification     | [Connection](./connection.md)                       |
 | Coroutine versus callback, `Reply<T>`, `ok()` / `result()` / `error()`                  | [Command execution](./commands_overview.md)         |
 | Callback batching, `pending_reply_count()`, `tcp::pipeline`, event-loop drain semantics | [Pipelining and `await()`](./pipeline_and_await.md) |
 | `ok() == false` on Redis errors; no exceptions for command errors                       | [Error handling](./error_handling.md)               |
+
+### Suggested reading order
+
+1. **[A Redis actor](./actors.md).** Where the client lives decides which calls are legal in every page after this one.
+2. **[Connection](./connection.md).** URIs, the connect awaiter, TLS, retry, and what a dropped link does to work in flight.
+3. **[Command execution](./commands_overview.md).** How a method becomes RESP and how `Reply<T>` comes back.
+4. **[Error handling](./error_handling.md).** Read it once you are past the happy path — Redis errors are `ok() == false`, never exceptions.
+5. **[Pipelining and `await()`](./pipeline_and_await.md).** Only if you use the callback form outside an actor.
+
+Then use the catalogue below as reference. You are not expected to read it.
 
 ## Command groups
 

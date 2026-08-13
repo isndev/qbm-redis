@@ -395,6 +395,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
 
 ## See also
 
+- [actors.md](./actors.md) — what a dropped link and a `kill()` each do to a parked `co_await`
 - [connection.md](./connection.md) — connect/retry lifecycle, `RetryPolicy`, auto-reconnect, the `disconnected` event
 - [commands_overview.md](./commands_overview.md) — how commands map to `Reply<T>` across the coroutine and callback APIs
 - [pipeline_and_await.md](./pipeline_and_await.md) — `pipeline_result`, sub-reply inspection via `reply.raw()`
