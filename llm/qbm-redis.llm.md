@@ -222,10 +222,17 @@ co_await redis.multi();                     // queued commands now return QUEUED
 co_await redis.set("balance", "100");
 co_await redis.incr("balance");
 auto exec = co_await redis.exec<long long>();            // Reply<std::vector<long long>>
-// exec.ok()==false (nil) means a watched key changed → transaction aborted.
+// exec.ok()==false means EITHER an abort OR a decode error -- they are the same shape.
+// Discriminate: if (exec.raw() && exec.raw()->is_null()) { /* watched key changed, retry */ }
+// raw() is nullptr on the disconnect/failure paths, so the && is load-bearing.
 // For mixed reply types, exec<qb::redis::pipeline_result>() and read exec.raw().
 // Abort manually: co_await redis.discard();  clear watches: co_await redis.unwatch();
 ```
+NEVER read an intermediate reply's VALUE between `multi()` and `exec()`. `+QUEUED` is a RESP
+SimpleString and nothing special-cases it: a `std::string` / `std::optional<std::string>` reply comes
+back `ok() == true` carrying the literal `"QUEUED"`, a `status` reply comes back `Reply::ok() == true`
+with only the inner `status::ok()` false, and only integer/bool/double/container replies fail loudly.
+`is_in_multi()` tells you whether a reply is an acknowledgement rather than a result.
 
 ### Scripting (EVAL / EVALSHA)
 
