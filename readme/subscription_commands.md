@@ -390,7 +390,8 @@ their native units — see [commands_overview.md](./commands_overview.md). Pub/S
 
 ## See also
 
-- [actors.md](./actors.md) — a subscriber inside a `qb::Actor`, and why the consume loop needs `disconnect()` to end.
+- [actors.md](./actors.md) — a subscriber inside a `qb::Actor`, what actually ends the consume loop (the consumer's
+  destructor, not `disconnect()`), and the capture rule that follows from it.
 - [publish_commands.md](./publish_commands.md) — `PUBLISH` and the publisher client.
 - [connection.md](./connection.md) — connecting, TLS, timeouts, reconnect.
 - [error_handling.md](./error_handling.md) — `Reply<T>`, `.ok()`, `.error()`.
