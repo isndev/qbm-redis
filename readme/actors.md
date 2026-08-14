@@ -192,9 +192,21 @@ A channel `recv()` is still not cancellation-aware — `cancel()` does nothing t
 `close()`, and the consumer closes the channel in two places: when the connection drops, and in its own destructor.
 <!-- src: qbm/redis/src/qbm/redis/redis.h:1633-1637 (on disconnected → _msg_channel.close()), :1678-1680 (destructor closes it) -->
 
-That gives the subscribe loop a clean termination condition with no cancellation machinery at all, and it is exactly
-what the shipped examples use: the loop ends when `receive()` yields `std::nullopt`, and the actor makes that happen by
-disconnecting the consumer.
+That gives the subscribe loop a clean termination condition with no cancellation machinery at all: the loop ends when
+`receive()` yields `std::nullopt`.
+
+> **Which of those two places actually fires matters, and it is not the one you would guess.**
+> `co_consumer::disconnect()` does **not** close the message channel. Measured directly — a consumer,
+> a spawned `receive()` loop, and a pumped event loop, with no actor and no engine in the picture —
+> the loop was still parked **two seconds of loop turns after `disconnect()` returned**, and ended
+> the instant `~RedisCoroConsumer` ran. `disconnect()` clears `_connected_flag` and forwards to
+> `qb::io::async::io<>::disconnect()`; `_msg_channel.close()` is reached only from the consumer's
+> `event::disconnected` handler — which a *peer-initiated* drop delivers — and from the destructor.
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:677-680 (disconnect()), :1633-1637, :1678-1680 -->
+> So a `receive()` loop normally resumes **as part of the actor being destroyed**, not before it.
+> That is survivable — `channel::recv_awaiter` carries a `_ch_alive` flag and returns `nullopt`
+> without touching the freed channel — but only if the loop body touches no actor state after the
+> resume. Capture everything it reads by value, before the first `co_await`.
 
 ```cpp
 // A pub/sub actor. The consume loop is scoped to the actor, and ended by disconnect().
@@ -234,16 +246,20 @@ public:
 
     void on(qb::KillEvent const &) {
         if (_sub)
-            _sub->disconnect();   // closes the channel → receive() yields nullopt → the loop ends
-        kill();
+            _sub->disconnect();   // drops the link; does NOT end the loop — see below
+        kill();                   // ~co_consumer closes the channel; THAT ends the loop
     }
 };
 ```
 
 <!-- src: examples/all/auction_house/src/actors/websocket_handler.cpp:55-67 (the same consume_loop shape) -->
 
-The `disconnect()` is load-bearing. Without it, `kill()` leaves the loop parked on `receive()` forever — the awaiter is
-listening to nothing — and the actor's destructor runs anyway, because nothing waits for a coroutine.
+The `disconnect()` is good hygiene, not the termination mechanism: measured, the loop is still parked when it returns,
+and it is the consumer's destructor — run during `kill()`'s reap — that closes the channel and resumes it. Which means
+the loop's tail executes on an actor that is already gone. Nothing waits for a coroutine, so that ordering cannot be
+avoided; what makes it correct is the capture list. `examples/qbm/redis/example5_pubsub_example.cpp:248` is the
+worked case: it captures `[this, name = _name, coordinator = _coordinator_id]` — `this` only for the consumer the loop
+awaits — and reading `_name` through `this` instead was a `heap-use-after-free` AddressSanitizer reported on every run.
 
 ### Making a command interruptible
 
@@ -376,9 +392,10 @@ owns that mechanism and the two annotated call chains that make it concrete.
 
 Order matters, because the coroutines outlive the handler that started them:
 
-1. **`disconnect()` first**, on every client and consumer the actor owns. It fails every pending reply and closes the
-   pub/sub channel, so each parked `co_await` resumes — with a failed `Reply<T>`, or with `std::nullopt` from
-   `receive()` — on the next pass.
+1. **`disconnect()` first**, on every client and consumer the actor owns. It fails every pending reply, so each parked
+   command `co_await` resumes with a failed `Reply<T>` on the next pass. It does **not** close a `co_consumer`'s
+   pub/sub channel — measured, a parked `receive()` is still parked two seconds later — so a subscribe loop resumes at
+   step 3 instead, on an actor that no longer exists. Write that loop so it survives it: capture by value.
 2. **`kill()` second.** It cancels the actor's scope, which reaches anything parked on a framework awaiter or inside a
    `ctx.cancellable(...)` wrapper.
 3. **The destructor runs later**, at the core's reap. `has_active_coroutines()` reports what is still outstanding if
