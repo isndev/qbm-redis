@@ -252,12 +252,12 @@ public:
 };
 ```
 
-<!-- src: examples/all/auction_house/src/actors/websocket_handler.cpp:55-67 (the same consume_loop shape) -->
+<!-- src: examples/07-applications/02-auction-house/src/actors/websocket_handler.cpp:55-67 (the same consume_loop shape) -->
 
 The `disconnect()` is good hygiene, not the termination mechanism: measured, the loop is still parked when it returns,
 and it is the consumer's destructor — run during `kill()`'s reap — that closes the channel and resumes it. Which means
 the loop's tail executes on an actor that is already gone. Nothing waits for a coroutine, so that ordering cannot be
-avoided; what makes it correct is the capture list. `examples/qbm/redis/example5_pubsub_example.cpp:248` is the
+avoided; what makes it correct is the capture list. `examples/06-modules/redis/04-pubsub.cpp:257` is the
 worked case: it captures `[this, name = _name, coordinator = _coordinator_id]` — `this` only for the consumer the loop
 awaits — and reading `_name` through `this` instead was a `heap-use-after-free` AddressSanitizer reported on every run.
 
@@ -359,7 +359,7 @@ The framework's own best statement of the case is a comment in a shipped example
 
 > *Pre-engine setup: there is no actor loop yet, so we drive a coroutine to completion synchronously with
 > `qb::io::async::run_sync`.*
-> — `examples/all/auction_house/src/main.cpp:34-35`
+> — `examples/07-applications/02-auction-house/src/main.cpp:45-46`
 
 ```cpp
 // main(), before the engine starts: warm a cache once.
