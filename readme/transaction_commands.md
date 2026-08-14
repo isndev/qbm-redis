@@ -342,6 +342,19 @@ need one.
   from a single I/O thread / strand; concurrent accessors corrupt the reply FIFO and the MULTI state.
 - **Queued commands report `QUEUED`, not their final result.** Between `MULTI` and `EXEC`, the intermediate replies are
   server acknowledgements. The real results arrive only in the array from `EXEC`.
+- **`+QUEUED` breaks a typed reply in three different ways, and two of them are silent.** `+QUEUED` is a RESP
+  *SimpleString*, and nothing in the client special-cases it, so what a queued command's `Reply<T>` reports depends
+  entirely on whether `T` can be built from a string:
+  - `std::string` and `std::optional<std::string>` (`get`, `getset`, …) — **`ok() == true`, carrying the literal
+    `"QUEUED"`**. Silent: there is no signal at any level.
+  - `qb::redis::status` (what `set`, `mset`, … return) — **`Reply::ok() == true`** as well. Only the *inner*
+    `status::ok()` is false, because `"QUEUED" != "OK"`, so it is silent unless you check that second level.
+  - `long long`, `bool`, `double`, and any container — `ok() == false` with a parse error. Loud.
+  Do not read an intermediate reply's value. `is_in_multi()` tells you whether you are looking at one.
+- **An aborted `EXEC` is not distinguishable from a decode error by `ok()` alone.** A WATCH abort answers RESP Null,
+  which is not an array, so `exec<Result>()` fails to decode it and produces exactly the same `ok() == false` shape a
+  malformed reply would. The discriminator is the raw value: `reply.raw() && reply.raw()->is_null()`. The null check on
+  `raw()` is not optional — it is `nullptr` on the disconnect and client-failure paths, where dereferencing it crashes.
 
 ---
 
