@@ -52,6 +52,25 @@ enum class InsertPosition { BEFORE, AFTER };
 /** @brief List end (left/right) for LPUSH, RPOP, etc. */
 enum class ListPosition { LEFT, RIGHT };
 /** @brief Interval bound type for range queries */
+/**
+ * @brief Openness of an interval **as a whole** — not the inclusivity of one endpoint.
+ *
+ * Read these as the shape of the interval being built, which is why the half-bounded
+ * specializations accept only the two values that can describe them:
+ *   - `CLOSED`     — `[min, max]`, both ends inclusive
+ *   - `OPEN`       — `(min, max)`, both ends exclusive
+ *   - `LEFT_OPEN`  — `(min, max]`, lower exclusive, upper inclusive
+ *   - `RIGHT_OPEN` — `[min, max)`, lower inclusive, upper exclusive
+ *
+ * @warning The half-bounded forms take the value that describes the *whole* interval, which
+ *          is not the one that reads like the endpoint you are setting. For
+ *          `LeftBoundedInterval` — the interval `[min, +inf)` — an **inclusive** lower bound
+ *          is `RIGHT_OPEN` (the open end is the upper one) and an exclusive lower bound is
+ *          `OPEN`; `CLOSED` and `LEFT_OPEN` both claim an inclusive `+inf`, are meaningless,
+ *          and throw `Error("Bound type can only be OPEN or RIGHT_OPEN")`. `RightBoundedInterval`
+ *          — `(-inf, max]` — mirrors it: `LEFT_OPEN` for an inclusive upper bound, `OPEN` for
+ *          exclusive.
+ */
 enum class BoundType { CLOSED, OPEN, LEFT_OPEN, RIGHT_OPEN };
 /** @brief Aggregation for sorted set ZUNION/ZINTER */
 enum class Aggregation { SUM, MIN, MAX };
@@ -145,9 +164,12 @@ template <>
 class LeftBoundedInterval<double> {
 public:
     /**
-     * @brief Build a lower-bounded score interval.
+     * @brief Build a lower-bounded score interval `[min, +inf)` or `(min, +inf)`.
      * @param min  Lower bound value.
-     * @param type Lower-endpoint inclusivity (see @ref BoundType).
+     * @param type Openness of the interval as a whole (see @ref BoundType) — **not** the
+     *             lower endpoint's inclusivity. Use `RIGHT_OPEN` for an *inclusive* `min`
+     *             and `OPEN` for an exclusive one.
+     * @throws Error if @p type is `CLOSED` or `LEFT_OPEN` — both assert an inclusive `+inf`.
      */
     LeftBoundedInterval(double min, BoundType type);
 
@@ -168,9 +190,12 @@ template <>
 class RightBoundedInterval<double> {
 public:
     /**
-     * @brief Build an upper-bounded score interval.
+     * @brief Build an upper-bounded score interval `(-inf, max]` or `(-inf, max)`.
      * @param max  Upper bound value.
-     * @param type Upper-endpoint inclusivity (see @ref BoundType).
+     * @param type Openness of the interval as a whole (see @ref BoundType) — **not** the
+     *             upper endpoint's inclusivity. Use `LEFT_OPEN` for an *inclusive* `max`
+     *             and `OPEN` for an exclusive one.
+     * @throws Error if @p type is `CLOSED` or `RIGHT_OPEN` — both assert an inclusive `-inf`.
      */
     RightBoundedInterval(double max, BoundType type);
 
@@ -229,9 +254,12 @@ template <>
 class LeftBoundedInterval<std::string> {
 public:
     /**
-     * @brief Build a lower-bounded lexicographic interval.
+     * @brief Build a lower-bounded lexicographic interval `[min, +]` or `(min, +]`.
      * @param min  Lower bound member.
-     * @param type Lower-endpoint inclusivity (see @ref BoundType).
+     * @param type Openness of the interval as a whole (see @ref BoundType) — **not** the
+     *             lower endpoint's inclusivity. Use `RIGHT_OPEN` for an *inclusive* `min`
+     *             and `OPEN` for an exclusive one.
+     * @throws Error if @p type is `CLOSED` or `LEFT_OPEN`.
      */
     LeftBoundedInterval(const std::string &min, BoundType type);
 
@@ -252,9 +280,12 @@ template <>
 class RightBoundedInterval<std::string> {
 public:
     /**
-     * @brief Build an upper-bounded lexicographic interval.
+     * @brief Build an upper-bounded lexicographic interval `[-, max]` or `[-, max)`.
      * @param max  Upper bound member.
-     * @param type Upper-endpoint inclusivity (see @ref BoundType).
+     * @param type Openness of the interval as a whole (see @ref BoundType) — **not** the
+     *             upper endpoint's inclusivity. Use `LEFT_OPEN` for an *inclusive* `max`
+     *             and `OPEN` for an exclusive one.
+     * @throws Error if @p type is `CLOSED` or `RIGHT_OPEN`.
      */
     RightBoundedInterval(const std::string &max, BoundType type);
 

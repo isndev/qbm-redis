@@ -95,7 +95,7 @@ in [key_commands.md](./key_commands.md), not of this group.
 | `PFMERGE` | `qb::redis::status`               | simple-string reply, `"OK"` on success                                                                  |
 
 `qb::redis::status` is the simple-string reply wrapper from `types.h`; it is contextually convertible to `bool` (`true`
-when the string is exactly `"OK"`) and exposes `.ok()` and `.str()`. <!-- src: qbm/redis/src/qbm/redis/types.h:470-527 -->
+when the string is exactly `"OK"`) and exposes `.ok()` and `.str()`. <!-- src: qbm/redis/src/qbm/redis/types.h:501-558 -->
 
 ---
 

@@ -125,7 +125,7 @@ if (auto v = r.value_or(""); !v.empty()) {
 #### `qb::redis::status` — the "OK" reply
 
 Commands that return a RESP simple string (such as `SET`, `MULTI`, `SELECT`) decode to `qb::redis::status` (
-`types.h:476`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
+`types.h:507`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
 conversion rather than comparing strings yourself. So for `Reply<status>`, `reply.ok()` confirms the command did not
 fail at the protocol level, and `reply.value().ok()` confirms the server replied `+OK`.
 

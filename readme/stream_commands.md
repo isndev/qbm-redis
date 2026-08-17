@@ -60,21 +60,21 @@ an explicit `operator bool()`. You read a successful payload through `reply.resu
 
 ### `qb::redis::stream_id`
 
-`stream_id` (`src/qbm/redis/types.h:307-325`) is `{ long long timestamp; long long sequence; }` with `to_string()`
+`stream_id` (`src/qbm/redis/types.h:338-356`) is `{ long long timestamp; long long sequence; }` with `to_string()`
 (renders `"<timestamp>-<sequence>"`), full equality, and an ordering `operator<`. `XADD` returns one of these. To feed
 an ID back into a later command (e.g. `xdel`, `xack`), pass `id.to_string()` or build the `"<ts>-<seq>"` string
 yourself.
 
 ### `qb::redis::stream_entry` and `stream_entry_list`
 
-`stream_entry` (`src/qbm/redis/types.h:328-331`) is
+`stream_entry` (`src/qbm/redis/types.h:359-362`) is
 `{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`. `stream_entry_list`
-(`src/qbm/redis/types.h:333`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
+(`src/qbm/redis/types.h:364`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
 `XCLAIM`. You iterate it directly: `entry.id` is the entry ID and `entry.fields` is the field map.
 
 ### `qb::redis::status`
 
-`status` (`src/qbm/redis/types.h:476-527`) wraps a status string. It converts to `bool` (true when the string is
+`status` (`src/qbm/redis/types.h:507-558`) wraps a status string. It converts to `bool` (true when the string is
 `"OK"`), to `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said
 OK".
 

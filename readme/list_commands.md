@@ -62,7 +62,7 @@ Two enums from `src/qbm/redis/types.h` parameterize this group:
 - `qb::redis::ListPosition` (`src/qbm/redis/types.h:53`) — `LEFT`, `RIGHT` — selects the list end for `lmove`,
   `blmove`, `lmpop`, and `blmpop`.
 
-Both are serialized to wire keywords through `to_string(...)` (`src/qbm/redis/types.h:559`, `:561`); you pass the enum,
+Both are serialized to wire keywords through `to_string(...)` (`src/qbm/redis/types.h:590`, `:592`); you pass the enum,
 not a string.
 
 ### Variadic pushes

@@ -72,12 +72,12 @@ command — you never name it yourself except when you reach for the generic `co
 | `acl_load`     | `ACL LOAD`           | `status`                                          |
 | `acl_save`     | `ACL SAVE`           | `status`                                          |
 
-A `status` reply (`qb::redis::status`, [types.h:476](../src/qbm/redis/types.h)) wraps the server's simple-string acknowledgement; it
+A `status` reply (`qb::redis::status`, [types.h:507](../src/qbm/redis/types.h)) wraps the server's simple-string acknowledgement; it
 is truthy when the server answered `OK`. `Reply<status>` itself is truthy when the command did not error, so check both
 layers if you need to distinguish a transport error from a non-`OK` server answer —
 see [error_handling.md](./error_handling.md).
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1125-1127 (the Reply bool conversion), types.h:476 (status) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1125-1127 (the Reply bool conversion), types.h:507 (status) -->
 
 ### Structured replies decode to `qb::json`
 

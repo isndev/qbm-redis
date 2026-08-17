@@ -88,7 +88,7 @@ See [error_handling.md](./error_handling.md) for the typed error hierarchy.
 
 ### The `status` reply type
 
-`module_load` and `module_unload` reply with `qb::redis::status` (`types.h:476`), a thin wrapper over the server's
+`module_load` and `module_unload` reply with `qb::redis::status` (`types.h:507`), a thin wrapper over the server's
 simple-string reply. `status::ok()` and its `operator bool` are `true` only when the string is exactly `"OK"`. So with
 `Reply<status>` there are two layers to check — `reply.ok()` (did the command round-trip) and `reply.result().ok()` (was
 the status `"OK"`):
@@ -321,4 +321,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:476 (status), qbm/redis/src/qbm/redis/reply.h:1109 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.0.0 -->
+<!-- Verified against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:507 (status), qbm/redis/src/qbm/redis/reply.h:1109 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.0.0 -->

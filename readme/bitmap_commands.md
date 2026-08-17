@@ -100,7 +100,7 @@ a Redis error in the `Reply` (`reply.ok() == false`, message in `reply.error()`)
 ### BITOP operation strings
 
 `bitop` takes its operation as a raw `std::string` — `"AND"`, `"OR"`, `"XOR"`, or `"NOT"`. A `BitOp` enum and
-`qb::redis::to_string(BitOp)` exist (`src/qbm/redis/types.h:59,551`), but this method does **not** use them, so the
+`qb::redis::to_string(BitOp)` exist (`src/qbm/redis/types.h:78,582`), but this method does **not** use them, so the
 spelling is unvalidated until the server rejects it. `"NOT"` is unary: pass exactly one source key. The other
 operations accept one or more. The destination length equals the length of the longest input string; shorter inputs are
 zero-extended.
