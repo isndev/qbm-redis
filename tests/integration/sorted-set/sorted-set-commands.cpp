@@ -289,7 +289,8 @@ TEST_P(SortedSetProtocolModesTest, REMOVE) {
         std::vector<qb::redis::score_member> members = {{10.0, "a"}, {20.0, "b"}, {30.0, "c"}, {40.0, "d"}, {50.0, "e"}};
         EXPECT_TRUE((co_await redis.zadd(key, members)).ok());
 
-        auto rem_reply = co_await redis.zrem(key, std::vector<std::string>{"b", "d"});
+        const std::vector<std::string> to_remove{"b", "d"}; // named: it must outlive the suspension
+        auto                           rem_reply = co_await redis.zrem(key, to_remove);
         EXPECT_TRUE(rem_reply.ok()) << rem_reply.error();
         EXPECT_EQ(rem_reply.result(), 2);
         EXPECT_EQ((co_await redis.zcard(key)).result(), 3);

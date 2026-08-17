@@ -84,7 +84,7 @@ qb::redis::lex_interval   lex("b", "e", qb::redis::BoundType::LEFT_OPEN);     //
 are templated on `Interval`. Left/right-bounded and unbounded variants exist (`LeftBoundedInterval`,
 `RightBoundedInterval`, `UnboundedInterval`) for half-open and full-range queries.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:74,96-302; qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:232, 377, 465 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:74,96-302; qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:232, 378, 466 -->
 
 ### `LimitOptions` — pagination for range-by-score / range-by-lex
 
@@ -329,7 +329,7 @@ auto r = co_await redis.zmscore("board", {"a", "b", "nonexistent"});
 if (r.ok()) { /* r.result()[2] == std::nullopt */ }
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:662-678 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:663-679 -->
 
 ### `ZINCRBY key increment member` — `zincrby`
 
@@ -351,7 +351,7 @@ auto r = co_await redis.zincrby("board", 5.0, "score"); // 10.0 -> 15.0
 if (r.ok()) qb::io::cout() << r.result() << "\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:318-324 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:319-325 -->
 
 ### `ZRANK key member` / `ZREVRANK key member` — `zrank`, `zrevrank`
 
@@ -429,7 +429,7 @@ auto r = co_await redis.zrangebyscore("board", i);                // ascending, 
 auto rev = co_await redis.zrevrangebyscore("board", i);           // descending
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:377-395 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:378-396 -->
 
 ### `ZRANGEBYLEX key min max [LIMIT offset count]` — `zrangebylex`, `zrevrangebylex`
 
@@ -456,7 +456,7 @@ qb::redis::lex_interval i("b", "e", qb::redis::BoundType::LEFT_OPEN); // (b,e]
 auto r = co_await redis.zrangebylex("board", i);
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:506-521 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:507-522 -->
 
 ### `ZRANGESTORE dst src min max [...]` — `zrangestore`
 
@@ -482,7 +482,7 @@ zrangestore(Func &&func, const std::string &dst, const std::string &src,
 auto r = co_await redis.zrangestore("dst", "src", "1", "3", {"BYSCORE"});
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:705-709 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:706-710 -->
 
 ### `ZREM key member [member ...]` — `zrem`
 
@@ -502,7 +502,7 @@ zrem(Func &&func, const std::string &key, const std::vector<std::string> &member
 auto r = co_await redis.zrem("board", {"b", "d"});
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:292-295 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:292-296 -->
 
 ### `ZREMRANGEBYRANK` / `ZREMRANGEBYSCORE` / `ZREMRANGEBYLEX` — `zremrangebyrank`, `zremrangebyscore`, `zremrangebylex`
 
@@ -528,7 +528,7 @@ qb::redis::lex_interval i("c", "e", qb::redis::BoundType::CLOSED);
 auto b = co_await redis.zremrangebylex("board", i);             // [c,e]
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:297-300, 532-537 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:298-301, 533-538 -->
 
 ### `ZPOPMIN` / `ZPOPMAX key [count]` — `zpopmin`, `zpopmax`
 
@@ -584,7 +584,7 @@ if (r.ok() && r.result().has_value()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:643-650 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:644-651 -->
 
 ### Blocking pops — `bzpopmin`, `bzpopmax`, `bzmpop`
 
@@ -622,7 +622,7 @@ if (m.ok() && m.result().has_value())
     qb::io::cout() << m.result()->second.size() << " popped\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:712-720, 739-745; qbm/redis/tests/integration/resilience/coro-cancel-and-connection-loss.cpp:365-381 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:713-721, 740-746; qbm/redis/tests/integration/resilience/coro-cancel-and-connection-loss.cpp:365-381 -->
 
 > `bzmpop` (like `zmpop`) rejects an empty `keys` list client-side: no frame is sent and the reply resolves at once with
 `ok() == false` and `error() == "BZMPOP requires at least one key"` (`sorted_set_commands.h:1446-1450`). It never blocks
@@ -650,7 +650,7 @@ auto few    = co_await redis.zrandmemberCount("board", 2);  // std::vector<std::
 auto scored = co_await redis.zrandmemberWithScores("board", 2);
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:680-702 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:681-703 -->
 
 ### `ZUNIONSTORE` / `ZINTERSTORE` / `ZDIFFSTORE dest numkeys key [...]` — `zunionstore`, `zinterstore`, `zdiffstore`
 
@@ -683,7 +683,7 @@ auto i = co_await redis.zinterstore("inter", {"set1", "set2"});
 auto d = co_await redis.zdiffstore("diff",  {"set1", "set2"});
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:351-359, 576-579 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:352-360, 577-580 -->
 
 ### `ZINTER` / `ZDIFF numkeys key [...]` — `zinter`, `zinterWithScores`, `zdiff`, `zdiffWithScores`
 
@@ -708,7 +708,7 @@ auto names  = co_await redis.zdiff({"set1", "set2"});          // std::vector<st
 auto scored = co_await redis.zdiffWithScores({"set1", "set2"}); // std::vector<score_member>
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:559-573, 600-618 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:560-574, 601-619 -->
 
 ### `ZINTERCARD numkeys key [...] [LIMIT n]` — `zintercard`
 
@@ -731,7 +731,7 @@ zintercard(Func &&func, const std::vector<std::string> &keys,
 auto r = co_await redis.zintercard({"set1", "set2"});
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:621-623 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:622-624 -->
 
 ### `ZSCAN key cursor [MATCH pattern] [COUNT count]` — `zscan`
 
@@ -766,7 +766,7 @@ do {
 } while (cursor != 0);
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:485-487 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:486-488 -->
 
 **Callback-only auto-iterating form.** `zscan(func, key, pattern)` (no cursor) drives the cursor internally — it
 allocates a `shared_ptr`-managed scanner that keeps itself alive across the async round-trips (hardcoded page size
