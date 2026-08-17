@@ -75,7 +75,7 @@ A geo distance is a length, not a time, so it never touches the framework time m
 | `GeoUnit::MI` | `mi`       | miles            |
 | `GeoUnit::FT` | `ft`       | feet             |
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:61, qbm/redis/src/qbm/redis/redis.cpp:354 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:80, qbm/redis/src/qbm/redis/redis.cpp:354 -->
 
 `GEODIST`, `GEORADIUS`, `GEORADIUSBYMEMBER`, and `GEOSEARCH` all default to `GeoUnit::M`. The radius argument itself is
 a `double` in the chosen unit. Do not reach for `qb::duration` / `std::chrono` here — these are distances, and the only
@@ -104,7 +104,7 @@ struct geo_pos {
 };
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:293-298 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:324-329 -->
 
 Two corrections against older notes. First, the position-returning commands (`geohash`, `geopos`) yield a **vector
 of `std::optional`**: a `std::nullopt` element means the member at that index is absent from the index, so check each

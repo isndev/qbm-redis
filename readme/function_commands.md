@@ -76,7 +76,7 @@ Function commands decode into three reply shapes:
 - **`qb::redis::status`** — the mutating/administrative commands that reply with a simple line: `function_load` (returns
   the library name), `function_delete`, `function_flush`, `function_kill`, and `function_restore`. `status` is
   contextually `bool` (`true` iff the reply text is exactly `"OK"`) and converts to
-  `std::string`. <!-- src: qbm/redis/src/qbm/redis/types.h:476-527 -->
+  `std::string`. <!-- src: qbm/redis/src/qbm/redis/types.h:507-558 -->
 - **`std::vector<std::string>`** — `function_help` only. <!-- src: qbm/redis/src/qbm/redis/commands/function_commands.h:309 -->
 - **`Ret` (caller-chosen)** — `fcall<Ret>` / `fcallRo<Ret>` decode the function's return value into whatever type you
   name, exactly like `eval<Ret>` in [scripting_commands.md](./scripting_commands.md).

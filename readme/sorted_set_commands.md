@@ -54,7 +54,7 @@ It is covered below alongside the cursor form.
 ### `score_member` — the member/score pair
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:349-354
+// qbm/redis/src/qbm/redis/types.h:380-385
 struct score_member {
     double      score{};
     std::string member;
@@ -71,11 +71,11 @@ Score and lex ranges are expressed with the interval class templates in `qbm/red
 semantics for you. Two aliases cover the common cases:
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:273-276
+// qbm/redis/src/qbm/redis/types.h:304-307
 using score_interval = qb::redis::BoundedInterval<double>;       // numeric score bounds
 using lex_interval   = qb::redis::BoundedInterval<std::string>;  // lexicographical bounds
 
-// Construct with a BoundType: CLOSED, OPEN, LEFT_OPEN, RIGHT_OPEN  (qbm/redis/src/qbm/redis/types.h:55)
+// Construct with a BoundType: CLOSED, OPEN, LEFT_OPEN, RIGHT_OPEN  (qbm/redis/src/qbm/redis/types.h:74)
 qb::redis::score_interval scores(20.0, 40.0, qb::redis::BoundType::CLOSED);   // [20,40]
 qb::redis::lex_interval   lex("b", "e", qb::redis::BoundType::LEFT_OPEN);     // (b,e]
 ```
@@ -84,12 +84,12 @@ qb::redis::lex_interval   lex("b", "e", qb::redis::BoundType::LEFT_OPEN);     //
 are templated on `Interval`. Left/right-bounded and unbounded variants exist (`LeftBoundedInterval`,
 `RightBoundedInterval`, `UnboundedInterval`) for half-open and full-range queries.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:55,77-271; qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:232, 377, 465 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:74,96-302; qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:232, 377, 465 -->
 
 ### `LimitOptions` — pagination for range-by-score / range-by-lex
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:283-286
+// qbm/redis/src/qbm/redis/types.h:314-317
 struct LimitOptions {
     long long offset = 0;
     long long count  = -1;
@@ -120,7 +120,7 @@ use `zincrby` to add-or-increment a single member.
 ### `Aggregation` — score combination for store/intersect commands
 
 ```cpp
-// qbm/redis/src/qbm/redis/types.h:57
+// qbm/redis/src/qbm/redis/types.h:76
 enum class Aggregation { SUM, MIN, MAX };  // default SUM
 ```
 
@@ -177,7 +177,7 @@ the wire command unconditionally: `zrange`, `zrangebyscore`, `zrevrange`, `zrevr
 natively (`sorted_set_commands.h:506`, `:534`). The non-scored siblings (`zrangebylex`, `zinter`, `zdiff`,
 `zrandmemberCount`) deliberately omit `WITHSCORES` and return `std::vector<std::string>`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:564, 651-652, 830, 910, 1084, 1193, 1374; qbm/redis/src/qbm/redis/types.h:349 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:564, 651-652, 830, 910, 1084, 1193, 1374; qbm/redis/src/qbm/redis/types.h:380 -->
 
 ---
 

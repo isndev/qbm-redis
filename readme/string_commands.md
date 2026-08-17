@@ -67,7 +67,7 @@ In both forms `T` is the command's reply payload. Read it through `qb::redis::Re
 comparison. For `std::optional<std::string>` payloads (a key that may be absent), check `reply.ok()` first, then
 `reply.result().has_value()` before dereferencing.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:476-527 (status), qbm/redis/src/qbm/redis/commands/string_commands.h (per-command R) -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:507-558 (status), qbm/redis/src/qbm/redis/commands/string_commands.h (per-command R) -->
 
 ---
 

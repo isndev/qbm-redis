@@ -963,27 +963,27 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:62`; `what()` vali
 | Type | Header / kind | Notes |
 |---|---|---|
 | `reply_ptr` | `types.h:42` · `= std::unique_ptr<parser::Value>` | Move-only owning reply pointer. |
-| `status` | `types.h:476` · struct | Simple-string reply wrapper; `operator bool`/`ok()` true iff payload == "OK". |
-| `stream_id` | `types.h:307` · struct | `{long long timestamp; long long sequence;}`; `to_string()` → "ts-seq". |
-| `stream_entry` / `stream_entry_list` / `map_stream_entry_list` | `types.h:327-334` | `{stream_id id; qb::unordered_map<std::string,std::string> fields;}`; list; per-stream map. |
-| `score` / `score_member` | `types.h:337-354` | `score{double value}`; `score_member{double score; std::string member}` (field order: score then member). |
-| `geo_pos` / `geo_distance` | `types.h:293, :301` | `geo_pos{double longitude; double latitude}`; `geo_distance{std::string member; double distance}`. |
-| `subscription` | `types.h:465` · struct | `{std::optional<std::string> channel; long long num;}`. |
-| `message` / `pmessage` | `types.h:454, :462` | `message{pattern; channel; payload; reply_ptr raw}`; `pmessage : message`. |
-| `scan<Out=std::vector<std::string>>` | `types.h:534-535` · struct template | `{std::size_t cursor; Out items;}` (cursor 0 = complete). |
-| `json_value` | `types.h:412` · struct | Self-describing JSON-like variant (RedisJSON); RESP big numbers kept as strings. |
-| `pipeline_result` | `types.h:405` · struct | `{size_t size; size_t error_count; bool all_succeeded;}` — MULTI/EXEC summary; per-command replies NOT stored (use `Reply<pipeline_result>.raw()`). |
-| `memory_info` | `types.h:378` · struct | Parsed INFO-memory section (`size_t` fields, 0 fallback). |
-| `cluster_node` | `types.h:364` · struct | One CLUSTER NODES line parsed field-by-field. |
-| `search_result` | `types.h:357` · struct | FT.SEARCH per-document `{key; fields; values}`. |
-| `error` | `types.h:541` · struct | `{std::string what; reply_ptr raw;}`. |
-| `LimitOptions` | `types.h:283` · struct | `{long long offset=0; long long count=-1;}` (count -1 = unbounded). A **negative `offset`** on `zrangebylex`/`zrangebyscore` (and the `zrevrange*` variants) suppresses the `LIMIT` clause entirely (no triplet emitted); the default `{0,-1}` still sends `LIMIT 0 -1` (all). |
+| `status` | `types.h:507` · struct | Simple-string reply wrapper; `operator bool`/`ok()` true iff payload == "OK". |
+| `stream_id` | `types.h:338` · struct | `{long long timestamp; long long sequence;}`; `to_string()` → "ts-seq". |
+| `stream_entry` / `stream_entry_list` / `map_stream_entry_list` | `types.h:358-365` | `{stream_id id; qb::unordered_map<std::string,std::string> fields;}`; list; per-stream map. |
+| `score` / `score_member` | `types.h:368-385` | `score{double value}`; `score_member{double score; std::string member}` (field order: score then member). |
+| `geo_pos` / `geo_distance` | `types.h:324, :301` | `geo_pos{double longitude; double latitude}`; `geo_distance{std::string member; double distance}`. |
+| `subscription` | `types.h:496` · struct | `{std::optional<std::string> channel; long long num;}`. |
+| `message` / `pmessage` | `types.h:485, :462` | `message{pattern; channel; payload; reply_ptr raw}`; `pmessage : message`. |
+| `scan<Out=std::vector<std::string>>` | `types.h:565-566` · struct template | `{std::size_t cursor; Out items;}` (cursor 0 = complete). |
+| `json_value` | `types.h:443` · struct | Self-describing JSON-like variant (RedisJSON); RESP big numbers kept as strings. |
+| `pipeline_result` | `types.h:436` · struct | `{size_t size; size_t error_count; bool all_succeeded;}` — MULTI/EXEC summary; per-command replies NOT stored (use `Reply<pipeline_result>.raw()`). |
+| `memory_info` | `types.h:409` · struct | Parsed INFO-memory section (`size_t` fields, 0 fallback). |
+| `cluster_node` | `types.h:395` · struct | One CLUSTER NODES line parsed field-by-field. |
+| `search_result` | `types.h:388` · struct | FT.SEARCH per-document `{key; fields; values}`. |
+| `error` | `types.h:572` · struct | `{std::string what; reply_ptr raw;}`. |
+| `LimitOptions` | `types.h:314` · struct | `{long long offset=0; long long count=-1;}` (count -1 = unbounded). A **negative `offset`** on `zrangebylex`/`zrangebyscore` (and the `zrevrange*` variants) suppresses the `LIMIT` clause entirely (no triplet emitted); the default `{0,-1}` still sends `LIMIT 0 -1` (all). |
 
-### Enums (`types.h:49-63`)
+### Enums (`types.h:49-82`)
 `UpdateType{EXIST,NOT_EXIST,ALWAYS}` (→XX/NX, ALWAYS=no flag) · `InsertPosition{BEFORE,AFTER}` · `ListPosition{LEFT,RIGHT}` · `BoundType{CLOSED,OPEN,LEFT_OPEN,RIGHT_OPEN}` · `Aggregation{SUM,MIN,MAX}` · `BitOp{AND,OR,XOR,NOT}` · `GeoUnit{M,KM,MI,FT}` (default M) · `XtrimStrategy{MAXLEN,MINID}`.
-`to_string(...)` overloads (`types.h:550-561`) render `BitOp/UpdateType/Aggregation/GeoUnit/InsertPosition/ListPosition` to Redis keyword strings.
+`to_string(...)` overloads (`types.h:581-592`) render `BitOp/UpdateType/Aggregation/GeoUnit/InsertPosition/ListPosition` to Redis keyword strings.
 
-### Interval types (`types.h:65-276`)
+### Interval types (`types.h:84-307`)
 `UnboundedInterval<T>` / `BoundedInterval<T>` / `LeftBoundedInterval<T>` / `RightBoundedInterval<T>`; aliases `lex_interval = BoundedInterval<std::string>`, `score_interval = BoundedInterval<double>`. Each exposes `lower()`/`upper()` returning the RESP-encoded bound string (consumed by `zcount`/`zrangebyscore`/`zrangebylex`).
 
 ---
