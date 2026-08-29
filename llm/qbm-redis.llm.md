@@ -1,4 +1,4 @@
-<!-- Verified-against: qbm-redis @ qb 3.0.0. Source of truth: the headers under qbm/redis/src/qbm/redis/. -->
+<!-- Verified-against: qbm-redis @ qb 3.0.1. Source of truth: the headers under qbm/redis/src/qbm/redis/. -->
 # qbm-redis — Concepts for Writing Correct Code
 
 Asynchronous Redis client for the **qb C++ actor framework**. Speaks RESP2/RESP3

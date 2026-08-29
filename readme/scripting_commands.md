@@ -1,6 +1,6 @@
 # Scripting commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.1 (C++20 default, C++23
 > supported)
 
 Reference for the server-side Lua scripting command group — `EVAL`, `EVALSHA`, their read-only variants `EVAL_RO`/

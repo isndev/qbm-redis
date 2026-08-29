@@ -1,6 +1,6 @@
 # Connection commands reference
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.1 (C++20 default, C++23
 > supported)
 
 Reference for the connection command group — `HELLO`, `AUTH`, `ECHO`, `PING`, `QUIT`, `SELECT`, `SWAPDB`, and `RESET` —

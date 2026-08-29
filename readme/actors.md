@@ -1,6 +1,6 @@
 # A Redis actor
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.1 (C++20 default, C++23
 > supported)
 
 How a `qb::redis::tcp::client` and a `tcp::co_consumer` live inside a `qb::Actor`: who turns the loop, how a handler

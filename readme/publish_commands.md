@@ -1,6 +1,6 @@
 # Publish commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.1 (C++20 default, C++23
 > supported)
 
 Reference for the `qb::redis::publish_commands` group: a single command, `PUBLISH`, which fans a message out to every

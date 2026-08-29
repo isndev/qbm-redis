@@ -1,4 +1,4 @@
-<!-- Verified-against: qbm-redis @ qb 3.0.0. Source of truth: the headers under qbm/redis/src/qbm/redis/. -->
+<!-- Verified-against: qbm-redis @ qb 3.0.1. Source of truth: the headers under qbm/redis/src/qbm/redis/. -->
 # qbm-redis — Deterministic API Reference
 
 Asynchronous Redis client for the **qb C++ Actor Framework**. Namespace: `qb::redis`.
