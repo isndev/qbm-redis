@@ -1,6 +1,6 @@
 # Transaction commands (MULTI/EXEC)
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.1 (C++20 default, C++23
 > supported)
 
 Reference for the transaction command group — `MULTI`, `EXEC`, `DISCARD`, `WATCH`, and `UNWATCH` — together with the
