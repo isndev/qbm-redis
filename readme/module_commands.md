@@ -1,6 +1,6 @@
 # Module commands reference
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.1 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.1.0 (C++20 default, C++23
 > supported)
 
 Reference for the module command group — `MODULE LIST`, `MODULE LOAD`, `MODULE UNLOAD`, and `MODULE HELP` — exposed by
@@ -321,4 +321,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified-against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:507 (status), qbm/redis/src/qbm/redis/reply.h:1109 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.0.1 -->
+<!-- Verified-against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:507 (status), qbm/redis/src/qbm/redis/reply.h:1109 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.1.0 -->

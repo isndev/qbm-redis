@@ -1,6 +1,6 @@
 # Hash commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.1 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.1.0 (C++20 default, C++23
 > supported)
 
 Reference for the Redis hash command group exposed by `qb::redis::hash_commands<Derived>` — field/value maps stored
