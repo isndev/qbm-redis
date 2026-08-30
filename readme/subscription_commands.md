@@ -1,6 +1,6 @@
 # Pub/Sub subscriptions
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.0.1 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.1.0 (C++20 default, C++23
 > supported)
 
 How to subscribe to Redis channels and patterns with the dedicated consumers — `qb::redis::tcp::cb_consumer` (callback

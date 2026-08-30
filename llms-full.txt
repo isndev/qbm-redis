@@ -13,7 +13,7 @@ Source documents, in order: `llm/qbm-redis.llm.md`, `llm/qbm-redis.llm.api.md`
 
 <!-- BEGIN llm/qbm-redis.llm.md -->
 
-<!-- Verified-against: qbm-redis @ qb 3.0.1. Source of truth: the headers under qbm/redis/src/qbm/redis/. -->
+<!-- Verified-against: qbm-redis @ qb 3.1.0. Source of truth: the headers under qbm/redis/src/qbm/redis/. -->
 # qbm-redis — Concepts for Writing Correct Code
 
 Asynchronous Redis client for the **qb C++ actor framework**. Speaks RESP2/RESP3
@@ -378,7 +378,7 @@ framework was built with `QB_HAS_SSL` (OpenSSL); otherwise plaintext TCP only.
 
 <!-- BEGIN llm/qbm-redis.llm.api.md -->
 
-<!-- Verified-against: qbm-redis @ qb 3.0.1. Source of truth: the headers under qbm/redis/src/qbm/redis/. -->
+<!-- Verified-against: qbm-redis @ qb 3.1.0. Source of truth: the headers under qbm/redis/src/qbm/redis/. -->
 # qbm-redis — Deterministic API Reference
 
 Asynchronous Redis client for the **qb C++ Actor Framework**. Namespace: `qb::redis`.
