@@ -168,7 +168,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 ## Pitfalls
 
 - **Auto-reconnect does not replay work.** On disconnect, all pending replies fail and predicted subscription state is
-  cleared. After a reconnect you must re-subscribe and re-issue any in-flight commands yourself (`redis.h:945-960,1428-1446`).
+  cleared. After a reconnect you must re-subscribe and re-issue any in-flight commands yourself (`redis.h:945-960,1445-1463`).
 - **`set_command_timeout` drops the connection.** It is a health watchdog, not a per-command deadline: because FIFO
   pipelining cannot fail one mid-queue command without desyncing later replies, tripping the deadline disconnects and
   fails every pending command (`redis.h:888-904,945-960`).
