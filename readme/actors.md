@@ -186,11 +186,11 @@ draining it, precisely so a failing handler that re-issues a command does not ge
 
 The coroutine consumer is the exception worth knowing. `receive()` does **not** return a `redis_awaiter`; it awaits a
 `qb::io::async::channel<message>` that the consumer fills from its RESP push frames.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1673-1676 (receive() → co_await _msg_channel.recv()) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1690-1693 (receive() → co_await _msg_channel.recv()) -->
 
 A channel `recv()` is still not cancellation-aware — `cancel()` does nothing to it — but it *is* woken by
 `close()`, and the consumer closes the channel in two places: when the connection drops, and in its own destructor.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1633-1637 (on disconnected → _msg_channel.close()), :1678-1680 (destructor closes it) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1650-1654 (on disconnected → _msg_channel.close()), :1695-1697 (destructor closes it) -->
 
 That gives the subscribe loop a clean termination condition with no cancellation machinery at all: the loop ends when
 `receive()` yields `std::nullopt`.
@@ -202,7 +202,7 @@ That gives the subscribe loop a clean termination condition with no cancellation
 > the instant `~RedisCoroConsumer` ran. `disconnect()` clears `_connected_flag` and forwards to
 > `qb::io::async::io<>::disconnect()`; `_msg_channel.close()` is reached only from the consumer's
 > `event::disconnected` handler — which a *peer-initiated* drop delivers — and from the destructor.
-> <!-- src: qbm/redis/src/qbm/redis/redis.h:677-680 (disconnect()), :1633-1637, :1678-1680 -->
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:677-680 (disconnect()), :1650-1654, :1695-1697 -->
 > So a `receive()` loop normally resumes **as part of the actor being destroyed**, not before it.
 > That is survivable — `channel::recv_awaiter` carries a `_ch_alive` flag and returns `nullopt`
 > without touching the freed channel — but only if the loop body touches no actor state after the

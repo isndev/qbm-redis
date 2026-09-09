@@ -70,6 +70,7 @@ qredis_test(unit empty-arg-guards unit/commands/empty-arg-guards.cpp EXTRA_LABEL
 
 # SYSTEM — loopback, no daemon
 qredis_test(system reconnect-lifetime-uaf system/connection/reconnect-lifetime-uaf.cpp EXTRA_LABELS coroutine)
+qredis_test(system consumer-unknown-push system/connection/consumer-unknown-push.cpp EXTRA_LABELS pubsub)
 qredis_test(system ssl-context system/connection/redis-ssl-context.cpp REQUIRES ssl EXTRA_LABELS ssl)
 
 # INTEGRATION — live redis:6379 (REQUIRES live, RESOURCE_LOCK)

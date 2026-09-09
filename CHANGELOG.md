@@ -7,8 +7,18 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ## [Unreleased]
 
-Nothing yet. Entries land here as they are merged, and move under a version heading when that
-version is tagged.
+### Fixed
+
+- **A RESP3 PUSH frame of a kind the consumer does not know no longer pops the reply FIFO (Huly
+  QB-141).** `invalidate` (client-side caching on the tracking connection), `smessage` /
+  `ssubscribe` (sharded pub/sub) and any future push kind fell through `RedisConsumer::on`'s
+  dispatch to the command-reply path and resolved the handler at the head of the FIFO -- a
+  permanent reply/command desynchronisation the moment such a frame arrived. They are dropped
+  with a warning now, like every push the plain client already discards; a RESP2 ARRAY reply
+  whose first element is not a pub/sub kind (`PING`'s `["pong",""]` in subscriber mode) keeps its
+  path, since that IS the reply to the FIFO head. `qbm-redis-test-system-consumer-unknown-push`:
+  no daemon -- the test is the server, a loopback listener it `accept()`s and writes raw RESP3
+  into, so the frames cross the real socket, parser and dispatcher.
 
 ## [3.0.0] - 2026-08-20
 

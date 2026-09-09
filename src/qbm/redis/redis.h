@@ -1401,6 +1401,23 @@ private:
                     break;
             }
 
+            // A RESP3 PUSH frame of a kind this consumer does not know -- `invalidate` from
+            // client-side caching (CLIENT TRACKING on this connection), `smessage` /
+            // `ssubscribe` from sharded pub/sub, whatever a later server adds -- is OUT OF
+            // BAND: it answers no command, so it must not pop the handler at the head of the
+            // FIFO. Until 3.2 it did exactly that (Huly QB-141), the class of defect the
+            // `is_subscription` guard above was written to kill on the confirmation side, and
+            // one that desynchronises the reply/command FIFO for the connection's lifetime.
+            // Dropped, and said so; the plain client discards every push the same way. A RESP2
+            // ARRAY whose first element is not a pub/sub kind is a different thing and keeps
+            // its path below: in subscriber mode that is the reply to a command -- `PING`
+            // answers `["pong", ""]` -- and it belongs to the FIFO head.
+            if (reply::is_push(raw)) {
+                QB_LOG_WARN("[qbm][redis] dropping PUSH frame of unknown kind '" << reply::parse<std::string_view>(*elem0)
+                                                                                 << "' (out of band: it resolves no pending command)");
+                return;
+            }
+
             if (!_replies.empty()) {
                 auto handler = std::move(_replies.front().handler);
                 _replies.pop();
