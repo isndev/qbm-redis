@@ -567,7 +567,7 @@ public:
         // the connect is in flight would have the deferred completion dereference freed memory
         // (setup_connection writes _connected_flag/_uri/this->transport() and starts the watchers).
         // Capture the client liveness token — ~connector sets *_alive=false — and no-op if it died,
-        // exactly like the coroutine connect_awaiter above (that path was hardened in 4833dc7; this
+        // exactly like the coroutine connect_awaiter above (that path was hardened in 8eb0e48; this
         // sibling overload was missed).
         auto alive = connector_alive();
         qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
