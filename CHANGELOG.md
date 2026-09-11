@@ -9,6 +9,14 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **`Reply<T>::value_or` accepts a literal default.** The function was `auto`-returning with
+  `return` statements that deduced different types for a literal (`const char *` against
+  `std::string`, `int` against `long long`), so the idiom every doc taught -- `r.value_or("")`,
+  `(co_await redis.zrevrank(k, m)).value_or(-1)` -- failed to instantiate and only a typed
+  default (`value_or(std::string{})`, `value_or(-1LL)`) compiled; the unit test had only ever
+  passed typed ones. The return type is the value's type on every path now (`T::value_type` for
+  an optional `T`, `T` otherwise) and `qbm-redis-test-unit-reply-wrapper` pins the literal forms.
+
 - **A RESP3 PUSH frame of a kind the consumer does not know no longer pops the reply FIFO (Huly
   QB-141).** `invalidate` (client-side caching on the tracking connection), `smessage` /
   `ssubscribe` (sharded pub/sub) and any future push kind fell through `RedisConsumer::on`'s

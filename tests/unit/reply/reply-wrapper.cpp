@@ -23,6 +23,7 @@
 
 #include <functional>
 #include <gtest/gtest.h>
+#include <type_traits>
 #include <optional>
 #include <string>
 #include "../../shared/reply_value_builders.h"
@@ -76,6 +77,31 @@ TEST(ReplyWrapper, ValueOrOptionalDisengagedReturnsDefault) {
 TEST(ReplyWrapper, ValueOrOptionalNotOkReturnsDefault) {
     qb::redis::Reply<std::optional<std::string>> r{false, std::optional<std::string>{"mail"}, nullptr, "err"};
     EXPECT_EQ(r.value_or(std::string("def")), "def");
+}
+
+// The documented idiom passes a LITERAL default (`value_or("")`, `value_or(-1)`); until
+// 2026-09-10 only a typed one compiled, because each `return` of the auto function deduced its
+// own type. The static_asserts are the compile-time half of the pin.
+TEST(ReplyWrapper, ValueOrOptionalAcceptsALiteralDefault) {
+    qb::redis::Reply<std::optional<std::string>> nil{true, std::nullopt, nullptr, {}};
+    static_assert(std::is_same_v<decltype(nil.value_or("")), std::string>);
+    EXPECT_EQ(nil.value_or(""), "");
+    EXPECT_EQ(nil.value_or("fallback"), "fallback");
+    qb::redis::Reply<std::optional<std::string>> mail{true, std::optional<std::string>{"mail"}, nullptr, {}};
+    EXPECT_EQ(mail.value_or(""), "mail");
+    qb::redis::Reply<std::optional<std::string>> bad{false, std::optional<std::string>{"mail"}, nullptr, "err"};
+    EXPECT_EQ(bad.value_or("x"), "x");
+}
+
+TEST(ReplyWrapper, ValueOrPlainAcceptsALiteralDefault) {
+    qb::redis::Reply<long long> bad{false, 0, nullptr, "boom"};
+    static_assert(std::is_same_v<decltype(bad.value_or(-1)), long long>);
+    EXPECT_EQ(bad.value_or(-1), -1);
+    qb::redis::Reply<long long> ok{true, 7, nullptr, {}};
+    EXPECT_EQ(ok.value_or(-1), 7);
+    qb::redis::Reply<std::optional<long long>> rank{true, std::nullopt, nullptr, {}};
+    static_assert(std::is_same_v<decltype(rank.value_or(-1)), long long>);
+    EXPECT_EQ(rank.value_or(-1) + 1, 0);
 }
 
 // ============================================================================

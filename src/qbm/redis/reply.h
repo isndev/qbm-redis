@@ -1147,18 +1147,18 @@ struct Reply {
         return _result;
     }
 
-    /// Returns the value if ok() and (for optional) has_value(); otherwise returns default_value.
-    /// Enables: if (auto email = r.value_or(""); !email.empty()) { ... }
+    /// Returns the value if ok() and (for optional) has_value(); otherwise default_value. The
+    /// return type is the VALUE type on every path (T::value_type for an optional T, else T), so a
+    /// literal default converts: `r.value_or("")`, `r.value_or(-1)`. Each `return` used to deduce
+    /// its own type, and those literal forms -- the ones every doc teaches -- did not instantiate.
     template <typename U>
     [[nodiscard]] auto
     value_or(U &&default_value) const {
-        if (!_ok)
-            return std::forward<U>(default_value);
         if constexpr (is_optional_like<T>::value) {
-            return _result.has_value() ? *_result : std::forward<U>(default_value);
-        } else {
-            return _result;
-        }
+            using V = typename T::value_type;
+            return (_ok && _result.has_value()) ? V(*_result) : V(std::forward<U>(default_value));
+        } else
+            return _ok ? T(_result) : T(std::forward<U>(default_value));
     }
 
     /// Gives access to the original raw parser::Value that was received.
