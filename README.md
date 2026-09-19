@@ -188,8 +188,31 @@ redis.get([](qb::redis::Reply<std::optional<std::string>>&& r) {
 
 <!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:165-184, FACTBOOK.md redis-collections invariants -->
 
-`value_or` deduces its return type from both branches, so hand it a `std::string` rather than a string literal —
-`value_or(std::string{"(nil)"})`, not `value_or("(nil)")`, which does not compile.
+`value_or` takes a literal default — `value_or("(nil)")`, `value_or(-1)` — since 3.2; on 3.1 only a typed default
+compiled (`value_or(std::string{"(nil)"})`, `value_or(-1LL)`), because the function deduced a different return type
+on each branch.
+
+### The reply FIFO, drawn
+
+Every command appends its bytes to the outbound pipe and its handler to a FIFO, in that order, so a
+reply cannot outrun its handler; the core's loop pass writes, reads and parses, and each reply frame
+pops exactly one handler. A RESP3 PUSH frame pops nothing: a consumer routes it to pub/sub, the plain
+client discards it, and the FIFO stays aligned.
+
+```mermaid
+sequenceDiagram
+    participant A as your actor (a coroutine)
+    participant C as qb::redis::tcp::client
+    participant L as the core's loop pass
+    participant R as Redis
+    A->>C: co_await redis.get(key)
+    C->>L: GET bytes on the outbound pipe, handler pushed on the FIFO
+    L->>R: the pass writes the bytes
+    R-->>L: reply frame (or a PUSH frame first)
+    L->>C: a PUSH goes to pub/sub or is dropped, pops nothing
+    L->>C: the reply pops the FIFO head
+    C-->>A: Reply<std::optional<std::string>> resumes the coroutine
+```
 
 ### Reply\<T\>
 
@@ -323,6 +346,32 @@ qb::io::async::task<void> notifications() {
 <!-- src: qbm/redis/src/qbm/redis/redis.h:1343-1417 (RedisCoroConsumer::receive) -->
 
 ---
+
+## Quickstart
+
+One `CMakeLists.txt`, no submodule: qb and the module are fetched at the first configure, at the
+same ref (they ship in lockstep; `main` is the released line, pin a `vX.Y.Z` tag in production).
+This is the shape the [`qb-sample-project`](https://github.com/isndev/qb-sample-project) template
+builds in CI.
+
+```cmake
+cmake_minimum_required(VERSION 3.24)
+project(hello_redis CXX)
+include(FetchContent)
+set(QB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(qb        GIT_REPOSITORY https://github.com/isndev/qb.git        GIT_TAG main GIT_SHALLOW TRUE)
+FetchContent_Declare(qbm-redis GIT_REPOSITORY https://github.com/isndev/qbm-redis.git GIT_TAG main GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(qb qbm-redis)      # qb first: the module registers itself against it
+add_executable(hello_redis main.cpp)
+target_link_libraries(hello_redis PRIVATE qbm::redis)
+```
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build && ./build/hello_redis
+```
+
+`main.cpp` is the actor of the first section above, with `#include <qbm/redis/redis.h>`. The actor engine's measurements are in
+[qb's README](https://github.com/isndev/qb#measured); this module publishes no throughput figure yet.
 
 ## What this module is
 
