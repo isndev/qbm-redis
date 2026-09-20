@@ -7,6 +7,10 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ## [Unreleased]
 
+Nothing yet. Entries land here as they are merged, and move under a version heading when that version is tagged.
+
+## [3.2.0] - 2026-09-21
+
 ### Fixed
 
 - **`Reply<T>::value_or` accepts a literal default.** The function was `auto`-returning with
@@ -183,7 +187,8 @@ Aligns qbm-redis with the qb 2.0 framework (C++20 baseline) and hardens the RESP
 - Overflow-safe `ViewBuffer` length bounds (defense in depth).
 - Fault on a corrupt RESP terminator and drop the dead destructive parse path.
 
-[Unreleased]: https://github.com/isndev/qbm-redis/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/isndev/qbm-redis/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/isndev/qbm-redis/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/isndev/qbm-redis/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/isndev/qbm-redis/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/isndev/qbm-redis/compare/v2.6.0...v3.0.0
