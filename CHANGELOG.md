@@ -28,6 +28,18 @@ All notable changes to the qbm-redis module are documented here. The format is b
   no daemon -- the test is the server, a loopback listener it `accept()`s and writes raw RESP3
   into, so the frames cross the real socket, parser and dispatcher.
 
+## [3.1.0] - 2026-08-30
+
+Lockstep release with the qb 3.1.0 train. In this repository only one auction-house citation
+re-keyed (its header tag was retired upstream).
+
+## [3.0.1] - 2026-08-29
+
+Lockstep patch with the qb 3.0.1 train (cut for qb-examples, Huly QB-4). In this repository only
+tooling: a nightly CI run against qb's `develop` of the day, and `scripts/gen-llms-txt.py` strips
+HTML comments by scanning rather than by regex; the one hyphenless `Verified against` marker in
+`readme/module_commands.md` joins the corpus form.
+
 ## [3.0.0] - 2026-08-20
 
 Tracks changes not yet part of a tagged release. Since 2026-08-11 that is **both** branches:
@@ -171,6 +183,8 @@ Aligns qbm-redis with the qb 2.0 framework (C++20 baseline) and hardens the RESP
 - Overflow-safe `ViewBuffer` length bounds (defense in depth).
 - Fault on a corrupt RESP terminator and drop the dead destructive parse path.
 
-[Unreleased]: https://github.com/isndev/qbm-redis/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/isndev/qbm-redis/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/isndev/qbm-redis/compare/v3.0.1...v3.1.0
+[3.0.1]: https://github.com/isndev/qbm-redis/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/isndev/qbm-redis/compare/v2.6.0...v3.0.0
 [2.6.0]: https://github.com/isndev/qbm-redis/releases/tag/v2.6.0
