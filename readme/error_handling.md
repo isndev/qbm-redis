@@ -1,6 +1,6 @@
 # Error handling
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.2.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.2.1 (C++20 default, C++23
 > supported)
 
 How `qbm-redis` reports failures: the RESP reply model, the `Reply<T>` error result you check instead of catching, where

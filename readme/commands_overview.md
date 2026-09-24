@@ -1,6 +1,6 @@
 # Command API model
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.2.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.2.1 (C++20 default, C++23
 > supported)
 
 How `qbm-redis` command methods map to RESP, how replies are typed and decoded into `qb::redis::Reply<T>`, and how to

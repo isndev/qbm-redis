@@ -1,6 +1,6 @@
 # String commands
 
-> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.2.0 (C++20 default, C++23
+> **Audience:** Adopter · **Status:** stable · **Verified-against:** qbm-redis @ qb 3.2.1 (C++20 default, C++23
 > supported)
 
 Reference for the `qb::redis::string_commands` group: the `SET`/`GET` families, atomic counters, multi-key reads and
