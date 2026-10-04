@@ -7,7 +7,19 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ## [Unreleased]
 
-Nothing yet. Entries land here as they are merged, and move under a version heading when that version is tagged.
+### Documentation
+
+- **`ROADMAP.md` removed (Huly QB-137).** It described a hiredis-based parser (`redisReaderGetReply`) and a
+  `*_async` API this module never shipped, listed the shipped pipelining as still to do, and `llms.txt`
+  linked it, so agents were served it as current. The CHANGELOG and the published milestones are where
+  what is planned and what shipped live.
+- **`ReplyErrorType` is documented as what it is (Huly QB-142).** `readme/error_handling.md` said the parser
+  classifies error frames into `ERR` / `MOVED` / `ASK`; nothing does yet -- every error, a Cluster redirect
+  included, is `ok() == false` with the server's text in `reply.error()`, and the page now says to read
+  its prefix.
+- **Keyspace notifications (Huly QB-140)** -- a section of `readme/subscription_commands.md`: switching them
+  on with `config_set`, subscribing with a pattern, and the three things to know (fire-and-forget,
+  `CONFIG SET` refused on managed offerings, the subscription lost on a reconnect).
 
 ## [3.2.1] - 2026-09-24
 

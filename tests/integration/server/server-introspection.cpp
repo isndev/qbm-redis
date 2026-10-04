@@ -151,8 +151,12 @@ TEST_P(ServerIntrospectionTest, RoleReportsMaster) {
 // =============== SLOWLOG ===============
 
 // SLOWLOG GET is an ARRAY (its first element is an entry, not a string key → the json parser
-// leaves it an array). reset → len==0 is the deterministic invariant.
-TEST_P(ServerIntrospectionTest, SlowlogGetIsArrayAndResetZeroesLen) {
+// leaves it an array). The slowlog is the SERVER's, shared with every client: `len == 0` right after
+// a reset held only while nothing else ran a slow command in between (Huly QB-240 -- a client
+// outside this run did, and the gate went red). What holds on a shared server is the entry id:
+// Redis never rewinds its counter (RESET only empties the list), so whatever is logged after the
+// reset is NEWER than the newest entry seen before it, and nothing from before survives.
+TEST_P(ServerIntrospectionTest, SlowlogGetIsArrayAndResetDropsEveryEarlierEntry) {
     bool completed = false;
     qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
@@ -175,12 +179,40 @@ TEST_P(ServerIntrospectionTest, SlowlogGetIsArrayAndResetZeroesLen) {
         EXPECT_TRUE(limited.result().is_array());
         EXPECT_LE(limited.result().size(), 5u);
 
+        // Make sure there IS an entry for the reset to drop, or the check below proves nothing on a
+        // quiet server: log one PING with a zero threshold, then restore the daemon's own value.
+        auto threshold = co_await redis.config_get("slowlog-log-slower-than");
+        EXPECT_TRUE(threshold.ok()) << threshold.error();
+        if (threshold.result().empty()) {
+            ADD_FAILURE() << "precondition failed: CONFIG GET slowlog-log-slower-than returned nothing";
+            co_return;
+        }
+        const std::string original = threshold.result()[0].second;
+        auto              zero     = co_await redis.config_set("slowlog-log-slower-than", "0");
+        EXPECT_TRUE(zero.ok()) << zero.error();
+        auto ping = co_await redis.ping();
+        EXPECT_TRUE(ping.ok()) << ping.error();
+        auto restore = co_await redis.config_set("slowlog-log-slower-than", original);
+        EXPECT_TRUE(restore.ok()) << restore.error();
+
+        // Newest first: the head of SLOWLOG GET 1 carries the highest id logged so far.
+        auto newest = co_await redis.slowlog_get(1);
+        EXPECT_TRUE(newest.ok()) << newest.error();
+        long long newest_before = -1;
+        if (newest.ok() && newest.result().is_array() && !newest.result().empty())
+            newest_before = newest.result()[0][0].get<long long>();
+        EXPECT_GE(newest_before, 0) << "the PING logged under a zero threshold must be in the slowlog";
+
         auto reset = co_await redis.slowlog_reset();
         EXPECT_TRUE(reset.ok()) << reset.error();
 
-        auto after = co_await redis.slowlog_len();
+        // Every entry still there was logged after the reset: a concurrent client's slow command
+        // may be, an entry from before may not. slowlog-max-len defaults to 128.
+        auto after = co_await redis.slowlog_get(1024);
         EXPECT_TRUE(after.ok()) << after.error();
-        EXPECT_EQ(after.result(), 0);
+        EXPECT_TRUE(after.result().is_array());
+        for (const auto &entry : after.result())
+            EXPECT_GT(entry[0].get<long long>(), newest_before) << "an entry logged before SLOWLOG RESET survived it: " << entry.dump();
 
         completed = true;
     });

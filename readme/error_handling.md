@@ -153,9 +153,11 @@ So a `WRONGTYPE` against a key, a `NOAUTH` before authentication, or a script sy
 `reply.ok() == false` with the server's text in `reply.error()`. This is a documented, deliberate contract: callers
 branch on `ok()`, never on a caught exception (`reply.h:1244`).
 
-A RESP error frame carries a prefix that the parser classifies into `ReplyErrorType` — `ERR`, `MOVED`, or `ASK` (
-`reply.h:56`). `MOVED` and `ASK` are Redis Cluster redirects; this client does not follow them automatically. If you run
-against a cluster, inspect `reply.error()` for the redirect target and re-issue against the correct node.
+`reply.h:56` declares `ReplyErrorType` — `ERR`, `MOVED`, `ASK` — but no `Reply` carries one today: every error frame,
+a Redis Cluster redirect included, surfaces as `ok() == false` with the server's text in `reply.error()`, and nothing
+classifies it. `MOVED` and `ASK` are Cluster redirects that this client does not follow; if you run against a cluster,
+read the prefix of `reply.error()` — `MOVED <slot> <host>:<port>` or `ASK <slot> <host>:<port>` — and re-issue against
+the node it names.
 See [cluster_commands.md](./cluster_commands.md).
 
 ### The parse seam: where exceptions live, and why you never see them

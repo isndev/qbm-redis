@@ -544,7 +544,7 @@ template <typename T> struct Reply {
 | Symbol | Header / kind | Purpose |
 |---|---|---|
 | `ReplyValue` | `reply.h:47` · type alias | `= parser::Value`; the native RESP reply value (variant over RESP2/RESP3 nodes). |
-| `ReplyErrorType` | `reply.h:56` · enum class | `{ ERR, MOVED, ASK }` — generic vs cluster redirection. |
+| `ReplyErrorType` | `reply.h:56` · enum class | `{ ERR, MOVED, ASK }` — declared, not produced: no `Reply` carries an error type yet, so branch on the prefix of `reply.error()` (`MOVED …` / `ASK …` for a cluster redirect). |
 | `IReply` | `reply.h:1196` · abstract class | `virtual void operator()(std::unique_ptr<ReplyValue>)=0; virtual void fail(const std::string&)`. `operator()` **takes ownership** (nullptr = disconnect). |
 | `TReply<Func,T>` | `reply.h:1218-1219` · class template | Concrete handler: parses `T`, invokes `func(Reply<T>{...})`; nullptr→`{ok=false,error="disconnected"}`; thrown `qb::redis::Error`→`{ok=false}` with `e.what()` copied. |
 | `is_optional_like<T>` | `reply.h:1096-1099` · trait | True for `std::optional<U>`; drives `value_or`. |

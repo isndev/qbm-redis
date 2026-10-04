@@ -365,6 +365,49 @@ their native units — see [commands_overview.md](./commands_overview.md). Pub/S
 
 ---
 
+## Keyspace notifications
+
+Redis can publish an event whenever a key changes — a `SET`, an expiry, an eviction, a `DEL` — on two families of
+channels: `__keyspace@<db>__:<key>` (the payload is the event name, `set`, `expired`, `del`, …) and
+`__keyevent@<db>__:<event>` (the payload is the key). They are off by default; switch them on with `CONFIG SET` from an
+ordinary client, then subscribe a consumer with a pattern:
+
+```cpp
+#include <qbm/redis/redis.h>
+#include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
+
+qb::io::async::task<void> watch_keys(qb::redis::tcp::client &client, qb::redis::tcp::cb_consumer &consumer) {
+    // K = keyspace channels, E = keyevent channels, A = every event class (see the Redis docs for the letters).
+    auto on = co_await client.config_set("notify-keyspace-events", "KEA");
+    if (!on)
+        co_return;                                   // refused: on.error() carries the server's text
+
+    consumer.on_message([](qb::redis::message &&msg) {
+        // msg.pattern == "__keyspace@0__:*", msg.channel == "__keyspace@0__:<key>", msg.payload == "<event>"
+        qb::io::cout() << msg.channel << " -> " << msg.payload << std::endl;
+    });
+    if (!co_await consumer.connect())
+        co_return;
+    co_await consumer.psubscribe("__keyspace@0__:*");
+}
+```
+
+<!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:404 (config_set), qbm/redis/src/qbm/redis/commands/subscription_commands.h:207 (psubscribe) -->
+
+A pattern match reaches `on_message` with `pattern` set — `pmessage` adds no field — so both consumers keep the pattern
+that matched. Three things to know before relying on it:
+
+- **It is fire-and-forget.** Redis does not store a notification: an event raised while no subscriber is connected is
+  gone, and nothing replays it. Treat it as a hint to re-read the key, not as a log.
+- **`CONFIG SET` is often refused on a managed Redis.** Hosted offerings usually take `notify-keyspace-events` from
+  their own configuration (a parameter group, a console setting) and reject `CONFIG SET`; set it there instead.
+- **A reconnect drops the subscription.** After the connection is lost, the consumer's subscriptions are not
+  re-issued today, and a `co_consumer`'s `receive()` ends — see [connection.md](./connection.md). Subscribe again after
+  reconnecting, and re-read the keys you watch for what happened in between.
+
+---
+
 ## Pitfalls
 
 - **There is no `on_pmessage` / `on_subscribe` / `on_unsubscribe`.** `cb_consumer` exposes exactly `on_message`,

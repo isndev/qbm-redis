@@ -41,7 +41,7 @@ names. If you have seen those in older notes, they are wrong.
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
-// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:235-274 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:267-306 -->
 qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
     auto size = co_await redis.dbsize();              // Reply<long long>
     if (size)                                         // Reply<T> is contextually bool (== ok())
@@ -277,7 +277,7 @@ qb::io::async::task<void> introspect(qb::redis::tcp::client &redis) {
 bytes. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:812-830 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:194-230 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:226-262 -->
 qb::io::async::task<void> mem(qb::redis::tcp::client &redis) {
     auto used = co_await redis.memory_usage("mykey");      // Reply<long long> (bytes)
     qb::io::cout() << "bytes: " << used.result() << std::endl;
@@ -309,7 +309,7 @@ one. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1432-1453 -->
 | `SLOWLOG RESET` | `slowlog_reset()`                   | `status`    |
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:155-188 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:159-220 -->
 qb::io::async::task<void> slowlog(qb::redis::tcp::client &redis) {
     auto len = co_await redis.slowlog_len();          // Reply<long long>
     auto entries = co_await redis.slowlog_get(5);     // Reply<qb::json> (newest 5)
@@ -353,7 +353,7 @@ qb::io::async::task<void> debug(qb::redis::tcp::client &redis) {
 save. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1055-1161 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:306-331 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:338-363 -->
 qb::io::async::task<void> persist(qb::redis::tcp::client &redis) {
     co_await redis.bgsave();                           // background snapshot
     co_await redis.bgsave(true);                       // BGSAVE SCHEDULE
@@ -375,7 +375,7 @@ synchronous. These are **destructive** — `flushall` erases every database, not
 one. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1199-1249 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:235-274 -->
+// <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:267-306 -->
 qb::io::async::task<void> db(qb::redis::tcp::client &redis) {
     auto n = co_await redis.dbsize();                  // Reply<long long>
     co_await redis.flushdb();                          // synchronous wipe of current db
