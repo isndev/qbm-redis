@@ -59,6 +59,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
 - **Keyspace notifications (Huly QB-140)** -- a section of `readme/subscription_commands.md`: switching them
   on with `config_set`, subscribing with a pattern, and the three things to know (fire-and-forget,
   `CONFIG SET` refused on managed offerings, the subscription lost on a reconnect).
+- **Six `readme/` citations re-derived (Huly QB-254).** Four ranges started one line early (`connection.md`,
+  `server_commands.md`, `sorted_set_commands.md`, `transaction_commands.md`), and two cited `qb/json.h:283` -- the
+  include spelling, which names no file in the tree -- now `qb/src/qb/json.h:283`; found by the strengthened
+  `scripts/cite-check.py`, which also resolves another project's file against the sibling checkout in the
+  superproject.
 
 ## [3.2.1] - 2026-09-24
 

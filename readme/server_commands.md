@@ -157,7 +157,7 @@ Notes:
   type is `long long`. (It was `status`, which cannot decode an integer — every call failed with "STRING or ERROR required
   for status" until the first test called it.) It emits `ADDR addr`, `ID id`, `TYPE type` only for non-default arguments, and `SKIPME yes` when `skipme`
   is `true`. `type` is a raw string (`normal`/`master`/`replica`/`pubsub`) — it is not validated
-  client-side. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:140-199 -->
+  client-side. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:141-199 -->
 - `client_pause`'s `timeout` is **milliseconds** (native unit), not a `qb::duration`. `mode` is `"ALL"` or
   `"WRITE"`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:273-293 -->
 - `client_tracking(true)` sends `CLIENT TRACKING ON`; `false` sends `OFF`. `client_caching`, `client_no_evict`,

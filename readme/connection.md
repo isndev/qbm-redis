@@ -478,7 +478,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1119-1146 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1120-1146 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,

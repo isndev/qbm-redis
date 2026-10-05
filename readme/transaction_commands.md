@@ -181,7 +181,7 @@ qb::io::async::task<void> run_tx(qb::redis::tcp::client &redis) {
 > prefer the pipeline path and read the raw EXEC array through `Reply<pipeline_result>.raw()`: per-command
 `parser::Value`
 > results are move-only and are not cloned into a typed vector. See [pipeline_and_await.md](./pipeline_and_await.md). (
-`qbm/redis/src/qbm/redis/types.h:428-439`, `qbm/redis/src/qbm/redis/reply.cpp:444-462`.)
+`qbm/redis/src/qbm/redis/types.h:429-439`, `qbm/redis/src/qbm/redis/reply.cpp:444-462`.)
 
 ### `DISCARD`
 

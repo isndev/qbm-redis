@@ -102,7 +102,7 @@ if (r.ok() && r.result().ok()) {
 
 ### The `qb::json` reply type
 
-`module_list` replies with `qb::json` (which is `nlohmann::json` via `using namespace nlohmann`; `qb/json.h:283`) — an array of objects, one per loaded
+`module_list` replies with `qb::json` (which is `nlohmann::json` via `using namespace nlohmann`; `qb/src/qb/json.h:283`) — an array of objects, one per loaded
 module. The reply is the server's own `MODULE LIST` payload passed through verbatim, so the available fields are
 server-version-dependent. The only field the test asserts is `name`, a string (`integration/admin/module-commands.cpp:58`); a
 typical server also reports a numeric version under `ver`. Read it with the standard `nlohmann::json`-style API (

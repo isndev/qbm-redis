@@ -788,7 +788,7 @@ redis.zscan([](qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, d
 }, "board", "*");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:49-128, 992-1001 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:50-128, 992-1001 -->
 
 ---
 

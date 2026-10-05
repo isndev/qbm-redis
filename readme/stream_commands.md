@@ -81,7 +81,7 @@ OK".
 ### `qb::json` replies
 
 `qb::json` resolves to `nlohmann::json`, brought into the `qb` namespace by `using namespace nlohmann;` (
-`qb/json.h:283`). The read and introspection commands return their server reply as JSON with no further typing, so you
+`qb/src/qb/json.h:283`). The read and introspection commands return their server reply as JSON with no further typing, so you
 navigate it with the usual predicates — `result().is_array()`, `result().is_object()` — and indexing. Decoding shape
 mirrors the RESP reply the server sends for that command.
 
