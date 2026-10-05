@@ -186,27 +186,29 @@ draining it, precisely so a failing handler that re-issues a command does not ge
 
 The coroutine consumer is the exception worth knowing. `receive()` does **not** return a `redis_awaiter`; it awaits a
 `qb::io::async::channel<message>` that the consumer fills from its RESP push frames.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1719-1722 (receive() → co_await _msg_channel.recv()) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1753-1756 (receive() → co_await current_channel().recv()) -->
 
 A channel `recv()` is still not cancellation-aware — `cancel()` does nothing to it — but it *is* woken by
 `close()`, and the consumer closes the channel in two places: when the connection drops, and in its own destructor.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1679-1683 (on disconnected → _msg_channel.close()), :1724-1726 (destructor closes it) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1711-1715 (on disconnected → _msg_channel->close()), :1758-1760 (destructor closes it) -->
 
 That gives the subscribe loop a clean termination condition with no cancellation machinery at all: the loop ends when
 `receive()` yields `std::nullopt`.
 
-> **Which of those two places actually fires matters, and it is not the one you would guess.**
-> `co_consumer::disconnect()` does **not** close the message channel. Measured directly — a consumer,
-> a spawned `receive()` loop, and a pumped event loop, with no actor and no engine in the picture —
-> the loop was still parked **two seconds of loop turns after `disconnect()` returned**, and ended
-> the instant `~RedisCoroConsumer` ran. `disconnect()` clears `_connected_flag` and completes the io teardown
-> on the spot (`qb::io::async::io<>::disconnect_now()`); `_msg_channel.close()` is reached only from the consumer's
-> `event::disconnected` handler — which a *peer-initiated* drop delivers — and from the destructor.
-> <!-- src: qbm/redis/src/qbm/redis/redis.h:702-705 (disconnect()), :1679-1683, :1724-1726 -->
-> So a `receive()` loop normally resumes **as part of the actor being destroyed**, not before it.
-> That is survivable — `channel::recv_awaiter` carries a `_ch_alive` flag and returns `nullopt`
-> without touching the freed channel — but only if the loop body touches no actor state after the
-> resume. Capture everything it reads by value, before the first `co_await`.
+> **Both places fire — since 3.3 (Huly QB-252).** Until then the consumer's `event::disconnected`
+> handler never ran: it was private, and its class befriended the base that routes the event instead
+> of the detector the route goes through, so the dispatch skipped it in silence. `disconnect()` left a
+> `receive()` loop parked, and so did a peer drop; the loop ended only when `~RedisCoroConsumer` ran.
+> Now any disconnect — `disconnect()` completes the io teardown on the spot
+> (`qb::io::async::io<>::disconnect_now()`), a peer drop on its next pass — closes the queue: `receive()`
+> yields what was already received, then `std::nullopt` for as long as the consumer stays disconnected.
+> After a reconnect it serves the new connection, starting with whatever was received and not yet read
+> (re-subscribe yourself: nothing is replayed).
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:702-705 (disconnect()), :1651 (the friend), :1711-1715, :1673-1681 (the next connection's queue) -->
+> A loop that is still parked when the actor is destroyed resumes as part of that destruction —
+> survivable, since `channel::recv_awaiter` carries a `_ch_alive` flag and returns `nullopt` without
+> touching the freed channel, but only if the loop body touches no actor state after the resume.
+> Capture everything it reads by value, before the first `co_await`.
 
 ```cpp
 // A pub/sub actor. The consume loop is scoped to the actor, and ended by disconnect().

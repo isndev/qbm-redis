@@ -73,6 +73,7 @@ qredis_test(system reconnect-lifetime-uaf system/connection/reconnect-lifetime-u
 qredis_test(system consumer-unknown-push system/connection/consumer-unknown-push.cpp EXTRA_LABELS pubsub)
 qredis_test(system ssl-context system/connection/redis-ssl-context.cpp REQUIRES ssl EXTRA_LABELS ssl)
 qredis_test(system reconnect-carries-nothing system/connection/reconnect-carries-nothing.cpp)
+qredis_test(system co-consumer-lifecycle system/connection/co-consumer-lifecycle.cpp EXTRA_LABELS pubsub coroutine)
 
 # INTEGRATION — live redis:6379 (REQUIRES live, RESOURCE_LOCK)
 qredis_itest(connection-commands integration/connection/connection-commands.cpp)

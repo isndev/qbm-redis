@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:791 (public inheritance), qbm/redis/src/qbm/redis/redis.h:1744 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:791 (public inheritance), qbm/redis/src/qbm/redis/redis.h:1778 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 

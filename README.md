@@ -344,7 +344,7 @@ qb::io::async::task<void> notifications() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1720-1722 (RedisCoroConsumer::receive), 1680-1683 (the disconnected handler that closes the channel) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1754-1756 (RedisCoroConsumer::receive), 1712-1715 (the disconnected handler that closes the channel), 1673-1681 (the next connection's queue) -->
 
 ---
 
@@ -463,7 +463,7 @@ Two build-time conditions are worth knowing:
   TCP-only — the `#ifdef QB_HAS_SSL` block in `redis.h` is excluded, and CMake prints an informational message rather
   than failing.
 
-<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:1754-1765 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
+<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:1788-1799 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
 
 A module **cannot be configured standalone**: it calls `qb_register_module()` and `qb_add_test()`, development-time
 helpers an installed qb does not ship. The repository's own CI configures `.github/ci/superbuild/CMakeLists.txt`, a
@@ -535,7 +535,7 @@ arguments keep native units by design** and are exposed through `std::chrono`-un
 The consumers carry the connection and subscription commands (`connect`, `hello`, `subscribe`, `psubscribe`,
 `unsubscribe`), but not the data or `publish` commands — publish from a `tcp::client`. The full `tcp::client` does not
 subscribe; that surface belongs to the consumers.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1737-1766 (aliases), 1204-1207 (consumer mixins), 788-808 (client mixins) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1771-1800 (aliases), 1204-1207 (consumer mixins), 788-808 (client mixins) -->
 
 ---
 

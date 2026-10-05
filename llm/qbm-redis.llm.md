@@ -212,7 +212,10 @@ co_await pub.publish("alerts", "server restarted");      // Reply<long long> (#r
 ```
 
 `co_consumer` buffers messages in a bounded channel (default capacity 8192);
-on overflow `on_message_dropped(cb)` fires or a warning logs.
+on overflow `on_message_dropped(cb)` fires or a warning logs. A disconnect — `disconnect()` or a peer
+drop — closes it: `receive()` yields what was already received, then `std::nullopt` while the consumer
+stays disconnected, so the loop ends. After a reconnect `receive()` serves the new connection, unread
+messages first; subscribe again, nothing is replayed.
 
 ### Transactions (MULTI/EXEC)
 

@@ -25,6 +25,15 @@ All notable changes to the qbm-redis module are documented here. The format is b
   it read the client there before checking that the client was still alive. It now checks first -- and so does the
   auto-reconnect task, which `disconnect()` now spawns from inside the call. Both found under AddressSanitizer.
 
+- **`co_consumer::receive()` ends when the consumer disconnects, and serves the next connection (Huly QB-252).**
+  The consumer's `event::disconnected` handler was private and befriended only the base that routes the event, not
+  the detector the route goes through, so it never ran: `while (auto msg = co_await consumer.receive())` stayed
+  parked after `disconnect()` and after a peer drop, ending only when the consumer was destroyed -- the README's
+  shutdown pattern rests on it. And a queue, once closed, stayed closed. Now a disconnect closes the queue:
+  `receive()` yields what was already received, then `std::nullopt` while the consumer stays disconnected; after a
+  reconnect it serves the new connection, starting with what was received and not yet read (subscriptions are not
+  replayed).
+
 ### Documentation
 
 - **`ROADMAP.md` removed (Huly QB-137).** It described a hiredis-based parser (`redisReaderGetReply`) and a

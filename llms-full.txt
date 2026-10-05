@@ -227,7 +227,10 @@ co_await pub.publish("alerts", "server restarted");      // Reply<long long> (#r
 ```
 
 `co_consumer` buffers messages in a bounded channel (default capacity 8192);
-on overflow `on_message_dropped(cb)` fires or a warning logs.
+on overflow `on_message_dropped(cb)` fires or a warning logs. A disconnect — `disconnect()` or a peer
+drop — closes it: `receive()` yields what was already received, then `std::nullopt` while the consumer
+stays disconnected, so the loop ends. After a reconnect `receive()` serves the new connection, unread
+messages first; subscribe again, nothing is replayed.
 
 ### Transactions (MULTI/EXEC)
 
@@ -486,7 +489,7 @@ auto pol = RetryPolicy{}.with_max_attempts(5).with_initial_delay(200ms).with_max
 ```
 
 ### Transport aliases — `qb::redis::tcp`
-`redis.h:1743` · `struct`. Plaintext-TCP aliases the build always provides:
+`redis.h:1777` · `struct`. Plaintext-TCP aliases the build always provides:
 
 ```cpp
 qb::redis::tcp::client       // detail::Redis<qb::io::transport::tcp>
@@ -495,17 +498,17 @@ qb::redis::tcp::cb_consumer  // detail::RedisCallbackConsumer<...>
 qb::redis::tcp::co_consumer  // detail::RedisCoroConsumer<...>
 template<class D> tcp::consumer = detail::RedisConsumer<..., D>;
 ```
-`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:1755`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
+`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:1789`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
 
-`qb::redis::database<QB_IO_>` (`redis.h:1737`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
-`qb::redis::no_check` (`redis.h:1768`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
+`qb::redis::database<QB_IO_>` (`redis.h:1771`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
+`qb::redis::no_check` (`redis.h:1802`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
 
 ### Pipelining & consumers
 - `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:1148`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
 - `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:1204`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`.
 - `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:1540`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing. Ctor: `uri` + optional callbacks.
-- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:1640`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
-  - `receive()` (`redis.h:1720`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives, `nullopt` on channel close.
+- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:1647`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
+  - `receive()` (`redis.h:1754`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives. `nullopt` once the consumer is disconnected and what it had received is read; after a reconnect it serves the new connection (unread messages first; re-subscribe).
 
 ```cpp
 auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed

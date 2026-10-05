@@ -689,7 +689,7 @@ public:
 
     /**
      * @brief Disconnect, and complete the teardown before returning.
-     * @details The io base defers dispose() -- and with it on(event::disconnected&), which fails every
+     * @details The io base defers dispose() -- and with it on(event::disconnected&&), which fails every
      *          pending command -- to the watcher's next dispatch. A connect() completing ahead of it
      *          (libev invokes pending watchers LIFO) restarted the watcher, which clears the event
      *          disconnect() fed: on(disconnected) never ran, the commands in flight were never failed,
@@ -972,7 +972,7 @@ private:
     }
 
     void
-    on(qb::io::async::event::disconnected &&) {
+    on(qb::io::async::event::disconnected &&) { // handler-access: connector (a friend) calls it
         QB_LOG_WARN("[qbm][redis] disconnected by remote");
         _inflight_blocking = 0;
         cancel_deadline();
@@ -1472,7 +1472,7 @@ private:
     }
 
     void
-    on(qb::io::async::event::disconnected &&e) {
+    on(qb::io::async::event::disconnected &&e) { // handler-access: connector (a friend) calls it
         QB_LOG_WARN("[qbm][redis] consumer disconnected");
         // Predicted subscription state is meaningless across a reconnect.
         _pred_channels.clear();
@@ -1495,7 +1495,7 @@ private:
     }
 
     void
-    on(qb::redis::error &&error) {
+    on(qb::redis::error &&error) { // handler-access: this class's own on(message) calls it
         QB_LOG_WARN("[qbm][redis] parse error: " << error.what);
         if constexpr (has_method_on<Derived, void, qb::redis::error>::value)
             derived().on(std::forward<qb::redis::error>(error));
@@ -1635,22 +1635,54 @@ public:
  * Pass a larger capacity to the URI constructor if bursty pub/sub can
  * outpace your receive loop. Optional on_message_dropped() reports drops
  * when the buffer is full (otherwise a warning is logged).
+ *
+ * A disconnect -- disconnect(), a peer drop -- closes the queue: receive() yields
+ * what was already received, then std::nullopt for as long as the consumer stays
+ * disconnected, so the loop above ends. After the next connect() (or an
+ * auto-reconnect) receive() serves the new connection, starting with anything
+ * received before the disconnect and not yet read. Subscriptions are not replayed:
+ * subscribe again.
  */
 template <typename QB_IO_>
 class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>> {
     friend RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>>;
+    // RedisConsumer routes the disconnect here through has_method_on, which sees this private
+    // handler only through this friend -- befriending RedisConsumer is not enough (Huly QB-252).
+    friend struct has_method_on<RedisCoroConsumer<QB_IO_>, void, qb::io::async::event::disconnected>;
 
     /// Default buffered capacity for co_await receive() (tune for burst tolerance).
     static constexpr size_t DEFAULT_MSG_CAPACITY = 8192;
 
     using message_drop_callback = std::function<void(qb::redis::message &&)>;
+    using message_channel       = qb::io::async::channel<qb::redis::message>;
 
-    qb::io::async::channel<qb::redis::message> _msg_channel{DEFAULT_MSG_CAPACITY};
-    message_drop_callback                      _on_message_dropped;
+    size_t                           _msg_capacity = DEFAULT_MSG_CAPACITY;
+    std::unique_ptr<message_channel> _msg_channel  = std::make_unique<message_channel>(DEFAULT_MSG_CAPACITY);
+    message_drop_callback            _on_message_dropped;
+
+    /**
+     * @brief The queue of the current connection.
+     * @details A channel closes for good, and the consumer outlives its connections: the queue a
+     *          disconnect closed is replaced as soon as the consumer is connected again -- observed
+     *          here, by the first receive() or message of the new connection -- carrying over, in
+     *          order, what was received and not yet read. A receiver the close woke and that resumes
+     *          after the swap sees the old channel gone and yields std::nullopt (the channel's own
+     *          liveness guard); what it would have drained is in the new queue.
+     */
+    message_channel &
+    current_channel() {
+        if (_msg_channel->is_closed() && this->is_connected()) {
+            auto fresh = std::make_unique<message_channel>(_msg_capacity);
+            while (auto unread = _msg_channel->try_recv())
+                (void) fresh->try_send(std::move(*unread)); // never full: same capacity, at most as many
+            _msg_channel = std::move(fresh);
+        }
+        return *_msg_channel;
+    }
 
     void
     enqueue_pubsub_message(qb::redis::message &&msg) {
-        if (_msg_channel.try_send(std::move(msg))) {
+        if (current_channel().try_send(std::move(msg))) {
             return;
         }
         if (_on_message_dropped) {
@@ -1678,7 +1710,7 @@ class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>
 
     void
     on(qb::io::async::event::disconnected &&) {
-        _msg_channel.close();
+        _msg_channel->close(); // receive() drains what is buffered, then yields std::nullopt
         // Base already cleared _replies and invoked us; no need to re-enter
     }
 
@@ -1687,7 +1719,8 @@ public:
 
     explicit RedisCoroConsumer(qb::io::uri uri, size_t message_channel_capacity = DEFAULT_MSG_CAPACITY)
         : RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>>(std::move(uri))
-        , _msg_channel(message_channel_capacity) {}
+        , _msg_capacity(message_channel_capacity)
+        , _msg_channel(std::make_unique<message_channel>(message_channel_capacity)) {}
 
     /**
      * @brief Optional callback when the internal queue is full and a message is dropped.
@@ -1702,13 +1735,14 @@ public:
     /** @brief Configured capacity of the internal pub/sub message queue. */
     [[nodiscard]] size_t
     message_channel_capacity() const noexcept {
-        return _msg_channel.capacity();
+        return _msg_capacity;
     }
 
     /**
      * @brief Receive the next pub/sub message (coroutine awaitable).
      * @return std::optional<message> - has value when a message arrived,
-     *         nullopt when the channel is closed (disconnected).
+     *         nullopt once the consumer is disconnected and what it had
+     *         received is read; after a reconnect it serves the new connection.
      *
      * Direct coroutine member (NOT an immediately-invoked lambda `[this]{...}()`):
      * the lambda closure would be a temporary destroyed at the end of this call,
@@ -1718,11 +1752,11 @@ public:
      */
     [[nodiscard]] qb::io::async::task<std::optional<qb::redis::message>>
     receive() {
-        co_return co_await _msg_channel.recv();
+        co_return co_await current_channel().recv();
     }
 
     ~RedisCoroConsumer() {
-        _msg_channel.close();
+        _msg_channel->close();
     }
 };
 
