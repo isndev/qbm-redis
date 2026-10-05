@@ -180,3 +180,29 @@ TEST(ConnectLifetime, DestroyDuringInflightCallbackConnectNoUAF) {
 }
 
 // No in-file main(): links the framework's shared gtest-main.
+
+// ASan regression (Huly QB-202): the command-deadline watcher is a lazy coroutine -- arm_deadline()
+// spawns it on every command call, and it first runs at the scheduler's next drain. Destroyed right
+// after a command, before the loop runs, the client used to be read by that first run
+// (_reply_progress, _command_timeout) out of freed memory.
+TEST(DeadlineLifetime, DestroyRightAfterACommandArmedTheDeadlineNoUAF) {
+    qb::io::async::init();
+
+    int               port = 0;
+    const socket_type lfd  = open_loopback_listener(port);
+    ASSERT_NE(lfd, qb::io::inet::invalid_socket);
+
+    auto client = std::make_unique<qb::redis::tcp::client>(qb::io::uri{"tcp://127.0.0.1:" + std::to_string(port)});
+    ASSERT_TRUE(qb::io::async::run_sync(client->connect())) << "loopback listener should complete the TCP handshake";
+    client->set_command_timeout(std::chrono::seconds(5));
+
+    // The listener never answers: the command stays in flight and arm_deadline() spawns the watcher.
+    client->command<std::string>([](qb::redis::Reply<std::string> &&) {}, "PING");
+    client.reset(); // before any loop pass: the watcher has not run yet
+
+    for (int i = 0; i < 50; ++i)
+        qb::io::async::run(EVRUN_NOWAIT);
+
+    QB_CLOSESOCKET(lfd);
+    SUCCEED(); // the teeth are in the ASan run
+}

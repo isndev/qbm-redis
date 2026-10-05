@@ -99,9 +99,9 @@ internal buffer is moved or freed, so it is always safe to read and store — it
 
 ### Coroutine and callback paths return the same `Reply<T>`
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:728-730 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:753-755 -->
 
-The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:728-730`). The callback overload invokes your
+The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:753-755`). The callback overload invokes your
 handler with `Reply<T>&&`. The check is identical on both paths:
 
 ```cpp
@@ -231,9 +231,9 @@ The protocol's `onMessage(std::size_t)` runs under the libev C callback and is d
    dropped; the remaining pending replies still dispatch (`redis.h:186-190`).
 2. The command-reply dispatch in the client (`on(message&&)`) wraps the handler call in
    `try { … } catch (const std::exception&) { … }` for the same reason — it also runs under the libev read dispatch (
-   `redis.h:938-942`).
+   `redis.h:967-971`).
 3. The disconnect drain (`on(disconnected&&)`) catches both `const std::exception&` and `...`, because a failing
-   callback may legitimately re-issue a command and that nested call could throw (`redis.h:954-973`).
+   callback may legitimately re-issue a command and that nested call could throw (`redis.h:983-1002`).
 
 The contract for *your* callbacks: a throw will not crash the process, but it will cause that reply to be dropped with
 only a log line. Handle your own errors inside the callback; do not rely on the backstop as control flow.
@@ -344,7 +344,7 @@ if (!r)
 
 ### A command timeout surfaces as a failed reply
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:839-844 (is_blocking_command), :945-976 (disconnect drain), :1075-1088 (set_command_timeout/getter) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:864-869 (is_blocking_command), :974-1005 (disconnect drain), :1104-1117 (set_command_timeout/getter) -->
 
 `command_timeout` defaults to `qb::duration::zero()` (disabled). It is a connection-health watchdog, not a per-command
 timer: when the deadline trips, the client drops the whole connection and fails **every** pending reply with
@@ -382,7 +382,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   `redis.h:186-190`); it is a process-safety backstop, not error handling. Catch your own exceptions inside the
   callback.
 - **Auto-reconnect does not replay work.** On disconnect, every pending command is failed with `Reply{ok=false}`;
-  subscriptions and in-flight commands are not re-issued. Re-send after you observe the failure (`redis.h:945-976`).
+  subscriptions and in-flight commands are not re-issued. Re-send after you observe the failure (`redis.h:974-1005`).
 - **A faulted parser is dead until reset.** A corrupt frame faults the parser sticky and drops the connection; you
   cannot keep feeding the same socket. Reconnect (or rely on auto-reconnect) to get a fresh parser (
   `src/qbm/redis/parser/parser.h:153-154`, `redis.h:197-202`).

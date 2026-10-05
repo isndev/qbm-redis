@@ -169,12 +169,12 @@ TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_AFTER_MANUAL_DISCONNECT) {
 
     bool initially_connected = false;
     auto setup               = [&client, &initially_connected]() -> qb::io::async::task<void> {
-        initially_connected = co_await client.connect();
-        if (initially_connected && GetParam() == ProtocolMode::RESP3) {
-            auto h = co_await client.hello(3);
-            if (!h.ok())
-                initially_connected = false;
+        bool connected = co_await client.connect();
+        if (connected && GetParam() == ProtocolMode::RESP3) {
+            auto h    = co_await client.hello(3);
+            connected = h.ok();
         }
+        initially_connected = connected; // set LAST: the whole setup has finished when the test sees it
     };
     qb::io::async::coro_scheduler().spawn(setup());
     ASSERT_TRUE(run_until([&] { return initially_connected; }));
@@ -222,12 +222,12 @@ TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_EXHAUSTS_ATTEMPTS) {
 
     bool initially_connected = false;
     auto setup               = [&client, &initially_connected]() -> qb::io::async::task<void> {
-        initially_connected = co_await client.connect();
-        if (initially_connected && GetParam() == ProtocolMode::RESP3) {
-            auto h = co_await client.hello(3);
-            if (!h.ok())
-                initially_connected = false;
+        bool connected = co_await client.connect();
+        if (connected && GetParam() == ProtocolMode::RESP3) {
+            auto h    = co_await client.hello(3);
+            connected = h.ok();
         }
+        initially_connected = connected; // set LAST: the whole setup has finished when the test sees it
     };
     qb::io::async::coro_scheduler().spawn(setup());
     ASSERT_TRUE(run_until([&] { return initially_connected; }));
@@ -266,12 +266,12 @@ TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_CAN_BE_DISABLED) {
 
     bool initially_connected = false;
     auto setup               = [&client, &initially_connected]() -> qb::io::async::task<void> {
-        initially_connected = co_await client.connect();
-        if (initially_connected && GetParam() == ProtocolMode::RESP3) {
-            auto h = co_await client.hello(3);
-            if (!h.ok())
-                initially_connected = false;
+        bool connected = co_await client.connect();
+        if (connected && GetParam() == ProtocolMode::RESP3) {
+            auto h    = co_await client.hello(3);
+            connected = h.ok();
         }
+        initially_connected = connected; // set LAST: the whole setup has finished when the test sees it
     };
     qb::io::async::coro_scheduler().spawn(setup());
     ASSERT_TRUE(run_until([&] { return initially_connected; }));
@@ -306,12 +306,12 @@ TEST_P(ReconnectProtocolModesTest, COMMANDS_FAIL_GRACEFULLY_ON_DISCONNECT) {
 
     bool initially_connected = false;
     auto setup               = [&client, &initially_connected]() -> qb::io::async::task<void> {
-        initially_connected = co_await client.connect();
-        if (initially_connected && GetParam() == ProtocolMode::RESP3) {
-            auto h = co_await client.hello(3);
-            if (!h.ok())
-                initially_connected = false;
+        bool connected = co_await client.connect();
+        if (connected && GetParam() == ProtocolMode::RESP3) {
+            auto h    = co_await client.hello(3);
+            connected = h.ok();
         }
+        initially_connected = connected; // set LAST: the whole setup has finished when the test sees it
     };
     qb::io::async::coro_scheduler().spawn(setup());
     ASSERT_TRUE(run_until([&] { return initially_connected; }));
@@ -371,12 +371,12 @@ TEST_P(ReconnectProtocolModesTest, DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT) {
 
     bool ready = false;
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
-        ready = co_await client.connect();
-        if (ready && GetParam() == ProtocolMode::RESP3) {
-            auto h = co_await client.hello(3);
-            if (!h.ok())
-                ready = false;
+        bool connected = co_await client.connect();
+        if (connected && GetParam() == ProtocolMode::RESP3) {
+            auto h    = co_await client.hello(3);
+            connected = h.ok();
         }
+        ready = connected; // set LAST: the whole setup has finished when the test sees it
     });
     ASSERT_TRUE(run_until([&] { return ready; }));
 
@@ -417,12 +417,12 @@ TEST_P(ReconnectProtocolModesTest, COMMAND_TIMEOUT_DROPS_CONNECTION) {
 
     bool ready = false;
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
-        ready = co_await client.connect();
-        if (ready && GetParam() == ProtocolMode::RESP3) {
-            auto h = co_await client.hello(3);
-            if (!h.ok())
-                ready = false;
+        bool connected = co_await client.connect();
+        if (connected && GetParam() == ProtocolMode::RESP3) {
+            auto h    = co_await client.hello(3);
+            connected = h.ok();
         }
+        ready = connected; // set LAST: the whole setup has finished when the test sees it
     });
     ASSERT_TRUE(run_until([&] { return ready; }));
 
@@ -463,12 +463,12 @@ TEST_P(ReconnectProtocolModesTest, COMMAND_TIMEOUT_EXEMPTS_BLOCKING) {
 
     bool ready = false;
     qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
-        ready = co_await client.connect();
-        if (ready && GetParam() == ProtocolMode::RESP3) {
-            auto h = co_await client.hello(3);
-            if (!h.ok())
-                ready = false;
+        bool connected = co_await client.connect();
+        if (connected && GetParam() == ProtocolMode::RESP3) {
+            auto h    = co_await client.hello(3);
+            connected = h.ok();
         }
+        ready = connected; // set LAST: the whole setup has finished when the test sees it
     });
     ASSERT_TRUE(run_until([&] { return ready; }));
 

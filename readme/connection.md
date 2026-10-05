@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1710-1736 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1739-1765 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -115,20 +115,20 @@ and `select(...)` explicitly after connecting (see below).
 four coroutine overloads and two callback overloads:
 
 ```cpp
-// Coroutine form — qbm/redis/src/qbm/redis/redis.h:470-487
+// Coroutine form — qbm/redis/src/qbm/redis/redis.h:484-501
 connect_awaiter connect();                                   // use the stored URI, 3s default timeout
 connect_awaiter connect(qb::io::uri uri);                    // set + use this URI
 connect_awaiter connect(qb::duration timeout);              // stored URI, custom timeout
 connect_awaiter connect(qb::io::uri uri, qb::duration timeout);
 
-// Callback form — qbm/redis/src/qbm/redis/redis.h:561-591
+// Callback form — qbm/redis/src/qbm/redis/redis.h:575-605
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3));
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::duration timeout = std::chrono::seconds(3));
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:410-487,561-591 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:424-501,575-605 -->
 
 The default connect timeout is **3 seconds** (`qb::duration`). The awaiter resolves to `true` only when the socket
 opened *and* `setup_connection` adopted the transport; a failed handshake or an elapsed timeout resolves to `false`.
@@ -249,7 +249,7 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:561-591 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:575-605 -->
 
 `set_uri(uri)` updates the stored endpoint without connecting; a later argument-less `connect()` uses it. `uri()`
 returns the current endpoint. `is_connected()` reports the live socket state.
@@ -306,7 +306,7 @@ if (!co_await redis.connect())
 #endif
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:602-629 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:616-643 -->
 
 `set_verify_peer(bool)` toggles TLS chain + hostname verification; it **defaults to `true`** and must be set before
 `connect()`. `verify_peer()` reads the current setting. For a **private CA**, call `set_ssl_root_cert(path)` (a PEM
@@ -440,15 +440,24 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:945-976 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:974-1005 -->
 
 The queue is swapped *before* the drain loop so that a failing handler may legitimately re-issue a command (for example
 to kick off a reconnect-and-retry) without that brand-new command being failed by the same loop.
 
+The bytes of the commands that never left go with their handlers: the connector empties its input and output buffers
+*before* the drain, so a command serialized but not yet flushed cannot lead the next connection — its reply would be
+handed to whichever command is then first in line, and the FIFO would stay off by one — while a command a failing
+handler re-issues lands in a clean buffer and leaves with the next connection, in order.
+
 ### `disconnect()`, `quit()`, and destruction
 
-- **`disconnect()`** clears the connected flag and defers the actual transport teardown to the I/O watcher callback (the
-  deferred-dispose path). If auto-reconnect is armed, calling `disconnect()` is what triggers the reconnect loop.
+- **`disconnect()`** clears the connected flag and completes the teardown before it returns -- on the spot, without
+  running the loop, so nothing else runs under the caller -- so every queued handler has been failed when
+  `disconnect()` comes back, and a `connect()` issued right after cannot overtake it. A coroutine awaiting one of
+  those commands resumes at the loop's next pass, as every completion does. Called from inside a reply handler, the
+  teardown runs as soon as that handler returns. If auto-reconnect is armed, calling `disconnect()` is what triggers
+  the reconnect loop.
 - **`quit()`** is the Redis `QUIT` command (a coroutine yielding `Reply<status>`): it asks the server to close the
   connection cleanly after replying.
 - **Destruction** is RAII — when the client object is destroyed the connection is torn down. The connector holds a
@@ -469,7 +478,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1061-1088 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1090-1117 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,

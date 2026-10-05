@@ -35,4 +35,4 @@ llm/qbm-redis.llm.md	symbol:run_sync	`qb::io::async::run_sync(...)` — qb-io's 
 # is :348".  Both were one line low when they were written — 337 and 349 — so the prose that
 # justified the exception was itself mis-citing the header.  Nothing gates that prose; read it
 # against the source before trusting it, and re-derive it whenever an entry moves.
-llm/qbm-redis.llm.api.md	redis.h:763-763	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:763. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.
+llm/qbm-redis.llm.api.md	redis.h:788-788	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:788. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.

@@ -7,6 +7,24 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ## [Unreleased]
 
+### Fixed
+
+- **A reconnection no longer carries anything of the connection that dropped (Huly QB-202).** The connector failed
+  every pending handler on a disconnect but left the bytes of the commands not yet flushed in its output buffer: they
+  went out first on the next connection, and their replies were handed to whichever commands were then first in line
+  -- the reply FIFO off by one for the life of the connection. The buffers are now emptied where the commands are
+  failed, before the handlers run, so a command a failing callback re-issues still leaves, in order, with the next
+  connection.
+- **`disconnect()` completes the teardown before it returns (Huly QB-202).** It used to defer it to the io watcher's
+  next dispatch; a `connect()` completing first (libev runs pending watchers last-in, first-out) restarted the watcher,
+  which cancelled the teardown: the commands in flight were never failed and received the new connection's replies.
+  It now runs on the spot, through qb-io's new `disconnect_now()` -- without a loop pass, so a `disconnect()` called
+  from a coroutine resumes nothing under it.
+- **Destroying a client right after a command no longer reads freed memory when a command timeout is set (Huly
+  QB-202).** The deadline watcher a command arms is a lazy coroutine: it first runs at the scheduler's next drain, and
+  it read the client there before checking that the client was still alive. It now checks first -- and so does the
+  auto-reconnect task, which `disconnect()` now spawns from inside the call. Both found under AddressSanitizer.
+
 ### Documentation
 
 - **`ROADMAP.md` removed (Huly QB-137).** It described a hiredis-based parser (`redisReaderGetReply`) and a

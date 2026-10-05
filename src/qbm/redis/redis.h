@@ -342,6 +342,9 @@ private:
 
     void
     start_async() {
+        // Not the io base's reset_for_reconnect(): out() may already hold what a failing callback
+        // re-issued during the disconnect, with its handler queued -- the dead connection's bytes
+        // were dropped in on(disconnected), before those callbacks ran (Huly QB-202).
         this->clear_protocols(); // idempotent: drops any prior protocol, resets to the NoProtocol sentinel
         this->reset_io_state();
         this->template switch_protocol<redis_protocol>(*this);
@@ -357,6 +360,13 @@ private:
     void
     on(qb::io::async::event::disconnected &&ev) {
         _connected_flag = false;
+        // The dead connection's bytes go now, where its commands are failed (Huly QB-202): a command
+        // serialized but never flushed would otherwise lead the next connection, and its reply be
+        // handed to whichever command is then first in line -- the reply FIFO off by one, for good.
+        // Dropped BEFORE derived().on(): what a failing callback re-issues lands in a clean out() and
+        // leaves with the next connection, its handler queued in the same order.
+        this->in().reset();
+        this->out().reset();
         QB_LOG_WARN("[qbm][redis] disconnected");
         derived().on(std::forward<qb::io::async::event::disconnected>(ev));
 
@@ -368,6 +378,10 @@ private:
 
     qb::io::async::task<void>
     _reconnect_task(RetryPolicy policy, std::shared_ptr<bool> alive) {
+        // A task first runs at the scheduler's next drain, not at spawn(): disconnect() completes the
+        // teardown synchronously, so the client may already be gone by then (Huly QB-202).
+        if (!*alive)
+            co_return;
         QB_LOG_INFO("[qbm][redis] auto-reconnect starting...");
 
         const bool ok = co_await connect_with_retry(policy);
@@ -673,10 +687,21 @@ public:
         return _connected_flag;
     }
 
+    /**
+     * @brief Disconnect, and complete the teardown before returning.
+     * @details The io base defers dispose() -- and with it on(event::disconnected&), which fails every
+     *          pending command -- to the watcher's next dispatch. A connect() completing ahead of it
+     *          (libev invokes pending watchers LIFO) restarted the watcher, which clears the event
+     *          disconnect() fed: on(disconnected) never ran, the commands in flight were never failed,
+     *          and the next connection's replies were handed to them (Huly QB-202). The io base's
+     *          disconnect_now() runs the teardown on the spot, without a loop pass -- so a disconnect()
+     *          from a coroutine resumes nothing under it. Called from a reply handler, the teardown runs
+     *          as soon as that handler returns, still before any connect() can complete.
+     */
     void
     disconnect() noexcept {
         _connected_flag = false;
-        qb::io::async::io<connector<QB_IO_, Derived>>::disconnect();
+        qb::io::async::io<connector<QB_IO_, Derived>>::disconnect_now();
     }
 };
 
@@ -858,12 +883,16 @@ private:
      * @brief Detached watcher: sleeps one window, then trips iff no reply landed.
      *
      * Member coroutine with value parameters — both are copied into the frame,
-     * and `alive` guards every touch of `*this` after the suspension. Exits
-     * quietly when cancelled (generation bump), disabled, idle, or while a
-     * blocking command holds the connection; re-arms while replies keep flowing.
+     * and `alive` guards every touch of `*this`: before the first one too, as the
+     * task first runs at the scheduler's next drain and the client may have been
+     * destroyed since arm_deadline() spawned it. Exits quietly when cancelled
+     * (generation bump), disabled, idle, or while a blocking command holds the
+     * connection; re-arms while replies keep flowing.
      */
     qb::io::async::task<void>
     deadline_watch(std::size_t gen, std::shared_ptr<bool> alive) {
+        if (!*alive)
+            co_return; // destroyed before this first ran (Huly QB-202)
         const std::size_t snapshot = _reply_progress;
         co_await qb::io::async::sleep(_command_timeout);
         if (!*alive || gen != _deadline_gen)
@@ -891,9 +920,9 @@ private:
      * A FIFO pipelined protocol cannot time out a single mid-queue command
      * without desynchronizing every later reply, so the correct action is to
      * drop the connection (auto-reconnect takes over if enabled). disconnect()
-     * defers the teardown to the io watcher's own callback, where
-     * on(disconnected) fails every pending command with the timeout reason —
-     * we deliberately do NOT resolve awaiters here.
+     * completes the teardown before it returns: on(disconnected) has failed
+     * every pending command with the timeout reason by then (_deadline_tripped
+     * is read there) -- we deliberately do NOT resolve awaiters here.
      */
     void
     on_command_deadline() {

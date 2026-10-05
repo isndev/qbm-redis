@@ -299,7 +299,10 @@ if (!r.ok()) {
   `BZPOPMIN`/`BZPOPMAX`/`BZMPOP`/`WAIT`/`WAITAOF`/`XREAD`/`XREADGROUP`) **suspend
   the command deadline** while in flight; their server-side timeout governs.
 - **Auto-reconnect replays nothing**: on disconnect all pending replies fail and
-  predicted subscription state clears. Re-subscribe and re-issue yourself.
+  predicted subscription state clears. Re-subscribe and re-issue yourself. The
+  unsent bytes of the failed commands are dropped with them; a command a failing
+  callback re-issues leaves with the next connection. `disconnect()` has failed
+  them all by the time it returns.
 - RESP3 `PUSH` frames must not pop a command handler; the plain client discards
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,
