@@ -27,12 +27,12 @@ llm/qbm-redis.llm.md	symbol:run_sync	`qb::io::async::run_sync(...)` — qb-io's 
 # It used to be three.  The other two — `redis.h:290-290` for the connector class and
 # `types.h:336-336` for `struct score` — are gone because the citations they excused were
 # WIDENED to hold their own subject rather than baselined around it: the connector heading now
-# cites `redis.h:292-315`, the class declaration through the state members the sentence lists
-# (`_uri` :307, `std::optional<RetryPolicy> _reconnect_policy` :308, the two connection-state
-# flags :309-310, `_verify_peer` :311, the `_alive` liveness token :315), and the score row now
+# cites `redis.h:294-317`, the class declaration through the state members the sentence lists
+# (`_uri` :309, `std::optional<RetryPolicy> _reconnect_policy` :310, the two connection-state
+# flags :311-312, `_verify_peer` :313, the `_alive` liveness token :317), and the score row now
 # cites `types.h:337-354`, `struct score` (337-346) through `struct score_member` (349-354).
 # Note what the deleted rationales asserted: "`struct score` is types.h:336" and "`score_member`
 # is :348".  Both were one line low when they were written — 337 and 349 — so the prose that
 # justified the exception was itself mis-citing the header.  Nothing gates that prose; read it
 # against the source before trusting it, and re-derive it whenever an entry moves.
-llm/qbm-redis.llm.api.md	redis.h:788-788	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:788. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.
+llm/qbm-redis.llm.api.md	redis.h:819-819	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:819. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.

@@ -445,3 +445,45 @@ TEST_P(PipelineProtocolModesTest, CoroutineThenCallbackPipelineInSameConnection)
     redis.await();
     EXPECT_EQ(cb.load(), 2);
 }
+
+// A command whose arguments cannot be serialized (Huly QB-255). put_in_pipe() writes the RESP header and
+// the arguments in order, and one that cannot be written throws -- over REDIS_MAX_STRING_SIZE, a
+// SecurityError -- with the frame half written. command() queued the handler first, so the throw left an
+// orphan handler AND a partial frame: the next command went out behind the truncated one, and the
+// server's replies were handed to the wrong handlers. An argument type whose to_redis_string throws
+// (found by ADL) takes that path without a 512 MiB allocation; the commands after it must each receive
+// their OWN reply.
+namespace pipeline_qb255 {
+struct Unserializable {};
+inline std::size_t
+redis_count(Unserializable const &) noexcept {
+    return 1;
+}
+inline bool
+to_redis_string(qb::allocator::pipe<char> &, Unserializable const &) {
+    throw qb::redis::SecurityError("String too large");
+}
+} // namespace pipeline_qb255
+
+TEST_F(PipelineCallbackTest, ACommandThatCannotBeSerializedLeavesTheNextOnesTheirReplies) {
+    const std::string key = unique_prefix() + "qb255";
+
+    std::string failure;
+    redis.command<qb::redis::status>([&failure](qb::redis::Reply<qb::redis::status> &&r) { failure = r.ok() ? "ok?" : r.error(); }, "SET", key,
+                                     pipeline_qb255::Unserializable{});
+    EXPECT_EQ(failure, "String too large") << "the failed command's own callback, before command() returns";
+    EXPECT_EQ(redis.pending_reply_count(), 0u);
+
+    bool                       set_ok = false;
+    std::optional<std::string> got;
+    long long                  deleted = -1;
+    redis.set([&set_ok](qb::redis::Reply<qb::redis::status> &&r) { set_ok = r.ok(); }, key, "after");
+    redis.get([&got](qb::redis::Reply<std::optional<std::string>> &&r) { got = r.ok() ? r.result() : std::nullopt; }, key);
+    redis.del([&deleted](qb::redis::Reply<long long> &&r) { deleted = r.ok() ? r.result() : -1; }, key);
+    drain_until_empty(redis);
+
+    EXPECT_TRUE(set_ok) << "SET must get its +OK";
+    ASSERT_TRUE(got.has_value()) << "GET must get its bulk string";
+    EXPECT_EQ(*got, "after");
+    EXPECT_EQ(deleted, 1) << "DEL must get its integer";
+}

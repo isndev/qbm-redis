@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1773-1799 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1798-1824 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -115,20 +115,20 @@ and `select(...)` explicitly after connecting (see below).
 four coroutine overloads and two callback overloads:
 
 ```cpp
-// Coroutine form — qbm/redis/src/qbm/redis/redis.h:484-501
+// Coroutine form — qbm/redis/src/qbm/redis/redis.h:515-532
 connect_awaiter connect();                                   // use the stored URI, 3s default timeout
 connect_awaiter connect(qb::io::uri uri);                    // set + use this URI
 connect_awaiter connect(qb::duration timeout);              // stored URI, custom timeout
 connect_awaiter connect(qb::io::uri uri, qb::duration timeout);
 
-// Callback form — qbm/redis/src/qbm/redis/redis.h:575-605
+// Callback form — qbm/redis/src/qbm/redis/redis.h:606-636
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3));
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::duration timeout = std::chrono::seconds(3));
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:424-501,575-605 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:455-532,606-636 -->
 
 The default connect timeout is **3 seconds** (`qb::duration`). The awaiter resolves to `true` only when the socket
 opened *and* `setup_connection` adopted the transport; a failed handshake or an elapsed timeout resolves to `false`.
@@ -249,7 +249,7 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:575-605 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:606-636 -->
 
 `set_uri(uri)` updates the stored endpoint without connecting; a later argument-less `connect()` uses it. `uri()`
 returns the current endpoint. `is_connected()` reports the live socket state.
@@ -306,7 +306,7 @@ if (!co_await redis.connect())
 #endif
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:616-643 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:647-674 -->
 
 `set_verify_peer(bool)` toggles TLS chain + hostname verification; it **defaults to `true`** and must be set before
 `connect()`. `verify_peer()` reads the current setting. For a **private CA**, call `set_ssl_root_cert(path)` (a PEM
@@ -335,7 +335,7 @@ struct RetryPolicy {
 };
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:220-227 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:222-229 -->
 
 Every field has a fluent setter that returns `*this`, so you build a policy inline. **All three time fields
 are `qb::duration`,** and the `on_retry` callback receives the next delay as a `qb::duration`:
@@ -440,7 +440,7 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:974-1005 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:998-1029 -->
 
 The queue is swapped *before* the drain loop so that a failing handler may legitimately re-issue a command (for example
 to kick off a reconnect-and-retry) without that brand-new command being failed by the same loop.
@@ -478,7 +478,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1090-1117 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1119-1146 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,

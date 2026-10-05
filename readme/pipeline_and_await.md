@@ -22,12 +22,12 @@ code in `<qbm/redis/redis.h>`; link the target rather than adding the include di
 
 Pipelining is a property of the client, not a separate object. Every callback command — `redis.set(cb, …)`,
 `redis.get(cb, …)`, or the low-level `redis.command<Ret>(cb, "SET", …)` — pushes one reply handler onto a FIFO queue and
-writes one RESP request to the outbound pipe, in call order (`redis.h:1027-1040`). Redis answers in request order, so the
+writes one RESP request to the outbound pipe, in call order (`redis.h:1054-1069`). Redis answers in request order, so the
 queue stays positionally consistent. Issue several commands back-to-back without waiting, then call `await()` once to
 run the loop until every handler has fired.
 
 `await()` is a non-blocking drain: it spins `qb::io::async::listener::current.run(EVRUN_NOWAIT)` while the reply queue
-is non-empty and returns the client by reference (`redis.h:1078-1083`). It does not block the thread in the kernel; each
+is non-empty and returns the client by reference (`redis.h:1107-1112`). It does not block the thread in the kernel; each
 iteration is a single poll. The calling stack runs synchronously until every enqueued callback has been invoked — with a
 success, a Redis error, or a disconnect failure.
 
@@ -66,7 +66,7 @@ sequenceDiagram
 ```
 
 > The client is **not thread-safe.** Use one client from a single I/O thread / strand (one concurrent accessor at a
-> time). The reply queue and outbound pipe are unsynchronized (`redis.h:777-778`).
+> time). The reply queue and outbound pipe are unsynchronized (`redis.h:808-809`).
 
 ---
 
@@ -74,12 +74,14 @@ sequenceDiagram
 
 ### The reply queue
 
-The client holds an internal `std::queue<PendingReply>` (`redis.h:830`). Each callback command registers its handler *
-*before** sending bytes, so a fast or synchronous delivery can never run ahead of the queued handler (
-`redis.h:1031-1037`). Because Redis preserves request order on a single connection, the head of the queue always matches
-the next reply on the wire.
+The client holds an internal `std::queue<PendingReply>` (`redis.h:861`). Each callback command serializes its request
+into the outbound pipe, then registers its handler — still **before** a byte leaves, since writing to the pipe sends
+nothing, so no delivery can run ahead of the queued handler. A command that cannot be serialized leaves neither a
+handler nor a partial frame behind: the pipe is rolled back and the callback receives a failed `Reply` (Huly QB-255;
+`redis.h:1058-1068`). Because Redis preserves request order on a single connection, the head of the queue always
+matches the next reply on the wire.
 
-`pending_reply_count()` returns the current queue depth (`redis.h:1086-1088`) — useful for tests and for confirming a
+`pending_reply_count()` returns the current queue depth (`redis.h:1115-1117`) — useful for tests and for confirming a
 drain completed:
 
 ```cpp
@@ -95,7 +97,7 @@ redis.await();
 
 Awaiting each command in sequence pays one network round trip per command. Pipelining sends the whole batch first and
 reads the replies as a group, so the batch costs roughly one round trip regardless of size. Callbacks still fire in send
-order (`redis.h:956-957,968`):
+order (`redis.h:980-981,992`):
 
 ```cpp
 std::vector<int> order;
@@ -111,18 +113,18 @@ redis.await();
 
 ### What `await()` does and does not do
 
-- **Implements:** `while (!reply_queue.empty()) listener::current.run(EVRUN_NOWAIT);` (`redis.h:1080-1081`).
+- **Implements:** `while (!reply_queue.empty()) listener::current.run(EVRUN_NOWAIT);` (`redis.h:1109-1110`).
 - **Not** a blocking `recv()`: it polls the libev loop. The thread is never parked in the kernel waiting on a single
   socket.
 - It uses `listener::current.run(EVRUN_NOWAIT)`, **not** `qb::io::async::run()`. That distinction is deliberate:
   `async::run` rejects being called from inside a coroutine body, but a non-blocking drain is safe there, so a coroutine
-  may still call `await()` on a second client (`redis.h:1072-1076`). Safe since 3.3: that nested pass re-entered the
+  may still call `await()` on a second client (`redis.h:1101-1105`). Safe since 3.3: that nested pass re-entered the
   coroutine scheduler and aborted a debug build (Huly QB-253). Now the coroutines it makes ready wait for the calling
   coroutine to yield — the command deadline's watcher among them, so from a coroutine `await()` returns on the replies
   or a disconnect, never on `set_command_timeout()`.
 - On **disconnect**, the queue is failed: every pending handler runs with `ok() == false` and
   `error() == "disconnected"` (`reply.h:1234-1237`). If an opt-in command deadline tripped first, the failure reason is
-  `"command timed out"` instead (`redis.h:917-933,992-993`). See [error_handling.md](./error_handling.md).
+  `"command timed out"` instead (`redis.h:948-964,1016-1017`). See [error_handling.md](./error_handling.md).
 
 ```cpp
 redis.ping([](qb::redis::Reply<std::string> &&r) {
@@ -138,18 +140,18 @@ while (redis.pending_reply_count() > 0)
 
 ### `qb::redis::tcp::pipeline`
 
-`qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:1780`);
-the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:1788-1791`). It is a thin, optional
+`qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:1805`);
+the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:1813-1816`). It is a thin, optional
 wrapper that holds a reference to a `Redis` client and chains the low-level `command<Ret>(callback, name, args...)` (
-`redis.h:1027-1040`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
+`redis.h:1054-1069`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
 
-- Construct it with `pipeline pipe{redis}` over an existing client (`redis.h:1152-1153`).
-- `pipe.command<Ret>(cb, "SET", k, v)` returns `*pipe` for fluent chaining (`redis.h:1172-1175`).
-- For the typed mixin methods (`set`, `get`, …), reach the client with `pipe.client()` (`redis.h:1155-1162`); the wrapper
+- Construct it with `pipeline pipe{redis}` over an existing client (`redis.h:1181-1182`).
+- `pipe.command<Ret>(cb, "SET", k, v)` returns `*pipe` for fluent chaining (`redis.h:1201-1204`).
+- For the typed mixin methods (`set`, `get`, …), reach the client with `pipe.client()` (`redis.h:1184-1191`); the wrapper
   itself only exposes `command<Ret>`.
 - `pipe.flush()` drains by calling `client().await()` — it is **unrelated** to the Redis `FLUSHDB`/`FLUSHALL` commands (
-  `redis.h:1178-1182`).
-- `pipe.pending_reply_count()` forwards to the client's queue depth (`redis.h:1166-1167`).
+  `redis.h:1207-1211`).
+- `pipe.pending_reply_count()` forwards to the client's queue depth (`redis.h:1195-1196`).
 
 ```cpp
 #include <qbm/redis/redis.h>
@@ -187,11 +189,11 @@ pipe.flush();  // drains both
   events, ticks no `ICallback` and reaps nothing until every pending reply has landed — with no diagnostic. An actor
   needs no drain at all: its own loop pass already turns the crank. See [actors.md](./actors.md#callbacks-inside-an-actor).
 - **Do not call `await()` from another thread.** Drain from the same thread / loop that drives the client's I/O. The
-  reply queue and outbound pipe are unsynchronized (`redis.h:777-778,830`).
+  reply queue and outbound pipe are unsynchronized (`redis.h:808-809,861`).
 - **`flush()` is not a Redis command.** It runs the event loop until pending replies land; it never sends `FLUSHDB` or
-  `FLUSHALL` (`redis.h:1143-1144,1178-1182`).
+  `FLUSHALL` (`redis.h:1172-1173,1207-1211`).
 - **`await()` on an empty queue returns immediately.** It is safe to call with nothing pending — the `while` loop body
-  never runs (`redis.h:1080`).
+  never runs (`redis.h:1109`).
 - **Coroutine commands do not need `await()`.** A `co_await redis.get(...)` suspends the coroutine until its reply
   arrives; calling `await()` for it is unnecessary. Use `await()` only for the callback form, or
   `qb::io::async::run_sync(...)` to drive a coroutine from synchronous code.

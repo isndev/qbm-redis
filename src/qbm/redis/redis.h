@@ -32,9 +32,11 @@
 #define QBM_REDIS_H
 
 #include <deque>
+#include <optional>
 #include <functional>
 #include <queue>
 #include <random>
+#include <string>
 #include <utility>
 #include <qb/io/async.h>
 #include <qb/io/async/tcp/connector.h>
@@ -417,6 +419,35 @@ protected:
     [[nodiscard]] std::shared_ptr<bool>
     connector_alive() const noexcept {
         return _alive;
+    }
+
+    /**
+     * @brief Serialize one command into `out()`: all of it, or nothing.
+     * @details `put_in_pipe()` writes the RESP array header, then each argument, and an argument that
+     *          cannot be written throws -- one over `REDIS_MAX_STRING_SIZE` throws `SecurityError` -- with
+     *          the header and the arguments before it already in `out()`. That partial frame used to stay:
+     *          the next command went out behind it, and the server's replies no longer matched the reply
+     *          FIFO (Huly QB-255). Here `out()` is put back as it was, and the reason returned for the
+     *          caller to fail the command with. Writing to `out()` sends nothing, so a handler queued after
+     *          this call still precedes any reply.
+     * @return Why the command could not be serialized; empty when it was, the watcher then armed to send it.
+     */
+    template <typename... Args>
+    [[nodiscard]] std::optional<std::string>
+    try_put_command(Args &&...args) {
+        auto             &out    = this->out();
+        const std::size_t before = out.size();
+        try {
+            put_in_pipe(out, std::forward<Args>(args)...);
+        } catch (std::exception const &e) {
+            out.free_back(out.size() - before);
+            return std::string{e.what()};
+        } catch (...) {
+            out.free_back(out.size() - before);
+            return std::string{"the command could not be serialized"};
+        }
+        this->ready_to_write();
+        return std::nullopt;
     }
 
 public:
@@ -932,13 +963,6 @@ private:
         this->disconnect();
     }
 
-    template <typename... Args>
-    void
-    _command(Args &&...args) {
-        this->ready_to_write();
-        put_in_pipe(this->out(), std::forward<Args>(args)...);
-    }
-
     void
     on(typename redis_protocol::message msg) {
         // RESP3 PUSH frames (client-side-caching invalidations, server pushes)
@@ -1012,10 +1036,13 @@ public:
     /**
      * @brief Send a raw command with a callback invoked on its reply (callback API).
      *
-     * Registers the reply handler before the bytes are written so a synchronous
-     * delivery cannot outrun handler registration, then enqueues the command on the
-     * outbound pipe. Multiple calls pipeline naturally (one handler + one request
-     * per call, FIFO). Drain with await() or your event loop.
+     * Serializes the command into the outbound pipe, then registers the reply handler
+     * -- before any byte leaves: writing to the pipe sends nothing. Multiple calls
+     * pipeline naturally (one handler + one request per call, FIFO). Drain with
+     * await() or your event loop. A command that cannot be serialized (an argument
+     * over `REDIS_MAX_STRING_SIZE`) leaves nothing behind -- no handler, no partial
+     * frame -- and @p func receives a failed `Reply` before this returns, the reason
+     * in `error()` (Huly QB-255).
      *
      * @tparam Ret  Expected decoded reply type for `Reply<Ret>`.
      * @param func  Callback invoked with `Reply<Ret>&&` on success, Redis error, or
@@ -1028,13 +1055,15 @@ public:
     requires std::invocable<Func, Reply<Ret> &&>
     Redis &
     command(Func &&func, std::string const &name, Args &&...args) {
-        // Register the reply handler before sending so a very fast/synchronous
-        // delivery cannot run before the handler is queued (pipeline-safe).
+        auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
+            handler->fail(*error); // the client is consistent again: a callback may issue its next command
+            return *this;
+        }
         const bool blocking = is_blocking_command(name);
-        _replies.push(PendingReply{std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), blocking});
+        _replies.push(PendingReply{std::move(handler), blocking});
         if (blocking)
             ++_inflight_blocking;
-        _command(name, std::forward<Args>(args)...);
         arm_deadline();
         return *this;
     }
@@ -1260,19 +1289,16 @@ private:
     qb::unordered_flat_set<std::string> _pred_channels;
     qb::unordered_flat_set<std::string> _pred_patterns;
 
-    template <typename... Args>
-    void
-    _command(Args &&...args) {
-        this->ready_to_write();
-        put_in_pipe(this->out(), std::forward<Args>(args)...);
-    }
-
     template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
     Derived &
     command(Func &&func, std::string const &name, Args &&...args) {
-        _replies.push(PendingReply{std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), 1});
-        _command(name, std::forward<Args>(args)...);
+        auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
+            handler->fail(*error); // nothing queued, nothing written (Huly QB-255)
+            return derived();
+        }
+        _replies.push(PendingReply{std::move(handler), 1});
         return derived();
     }
 
@@ -1317,15 +1343,14 @@ private:
     requires std::invocable<Func, Reply<qb::redis::subscription> &&>
     Derived &
     pubsub_command(Func &&func, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
+        auto handler = std::make_unique<TReply<Func, qb::redis::subscription>>(std::forward<Func>(func));
+        // Serialized first, the prediction advanced only for a command that will reach the server (Huly QB-255).
+        if (auto error = names.empty() ? this->try_put_command(cmd) : this->try_put_command(cmd, names)) {
+            handler->fail(*error);
+            return derived();
+        }
         const int expected = predict_confirmations(is_unsub, is_pattern, names);
-        _replies.push(PendingReply{
-            std::make_unique<TReply<Func, qb::redis::subscription>>(std::forward<Func>(func)), expected,
-            /*is_subscription=*/true
-        });
-        if (names.empty())
-            _command(cmd);
-        else
-            _command(cmd, names);
+        _replies.push(PendingReply{std::move(handler), expected, /*is_subscription=*/true});
         return derived();
     }
 

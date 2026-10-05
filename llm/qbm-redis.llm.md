@@ -284,8 +284,10 @@ if (!r.ok()) {
 }
 // Connect failure → connect awaiter yields false (no throw).
 // Sync helpers / parse layer may throw qb::redis::ConnectionError, CommandError,
-// TimeoutError, ProtoError, ReplyParseError, AuthError, SecurityError — all
-// derive from qb::redis::Error : std::exception (e.what()).
+// TimeoutError, ProtoError, ReplyParseError, AuthError — all derive from
+// qb::redis::Error : std::exception (e.what()). SecurityError (an argument over
+// 512 MiB) never reaches you: the command fails with "String too large", leaving
+// no handler and no partial frame (Huly QB-255).
 ```
 
 ---

@@ -107,3 +107,6 @@ qredis_itest(module-commands integration/admin/module-commands.cpp)
 # BENCHMARK — RESP parse + reply codec (daemon-free)
 qredis_bench(resp-parse benchmark/parser/resp-parse.bench.cpp)
 qredis_bench(reply-codec benchmark/parser/reply-codec.bench.cpp)
+
+# UNIT -- a command that cannot be serialized leaves no handler and no bytes behind (Huly QB-255).
+qredis_test(unit serialization-failure unit/commands/serialization-failure.cpp EXTRA_LABELS commands)

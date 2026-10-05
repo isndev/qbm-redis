@@ -328,7 +328,7 @@ if (reply.ok()) {
 <!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:187-204 -->
 
 > Three unrelated APIs share the name `reset`/`reset_*` in this module — the protocol parser's `redis<IO_>::reset()` (
-`redis.h:198`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:273`), and this user-facing
+`redis.h:200`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:273`), and this user-facing
 `RESET` command. This page documents only the last one.
 
 ---
