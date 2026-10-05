@@ -18,7 +18,7 @@
 # states which names are taken on trust, by name, rather than letting them pass silently.
 
 llm/qbm-redis.llm.api.md	symbol:qb_load_modules	qb's own CMake function, defined in qb/cmake/qbFunctions.cmake (and re-exported by qb/cmake/qbConfig.cmake).
-llm/qbm-redis.llm.md	symbol:init	`qb::io::async::init()` — qb-io's per-thread loop initialiser, qb/src/qb/io/async/listener.h:1363. The sentence names it as the thing to call once from synchronous code.
+llm/qbm-redis.llm.md	symbol:init	`qb::io::async::init()` — qb-io's per-thread loop initialiser, qb/src/qb/io/async/listener.h:1409. The sentence names it as the thing to call once from synchronous code.
 llm/qbm-redis.llm.md	symbol:run_sync	`qb::io::async::run_sync(...)` — qb-io's synchronous pump, qb/src/qb/io/async/coroutine/utils.h:285. Named in the same sentence, for the same reason.
 
 # The one below is the content rule inferring a citation's subject from the nearest
