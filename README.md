@@ -262,7 +262,7 @@ redis.await();   // drains all three on the current loop
 
 See [readme/pipeline_and_await.md](./readme/pipeline_and_await.md). `RedisPipeline::flush()` is unrelated to the
 `FLUSHDB`/`FLUSHALL` commands.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1030-1040 (command: the handler is queued before the bytes), 1079-1083 (await), 1130-1146 (RedisPipeline: flush is not FLUSHDB), tests/integration/connection/pipeline.cpp:322 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1030-1040 (command: the handler is queued before the bytes), 1079-1083 (await), 1130-1146 (RedisPipeline: flush is not FLUSHDB), tests/integration/connection/pipeline.cpp:345 -->
 
 ---
 

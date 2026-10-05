@@ -1069,11 +1069,11 @@ public:
      *          confuse with coroutine @c co_await — this is explicit draining for
      *          the callback / pipeline API.
      *
-     * @note Uses @c listener::current.run(EVRUN_NOWAIT), not @c async::run().
-     *          Coroutine bodies may call @c await() (e.g. a second client in a
-     *          test); @c async::run rejects that context to forbid nested blocking
-     *          pumps, but a non-blocking loop here only needs libev + same semantics
-     *          as before the guard existed.
+     * @note Uses @c listener::current.run(EVRUN_NOWAIT), not @c async::run(), so a
+     *          coroutine body may call it. There the coroutines a pass makes ready wait
+     *          for that body to yield (qb-io, Huly QB-253) -- the command deadline's
+     *          watcher among them: from a coroutine, @c await() returns on the replies
+     *          or a disconnect, never on @c set_command_timeout().
      */
     Redis &
     await() {

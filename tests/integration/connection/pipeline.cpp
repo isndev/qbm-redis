@@ -283,6 +283,29 @@ TEST_F(PipelineCallbackTest, CoroutineAfterCallbackAwait) {
     run_coro_test_until(completed);
 }
 
+// await() from INSIDE a coroutine body -- readme/pipeline_and_await.md promises it is safe, and it was
+// not in a debug build (Huly QB-253): its listener::current.run(EVRUN_NOWAIT) re-entered the coroutine
+// scheduler's run_ready() and aborted on its assertion. The nested pass now drains the replies and
+// leaves coroutines to the enclosing drain.
+TEST_F(PipelineCallbackTest, AwaitFromInsideACoroutineBody) {
+    bool              completed = false;
+    const std::string key       = unique_prefix() + "awaitincoro";
+
+    auto task = [this, &completed, key]() -> qb::io::async::task<void> {
+        bool set_ok = false;
+        redis.set([&set_ok](qb::redis::Reply<qb::redis::status> &&r) { set_ok = r.ok(); }, key, "in-coro");
+        redis.await(); // the callback drain, from a coroutine body
+        EXPECT_TRUE(set_ok) << "await() must have delivered the reply before returning";
+        EXPECT_EQ(redis.pending_reply_count(), 0u);
+        auto g = co_await redis.get(key);
+        EXPECT_TRUE(g.ok() && g.result().has_value() && *g.result() == "in-coro");
+        completed = true;
+    };
+
+    qb::io::async::coro_scheduler().spawn(task());
+    run_coro_test_until(completed);
+}
+
 TEST_F(PipelineCallbackTest, DisconnectDeliversFailureToPendingCallbacks) {
     std::atomic<int> invocations{0};
     redis.ping([&](qb::redis::Reply<std::string> &&r) {

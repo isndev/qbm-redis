@@ -277,8 +277,10 @@ redis.await();                              // drains pending callbacks (non-blo
 ```
 
 `await()`/`flush()` spin `qb::io::async::listener::current.run(EVRUN_NOWAIT)` —
-call only from the thread that drives this client's I/O. (`RedisPipeline::flush()`
-is unrelated to Redis `FLUSHDB`/`FLUSHALL`.)
+call only from the thread that drives this client's I/O. A coroutine body may call
+them (since 3.3, Huly QB-253), but no coroutine resumes until it yields — the
+`set_command_timeout()` watcher included, so there they return on the replies or a
+disconnect only. (`RedisPipeline::flush()` is unrelated to Redis `FLUSHDB`/`FLUSHALL`.)
 
 ### Generic escape hatch
 

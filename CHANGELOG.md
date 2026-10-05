@@ -24,7 +24,6 @@ All notable changes to the qbm-redis module are documented here. The format is b
   QB-202).** The deadline watcher a command arms is a lazy coroutine: it first runs at the scheduler's next drain, and
   it read the client there before checking that the client was still alive. It now checks first -- and so does the
   auto-reconnect task, which `disconnect()` now spawns from inside the call. Both found under AddressSanitizer.
-
 - **`co_consumer::receive()` ends when the consumer disconnects, and serves the next connection (Huly QB-252).**
   The consumer's `event::disconnected` handler was private and befriended only the base that routes the event, not
   the detector the route goes through, so it never ran: `while (auto msg = co_await consumer.receive())` stayed
@@ -33,6 +32,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
   `receive()` yields what was already received, then `std::nullopt` while the consumer stays disconnected; after a
   reconnect it serves the new connection, starting with what was received and not yet read (subscriptions are not
   replayed).
+- **`await()` from a coroutine body no longer aborts a debug build (Huly QB-253).** Documented as safe -- on a second
+  client, say -- its nested loop pass re-entered the coroutine scheduler. Fixed in qb-io, where a nested pass now
+  leaves the coroutines to the enclosing drain; a test pins it here. `readme/pipeline_and_await.md` now says what a
+  coroutine body gives up: the `set_command_timeout()` watcher is a coroutine too, so there `await()` returns on the
+  replies or a disconnect, never on the deadline.
 
 ### Documentation
 

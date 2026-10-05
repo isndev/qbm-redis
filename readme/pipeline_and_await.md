@@ -116,7 +116,10 @@ redis.await();
   socket.
 - It uses `listener::current.run(EVRUN_NOWAIT)`, **not** `qb::io::async::run()`. That distinction is deliberate:
   `async::run` rejects being called from inside a coroutine body, but a non-blocking drain is safe there, so a coroutine
-  may still call `await()` on a second client (`redis.h:1072-1076`).
+  may still call `await()` on a second client (`redis.h:1072-1076`). Safe since 3.3: that nested pass re-entered the
+  coroutine scheduler and aborted a debug build (Huly QB-253). Now the coroutines it makes ready wait for the calling
+  coroutine to yield — the command deadline's watcher among them, so from a coroutine `await()` returns on the replies
+  or a disconnect, never on `set_command_timeout()`.
 - On **disconnect**, the queue is failed: every pending handler runs with `ok() == false` and
   `error() == "disconnected"` (`reply.h:1234-1237`). If an opt-in command deadline tripped first, the failure reason is
   `"command timed out"` instead (`redis.h:917-933,992-993`). See [error_handling.md](./error_handling.md).
@@ -131,7 +134,7 @@ while (redis.pending_reply_count() > 0)
     qb::io::async::run(EVRUN_NOWAIT);
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:286-303 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:309-326 -->
 
 ### `qb::redis::tcp::pipeline`
 
@@ -162,7 +165,7 @@ pipe
 pipe.flush();  // == client().await(); NOT Redis FLUSHDB/FLUSHALL
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:305-325 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:328-348 -->
 
 Mixing the named wrapper with the client's mixin methods is fine — they share one queue:
 
@@ -173,7 +176,7 @@ pipe.client().get([](qb::redis::Reply<std::optional<std::string>> &&r) { /* ... 
 pipe.flush();  // drains both
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:327-352 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:350-375 -->
 
 ---
 
