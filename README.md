@@ -455,7 +455,7 @@ Linking `qbm::redis` is the supported way to get the `<qbm/redis/...>` headers â
 by `qb_register_module`, so you do not add it by hand. Because the target propagates `cxx_std_${QB_CXX_STANDARD}` as a
 `PUBLIC` usage requirement, linking it forces your target to the framework C++ standard â€” **C++20 by default, C++23
 if `QB_CXX_STANDARD=23`**. The coroutine API (`co_await`) needs at least C++20.
-<!-- src: qb/cmake/qbConfig.cmake:246-247 (C++20 by default, 23 allowed), qb/cmake/qbFunctions.cmake:104 (the standard a target propagates) -->
+<!-- src: qb/cmake/qbConfig.cmake:250-251 (C++20 by default, 23 allowed), qb/cmake/qbFunctions.cmake:104 (the standard a target propagates) -->
 
 Two build-time conditions are worth knowing:
 
