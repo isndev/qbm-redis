@@ -190,6 +190,107 @@ TEST_P(PubSubPipelineTest, PipelinedSubscribeThenUnsubscribeAllResolvesOnZeroFra
     EXPECT_EQ(num_unsub, 0) << "all channels gone after unsubscribe-all";
 }
 
+// RESET clears Redis's subscriptions without closing the connection. The next
+// unsubscribe-all must expect one empty confirmation, not the old channel count.
+// A following subscribe also checks that the confirmation FIFO stays aligned.
+TEST_P(PubSubPipelineTest, ResetThenUnsubscribeAllKeepsConfirmationOwnership) {
+    for (bool pattern : {false, true}) {
+        SCOPED_TRACE(pattern ? "patterns" : "channels");
+        qb::redis::tcp::cb_consumer c{REDIS_URI_PROTOCOL, [](auto &&) {}};
+        ASSERT_TRUE(qb::io::async::run_sync(c.connect()));
+        const auto a    = protocol_key(pattern ? "reset_pat_a*" : "reset_ch_a");
+        const auto b    = protocol_key(pattern ? "reset_pat_b*" : "reset_ch_b");
+        const auto next = protocol_key(pattern ? "reset_pat_next*" : "reset_ch_next");
+
+        bool ready   = false;
+        auto prepare = [&]() -> qb::io::async::task<void> {
+            PROTOCOL_ENSURE_RESP3_CONSUMER(c, ready);
+            if (pattern) {
+                auto subscribed = co_await c.psubscribe(std::vector<std::string>{a, b});
+                EXPECT_TRUE(subscribed.ok()) << subscribed.error();
+            } else {
+                auto subscribed = co_await c.subscribe(std::vector<std::string>{a, b});
+                EXPECT_TRUE(subscribed.ok()) << subscribed.error();
+            }
+            auto reset_reply = co_await c.reset();
+            EXPECT_TRUE(reset_reply.ok()) << reset_reply.error();
+            ready = true;
+        };
+        qb::io::async::coro_scheduler().spawn(prepare());
+        run_coro_test_until(ready);
+        ASSERT_TRUE(ready);
+
+        int                        unsub_calls = 0, sub_calls = 0;
+        bool                       unsub_ok = false, sub_ok = false, complete = false;
+        std::optional<std::string> unsub_channel;
+        auto                       on_unsub = [&](auto &&reply) {
+            ++unsub_calls;
+            unsub_ok = reply.ok();
+            if (reply.ok())
+                unsub_channel = reply.result().channel;
+            complete = unsub_calls == 1 && sub_calls == 1;
+        };
+        auto on_sub = [&](auto &&reply) {
+            ++sub_calls;
+            sub_ok   = reply.ok();
+            complete = unsub_calls == 1 && sub_calls == 1;
+        };
+        if (pattern) {
+            c.punsubscribe(on_unsub, std::string{""});
+            c.psubscribe(on_sub, std::vector<std::string>{next});
+        } else {
+            c.unsubscribe(on_unsub, std::string{""});
+            c.subscribe(on_sub, std::vector<std::string>{next});
+        }
+
+        run_coro_test_until(complete, std::chrono::seconds(2));
+        EXPECT_EQ(unsub_calls, 1);
+        EXPECT_EQ(sub_calls, 1);
+        EXPECT_TRUE(unsub_ok);
+        EXPECT_TRUE(sub_ok);
+        EXPECT_FALSE(unsub_channel.has_value()) << "empty state must not consume the next subscribe confirmation";
+        EXPECT_EQ(c.pending_reply_count(), 0u);
+        c.disconnect();
+    }
+}
+
+// Until RESET answers, its success is unknown. A Pub/Sub call submitted behind
+// that barrier must fail locally rather than predict from the old subscriptions.
+TEST_P(PubSubPipelineTest, ResetPendingRejectsSubscriptionCommandWithoutQueuingIt) {
+    qb::redis::tcp::cb_consumer c{REDIS_URI_PROTOCOL, [](auto &&) {}};
+    ASSERT_TRUE(qb::io::async::run_sync(c.connect()));
+    const auto channel = protocol_key("pending_reset");
+    if (GetParam() == qb::redis::test::ProtocolMode::RESP3) {
+        auto hello = qb::io::async::run_sync(c.hello(3));
+        ASSERT_TRUE(hello.ok()) << hello.error();
+    }
+    auto subscribed = qb::io::async::run_sync(c.subscribe(channel));
+    ASSERT_TRUE(subscribed.ok()) << subscribed.error();
+
+    int reset_calls = 0, rejected_calls = 0;
+    c.reset([&](auto &&reply) {
+        ++reset_calls;
+        EXPECT_TRUE(reply.ok()) << reply.error();
+    });
+    c.unsubscribe(
+        [&](auto &&reply) {
+            ++rejected_calls;
+            EXPECT_FALSE(reply.ok());
+            EXPECT_NE(reply.error().find("RESET pending"), std::string::npos) << reply.error();
+        },
+        std::string{""});
+    EXPECT_EQ(rejected_calls, 1);
+    EXPECT_EQ(c.pending_reply_count(), 1u) << "only RESET may wait for a server reply";
+    c.await();
+    EXPECT_EQ(reset_calls, 1);
+    EXPECT_EQ(c.pending_reply_count(), 0u);
+
+    auto after = qb::io::async::run_sync(c.unsubscribe(""));
+    ASSERT_TRUE(after.ok()) << after.error();
+    EXPECT_EQ(after.result().num, 0);
+    c.disconnect();
+}
+
 // =============== THROWING MESSAGE CALLBACK IS CONTAINED ===============
 //
 // A throwing pub/sub message callback must be contained in the MESSAGE delivery (its

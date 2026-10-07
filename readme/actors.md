@@ -186,11 +186,11 @@ draining it, precisely so a failing handler that re-issues a command does not ge
 
 The coroutine consumer is the exception worth knowing. `receive()` does **not** return a `redis_awaiter`; it awaits a
 `qb::io::async::channel<message>` that the consumer fills from its RESP push frames.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1778-1781 (receive() → co_await current_channel().recv()) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1820-1823 (receive() → co_await current_channel().recv()) -->
 
 A channel `recv()` is still not cancellation-aware — `cancel()` does nothing to it — but it *is* woken by
 `close()`, and the consumer closes the channel in two places: when the connection drops, and in its own destructor.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1736-1740 (on disconnected → _msg_channel->close()), :1783-1785 (destructor closes it) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1778-1782 (on disconnected → _msg_channel->close()), :1825-1827 (destructor closes it) -->
 
 That gives the subscribe loop a clean termination condition with no cancellation machinery at all: the loop ends when
 `receive()` yields `std::nullopt`.
@@ -204,7 +204,7 @@ That gives the subscribe loop a clean termination condition with no cancellation
 > yields what was already received, then `std::nullopt` for as long as the consumer stays disconnected.
 > After a reconnect it serves the new connection, starting with whatever was received and not yet read
 > (re-subscribe yourself: nothing is replayed).
-> <!-- src: qbm/redis/src/qbm/redis/redis.h:733-736 (disconnect()), :1676 (the friend), :1736-1740, :1698-1706 (the next connection's queue) -->
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:733-736 (disconnect()), :1718 (the friend), :1778-1782, :1740-1748 (the next connection's queue) -->
 > A loop that is still parked when the actor is destroyed resumes as part of that destruction —
 > survivable, since `channel::recv_awaiter` carries a `_ch_alive` flag and returns `nullopt` without
 > touching the freed channel, but only if the loop body touches no actor state after the resume.

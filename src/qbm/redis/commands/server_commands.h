@@ -1797,7 +1797,8 @@ public:
     /**
      * @brief Controls whether the server replies to commands (coroutine awaitable)
      *
-     * @param mode Reply mode: "ON", "OFF", or "SKIP"
+     * @param mode Reply mode; "ON" awaits a server reply, while "OFF" and
+     *             "SKIP" fail locally because Redis sends no reply for them.
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/client-reply
      */
@@ -1812,6 +1813,24 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     client_reply(Func &&func, const std::string &mode) {
+        // Redis omits even the OFF/SKIP command's own reply. A Reply<status>
+        // cannot represent local acceptance as a server acknowledgement.
+        auto matches = [&mode](const char *word) {
+            for (size_t i = 0; i < mode.size(); ++i) {
+                if (word[i] == '\0')
+                    return false;
+                char c = mode[i];
+                if (c >= 'a' && c <= 'z')
+                    c = static_cast<char>(c - ('a' - 'A'));
+                if (c != word[i])
+                    return false;
+            }
+            return word[mode.size()] == '\0';
+        };
+        if (matches("OFF") || matches("SKIP")) {
+            std::forward<Func>(func)(Reply<status>{false, {}, nullptr, "CLIENT REPLY OFF/SKIP has no reply in the typed command API"});
+            return derived();
+        }
         return derived().template command<status>(std::forward<Func>(func), "CLIENT", "REPLY", mode);
     }
 

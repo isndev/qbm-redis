@@ -291,7 +291,9 @@ public:
     /**
      * @brief Reset the connection (coroutine awaitable)
      *
-     * Resets the connection to a clean state, discarding any pending data.
+     * Resets the connection to a clean state. On a Pub/Sub consumer, the reply
+     * is a barrier: further subscription commands fail locally until it arrives;
+     * success clears predicted subscriptions before the caller resumes.
      *
      * @return redis_awaiter yielding Reply<status>
      * @see https://redis.io/commands/reset
@@ -312,7 +314,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     reset(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "RESET");
+        if constexpr (requires { derived().reset_session_command(std::forward<Func>(func)); })
+            return derived().reset_session_command(std::forward<Func>(func));
+        else
+            return derived().template command<status>(std::forward<Func>(func), "RESET");
     }
 };
 

@@ -9,6 +9,14 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **`RESET` on a Pub/Sub consumer resets the predicted subscriptions at its reply (Huly QB-641).** A later
+  unsubscribe-all now expects the server's one empty-state confirmation rather than the old channel/pattern count;
+  it cannot consume the next subscription's reply. While RESET is pending, Pub/Sub commands fail locally instead
+  of predicting from an uncertain state. RESP2 and RESP3 integration cases cover both kinds of subscription.
+- **`CLIENT REPLY OFF/SKIP` no longer orphan a typed reply handler (Huly QB-650).** Redis acknowledges neither mode,
+  so the callback/coroutine API now fails locally before sending either command. `ON` still awaits the server's reply;
+  a later command keeps its own FIFO slot. A one-way command API, if added, must distinguish local enqueue from a
+  server acknowledgement.
 - **An exact-capacity RESP reply is consumed once (Huly QB-623).** The input ring now reserves its sentinel
   on an append equal to its storage capacity and wraps the write cursor when an append ends at the physical boundary.
   Previously a 16 KiB reply could be decoded repeatedly without progress; the same stale-data state could follow a

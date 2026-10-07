@@ -319,7 +319,7 @@ need one.
 
 > `reset_transaction_state()` is one of three same-named `reset` surfaces in the client; do not confuse it with the
 > others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:199-202`) and the server-facing `RESET` command
-> in [connection.md](./connection.md) (`connection_commands.h:300-315`). This one only clears the client-side MULTI flag.
+> in [connection.md](./connection.md) (`connection_commands.h:302-320`). This one only clears the client-side MULTI flag.
 
 <!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:267-275, qbm/redis/src/qbm/redis/redis.h:1028 -->
 

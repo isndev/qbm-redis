@@ -103,7 +103,7 @@ auto pol = RetryPolicy{}.with_max_attempts(5).with_initial_delay(200ms).with_max
 ```
 
 ### Transport aliases — `qb::redis::tcp`
-`redis.h:1802` · `struct`. Plaintext-TCP aliases the build always provides:
+`redis.h:1844` · `struct`. Plaintext-TCP aliases the build always provides:
 
 ```cpp
 qb::redis::tcp::client       // detail::Redis<qb::io::transport::tcp>
@@ -112,17 +112,17 @@ qb::redis::tcp::cb_consumer  // detail::RedisCallbackConsumer<...>
 qb::redis::tcp::co_consumer  // detail::RedisCoroConsumer<...>
 template<class D> tcp::consumer = detail::RedisConsumer<..., D>;
 ```
-`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:1814`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
+`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:1856`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
 
-`qb::redis::database<QB_IO_>` (`redis.h:1796`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
-`qb::redis::no_check` (`redis.h:1827`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
+`qb::redis::database<QB_IO_>` (`redis.h:1838`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
+`qb::redis::no_check` (`redis.h:1869`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
 
 ### Pipelining & consumers
 - `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:1177`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
 - `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:1233`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`.
-- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:1565`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing. Ctor: `uri` + optional callbacks.
-- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:1672`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
-  - `receive()` (`redis.h:1779`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives. `nullopt` once the consumer is disconnected and what it had received is read; after a reconnect it serves the new connection (unread messages first; re-subscribe).
+- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:1607`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing. Ctor: `uri` + optional callbacks.
+- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:1714`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
+  - `receive()` (`redis.h:1821`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives. `nullopt` once the consumer is disconnected and what it had received is read; after a reconnect it serves the new connection (unread messages first; re-subscribe).
 
 ```cpp
 auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
@@ -142,7 +142,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 | `quit` | `auto quit()` | QUIT. Reply `status`. | `co_await c.quit();` |
 | `select` | `auto select(long long index)` | SELECT logical DB index. Reply `status`. | `co_await c.select(1);` |
 | `swapdb` | `auto swapdb(long long index1, long long index2)` | SWAPDB two databases. Reply `status`. | `co_await c.swapdb(0,1);` |
-| `reset` | `auto reset()` | RESET connection state. Reply `status`. (Distinct from the protocol-level `redis<IO_>::reset()`.) | `co_await c.reset();` |
+| `reset` | `auto reset()` | RESET connection state. Reply `status`. On a Pub/Sub consumer, success clears predicted channels/patterns before completion; until its reply arrives, subscription commands fail locally (`RESET pending`). Distinct from protocol-level `redis<IO_>::reset()`. | `co_await c.reset();` |
 
 ---
 
@@ -436,7 +436,8 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 | `client_kill` | `auto client_kill(addr="", long long id=0, type="", bool skipme=true)` | CLIENT KILL (default/zero args omitted); always the FILTER form, whose reply is a COUNT. `Reply<long long>` = connections killed | `co_await c.client_kill("",42);` |
 | `client_pause` / `client_unpause` | `auto client_pause(long long timeout, const std::string& mode="ALL"); auto client_unpause()` | CLIENT PAUSE; **timeout = raw long long milliseconds (native, NOT qb::duration)**. `Reply<status>` | `co_await c.client_pause(100);` |
 | `client_unblock` | `auto client_unblock(long long client_id, bool error=false)` | CLIENT UNBLOCK (+ERROR). `Reply<status>` | `co_await c.client_unblock(42);` |
-| `client_tracking` / `client_tracking_info` / `client_caching` / `client_getredir` / `client_no_evict` / `client_no_touch` / `client_reply` / `client_setinfo` / `client_info` / `client_list` | `auto client_tracking(bool enabled=true)` (etc.) | CLIENT subcommands; mostly `Reply<status>`. `client_info`→`std::string`, `client_list`/`client_tracking_info`→`qb::json`, `client_getredir`→`long long`. | `co_await c.client_list();` |
+| `client_tracking` / `client_tracking_info` / `client_caching` / `client_getredir` / `client_no_evict` / `client_no_touch` / `client_setinfo` / `client_info` / `client_list` | `auto client_tracking(bool enabled=true)` (etc.) | CLIENT subcommands; mostly `Reply<status>`. `client_info`→`std::string`, `client_list`/`client_tracking_info`→`qb::json`, `client_getredir`→`long long`. | `co_await c.client_list();` |
+| `client_reply` | `auto client_reply(const std::string& mode)` | `Reply<status>`; `ON` awaits Redis `+OK`. `OFF`/`SKIP` fail locally before send (no server reply exists); callback form has callback first. Raw `command()` does not track no-reply state. | `co_await c.client_reply("ON");` |
 | `config_get` | `auto config_get(const std::string& parameter)` | CONFIG GET. `Reply<std::vector<std::pair<std::string,std::string>>>` | `co_await c.config_get("maxmemory");` |
 | `config_set` / `config_resetstat` / `config_rewrite` | `auto config_set(parameter, value)` (etc.) | CONFIG SET/RESETSTAT/REWRITE. `Reply<status>` | `co_await c.config_set("maxmemory","0");` |
 | `command_info` | `auto command_info(const std::vector<std::string>& command_names={})` | COMMAND INFO. `Reply<std::vector<std::map<std::string,std::string>>>` | `co_await c.command_info({"get"});` |

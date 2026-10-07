@@ -304,10 +304,10 @@ assert(r.ok() && r.result().ok());
 ### `reset` — reset connection state
 
 ```cpp
-// Coroutine — connection_commands.h:300
+// Coroutine — connection_commands.h:302
 auto reset();                                      // -> Reply<status>
 
-// Callback — connection_commands.h:314
+// Callback — connection_commands.h:316
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 reset(Func &&func);
@@ -326,6 +326,17 @@ if (reply.ok()) {
 ```
 
 <!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:187-204 -->
+
+On a Pub/Sub consumer, `RESET` is a **reply-ordered state barrier**. A successful reply clears the client's
+predicted channel and pattern subscriptions before the callback or coroutine resumes; an error leaves the old
+predictions intact. Until that reply arrives, a new `(P)SUBSCRIBE` or `(P)UNSUBSCRIBE` fails locally with `RESET pending`
+instead of guessing how many confirmations the server will send. Await `reset()` before issuing new Pub/Sub commands.
+After success, an unsubscribe-all from the empty state resolves on Redis's single empty-state confirmation; re-authenticate
+if the server requires it, and call `hello(3)` again to regain RESP3. The connection itself remains open. The live
+RESP2/RESP3 tests cover channels, patterns, a pipelined command after the barrier and a command rejected during it.
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1306-1340,1382-1395; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
+
+
 
 > Three unrelated APIs share the name `reset`/`reset_*` in this module — the protocol parser's `redis<IO_>::reset()` (
 `redis.h:200`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:273`), and this user-facing

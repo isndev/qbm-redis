@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:822 (public inheritance), qbm/redis/src/qbm/redis/redis.h:1803 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:822 (public inheritance), qbm/redis/src/qbm/redis/redis.h:1845 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -163,8 +163,11 @@ Notes:
 - `client_tracking(true)` sends `CLIENT TRACKING ON`; `false` sends `OFF`. `client_caching`, `client_no_evict`,
   `client_no_touch` map `true`/`false` to `YES`/`NO` or `ON`/`OFF`
   respectively. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:313-317, 1701-1713, 1762-1795 -->
-- `client_reply`'s `mode` (`ON`/`OFF`/`SKIP`) is passed through
-  unvalidated. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1804-1816 -->
+- `client_reply("ON")` waits for Redis's `+OK`. `"OFF"` and `"SKIP"` fail locally, before a byte is sent, in both
+  callback and coroutine forms: Redis sends **no reply even for the mode command**, so a `Reply<status>` could not
+  complete or prove server acceptance. The generic raw `command()` escape hatch does not manage no-reply mode; do not
+  send these modes through it on a connection used for ordinary replies. A dedicated one-way API would need a distinct
+  local-acceptance result and explicit reply-mode state. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1800-1834 -->
 - `client_list()` yields a `qb::json` **string** holding the raw `CLIENT LIST` text block (one client per line), not a
   parsed array — the payload is line-delimited text, not JSON, so the wrapper boxes it verbatim. Parse the lines
   yourself, or call `client_info()` for the current connection. `client_tracking_info()`, by contrast, is a RESP map and
@@ -221,7 +224,7 @@ redis.monitor([](qb::redis::Reply<std::string> &&line) {
 array into pairs for you. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:362-393 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:145-188 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:189-232 -->
 qb::io::async::task<void> config(qb::redis::tcp::client &redis) {
     auto cur = co_await redis.config_get("maxmemory");   // Reply<vector<pair<string,string>>>
     if (cur && !cur.result().empty()) {
@@ -251,7 +254,7 @@ See the [`COMMAND` named-overload note](#commands-named-overload-actually-issues
 with a non-empty vector returns `COMMAND INFO` data.
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:252-292,295-324 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:296-336,339-368 -->
 qb::io::async::task<void> introspect(qb::redis::tcp::client &redis) {
     auto n = co_await redis.command_count();          // Reply<long long>
     qb::io::cout() << "command count: " << n.result() << std::endl;
@@ -331,7 +334,7 @@ qb::io::async::task<void> slowlog(qb::redis::tcp::client &redis) {
 `debug_segfault` **crashes the server** — it exists for fault-injection testing only.
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:334-366 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:378-410 -->
 qb::io::async::task<void> debug(qb::redis::tcp::client &redis) {
     // qb::duration accepts any std::chrono unit.
     auto r = co_await redis.debug_sleep(std::chrono::milliseconds(10));  // Reply<status>
@@ -454,8 +457,9 @@ qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
 - **`monitor` never resolves.** It is callback-only and streams indefinitely; do not `co_await` it (there is no awaiter
   overload) and do not run it on a shared command connection.
 - **Destructive admin has no guard rails.** `flushall`, `flushdb`, `shutdown`, `debug_segfault`, `config_set`, and the
-  replication commands all do exactly what they say with no confirmation. The wrappers do not validate subcommand
-  strings (`client_reply` mode, `client_kill` type, `shutdown` save-option) — invalid values fail only on the server.
+  replication commands all do exactly what they say with no confirmation. Most wrappers do not validate subcommand
+  strings (`client_kill` type, `shutdown` save-option) — invalid values fail only on the server. The typed
+  `client_reply` wrapper rejects no-reply modes locally, as explained above.
   Restrict these with ACLs (see [acl_commands.md](./acl_commands.md)).
 - **`memory_info` is not reachable here.** The header carries a private INFO-to-`memory_info` parser and a `memory_info`
   struct, but no public command in this group exposes them — `info()` returns `qb::json`. Do not write code against

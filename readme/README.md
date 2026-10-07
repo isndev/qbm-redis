@@ -67,7 +67,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
 ## TLS and time
 
 - **TLS** — there is no redis-specific SSL option. Transport security follows the framework-wide `QB_HAS_SSL` (derived
-  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:1813-1819`); with it
+  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:1855-1861`); with it
   off, the build emits a status note and only cleartext TCP is available. For `rediss://`, certificate and hostname
   verification is on by default; `set_verify_peer(false)` disables it and must be set before `connect()`.
 - **Time — framework side.** Connect and command timeouts and the `RetryPolicy` delays are `qb::duration`. Defaults:
@@ -168,7 +168,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 ## Pitfalls
 
 - **Auto-reconnect does not replay work.** On disconnect, all pending replies fail and predicted subscription state is
-  cleared. After a reconnect you must re-subscribe and re-issue any in-flight commands yourself (`redis.h:998-1013,1499-1517`).
+  cleared. After a reconnect you must re-subscribe and re-issue any in-flight commands yourself (`redis.h:998-1013,1544-1545,1547-1559`).
 - **`set_command_timeout` drops the connection.** It is a health watchdog, not a per-command deadline: because FIFO
   pipelining cannot fail one mid-queue command without desyncing later replies, tripping the deadline disconnects and
   fails every pending command (`redis.h:948-964,998-1013`).

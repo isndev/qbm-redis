@@ -139,6 +139,50 @@ TEST_P(ServerAdminTest, ClientToggleAndPauseVerbs) {
     run_coro_test_until(completed);
 }
 
+// The typed Reply<status> API cannot await a server reply for OFF or SKIP:
+// Redis emits none. Reject locally before either mode reaches the connection,
+// then prove a following command still receives its own reply.
+TEST_P(ServerAdminTest, ClientReplyNoResponseModesRejectWithoutDesync) {
+    for (const std::string mode : {"OFF", "sKiP"}) {
+        SCOPED_TRACE(mode);
+        qb::redis::tcp::client candidate{qb::redis::test::redis_test_uri()};
+        ASSERT_TRUE(qb::io::async::run_sync(candidate.connect()));
+        if (GetParam() == ProtocolMode::RESP3) {
+            auto hello = qb::io::async::run_sync(candidate.hello(3));
+            ASSERT_TRUE(hello.ok()) << hello.error();
+        }
+
+        int         calls = 0;
+        std::string error;
+        candidate.client_reply(
+            [&](auto &&reply) {
+                ++calls;
+                if (!reply.ok())
+                    error = reply.error();
+            },
+            mode);
+        if (calls != 1) {
+            candidate.disconnect(); // the base implementation queued a reply Redis cannot send
+            ADD_FAILURE() << "CLIENT REPLY " << mode << " did not reject synchronously";
+            continue;
+        }
+        EXPECT_NE(error.find("no reply"), std::string::npos) << error;
+        EXPECT_EQ(candidate.pending_reply_count(), 0u);
+        auto echo = qb::io::async::run_sync(candidate.echo("still-aligned"));
+        ASSERT_TRUE(echo.ok()) << echo.error();
+        EXPECT_EQ(echo.result(), "still-aligned");
+
+        auto awaited = qb::io::async::run_sync(candidate.client_reply(mode));
+        EXPECT_FALSE(awaited.ok());
+        EXPECT_NE(awaited.error().find("no reply"), std::string::npos) << awaited.error();
+        EXPECT_EQ(candidate.pending_reply_count(), 0u);
+        auto next = qb::io::async::run_sync(candidate.echo("coroutine-aligned"));
+        ASSERT_TRUE(next.ok()) << next.error();
+        EXPECT_EQ(next.result(), "coroutine-aligned");
+        candidate.disconnect();
+    }
+}
+
 // =============== CONFIGURATION ===============
 
 // config_set must be observable through config_get (round-trip on a safe, restorable param).

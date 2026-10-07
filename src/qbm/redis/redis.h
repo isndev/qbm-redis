@@ -1288,6 +1288,7 @@ private:
     /// with no argument) is exact even when pipelined behind pending subscribes.
     qb::unordered_flat_set<std::string> _pred_channels;
     qb::unordered_flat_set<std::string> _pred_patterns;
+    bool                                _reset_pending = false;
 
     template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
@@ -1300,6 +1301,42 @@ private:
         }
         _replies.push(PendingReply{std::move(handler), 1});
         return derived();
+    }
+
+    // RESET is a reply-ordered barrier for Pub/Sub state. Do not infer its
+    // outcome at send time: after an error the old subscriptions still exist.
+    // Until its reply arrives, later Pub/Sub commands have no reliable count.
+    template <typename Func>
+    struct ResetCompletion {
+        RedisConsumer *owner;
+        Func           callback; // retains lvalue references and owns rvalue callbacks
+
+        void
+        operator()(Reply<status> &&reply) {
+            owner->_reset_pending = false;
+            if (reply.ok()) {
+                owner->_pred_channels.clear();
+                owner->_pred_patterns.clear();
+            }
+            callback(std::move(reply));
+        }
+    };
+
+    template <typename Func>
+    Derived &
+    reset_session_command(Func &&func) {
+        if (_reset_pending) {
+            std::forward<Func>(func)(Reply<status>{false, {}, nullptr, "RESET already pending"});
+            return derived();
+        }
+        auto completion = ResetCompletion<Func>{this, std::forward<Func>(func)};
+        _reset_pending  = true;
+        try {
+            return command<status>(std::move(completion), "RESET");
+        } catch (...) {
+            _reset_pending = false;
+            throw;
+        }
     }
 
     /**
@@ -1344,6 +1381,10 @@ private:
     Derived &
     pubsub_command(Func &&func, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
         auto handler = std::make_unique<TReply<Func, qb::redis::subscription>>(std::forward<Func>(func));
+        if (_reset_pending) {
+            handler->fail("RESET pending; await its reply before Pub/Sub commands");
+            return derived();
+        }
         // Serialized first, the prediction advanced only for a command that will reach the server (Huly QB-255).
         if (auto error = names.empty() ? this->try_put_command(cmd) : this->try_put_command(cmd, names)) {
             handler->fail(*error);
@@ -1502,6 +1543,7 @@ private:
         // Predicted subscription state is meaningless across a reconnect.
         _pred_channels.clear();
         _pred_patterns.clear();
+        _reset_pending = false;
         while (!_replies.empty()) {
             auto handler = std::move(_replies.front().handler);
             _replies.pop();

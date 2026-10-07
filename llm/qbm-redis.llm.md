@@ -39,7 +39,8 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    `XREADGROUP`) suspend that deadline while in flight.
 4. **Auto-reconnect replays nothing.** On a disconnect every pending reply fails and predicted
    subscription state clears; re-subscribe and re-issue yourself. `reset()` does not
-   re-establish subscriptions either.
+   re-establish subscriptions either: on a consumer its successful reply clears the predicted
+   sets before resuming, and new Pub/Sub commands fail locally while RESET is pending.
 5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
    `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
    resolve with `ok() == false` and a reason in `error()`. **There is no silent no-op left** —
