@@ -254,6 +254,66 @@ TEST_F(InputBufferTest, FullThenDrainNotMistakenEmpty) {
     EXPECT_EQ(buf.size(), 0u);
 }
 
+// A legal append may land exactly on the physical end even with free space
+// before the read cursor. Its write cursor must wrap before the final consume.
+TEST_F(InputBufferTest, AppendEndingAtPhysicalEndRemainsDrainable) {
+    InputBuffer       buf(8);
+    const std::string first = "ABCDEFG";
+    ASSERT_TRUE(buf.append(as_span(first)));
+    buf.consume(6); // "G" remains at index 6, write cursor at 7
+    const std::string tail = "H";
+    ASSERT_TRUE(buf.append(as_span(tail))); // lands at index 7
+    EXPECT_EQ(buf.size(), 2u);
+
+    auto all = buf.extract_bytes(2);
+    ASSERT_TRUE(all.has_value());
+    EXPECT_EQ(*all, "GH");
+    EXPECT_TRUE(buf.empty());
+}
+
+// Appending exactly the physical capacity must reserve a sentinel byte; otherwise
+// consume() wraps the read cursor to zero while the write cursor stays at capacity.
+TEST_F(InputBufferTest, ExactCapacityAppendRemainsDrainable) {
+    for (size_t cap : {size_t{8}, InputBuffer::DEFAULT_CAPACITY}) {
+        SCOPED_TRACE(cap);
+        InputBuffer buf(cap);
+        std::string data(cap, 'q');
+        ASSERT_TRUE(buf.append(as_span(data)));
+        EXPECT_GT(buf.capacity(), cap);
+        EXPECT_EQ(buf.size(), cap);
+
+        auto all = buf.extract_bytes(cap);
+        ASSERT_TRUE(all.has_value());
+        EXPECT_EQ(*all, data);
+        EXPECT_TRUE(buf.empty());
+        EXPECT_EQ(buf.size(), 0u);
+    }
+}
+
+TEST_F(InputBufferTest, FragmentedExactCapacityAppendRemainsDrainable) {
+    InputBuffer       buf(8);
+    const std::string first(3, 'a');
+    const std::string second(5, 'b');
+    ASSERT_TRUE(buf.append(as_span(first)));
+    ASSERT_TRUE(buf.append(as_span(second)));
+    EXPECT_EQ(buf.size(), 8u);
+
+    auto all = buf.extract_bytes(8);
+    ASSERT_TRUE(all.has_value());
+    EXPECT_EQ(*all, first + second);
+    EXPECT_TRUE(buf.empty());
+}
+
+TEST_F(InputBufferTest, ZeroInitialCapacityStillKeepsSentinel) {
+    InputBuffer       buf(0);
+    const std::string data = "x";
+    ASSERT_TRUE(buf.append(as_span(data)));
+    auto all = buf.extract_bytes(1);
+    ASSERT_TRUE(all.has_value());
+    EXPECT_EQ(*all, data);
+    EXPECT_TRUE(buf.empty());
+}
+
 TEST_F(InputBufferTest, ResetKeepsCapacity) {
     InputBuffer buf(128);
     std::string data = "payload";

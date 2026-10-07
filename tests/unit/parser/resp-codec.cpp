@@ -1134,6 +1134,48 @@ TEST(ParserHardening, OnlyMinusOneIsNull) {
     EXPECT_EQ(parse(">-3\r\n", config).error().code(), ParseErrorCode::INVALID_LENGTH);
 }
 
+// Wire size 16384 is the default InputBuffer capacity: one decoded value must
+// disappear from the parser just as its 16383/16385-byte neighbours do.
+TEST(ParserHardening, ExactBufferCapacityBulkConsumedOnce) {
+    for (size_t payload_size : {size_t{16373}, size_t{16374}, size_t{16375}}) {
+        std::string payload(payload_size, 'x');
+        std::string wire = "$" + std::to_string(payload_size) + "\r\n" + payload + "\r\n";
+        SCOPED_TRACE(wire.size());
+        RespParser parser;
+        ASSERT_TRUE(parser.feed(wire));
+
+        auto first = parser.parse();
+        ASSERT_TRUE(first.has_value());
+        EXPECT_EQ(first->as_bulk_string().value, payload);
+        auto second = parser.parse();
+        ASSERT_FALSE(second.has_value());
+        EXPECT_EQ(second.error().code(), ParseErrorCode::INCOMPLETE_DATA);
+    }
+}
+
+TEST(ParserHardening, ParseAllExactCapacityCompleteAndFragmented) {
+    const std::string payload(16374, 'y');
+    const std::string wire = "$16374\r\n" + payload + "\r\n";
+    ASSERT_EQ(wire.size(), InputBuffer::DEFAULT_CAPACITY);
+    for (bool fragmented : {false, true}) {
+        SCOPED_TRACE(fragmented);
+        RespParser parser;
+        if (fragmented) {
+            ASSERT_TRUE(parser.feed(std::string_view(wire).substr(0, 4096)));
+            EXPECT_TRUE(parser.parse_all().empty());
+            ASSERT_TRUE(parser.feed(std::string_view(wire).substr(4096, 4096)));
+            EXPECT_TRUE(parser.parse_all().empty());
+            ASSERT_TRUE(parser.feed(std::string_view(wire).substr(8192)));
+        } else {
+            ASSERT_TRUE(parser.feed(wire));
+        }
+        auto values = parser.parse_all();
+        ASSERT_EQ(values.size(), 1u);
+        EXPECT_EQ(values[0].as_bulk_string().value, payload);
+        EXPECT_TRUE(parser.parse_all().empty());
+    }
+}
+
 TEST(ParserHardening, ParseAllFaultsOnCorruptTopLevelByte) {
     RespParser parser;
     EXPECT_TRUE(parser.feed("@garbage\r\n")); // '@' is not a valid prefix

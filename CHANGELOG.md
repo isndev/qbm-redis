@@ -9,6 +9,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **An exact-capacity RESP reply is consumed once (Huly QB-623).** The input ring now reserves its sentinel
+  on an append equal to its storage capacity and wraps the write cursor when an append ends at the physical boundary.
+  Previously a 16 KiB reply could be decoded repeatedly without progress; the same stale-data state could follow a
+  partial read near the end of a smaller ring. Unit controls cover exact/neighbor sizes, fragmented input and a
+  complete parser drain.
 - **A reconnection no longer carries anything of the connection that dropped (Huly QB-202).** The connector failed
   every pending handler on a disconnect but left the bytes of the commands not yet flushed in its output buffer: they
   went out first on the next connection, and their replies were handed to whichever commands were then first in line

@@ -59,10 +59,11 @@ public:
     /**
      * @brief Construct a buffer with the given initial storage capacity.
      * @param initial_capacity Number of bytes to pre-allocate
-     *                         (defaults to @ref DEFAULT_CAPACITY).
+     *                         (defaults to @ref DEFAULT_CAPACITY; zero uses one byte
+     *                         so the ring always has storage for its sentinel).
      */
     explicit InputBuffer(size_t initial_capacity = DEFAULT_CAPACITY)
-        : _buffer(initial_capacity)
+        : _buffer(std::max<size_t>(initial_capacity, 1))
         , _read_pos(0)
         , _write_pos(0) {}
 
@@ -112,12 +113,12 @@ public:
     }
 
     /**
-     * @brief Free space available for appending without growing storage.
-     * @return Number of bytes that can be appended before a resize is needed.
+     * @brief Usable space for appending without growing storage.
+     * @return Free bytes excluding the ring's reserved sentinel slot.
      */
     [[nodiscard]] size_t
     available() const noexcept {
-        return capacity() - size();
+        return capacity() - size() - 1;
     }
 
     /**
@@ -146,13 +147,12 @@ public:
             // Fits without wrapping
             std::memcpy(_buffer.data() + _write_pos, data.data(), data.size());
             _write_pos += data.size();
-            // IMPORTANT: do NOT wrap `_write_pos` to 0 when it reaches `cap`.
-            // A ring buffer where `_write_pos == _read_pos` is indistinguishable
-            // from an empty one, so wrapping here makes a buffer that is
-            // exactly full look empty to `size()` / `empty()` / `readable_span()`.
-            // `ensure_space()` now reserves an extra sentinel slot so
-            // `_write_pos < cap` after every successful append; we only wrap
-            // below (split branch) when the data legitimately crosses the end.
+            // An append may end exactly at the physical boundary with readable
+            // bytes still ahead of the read cursor. Wrap the cursor now so a
+            // later consume() can reach it. The reserved sentinel means the
+            // wrapped cursor cannot equal _read_pos while data remains.
+            if (_write_pos == cap)
+                _write_pos = 0;
         } else {
             // Split across the end of the physical buffer
             std::memcpy(_buffer.data() + _write_pos, data.data(), space);
