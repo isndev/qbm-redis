@@ -23,15 +23,15 @@ how the command surface is organized.
 ### Where the methods come from
 
 The client class composes a stack of CRTP mixins, one per Redis command group. `qb::redis::tcp::client` is an alias for
-`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:1845`), and that class inherits — in this order — from
+`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:1847`), and that class inherits — in this order — from
 `connection_commands`, `server_commands`, `key_commands`, `string_commands`, `list_commands`, `hash_commands`,
 `set_commands`, `sorted_set_commands`, `hyperloglog_commands`, `geo_commands`, `scripting_commands`, `publish_commands`,
 `stream_commands`, `bitmap_commands`, `transaction_commands`, `cluster_commands`, `acl_commands`, `module_commands`, and
-`function_commands` (`redis.h:819-839`). Each mixin is a `template <typename Derived>` that injects its command methods
+`function_commands` (`redis.h:821-841`). Each mixin is a `template <typename Derived>` that injects its command methods
 and routes I/O through `static_cast<Derived&>(*this)` — they are never instantiated standalone. The practical
 consequence: every Redis command appears as a flat method on the client, regardless of which group header defines it.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:819-839 (Redis<QB_IO_> base list) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:821-841 (Redis<QB_IO_> base list) -->
 
 For commands that are not yet wrapped (or that you want to issue by name), the client exposes a generic dispatcher:
 
@@ -47,7 +47,7 @@ Both forms end in the same place. The callback form serializes the command name 
 then pushes one reply handler onto a FIFO queue:
 
 ```cpp
-// redis.h:1054-1069 — the callback dispatcher, simplified
+// redis.h:1056-1071 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);
@@ -79,7 +79,7 @@ sequenceDiagram
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
-resumes your coroutine when the reply lands (`redis.h:1148-1152`, `redis.h:772-782`).
+resumes your coroutine when the reply lands (`redis.h:1150-1154`, `redis.h:773-784`).
 
 ### The reply type: `qb::redis::Reply<T>`
 

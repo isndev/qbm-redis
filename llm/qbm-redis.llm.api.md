@@ -43,7 +43,7 @@ The Redis command argument units (EXPIRE seconds vs PEXPIRE milliseconds) are a 
 ## Client, transport, retry
 
 ### `qb::redis::detail::Redis<QB_IO_>` — the client
-`redis.h:819` · `class template`. Full client inheriting `connector` + all `*_commands` mixins. Callback + coroutine command APIs, callback pipelining, `await()` drain, opt-in command-deadline watchdog. **Not thread-safe** (single I/O thread/strand).
+`redis.h:821` · `class template`. Full client inheriting `connector` + all `*_commands` mixins. Callback + coroutine command APIs, callback pipelining, `await()` drain, opt-in command-deadline watchdog. **Not thread-safe** (single I/O thread/strand).
 
 ```cpp
 Redis<QB_IO_>();
@@ -103,7 +103,7 @@ auto pol = RetryPolicy{}.with_max_attempts(5).with_initial_delay(200ms).with_max
 ```
 
 ### Transport aliases — `qb::redis::tcp`
-`redis.h:1844` · `struct`. Plaintext-TCP aliases the build always provides:
+`redis.h:1846` · `struct`. Plaintext-TCP aliases the build always provides:
 
 ```cpp
 qb::redis::tcp::client       // detail::Redis<qb::io::transport::tcp>
@@ -112,17 +112,17 @@ qb::redis::tcp::cb_consumer  // detail::RedisCallbackConsumer<...>
 qb::redis::tcp::co_consumer  // detail::RedisCoroConsumer<...>
 template<class D> tcp::consumer = detail::RedisConsumer<..., D>;
 ```
-`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:1856`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
+`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:1858`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
 
-`qb::redis::database<QB_IO_>` (`redis.h:1838`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
-`qb::redis::no_check` (`redis.h:1869`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
+`qb::redis::database<QB_IO_>` (`redis.h:1840`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
+`qb::redis::no_check` (`redis.h:1871`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
 
 ### Pipelining & consumers
-- `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:1177`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
-- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:1233`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`.
-- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:1607`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing. Ctor: `uri` + optional callbacks.
-- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:1714`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
-  - `receive()` (`redis.h:1821`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives. `nullopt` once the consumer is disconnected and what it had received is read; after a reconnect it serves the new connection (unread messages first; re-subscribe).
+- `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:1179`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
+- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:1235`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`.
+- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:1609`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing. Ctor: `uri` + optional callbacks.
+- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:1716`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
+  - `receive()` (`redis.h:1823`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives. `nullopt` once the consumer is disconnected and what it had received is read; after a reconnect it serves the new connection (unread messages first; re-subscribe).
 
 ```cpp
 auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
@@ -612,5 +612,5 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:62`; `what()` vali
 ## Protocol & parser (advanced)
 
 - `qb::protocol::redis<IO_>` (`redis.h:84-85`) · `class template : qb::io::async::AProtocol<IO_>` — native RESP2/RESP3 protocol attached to a qb-io session (CRTP). RESP3, `max_nesting_depth=64`, `max_bulk_size=512MiB`, `max_array_size=1,000,000`. `message{std::unique_ptr<parser::Value> reply}` (`redis.h:99-101`) — one parsed reply (ownership moved into `on(message)`).
-- `qb::redis::redis_awaiter<T,Operation>` (`redis.h:752`) — coroutine awaiter yielding `Reply<T>`; guards resume with a `shared_ptr<bool>` so a reply arriving after the awaiter is destroyed no-ops. `make_redis_awaiter<T>(Func&&)` (`redis.h:793`) builds one from a callback op.
+- `qb::redis::redis_awaiter<T,Operation>` (`redis.h:753`) — coroutine awaiter yielding `Reply<T>`; guards resume with a `shared_ptr<bool>` so a reply arriving after the awaiter is destroyed no-ops. `make_redis_awaiter<T>(Func&&)` (`redis.h:795`) builds one from a callback op.
 - `qb::redis::parser` namespace (`src/qbm/redis/parser/types.h`): `Value : ValueBase` (`src/qbm/redis/parser/types.h:453`) — variant of all 15 RESP node types (`Null/SimpleString/SimpleError/Integer/BulkString/Array/Boolean/Double/BigNumber/BulkError/VerbatimString/Map/Attribute/Set/Push`) with `is_*`/`as_*`/`to_*` helpers; `ProtocolVersion{RESP2=2,RESP3=3}` (`parser/types.h:43`); `ParseErrorCode` (`parser/types.h:50`) / `ParseError` (`parser/types.h:66`) / `ParseResult<T> = expected<T,ParseError>` (`parser/types.h:119`); `type_id::*` first-byte prefix constants (`parser/types.h:136`); `is_valid_type_prefix` / `is_resp3_type` / `is_aggregate_type`.

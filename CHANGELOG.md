@@ -7,6 +7,16 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- **A coroutine parked on Redis says so in qb's `CoroutineScheduler::dump()` (Huly QB-71).** `redis_awaiter` (every
+  command) and `connect_awaiter` begin their `await_suspend` with `qb::io::async::track_suspension(h, ...)`: with
+  suspension tracking on, the dump shows the coroutine waiting on `"redis"` or `"redis connect"`, for how long. An
+  awaiter without the call would leave the coroutine with the record of its previous wait, ageing. Off -- the default
+  -- the call is one predictable branch. Pinned by `THE_DUMP_SAYS_A_COROUTINE_WAITS_ON_A_CONNECT_THEN_A_COMMAND` in
+  `tests/integration/connection/connection-commands.cpp`; qb's `scripts/check-awaiter-tracking.py`, run over this
+  module from the superproject, refuses an awaiter without it.
+
 ### Fixed
 
 - **`RESET` on a Pub/Sub consumer resets the predicted subscriptions at its reply (Huly QB-641).** A later
