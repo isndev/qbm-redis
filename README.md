@@ -346,7 +346,7 @@ qb::io::async::task<void> notifications() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1821-1823 (RedisCoroConsumer::receive), 1712-1715 (the disconnected handler that closes the channel), 1673-1681 (the next connection's queue) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1821-1823 (RedisCoroConsumer::receive), 1779-1782 (the disconnected handler that closes the channel), 1739-1748 (the next connection's queue) -->
 
 ---
 

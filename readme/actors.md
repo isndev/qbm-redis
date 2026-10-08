@@ -205,10 +205,11 @@ That gives the subscribe loop a clean termination condition with no cancellation
 > After a reconnect it serves the new connection, starting with whatever was received and not yet read
 > (re-subscribe yourself: nothing is replayed).
 > <!-- src: qbm/redis/src/qbm/redis/redis.h:733-736 (disconnect()), :1718 (the friend), :1778-1782, :1740-1748 (the next connection's queue) -->
-> A loop that is still parked when the actor is destroyed resumes as part of that destruction —
-> survivable, since `channel::recv_awaiter` carries a `_ch_alive` flag and returns `nullopt` without
-> touching the freed channel, but only if the loop body touches no actor state after the resume.
-> Capture everything it reads by value, before the first `co_await`.
+> `disconnect()` closes the channel before it returns; the parked loop resumes on a later
+> scheduler pass. The actor may be reaped before that pass, so the loop body must touch no
+> actor state after the resume. Capture everything it reads by value before the first
+> `co_await`. In the example below, the frame's copied `shared_ptr` keeps the consumer alive;
+> its destructor cannot be the event that wakes this loop.
 
 ```cpp
 // A pub/sub actor. The consume loop is scoped to the actor, and ended by disconnect().
@@ -248,20 +249,21 @@ public:
 
     void on(qb::KillEvent const &) {
         if (_sub)
-            _sub->disconnect();   // drops the link; does NOT end the loop — see below
-        kill();                   // ~co_consumer closes the channel; THAT ends the loop
+            _sub->disconnect();   // closes the channel; receive() drains, then yields nullopt
+        kill();                   // actor reap may precede the loop's scheduled resume
     }
 };
 ```
 
 <!-- src: examples/07-applications/02-auction-house/src/actors/websocket_handler.cpp:55-67 (the same consume_loop shape) -->
 
-The `disconnect()` is good hygiene, not the termination mechanism: measured, the loop is still parked when it returns,
-and it is the consumer's destructor — run during `kill()`'s reap — that closes the channel and resumes it. Which means
-the loop's tail executes on an actor that is already gone. Nothing waits for a coroutine, so that ordering cannot be
-avoided; what makes it correct is the capture list. `examples/06-modules/redis/04-pubsub.cpp:257` is the
-worked case: it captures `[this, name = _name, coordinator = _coordinator_id]` — `this` only for the consumer the loop
-awaits — and reading `_name` through `this` instead was a `heap-use-after-free` AddressSanitizer reported on every run.
+`disconnect()` is the termination mechanism: it closes the channel in the call, then the scheduler resumes the parked
+`receive()` on a later pass. Buffered messages arrive first, followed by `std::nullopt`. The actor may already have
+been reaped when the loop resumes, so the capture list is essential. The copied `shared_ptr` keeps the consumer alive
+until the loop frame releases it; waiting for `~co_consumer` to close the channel would leave that frame parked.
+`examples/06-modules/redis/04-pubsub.cpp:257` shows the same rule: it captures
+`[this, name = _name, coordinator = _coordinator_id]` — `this` only for the consumer the loop awaits — and reading
+`_name` through `this` instead was a `heap-use-after-free` AddressSanitizer reported on every run.
 
 ### Making a command interruptible
 
@@ -394,14 +396,14 @@ owns that mechanism and the two annotated call chains that make it concrete.
 
 Order matters, because the coroutines outlive the handler that started them:
 
-1. **`disconnect()` first**, on every client and consumer the actor owns. It fails every pending reply, so each parked
-   command `co_await` resumes with a failed `Reply<T>` on the next pass. It does **not** close a `co_consumer`'s
-   pub/sub channel — measured, a parked `receive()` is still parked two seconds later — so a subscribe loop resumes at
-   step 3 instead, on an actor that no longer exists. Write that loop so it survives it: capture by value.
+1. **`disconnect()` first**, on every client and consumer the actor owns. It fails every pending reply and closes a
+   `co_consumer`'s pub/sub channel in the call. Parked commands and `receive()` resume on a later scheduler pass;
+   `receive()` drains buffered messages before yielding `std::nullopt`. That pass may follow actor reap, so capture
+   values the loop needs before its first `co_await`.
 2. **`kill()` second.** It cancels the actor's scope, which reaches anything parked on a framework awaiter or inside a
    `ctx.cancellable(...)` wrapper.
-3. **The destructor runs later**, at the core's reap. `has_active_coroutines()` reports what is still outstanding if
-   you want to look first.
+3. **The actor destructor runs later**, at the core's reap. A consumer copied into a coroutine frame lives until that
+   frame releases its copy. `has_active_coroutines()` reports what is still outstanding if you want to look first.
 
 Skipping step 1 is the common mistake, and for a subscribe loop it is unbounded: `receive()` is woken by a message or a
 close and by nothing else, so a killed actor whose consumer is still connected leaves that coroutine parked until the
