@@ -205,11 +205,12 @@ That gives the subscribe loop a clean termination condition with no cancellation
 > After a reconnect it serves the new connection, starting with whatever was received and not yet read
 > (re-subscribe yourself: nothing is replayed).
 > <!-- src: qbm/redis/src/qbm/redis/redis.h:733-736 (disconnect()), :1718 (the friend), :1778-1782, :1740-1748 (the next connection's queue) -->
-> `disconnect()` closes the channel before it returns; the parked loop resumes on a later
-> scheduler pass. The actor may be reaped before that pass, so the loop body must touch no
-> actor state after the resume. Capture everything it reads by value before the first
-> `co_await`. In the example below, the frame's copied `shared_ptr` keeps the consumer alive;
-> its destructor cannot be the event that wakes this loop.
+> In the ordinary actor handler below, `disconnect()` closes the channel before it returns.
+> If called from this consumer's own message callback, teardown waits until that callback
+> returns; no nested loop pass runs. The parked loop resumes on a later scheduler pass.
+> The actor may be reaped first, so capture everything read after `co_await` by value.
+> In the example below, the frame's copied `shared_ptr` keeps the consumer alive; its
+> destructor cannot be the event that wakes this loop.
 
 ```cpp
 // A pub/sub actor. The consume loop is scoped to the actor, and ended by disconnect().
@@ -257,10 +258,11 @@ public:
 
 <!-- src: examples/07-applications/02-auction-house/src/actors/websocket_handler.cpp:55-67 (the same consume_loop shape) -->
 
-`disconnect()` is the termination mechanism: it closes the channel in the call, then the scheduler resumes the parked
-`receive()` on a later pass. Buffered messages arrive first, followed by `std::nullopt`. The actor may already have
-been reaped when the loop resumes, so the capture list is essential. The copied `shared_ptr` keeps the consumer alive
-until the loop frame releases it; waiting for `~co_consumer` to close the channel would leave that frame parked.
+In this `KillEvent` handler, `disconnect()` is the termination mechanism: it closes the channel in the call, then the
+scheduler resumes the parked `receive()` on a later pass. Buffered messages arrive first, followed by `std::nullopt`.
+The actor may already have been reaped when the loop resumes, so the capture list is essential. The copied
+`shared_ptr` keeps the consumer alive until the loop frame releases it; waiting for `~co_consumer` to close the
+channel would leave that frame parked.
 `examples/06-modules/redis/04-pubsub.cpp:257` shows the same rule: it captures
 `[this, name = _name, coordinator = _coordinator_id]` — `this` only for the consumer the loop awaits — and reading
 `_name` through `this` instead was a `heap-use-after-free` AddressSanitizer reported on every run.
@@ -394,7 +396,8 @@ owns that mechanism and the two annotated call chains that make it concrete.
 
 ## Shutting down
 
-Order matters, because the coroutines outlive the handler that started them:
+Order matters in an ordinary actor shutdown handler, outside the consumer's own message callback, because the
+coroutines outlive the handler that started them:
 
 1. **`disconnect()` first**, on every client and consumer the actor owns. It fails every pending reply and closes a
    `co_consumer`'s pub/sub channel in the call. Parked commands and `receive()` resume on a later scheduler pass;
