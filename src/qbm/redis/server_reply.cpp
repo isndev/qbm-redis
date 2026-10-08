@@ -10,121 +10,141 @@
 #include "server_reply.h"
 #include <qb/system/parse.h>
 
-namespace qb::redis {
+namespace qb::redis::detail {
 
-expected<std::string, std::string>
-extract_string(const parser::Value &value) {
-    if (value.is_null())
-        return unexpected("null value");
-    if (!value.is_string())
-        return unexpected("not a string");
-    return std::string(value.as_string_view());
+bool
+extract_string_value(const parser::Value &input, std::string &value, std::string &error) {
+    if (input.is_null()) {
+        error = "null value";
+        return false;
+    }
+    if (!input.is_string()) {
+        error = "not a string";
+        return false;
+    }
+    value = input.as_string_view();
+    return true;
 }
 
-expected<int64_t, std::string>
-extract_integer(const parser::Value &value) {
-    if (value.is_null())
-        return unexpected("null value");
-    if (!value.is_integer())
-        return unexpected("not an integer");
-    return value.as_integer().value;
+bool
+extract_integer_value(const parser::Value &input, int64_t &value, std::string &error) {
+    if (input.is_null()) {
+        error = "null value";
+        return false;
+    }
+    if (!input.is_integer()) {
+        error = "not an integer";
+        return false;
+    }
+    value = input.as_integer().value;
+    return true;
 }
 
-expected<std::vector<std::string>, std::string>
-extract_string_array(const parser::Value &value) {
-    if (value.is_null())
-        return expected<std::vector<std::string>, std::string>{};
-    if (!value.is_array())
-        return unexpected("not an array");
+bool
+extract_string_array_value(const parser::Value &input, std::vector<std::string> &value, std::string &error) {
+    if (input.is_null())
+        return true;
+    if (!input.is_array()) {
+        error = "not an array";
+        return false;
+    }
 
-    std::vector<std::string> result;
-    const auto              &arr = value.as_array();
-    result.reserve(arr.size());
+    const auto &arr = input.as_array();
+    value.reserve(arr.size());
 
     for (const auto &elem : arr) {
         if (!elem || !elem->is_string()) {
-            return unexpected("array contains non-string");
+            error = "array contains non-string";
+            return false;
         }
-        result.emplace_back(elem->as_string_view());
+        value.emplace_back(elem->as_string_view());
     }
 
-    return result;
+    return true;
 }
 
-expected<qb::unordered_map<std::string, std::string>, std::string>
-extract_string_map(const parser::Value &value) {
-    if (value.is_null())
-        return qb::unordered_map<std::string, std::string>{};
-    if (!value.is_map())
-        return unexpected("not a map");
+bool
+extract_string_map_value(const parser::Value &input, qb::unordered_map<std::string, std::string> &value, std::string &error) {
+    if (input.is_null())
+        return true;
+    if (!input.is_map()) {
+        error = "not a map";
+        return false;
+    }
 
-    qb::unordered_map<std::string, std::string> result;
-    const auto                                 &map = value.as_map();
-    result.reserve(map.size());
+    const auto &map = input.as_map();
+    value.reserve(map.size());
 
     for (const auto &entry : map) {
         if (!entry.first || !entry.first->is_string()) {
-            return unexpected("map key is not a string");
+            error = "map key is not a string";
+            return false;
         }
         if (!entry.second || !entry.second->is_string()) {
-            return unexpected("map value is not a string");
+            error = "map value is not a string";
+            return false;
         }
-        result.emplace(std::string(entry.first->as_string_view()), std::string(entry.second->as_string_view()));
+        value.emplace(std::string(entry.first->as_string_view()), std::string(entry.second->as_string_view()));
     }
 
-    return result;
+    return true;
 }
 
-expected<stream_id, std::string>
-extract_stream_id(const parser::Value &value) {
-    if (!value.is_string())
-        return unexpected("stream id must be a string");
+bool
+extract_stream_id_value(const parser::Value &input, stream_id &value, std::string &error) {
+    if (!input.is_string()) {
+        error = "stream id must be a string";
+        return false;
+    }
 
-    auto sv  = value.as_string_view();
+    auto sv  = input.as_string_view();
     auto pos = sv.find('-');
     if (pos == std::string_view::npos) {
-        return unexpected("invalid stream id format");
+        error = "invalid stream id format";
+        return false;
     }
 
     auto ts  = qb::to_number<long long>(sv.substr(0, pos));
     auto seq = qb::to_number<long long>(sv.substr(pos + 1));
     if (!ts || !seq) {
-        return unexpected("invalid stream id values");
+        error = "invalid stream id values";
+        return false;
     }
 
-    stream_id id;
-    id.timestamp = *ts;
-    id.sequence  = *seq;
-    return id;
+    value.timestamp = *ts;
+    value.sequence  = *seq;
+    return true;
 }
 
-expected<score_member, std::string>
-extract_score_member(const parser::Array &arr, size_t index) {
+bool
+extract_score_member_value(const parser::Array &arr, size_t index, score_member &value, std::string &error) {
     if (index + 1 >= arr.size()) {
-        return unexpected("not enough elements for score-member pair");
+        error = "not enough elements for score-member pair";
+        return false;
     }
-
-    score_member sm;
 
     // Member (string)
     if (!arr[index] || !arr[index]->is_string()) {
-        return unexpected("member must be a string");
+        error = "member must be a string";
+        return false;
     }
-    sm.member = std::string(arr[index]->as_string_view());
+    value.member = std::string(arr[index]->as_string_view());
 
     // Score (double or integer)
     if (!arr[index + 1]) {
-        return unexpected("score is null");
+        error = "score is null";
+        return false;
     }
     if (arr[index + 1]->is_double()) {
-        sm.score = arr[index + 1]->as_double().value;
+        value.score = arr[index + 1]->as_double().value;
     } else if (arr[index + 1]->is_integer()) {
-        sm.score = static_cast<double>(arr[index + 1]->as_integer().value);
+        value.score = static_cast<double>(arr[index + 1]->as_integer().value);
     } else {
-        return unexpected("score must be a number");
+        error = "score must be a number";
+        return false;
     }
 
-    return sm;
+    return true;
 }
 
-} // namespace qb::redis
+} // namespace qb::redis::detail

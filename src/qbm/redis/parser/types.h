@@ -119,6 +119,7 @@ template <typename T>
 using ParseResult = expected<T, ParseError>;
 
 // Helper to create parse errors
+template <typename Abi = unexpected<ParseError>>
 [[nodiscard]] inline unexpected<ParseError>
 make_parse_error(ParseErrorCode code, std::string_view message = {}) {
     return unexpected<ParseError>(ParseError(code, message));
@@ -128,6 +129,7 @@ make_parse_error(ParseErrorCode code, std::string_view message = {}) {
 struct Value;
 
 // Helper to create parse results - defined after Value is complete
+template <typename Abi = ParseResult<Value>>
 [[nodiscard]] inline ParseResult<Value> make_parse_result(Value &&value);
 
 // ============================================================================
@@ -772,6 +774,7 @@ struct Value : ValueBase {
 // Implementation of make_parse_result (after Value is complete)
 // ============================================================================
 
+template <typename Abi>
 [[nodiscard]] inline ParseResult<Value>
 make_parse_result(Value &&value) {
     return ParseResult<Value>(std::move(value));

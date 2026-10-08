@@ -199,16 +199,16 @@ stream-id path).
 
 ### Numeric-parse strictness
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:344-368,586-610; qbm/redis/src/qbm/redis/parser/parser.h:800-867 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:344-368,586-610; qbm/redis/src/qbm/redis/parser/parser.h:821-888 -->
 
 Numeric decoding is strict on purpose, at two layers. The RESP parser validates integers and doubles as it reads the
 wire, and the typed `parse()` overloads re-validate when converting a string reply to a number.
 
 - **Integers** are parsed with a hand-rolled, overflow-checked routine that rejects any non-digit and any value outside
-  `int64_t`, with an explicit special case for `INT64_MIN` (`src/qbm/redis/parser/parser.h:800-841`). An overflowing or malformed `:`
+  `int64_t`, with an explicit special case for `INT64_MIN` (`src/qbm/redis/parser/parser.h:821-862`). An overflowing or malformed `:`
   -line is `INVALID_INTEGER`, a fatal protocol error.
 - **Doubles** use `std::from_chars` and require the *whole* string to be consumed. A reply like `"1.5junk"` is rejected,
-  not silently read as `1.5`. The literals `inf`, `+inf`, `-inf`, and `nan` are accepted (`src/qbm/redis/parser/parser.h:845-867`).
+  not silently read as `1.5`. The literals `inf`, `+inf`, `-inf`, and `nan` are accepted (`src/qbm/redis/parser/parser.h:866-888`).
   The reply-side `parse<double>` applies the same full-consume rule (`reply.h:360-366`) and falls back to
   `ProtoError("not a double reply")`.
 - **SCAN cursors** are unsigned 64-bit reverse-binary bucket indices that can legitimately set the high bit. The scan
@@ -240,24 +240,29 @@ only a log line. Handle your own errors inside the callback; do not rely on the 
 
 ### Containment 2 — the sticky parser fault on a corrupt terminator
 
-<!-- src: qbm/redis/src/qbm/redis/parser/parser.h:130-244,326-338; qbm/redis/src/qbm/redis/redis.h:126-197 -->
+<!-- src: qbm/redis/src/qbm/redis/parser/parser.h:130-246,330-342; qbm/redis/src/qbm/redis/redis.h:126-197 -->
 
 The streaming `RespParser` separates two failure modes precisely, because conflating them stalls the connection:
 
+Its result-returning parse methods are templates with a default argument tied to the local `ParseResult<Value>` type.
+A C++20 and a C++23 translation unit therefore use distinct linker symbols while each keeps its own
+`qb::expected` representation. Calls such as `parser.parse()` and `parser::parse(data)` keep their spelling;
+code taking a member's address writes `&RespParser::parse<>` (`parser/parser.h:191`, `:909`).
+
 - **`INCOMPLETE_DATA`** is the only retryable code. On it, `parse()`/`parse_all()` consume **zero** bytes: the
   non-destructive `ViewBuffer` position is not committed, so the exact same bytes are re-parsed once more data is fed. A
-  half-arrived bulk string or a simple line missing its CRLF simply waits (`src/qbm/redis/parser/parser.h:309-312`,
-  `src/qbm/redis/parser/parser.h:227-239`). Keep feeding; this is not an error.
+  half-arrived bulk string or a simple line missing its CRLF simply waits (`src/qbm/redis/parser/parser.h:313-316`,
+  `src/qbm/redis/parser/parser.h:229-241`). Keep feeding; this is not an error.
 - **Any other code** is a fatal protocol error. `parse_all()` sets `_state = State::FAULT`, after which `feed()` returns
   `false` and `parse()` returns `PROTOCOL_ERROR "Parser in error state"`. The fault is **sticky**: only `reset()` clears
-  it (`src/qbm/redis/parser/parser.h:153-154,191-193,232-234`, `src/qbm/redis/parser/parser.h:112-117`).
+  it (`src/qbm/redis/parser/parser.h:153-154,192-194,234-236`, `src/qbm/redis/parser/parser.h:112-117`).
 
 The corrupt-terminator fault is the canonical trigger. RESP requires a fixed-length payload (`$`, `!`, `=`) and the
 single-byte types (`_`, `#`) to be followed by exactly `\r\n`. `expect_crlf()` distinguishes "fewer than two bytes
 available" (→ `INCOMPLETE_DATA`, retry) from "two bytes present that are not `\r\n`" (→ `PROTOCOL_ERROR`, fatal).
 Treating a wrong terminator as incomplete would wait forever for bytes that can never make the terminator valid (
-`src/qbm/redis/parser/parser.h:326-338`). The same strictness rejects a negative aggregate length other than the `-1` null marker —
-corrupt input like `%-7\r\n` faults rather than being swallowed as a valid reply (`src/qbm/redis/parser/parser.h:536-545`).
+`src/qbm/redis/parser/parser.h:330-342`). The same strictness rejects a negative aggregate length other than the `-1` null marker —
+corrupt input like `%-7\r\n` faults rather than being swallowed as a valid reply (`src/qbm/redis/parser/parser.h:549-558`).
 
 The protocol layer acts on the fault. After `parse_all()`, `getMessageSize()` checks `_parser.has_error()`; if set, it
 calls `not_ok()`, clears the pending queue, and returns `0`, which tears the connection down instead of looping forever
@@ -270,7 +275,7 @@ saw `Reply{ok=false}`, and your application must re-send (see [connection.md](./
 
 ### Resource limits that produce a fault
 
-<!-- src: qbm/redis/src/qbm/redis/parser/parser.h:44-48,343-344,574,586,672-673,693-694,714-715,735-736,766-767 -->
+<!-- src: qbm/redis/src/qbm/redis/parser/parser.h:44-48,348-349,587,600,689-690,711-712,733-734,755-756,787-788 -->
 
 The parser enforces hard caps to bound memory against a hostile or buggy peer. Exceeding any of them yields a fatal
 `ParseErrorCode`, which faults the parser and drops the connection:
@@ -289,18 +294,22 @@ two. Lowering `max_array_size` therefore tightens all four aggregate caps togeth
 
 ### Server-side reply types are a separate, non-throwing surface
 
-<!-- src: qbm/redis/src/qbm/redis/server_reply.h:100-355 -->
+<!-- src: qbm/redis/src/qbm/redis/server_reply.h:103-402 -->
 
 `server_reply.h` defines a parallel, exception-free extraction surface used by server-side handlers and advanced
 decoders. It does not interact with the client `Reply<T>` flow, but it shares the same philosophy:
 
 - `ValueExtractor` wraps a `parser::Value` and returns `std::optional<…>` accessors (`as_string`, `as_integer`,
   `as_double`, `as_bool`, `as_array`, `as_map`, `as_set`) plus `is_null()` / `is_error()` / `get_error_message()`. A
-  type mismatch is `std::nullopt`, never a throw (`server_reply.h:100-257`).
+  type mismatch is `std::nullopt`, never a throw (`server_reply.h:103-260`).
 - The free `extract_*` helpers return `qb::expected<T, std::string>` — a value or an error message, with
-  `unexpected("not a string")`-style diagnostics (`server_reply.h:269-414`).
+  `unexpected("not a string")`-style diagnostics (`server_reply.h:284-475`). The compiled Redis functions
+  pass values and errors through output references; each caller constructs its own `qb::expected`. This permits a
+  C++20 archive with a C++23 consumer, and the reverse. In C++23 `qb::expected` remains an alias of
+  `std::expected` when the standard library provides it; in C++20 it uses qb's fallback. Direct calls keep their
+  spelling, but taking a helper's address now requires a template specialization such as `&extract_string<>`.
 - `AsyncResult<T>` is a coroutine-friendly `expected`-backed wrapper with `is_ok()` / `value()` / `error()` (
-  `server_reply.h:304-355`).
+  `server_reply.h:352-402`).
 
 Reach for these when you decode a `reply.raw()` by hand and want an optional/`expected` result instead of the typed
 `parse<T>` path that throws-then-catches.

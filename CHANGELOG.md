@@ -9,6 +9,17 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **Server-side `extract_*` helpers preserve their result across C++20/C++23 library and consumer builds (Huly QB-286).**
+  A C++20 Redis archive returned qb's variant-backed `expected`, while a C++23 consumer interpreted the same
+  symbol and bytes as `std::expected` (and vice versa). The compiled functions now exchange values and errors
+  through stable output references; caller-side templates construct the mode's `qb::expected`. The public alias
+  still selects `std::expected` when available. Ordinary calls keep their source spelling, but code taking a
+  helper's address must name its template specialization (for example, `&extract_integer<>`); rebuild consumers.
+- **The inline RESP parser keeps C++20 and C++23 result bodies separate (Huly QB-286).** Its public
+  `parse()` methods, `parse_all()`, `has_complete_value()` and internal result helpers are now templates keyed
+  by the caller's `ParseResult<Value>` type. Mixed-language translation units no longer fold a C++20 body into a
+  C++23 call (or the reverse). Direct calls retain their spelling; code taking a function or member address needs
+  an explicit specialization such as `&RespParser::parse<>`.
 - **`RESET` on a Pub/Sub consumer resets the predicted subscriptions at its reply (Huly QB-641).** A later
   unsubscribe-all now expects the server's one empty-state confirmation rather than the old channel/pattern count;
   it cannot consume the next subscription's reply. While RESET is pending, Pub/Sub commands fail locally instead

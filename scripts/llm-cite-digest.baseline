@@ -23,8 +23,12 @@ llm/qbm-redis.llm.api.md	hyperloglog_commands.h:39-39	2b36cc8752b2	class hyperlo
 llm/qbm-redis.llm.api.md	key_commands.h:39-39	b028456ff379	class key_commands {
 llm/qbm-redis.llm.api.md	list_commands.h:36-36	2bc003d3c0ef	class list_commands {
 llm/qbm-redis.llm.api.md	module_commands.h:34-34	d8e23f3ea583	class module_commands {
+llm/qbm-redis.llm.api.md	parser/parser.h:191-191	cddb703b2663	parse() {
+llm/qbm-redis.llm.api.md	parser/parser.h:216-216	58348934494b	parse_all() {
+llm/qbm-redis.llm.api.md	parser/parser.h:260-260	9205ddf330ce	has_complete_value() const {
+llm/qbm-redis.llm.api.md	parser/parser.h:909-909	c7f9af161c03	parse(std::string_view data, const ParserConfig &config = {}) {
 llm/qbm-redis.llm.api.md	parser/types.h:119-119	b620bd5229ca	using ParseResult = expected<T, ParseError>;
-llm/qbm-redis.llm.api.md	parser/types.h:136-136	bb7a54deeb3d	namespace type_id {
+llm/qbm-redis.llm.api.md	parser/types.h:138-138	bb7a54deeb3d	namespace type_id {
 llm/qbm-redis.llm.api.md	parser/types.h:43-43	5d9f6306792e	enum class ProtocolVersion { RESP2 = 2, RESP3 = 3 };
 llm/qbm-redis.llm.api.md	parser/types.h:50-50	fbe1faa57c66	enum class ParseErrorCode {
 llm/qbm-redis.llm.api.md	parser/types.h:66-66	1f85eaa019e5	class ParseError {
@@ -77,15 +81,16 @@ llm/qbm-redis.llm.api.md	reply.h:805-893	bf0ab527d6ad	to_redis_string(qb::alloca
 llm/qbm-redis.llm.api.md	reply.h:86-86	8fb3eba7b399	class ProtoError : public Error {
 llm/qbm-redis.llm.api.md	scripting_commands.h:36-36	ad1c3b4f6a52	class scripting_commands {
 llm/qbm-redis.llm.api.md	server_commands.h:42-42	6b7e173c7bf2	class server_commands {
-llm/qbm-redis.llm.api.md	server_reply.h:100-100	85cf63923001	class ValueExtractor {
-llm/qbm-redis.llm.api.md	server_reply.h:269-293	a02c82cf95cb	[[nodiscard]] expected<std::string, std::string> extract_string(const...
-llm/qbm-redis.llm.api.md	server_reply.h:305-305	212d4c1ba27a	class AsyncResult {
-llm/qbm-redis.llm.api.md	server_reply.h:396-396	7bdeb8dc521d	[[nodiscard]] expected<stream_id, std::string> extract_stream_id(cons...
-llm/qbm-redis.llm.api.md	server_reply.h:414-414	8dedd23607ff	[[nodiscard]] expected<score_member, std::string> extract_score_membe...
-llm/qbm-redis.llm.api.md	server_reply.h:46-46	f62abfceba6a	struct ServerReply {
+llm/qbm-redis.llm.api.md	server_reply.h:103-103	85cf63923001	class ValueExtractor {
+llm/qbm-redis.llm.api.md	server_reply.h:266-277	d536b1c6177f	namespace detail {
+llm/qbm-redis.llm.api.md	server_reply.h:287-334	463bed51ccbf	extract_string(const parser::Value &input) {
+llm/qbm-redis.llm.api.md	server_reply.h:352-352	212d4c1ba27a	class AsyncResult {
+llm/qbm-redis.llm.api.md	server_reply.h:445-445	ff310f9d46fe	extract_stream_id(const parser::Value &input) {
+llm/qbm-redis.llm.api.md	server_reply.h:471-471	5cbe2f518bc8	extract_score_member(const parser::Array &input, size_t index) {
+llm/qbm-redis.llm.api.md	server_reply.h:49-49	f62abfceba6a	struct ServerReply {
 llm/qbm-redis.llm.api.md	set_commands.h:37-37	abd3bbcd2d8d	class set_commands {
 llm/qbm-redis.llm.api.md	sorted_set_commands.h:39-39	3ca9c8d4c2be	class sorted_set_commands {
-llm/qbm-redis.llm.api.md	src/qbm/redis/parser/types.h:453-453	2cba24c099e9	struct Value : ValueBase {
+llm/qbm-redis.llm.api.md	src/qbm/redis/parser/types.h:455-455	2cba24c099e9	struct Value : ValueBase {
 llm/qbm-redis.llm.api.md	stream_commands.h:35-35	4816175b91eb	class stream_commands {
 llm/qbm-redis.llm.api.md	stream_commands.h:85-85	20a4409c5b05	parse_stream_id(const std::string &id_str) {
 llm/qbm-redis.llm.api.md	string_commands.h:49-49	c879e6021a5d	class string_commands {

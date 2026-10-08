@@ -22,10 +22,13 @@
 #define QBM_REDIS_SERVER_REPLY_H
 
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include <qb/system/container/unordered_map.h>
 #include "parser.h"
@@ -260,13 +263,33 @@ public:
 // Convenience helpers for common Redis patterns
 // ============================================================================
 
+namespace detail {
+// The compiled module must not return qb::expected: it is std::expected in a
+// C++23 translation unit and qb's variant-backed type in C++20. The result
+// object is constructed by the caller, while these functions cross the module
+// boundary using references to types shared by both language modes.
+[[nodiscard]] bool extract_string_value(const parser::Value &input, std::string &value, std::string &error);
+[[nodiscard]] bool extract_integer_value(const parser::Value &input, int64_t &value, std::string &error);
+[[nodiscard]] bool extract_string_array_value(const parser::Value &input, std::vector<std::string> &value, std::string &error);
+[[nodiscard]] bool extract_string_map_value(const parser::Value &input, qb::unordered_map<std::string, std::string> &value, std::string &error);
+[[nodiscard]] bool extract_stream_id_value(const parser::Value &input, stream_id &value, std::string &error);
+[[nodiscard]] bool extract_score_member_value(const parser::Array &input, size_t index, score_member &value, std::string &error);
+} // namespace detail
+
 /**
  * @brief Extract a non-null string from a parsed value.
  * @param value The value to inspect.
  * @return The string on success, or an error message if the value is null or
  *         not a string.
  */
-[[nodiscard]] expected<std::string, std::string> extract_string(const parser::Value &value);
+template <typename Result = expected<std::string, std::string>>
+[[nodiscard]] Result
+extract_string(const parser::Value &input) {
+    std::string value, error;
+    if (!detail::extract_string_value(input, value, error))
+        return unexpected(std::move(error));
+    return std::move(value);
+}
 
 /**
  * @brief Extract a non-null integer from a parsed value.
@@ -274,7 +297,15 @@ public:
  * @return The integer on success, or an error message if the value is null or
  *         not an integer.
  */
-[[nodiscard]] expected<int64_t, std::string> extract_integer(const parser::Value &value);
+template <typename Result = expected<int64_t, std::string>>
+[[nodiscard]] Result
+extract_integer(const parser::Value &input) {
+    int64_t     value{};
+    std::string error;
+    if (!detail::extract_integer_value(input, value, error))
+        return unexpected(std::move(error));
+    return value;
+}
 
 /**
  * @brief Extract an array of strings from a parsed value.
@@ -282,7 +313,15 @@ public:
  * @return The vector of strings on success (empty for a null value), or an error
  *         message if the value is not an array or contains a non-string element.
  */
-[[nodiscard]] expected<std::vector<std::string>, std::string> extract_string_array(const parser::Value &value);
+template <typename Result = expected<std::vector<std::string>, std::string>>
+[[nodiscard]] Result
+extract_string_array(const parser::Value &input) {
+    std::vector<std::string> value;
+    std::string              error;
+    if (!detail::extract_string_array_value(input, value, error))
+        return unexpected(std::move(error));
+    return std::move(value);
+}
 
 /**
  * @brief Extract a string-to-string map from a parsed value.
@@ -290,7 +329,15 @@ public:
  * @return The map on success (empty for a null value), or an error message if
  *         the value is not a map or contains a non-string key or value.
  */
-[[nodiscard]] expected<qb::unordered_map<std::string, std::string>, std::string> extract_string_map(const parser::Value &value);
+template <typename Result = expected<qb::unordered_map<std::string, std::string>, std::string>>
+[[nodiscard]] Result
+extract_string_map(const parser::Value &input) {
+    qb::unordered_map<std::string, std::string> value;
+    std::string                                 error;
+    if (!detail::extract_string_map_value(input, value, error))
+        return unexpected(std::move(error));
+    return std::move(value);
+}
 
 // ============================================================================
 // Async result wrapper for coroutines
@@ -393,7 +440,15 @@ public:
  * @return The parsed stream id on success, or an error message if the value is
  *         not a string, lacks the '-' separator, or has non-numeric components.
  */
-[[nodiscard]] expected<stream_id, std::string> extract_stream_id(const parser::Value &value);
+template <typename Result = expected<stream_id, std::string>>
+[[nodiscard]] Result
+extract_stream_id(const parser::Value &input) {
+    stream_id   value{};
+    std::string error;
+    if (!detail::extract_stream_id_value(input, value, error))
+        return unexpected(std::move(error));
+    return value;
+}
 
 // ============================================================================
 // Score member helpers (for sorted sets)
@@ -411,7 +466,15 @@ public:
  *         enough elements, the member is not a string, or the score is null or
  *         not a number.
  */
-[[nodiscard]] expected<score_member, std::string> extract_score_member(const parser::Array &arr, size_t index);
+template <typename Result = expected<score_member, std::string>>
+[[nodiscard]] Result
+extract_score_member(const parser::Array &input, size_t index) {
+    score_member value{};
+    std::string  error;
+    if (!detail::extract_score_member_value(input, index, value, error))
+        return unexpected(std::move(error));
+    return value;
+}
 
 } // namespace qb::redis
 

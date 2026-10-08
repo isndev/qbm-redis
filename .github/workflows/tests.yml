@@ -56,6 +56,7 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'scripts/check-expected-abi.sh'
       - 'cmake/**'
       - 'CMakeLists.txt'
       - '.github/ci/**'
@@ -65,6 +66,7 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'scripts/check-expected-abi.sh'
       - 'cmake/**'
       - 'CMakeLists.txt'
       - '.github/ci/**'
@@ -194,6 +196,9 @@ jobs:
             *clang++-${LLVM_VERSION}) ;;
             *) echo "::error::configured with '${got}', not clang++-${LLVM_VERSION}"; exit 1 ;;
           esac
+
+      - name: C++20 and C++23 compiled extractor ABI
+        run: QB_EXPECTED_ABI_REQUIRE_SPLIT=1 CXX="clang++-${LLVM_VERSION}" ./module/scripts/check-expected-abi.sh "${GITHUB_WORKSPACE}/qb"
 
       # Registration floors need only the configure step, so a suite that vanished from
       # registration fails here rather than being silently absent from the totals later.

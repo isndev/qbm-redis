@@ -186,6 +186,7 @@ public:
      *         @c INCOMPLETE_DATA if more bytes are required; or a @ref ParseError
      *         with another code on a protocol error.
      */
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse() {
         if (has_error()) {
@@ -210,6 +211,7 @@ public:
      * @return The values decoded in this call (possibly empty); trailing
      *         incomplete bytes remain buffered for a later call.
      */
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] std::vector<Value>
     parse_all() {
         std::vector<Value> results;
@@ -253,6 +255,7 @@ public:
      *
      * @return `true` if a complete top-level value appears to be buffered.
      */
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] bool
     has_complete_value() const {
         if (_buffer.empty())
@@ -296,6 +299,7 @@ private:
     // (extract_line/extract_bytes directly off the InputBuffer) consumed bytes
     // before knowing whether the value was complete, silently corrupting the
     // stream on INCOMPLETE_DATA; compact() + this view pass replaces it.
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     try_parse_from_view() {
         auto span1 = _buffer.readable_span();
@@ -338,6 +342,7 @@ private:
     }
 
     // Parse value from view buffer
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_value(ViewBuffer &view, size_t depth) {
         if (depth > _config.max_nesting_depth) {
@@ -393,6 +398,7 @@ private:
     }
 
     // Parse null: _\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] static ParseResult<Value>
     parse_null(ViewBuffer &view) {
         if (auto err = expect_crlf(view)) {
@@ -402,6 +408,7 @@ private:
     }
 
     // Parse boolean: #t\r\n or #f\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] static ParseResult<Value>
     parse_boolean(ViewBuffer &view) {
         auto val_opt = view.peek();
@@ -428,6 +435,7 @@ private:
     }
 
     // Parse simple string: +...\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] static ParseResult<Value>
     parse_simple_string(ViewBuffer &view) {
         auto line_opt = view.extract_line_view();
@@ -439,6 +447,7 @@ private:
     }
 
     // Parse simple error: -...\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] static ParseResult<Value>
     parse_simple_error(ViewBuffer &view) {
         auto line_opt = view.extract_line_view();
@@ -462,6 +471,7 @@ private:
     }
 
     // Parse integer: :[+-]?\d+\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] static ParseResult<Value>
     parse_integer(ViewBuffer &view) {
         auto line_opt = view.extract_line_view();
@@ -478,6 +488,7 @@ private:
     }
 
     // Parse double: ,[+-]?\d*\.?\d*(e[+-]?\d+)?\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] static ParseResult<Value>
     parse_double(ViewBuffer &view) {
         auto line_opt = view.extract_line_view();
@@ -494,6 +505,7 @@ private:
     }
 
     // Parse big number: ([+-]?\d+)\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] static ParseResult<Value>
     parse_big_number(ViewBuffer &view) {
         auto line_opt = view.extract_line_view();
@@ -526,6 +538,7 @@ private:
     }
 
     // Parse bulk or aggregate types
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_bulk_or_aggregate(char type, std::string_view length_str, ViewBuffer &view, size_t depth) {
         int64_t len = 0;
@@ -575,6 +588,7 @@ private:
     }
 
     // Parse bulk string: $N\r\n<data>\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_bulk_string(int64_t len, ViewBuffer &view) {
         if (len < 0) {
@@ -599,6 +613,7 @@ private:
     }
 
     // Parse bulk error: !N\r\n<error>\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_bulk_error(int64_t len, ViewBuffer &view) {
         if (len < 0) {
@@ -634,6 +649,7 @@ private:
     }
 
     // Parse verbatim string: =N\r\n<encoding>:<data>\r\n
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_verbatim_string(int64_t len, ViewBuffer &view) {
         if (len < 4) { // Minimum: "xxx:" (3 chars encoding + colon + at least 1 char)
@@ -667,6 +683,7 @@ private:
     }
 
     // Parse array: *N\r\n<elements...>
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_array(size_t count, ViewBuffer &view, size_t depth) {
         if (count > _config.max_array_size) {
@@ -688,6 +705,7 @@ private:
     }
 
     // Parse set: ~N\r\n<elements...>
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_set(size_t count, ViewBuffer &view, size_t depth) {
         if (count > _config.max_array_size) {
@@ -709,6 +727,7 @@ private:
     }
 
     // Parse push: >N\r\n<elements...>
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_push(size_t count, ViewBuffer &view, size_t depth) {
         if (count > _config.max_array_size) {
@@ -730,6 +749,7 @@ private:
     }
 
     // Parse map: %N\r\n<key1><value1><key2><value2>...
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_map(size_t count, ViewBuffer &view, size_t depth) {
         if (count > _config.max_array_size / 2) { // N pairs = 2N elements; bound by the element cap
@@ -761,6 +781,7 @@ private:
     // Per the RESP3 spec the attribute block PRECEDES the real reply.
     // We must parse both the N metadata pairs AND the following value so
     // that the whole thing is returned as a single logical Value.
+    template <typename Abi = ParseResult<Value>>
     [[nodiscard]] ParseResult<Value>
     parse_attribute(size_t count, ViewBuffer &view, size_t depth) {
         if (count > _config.max_array_size / 2) { // N pairs = 2N elements; bound by the element cap
@@ -883,6 +904,7 @@ private:
  * @param config Parser configuration (optional)
  * @return Parsed Value or ParseError
  */
+template <typename Abi = ParseResult<Value>>
 [[nodiscard]] inline ParseResult<Value>
 parse(std::string_view data, const ParserConfig &config = {}) {
     RespParser parser(config);
