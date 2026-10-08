@@ -192,8 +192,9 @@ A channel `recv()` is still not cancellation-aware — `cancel()` does nothing t
 `close()`, and the consumer closes the channel in two places: when the connection drops, and in its own destructor.
 <!-- src: qbm/redis/src/qbm/redis/redis.h:1780-1784 (on disconnected → _msg_channel->close()), :1827-1829 (destructor closes it) -->
 
-That gives the subscribe loop a clean termination condition with no cancellation machinery at all: the loop ends when
-`receive()` yields `std::nullopt`.
+That makes `receive()` yield `std::nullopt` after buffered messages drain. If the actor can be reaped before a
+scheduled receiver resumes, keep the consumer in the coroutine frame and check actor-scope cancellation before
+using actor state or forwarding a message.
 
 > **Both places fire — since 3.3 (Huly QB-252).** Until then the consumer's `event::disconnected`
 > handler never ran: it was private, and its class befriended the base that routes the event instead
@@ -236,9 +237,12 @@ public:
         auto              sub  = _sub;          // copied into the frame
         const qb::ActorId self = id();
         spawn([sub, self](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-            // Ends when the channel closes — i.e. on disconnect or destruction.
-            while (auto msg = co_await sub->receive())
+            // A committed message can arrive after actor reap; stop before using ctx.
+            while (auto msg = co_await sub->receive()) {
+                if (ctx.cancelled())
+                    break;
                 ctx.push_to<Broadcast>(self, msg->payload);
+            }
         });
         co_return true;
     }
@@ -250,22 +254,20 @@ public:
 
     void on(qb::KillEvent const &) {
         if (_sub)
-            _sub->disconnect();   // closes the channel; receive() drains, then yields nullopt
+            _sub->disconnect();   // closes the channel; the loop checks cancellation on resume
         kill();                   // actor reap may precede the loop's scheduled resume
     }
 };
 ```
 
-<!-- src: examples/07-applications/02-auction-house/src/actors/websocket_handler.cpp:55-67 (the same consume_loop shape) -->
+<!-- src: examples/07-applications/02-auction-house/src/actors/websocket_handler.cpp:57-69 (the same consume_loop shape) -->
 
-In this `KillEvent` handler, `disconnect()` is the termination mechanism: it closes the channel in the call, then the
-scheduler resumes the parked `receive()` on a later pass. Buffered messages arrive first, followed by `std::nullopt`.
-The actor may already have been reaped when the loop resumes, so the capture list is essential. The copied
-`shared_ptr` keeps the consumer alive until the loop frame releases it; waiting for `~co_consumer` to close the
-channel would leave that frame parked.
-`examples/06-modules/redis/04-pubsub.cpp:257` shows the same rule: it captures
-`[this, name = _name, coordinator = _coordinator_id]` — `this` only for the consumer the loop awaits — and reading
-`_name` through `this` instead was a `heap-use-after-free` AddressSanitizer reported on every run.
+In this `KillEvent` handler, `disconnect()` closes the channel in the call and schedules a parked receiver for a
+later pass. A buffered or already committed message can arrive first; `std::nullopt` follows once the channel is
+drained. If the actor was reaped first, `ctx.cancelled()` stops the loop before it forwards that message. The copied
+`shared_ptr` keeps the consumer alive through the next `receive()`; waiting for `~co_consumer` to close the channel
+would leave that frame parked. `examples/06-modules/redis/04-pubsub.cpp:255-265` follows the same pattern: it
+captures the consumer, name and coordinator by value, then checks cancellation before using the context.
 
 ### Making a command interruptible
 
