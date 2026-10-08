@@ -141,6 +141,10 @@ redis.connect([](bool ok) { /* ... */ });
 // if (!qb::io::async::run_sync(redis.connect())) return 1;
 ```
 
+A coroutine parked on a command shows as `"redis"` in qb's
+`CoroutineScheduler::dump()` (on `connect()`, `"redis connect"`) when its thread
+tracks suspensions (3.3).
+
 Enable RESP3 yourself: issue `co_await redis.hello(3)` as the first command
 after connect (the session is RESP2 until you do). For TLS on `rediss://`,
 call `redis.set_verify_peer(false)` (trusted/self-signed only) — or, for a

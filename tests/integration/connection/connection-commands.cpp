@@ -322,3 +322,59 @@ TEST_P(ConnectionProtocolModesTest, CUSTOM_TIMEOUT) {
     run_coro_test_until(completed);
     EXPECT_TRUE(connected);
 }
+
+// What a coroutine waits on, in its scheduler's dump (Huly QB-71): the module's awaiters label themselves with
+// qb::io::async::track_suspension, so a coroutine parked on a connect, then on a command, says so -- under the
+// module's names, not the record of an earlier wait. The observer runs after the client in the same ready-queue
+// drain, so it sees the connect parked; a BLPOP on an empty list holds the command for a second.
+TEST_P(ConnectionProtocolModesTest, THE_DUMP_SAYS_A_COROUTINE_WAITS_ON_A_CONNECT_THEN_A_COMMAND) {
+    auto &sched = qb::io::async::coro_scheduler();
+    ASSERT_TRUE(sched.set_suspension_tracking(true));
+    qb::redis::tcp::client client{qb::io::uri{redis_test_uri()}};
+    const std::string      key      = protocol_key("dump:blpop");
+    bool                   done     = false;
+    bool                   observed = false;
+    std::string            on_connect;
+    std::string            on_command;
+    // what the coroutine spawned as "redis-client" waits on, at the end of its chain
+    auto client_waits_on = [&sched]() -> std::string {
+        const auto                             dump = sched.dump();
+        qb::io::async::parked_coroutine const *at   = nullptr;
+        for (auto const &p : dump)
+            if (p.name == "redis-client")
+                at = &p;
+        for (std::size_t depth = 0; at && at->waits_on && depth < dump.size(); ++depth) {
+            qb::io::async::parked_coroutine const *next = nullptr;
+            for (auto const &p : dump)
+                if (p.frame == at->waits_on)
+                    next = &p;
+            if (!next)
+                break;
+            at = next;
+        }
+        return at && at->kind ? at->kind : "";
+    };
+    auto client_task = [&]() -> qb::io::async::task<void> {
+        if (co_await client.connect())
+            (void) co_await client.blpop({key}, 1);
+        done = true;
+    };
+    auto observer = [&]() -> qb::io::async::task<void> {
+        on_connect = client_waits_on();
+        for (int i = 0; i < 400 && !done && on_command != "redis"; ++i) {
+            co_await qb::io::async::sleep(5ms);
+            on_command = client_waits_on();
+        }
+        for (int i = 0; i < 400 && !done; ++i) // the BLPOP times out after its second
+            co_await qb::io::async::sleep(5ms);
+        observed = true;
+    };
+    sched.spawn("redis-client", client_task());
+    sched.spawn(observer());
+    run_coro_test_until(observed, 10s);
+    sched.set_suspension_tracking(false);
+
+    EXPECT_TRUE(done) << "the client never finished";
+    EXPECT_EQ(on_connect, "redis connect");
+    EXPECT_EQ(on_command, "redis");
+}

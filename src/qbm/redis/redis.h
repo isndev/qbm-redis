@@ -479,6 +479,7 @@ public:
 
         void
         await_suspend(std::coroutine_handle<> h) {
+            qb::io::async::track_suspension(h, "redis connect");
             _handle    = h;
             auto valid = _valid;
             // Capture the CLIENT's liveness too, not just the awaiter's. The
@@ -771,6 +772,7 @@ public:
 
     void
     await_suspend(std::coroutine_handle<> h) {
+        qb::io::async::track_suspension(h, "redis");
         handle_    = h;
         auto valid = valid_;
         operation_([this, valid](Reply<T> &&reply) {
