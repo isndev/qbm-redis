@@ -107,7 +107,7 @@ callable accepts the matching `Reply<T> &&`.
 | `quit`   | `Reply<status>`      | Ask the server to close the connection after replying  |
 | `select` | `Reply<status>`      | Switch the active logical database                     |
 | `swapdb` | `Reply<status>`      | Swap two logical databases                             |
-| `reset`  | `Reply<status>`      | Reset the connection to a clean state (RESP3)          |
+| `reset`  | `Reply<status>`      | Reset the connection to a clean state (RESP2)          |
 
 ### `hello` — protocol negotiation
 
