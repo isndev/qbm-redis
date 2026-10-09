@@ -113,10 +113,10 @@ convert to milliseconds yourself (e.g. `std::chrono::milliseconds{5000}.count()`
 ### Blocking reads suspend the command deadline
 
 `XREAD` and `XREADGROUP` are blocking commands, and the client classes them as such **unconditionally** — they sit in
-the `is_blocking_command` set alongside `BLPOP`/`BLMOVE`/`BZMPOP` whether or not you pass `block` (`redis.h:889-902`,
+the `is_blocking_command` set alongside `BLPOP`/`BLMOVE`/`BZMPOP` whether or not you pass `block` (`redis.h:897-910`,
 whose comment calls the unconditional treatment deliberately conservative). While one is in flight,
 `_inflight_blocking` is non-zero and the client's own per-command deadline is suspended, so the server-side `block`
-timeout governs instead (`redis.h:877-878`, `:909`). A blocking read with `block > 0` parks the connection until data
+timeout governs instead (`redis.h:885-886`, `:917`). A blocking read with `block > 0` parks the connection until data
 arrives or the timeout elapses; a *non*-blocking `xread` is likewise exempt from the client deadline, which is a
 deliberate loss of protection, not an oversight.
 

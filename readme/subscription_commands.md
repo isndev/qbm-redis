@@ -276,7 +276,7 @@ connection. After an unsubscribe-all, the final confirmation reports `num == 0`.
 After a successful connection-level `RESET`, the consumer's predicted channel and pattern sets are empty too;
 `unsubscribe("")` or `punsubscribe("")` therefore waits for one empty-state confirmation. Pub/Sub calls made before
 `RESET` answers fail locally; await it first. See [Connection commands](./connection_commands.md#reset--reset-connection-state).
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1308-1342,1353-1369,1384-1397 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1316-1350,1361-1377,1392-1405 -->
 
 - **Coroutine, single/all:** `auto unsubscribe(const std::string &channel = "")`
 - **Coroutine, multiple:** `auto unsubscribe(const std::vector<std::string> &channels)`

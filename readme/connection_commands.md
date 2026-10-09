@@ -334,7 +334,7 @@ instead of guessing how many confirmations the server will send. Await `reset()`
 After success, an unsubscribe-all from the empty state resolves on Redis's single empty-state confirmation; re-authenticate
 if the server requires it, and call `hello(3)` again to regain RESP3. The connection itself remains open. The live
 RESP2/RESP3 tests cover channels, patterns, a pipelined command after the barrier and a command rejected during it.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1308-1342,1384-1397; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1316-1350,1384-1397; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
 
 
 

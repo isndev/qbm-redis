@@ -19,6 +19,10 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **A throwing consumer disconnect callback no longer suppresses auto-reconnect (Huly QB-663).** The connector contains
+  standard and non-standard exceptions from the disconnect notification, logs them, and then checks the current retry
+  policy. A callback may still disable that policy before the decision; pending replies fail once and no old subscription
+  is replayed.
 - **RESP argument counts now match the emitted bulks (Huly QB-634).** A `std::vector<char>` is one binary bulk string even
   when empty or longer than one byte. Containers of optional values and nested pairs/tuples count each present value,
   so the announced array length remains correct without changing the omitted-optional wire contract.

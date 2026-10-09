@@ -370,7 +370,15 @@ private:
         this->in().reset();
         this->out().reset();
         QB_LOG_WARN("[qbm][redis] disconnected");
-        derived().on(std::forward<qb::io::async::event::disconnected>(ev));
+        // A consumer's user on_disconnected callback can throw. Keep the exception inside the
+        // teardown so the reconnect decision below still observes any policy change it made.
+        try {
+            derived().on(std::forward<qb::io::async::event::disconnected>(ev));
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] disconnected handler error: " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] disconnected handler threw a non-std exception");
+        }
 
         if (_reconnect_policy && !_is_reconnecting) {
             _is_reconnecting = true;
