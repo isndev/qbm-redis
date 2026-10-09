@@ -32,6 +32,8 @@
 #define QBM_REDIS_H
 
 #include <deque>
+#include <exception>
+#include <memory>
 #include <optional>
 #include <functional>
 #include <queue>
@@ -864,11 +866,107 @@ private:
      * such command is in flight so it is never spuriously dropped.
      */
     struct PendingReply {
+        enum class Kind { command, monitor_admission, monitor_reset, monitor_quit };
         std::unique_ptr<IReply> handler;
         bool                    blocking;
+        Kind                    kind{Kind::command};
     };
 
     std::queue<PendingReply> _replies;
+
+    struct MonitorSession {
+        explicit MonitorSession(std::unique_ptr<IReply> callback)
+            : handler(std::move(callback)) {}
+
+        std::unique_ptr<IReply>                 handler;
+        std::deque<std::unique_ptr<ReplyValue>> queued;
+        std::optional<std::string>              terminal;
+        bool                                    admitted{false};
+        bool                                    stopping{false};
+        bool                                    delivering{false};
+        bool                                    ended{false};
+    };
+
+    std::shared_ptr<MonitorSession> _monitor;
+
+    static void
+    invoke_monitor(IReply &handler, std::unique_ptr<ReplyValue> reply) {
+        try {
+            handler(std::move(reply));
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] MONITOR callback error: " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] MONITOR callback threw a non-std exception");
+        }
+    }
+
+    static void
+    fail_monitor(IReply &handler, const std::string &reason) {
+        try {
+            handler.fail(reason);
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] MONITOR callback error: " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] MONITOR callback threw a non-std exception");
+        }
+    }
+
+    void
+    deliver_monitor(std::shared_ptr<MonitorSession> session, std::unique_ptr<ReplyValue> reply) {
+        session->queued.push_back(std::move(reply));
+        if (session->delivering)
+            return;
+        session->delivering = true;
+        while (!session->queued.empty()) {
+            auto next = std::move(session->queued.front());
+            session->queued.pop_front();
+            invoke_monitor(*session->handler, std::move(next));
+            if (session->ended) {
+                session->queued.clear();
+                break;
+            }
+        }
+        session->delivering = false;
+        if (session->terminal) {
+            auto reason = std::move(*session->terminal);
+            session->terminal.reset();
+            fail_monitor(*session->handler, reason);
+        }
+    }
+
+    void
+    end_monitor(const std::shared_ptr<MonitorSession> &session, const std::string &reason) {
+        if (!session || session->ended)
+            return;
+        session->ended = true;
+        session->queued.clear();
+        if (session->delivering)
+            session->terminal = reason;
+        else
+            fail_monitor(*session->handler, reason);
+    }
+
+    [[nodiscard]] static bool
+    is_monitor_exit_reply(const ReplyValue &reply, PendingReply::Kind kind) {
+        if (reply.is_error())
+            return true;
+        if (!reply.is_simple_string())
+            return false;
+        const auto text = reply.as_string_view();
+        return (kind == PendingReply::Kind::monitor_reset && text == "RESET") || (kind == PendingReply::Kind::monitor_quit && text == "OK");
+    }
+
+    [[nodiscard]] static bool
+    command_is(std::string_view actual, std::string_view expected) noexcept {
+        if (actual.size() != expected.size())
+            return false;
+        for (std::size_t i = 0; i < actual.size(); ++i) {
+            const char c = actual[i];
+            if ((c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') : c) != expected[i])
+                return false;
+        }
+        return true;
+    }
 
     // ---- Optional command deadline (opt-in via set_command_timeout) --------
     //
@@ -983,12 +1081,55 @@ private:
         if (msg.reply && reply::is_push(*msg.reply)) {
             return;
         }
+        if (_monitor && _monitor->admitted) {
+            if (!_replies.empty() && _replies.front().kind != PendingReply::Kind::command
+                && _replies.front().kind != PendingReply::Kind::monitor_admission && msg.reply
+                && is_monitor_exit_reply(*msg.reply, _replies.front().kind)) {
+                auto entry = std::move(_replies.front());
+                _replies.pop();
+                ++_reply_progress;
+                arm_deadline();
+                auto session = std::move(_monitor);
+                if (msg.reply->is_error()) {
+                    _monitor           = std::move(session);
+                    _monitor->stopping = false;
+                } else {
+                    end_monitor(session, "monitor stopped");
+                }
+                try {
+                    (*entry.handler)(std::move(msg.reply));
+                } catch (const std::exception &ex) {
+                    QB_LOG_WARN("[qbm][redis] reply handler error: " << ex.what());
+                } catch (...) {
+                    QB_LOG_WARN("[qbm][redis] reply handler threw a non-std exception");
+                }
+                return;
+            }
+            deliver_monitor(_monitor, std::move(msg.reply));
+            return;
+        }
         if (_replies.empty()) {
             QB_LOG_WARN("[qbm][redis] Received unsolicited reply with no pending command, discarding");
             return;
         }
         auto entry = std::move(_replies.front());
         _replies.pop();
+        if (entry.kind == PendingReply::Kind::monitor_admission) {
+            auto session = _monitor;
+            ++_reply_progress;
+            arm_deadline();
+            if (!session)
+                return;
+            if (msg.reply && msg.reply->is_simple_string() && msg.reply->as_string_view() == "OK") {
+                session->admitted = true;
+                deliver_monitor(session, std::move(msg.reply));
+            } else {
+                _monitor.reset();
+                deliver_monitor(session, std::move(msg.reply));
+                session->ended = true;
+            }
+            return;
+        }
         if (entry.blocking && _inflight_blocking > 0)
             --_inflight_blocking;
         // Record forward progress so a pending deadline watcher re-arms instead
@@ -1019,9 +1160,13 @@ private:
         // new command must NOT be failed by this same drain loop.
         std::queue<PendingReply> pending;
         std::swap(pending, _replies);
+        auto session = std::move(_monitor);
+        end_monitor(session, timed_out ? "command timed out" : "disconnected");
         while (!pending.empty()) {
             auto entry = std::move(pending.front());
             pending.pop();
+            if (entry.kind == PendingReply::Kind::monitor_admission)
+                continue; // the session was failed exactly once above
             try {
                 if (timed_out)
                     entry.handler->fail("command timed out");
@@ -1066,14 +1211,56 @@ public:
     Redis &
     command(Func &&func, std::string const &name, Args &&...args) {
         auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        if (command_is(name, "MONITOR")) {
+            handler->fail("use monitor(callback) for the MONITOR stream");
+            return *this;
+        }
+        const bool resetting = command_is(name, "RESET");
+        const bool quitting  = command_is(name, "QUIT");
+        const bool exiting   = resetting || quitting;
+        if (_monitor && (!exiting || _monitor->stopping)) {
+            handler->fail("MONITOR owns this connection; only RESET or QUIT may end it");
+            return *this;
+        }
         if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
             handler->fail(*error); // the client is consistent again: a callback may issue its next command
             return *this;
         }
         const bool blocking = is_blocking_command(name);
-        _replies.push(PendingReply{std::move(handler), blocking});
+        const auto kind =
+            _monitor ? (resetting ? PendingReply::Kind::monitor_reset : PendingReply::Kind::monitor_quit) : PendingReply::Kind::command;
+        _replies.push(PendingReply{std::move(handler), blocking, kind});
+        if (_monitor)
+            _monitor->stopping = true;
         if (blocking)
             ++_inflight_blocking;
+        arm_deadline();
+        return *this;
+    }
+
+    /**
+     * @brief Start a MONITOR stream on this connection.
+     *
+     * The callback receives the initial +OK, every subsequent monitor line, and
+     * one failed reply when the stream ends. Use a dedicated connection. While it
+     * is active, commands other than RESET and QUIT fail locally; RESET or QUIT
+     * ends the stream at its own reply. A reconnect never restarts MONITOR.
+     */
+    template <typename Func>
+    requires std::invocable<Func, Reply<std::string> &&>
+    Redis &
+    monitor(Func &&func) {
+        auto handler = std::make_unique<TReply<Func, std::string>>(std::forward<Func>(func));
+        if (_monitor) {
+            handler->fail("MONITOR already active");
+            return *this;
+        }
+        if (auto error = this->try_put_command("MONITOR")) {
+            handler->fail(*error);
+            return *this;
+        }
+        _monitor = std::make_shared<MonitorSession>(std::move(handler));
+        _replies.push(PendingReply{nullptr, false, PendingReply::Kind::monitor_admission});
         arm_deadline();
         return *this;
     }
@@ -1159,6 +1346,23 @@ public:
     [[nodiscard]] auto
     make_coro_command(Func &&operation) {
         return make_redis_awaiter<T>(std::forward<Func>(operation));
+    }
+
+    /** @brief Stop a MONITOR stream before another frame from the current read batch is dispatched. */
+    void
+    disconnect() noexcept {
+        connector<QB_IO_, Redis<QB_IO_>>::disconnect();
+        // disconnect_now() defers teardown when called inside a reply callback. Close
+        // the stream here so already-parsed frames cannot reach that old session.
+        if (auto session = std::move(_monitor)) {
+            try {
+                end_monitor(session, "disconnected");
+            } catch (const std::exception &ex) {
+                QB_LOG_WARN("[qbm][redis] MONITOR teardown error: " << ex.what());
+            } catch (...) {
+                QB_LOG_WARN("[qbm][redis] MONITOR teardown threw a non-std exception");
+            }
+        }
     }
 };
 

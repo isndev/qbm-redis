@@ -62,6 +62,10 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
 - **One client = one connection.** `qb::redis::tcp::client` owns a single
   qb-io socket and a FIFO reply queue. It is **not thread-safe**: drive it from a
   single I/O thread or actor strand, one in-flight accessor at a time.
+- **MONITOR owns a dedicated connection.** `monitor(callback)` first reports its
+  `+OK` admission, then every command line, then one failed reply when RESET,
+  QUIT or disconnect ends the stream. Ordinary commands fail locally while it is
+  active; after reconnect, issue MONITOR again yourself.
 - **Two completion models, same method name — no `_async` suffix.** Every
   command has:
   - a **coroutine** overload (no callback arg) returning an awaiter you

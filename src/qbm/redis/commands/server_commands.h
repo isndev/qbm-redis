@@ -830,21 +830,6 @@ public:
         return derived().template command<long long>(std::forward<Func>(func), "MEMORY", "USAGE", key, args);
     }
 
-    // =============== Monitor Commands ===============
-
-    /**
-     * @brief Monitors Redis commands in real-time
-     *
-     * @param func Callback function to receive commands
-     * @return Reference to the Redis handler for chaining
-     * @see https://redis.io/commands/monitor
-     */
-    template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
-    monitor(Func &&func) {
-        return derived().template command<std::string>(std::forward<Func>(func), "MONITOR");
-    }
-
     // =============== Role Commands ===============
 
     /**

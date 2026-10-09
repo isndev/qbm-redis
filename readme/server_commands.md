@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:832 (public inheritance), qbm/redis/src/qbm/redis/redis.h:1855 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:834 (public inheritance), qbm/redis/src/qbm/redis/redis.h:2059 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -104,15 +104,17 @@ The two `TIME` overloads return **different types**:
   the two RESP fields with `std::from_chars`. When the reply carries two fields that are not both numeric (a malformed
   or proxied reply), it sets `ok() == false` and `error() == "Malformed TIME reply"` instead of throwing, because
   throwing out of the reply handler would propagate into the libev callback and terminate the
-  process. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1299-1323 -->
+  process. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1284-1308 -->
 - the callback form `time(func)` hands back the raw `Reply<std::vector<std::string>>` with no
-  reshaping. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1332-1336 -->
+  reshaping. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1317-1321 -->
 
 ### `MONITOR` is callback-only and long-lived
 
-`monitor(func)` has **no** coroutine overload. It enters monitoring mode and invokes your callback **repeatedly** — one
-`Reply<std::string>` per command the server processes — for the life of the `MONITOR` stream. Treat it like a
-subscription, not a one-shot request, and dedicate a connection to it. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:841-845 -->
+`monitor(func)` has **no** coroutine overload. Use a dedicated client connection. The callback receives the initial
+`+OK`, then one `Reply<std::string>` per command the server processes. It receives one failed reply when `RESET` or
+`QUIT` ends monitoring, or when the connection drops. While the stream is active, other commands fail locally; the
+`RESET`/`QUIT` reply goes to its own callback. Reconnect does not restart monitoring.
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1241-1267,1075-1129,1162-1167,1212-1236 -->
 
 ### `COMMAND`'s named overload actually issues `COMMAND INFO`
 
@@ -167,11 +169,11 @@ Notes:
   callback and coroutine forms: Redis sends **no reply even for the mode command**, so a `Reply<status>` could not
   complete or prove server acceptance. The generic raw `command()` escape hatch does not manage no-reply mode; do not
   send these modes through it on a connection used for ordinary replies. A dedicated one-way API would need a distinct
-  local-acceptance result and explicit reply-mode state. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1800-1834 -->
+  local-acceptance result and explicit reply-mode state. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1785-1819 -->
 - `client_list()` yields a `qb::json` **string** holding the raw `CLIENT LIST` text block (one client per line), not a
   parsed array — the payload is line-delimited text, not JSON, so the wrapper boxes it verbatim. Parse the lines
   yourself, or call `client_info()` for the current connection. `client_tracking_info()`, by contrast, is a RESP map and
-  comes back as a JSON object. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1347-1363 (client_list), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
+  comes back as a JSON object. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1332-1348 (client_list), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
 
 ```cpp
 // <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:51-75,103-111 -->
@@ -203,11 +205,13 @@ redis.client_id([](qb::redis::Reply<long long> &&r) {
 `MONITOR` (callback-only, streaming):
 
 ```cpp
-// <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:841-845 -->
-// The callback fires once per command the server processes, for the stream's life.
+// <!-- src: qbm/redis/src/qbm/redis/redis.h:1241-1267 -->
+// The callback receives +OK, each command line, and one terminal failure.
 redis.monitor([](qb::redis::Reply<std::string> &&line) {
     if (line.ok())
         qb::io::cout() << "MONITOR " << line.result() << std::endl;
+    else
+        qb::io::cout() << "MONITOR ended: " << line.error() << std::endl;
 });
 ```
 
@@ -301,7 +305,7 @@ qb::io::async::task<void> mem(qb::redis::tcp::client &redis) {
 | `LATENCY GRAPH`     | `latency_graph(const std::string &event)`                          | `std::string` |
 
 `latency_reset()` with no event resets all events and returns the count reset; with an event name it resets that
-one. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1432-1453 -->
+one. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1417-1438 -->
 
 ### Slowlog
 
@@ -353,7 +357,7 @@ qb::io::async::task<void> debug(qb::redis::tcp::client &redis) {
 
 `save()` blocks the server until the RDB snapshot is written; prefer `bgsave()` in production. `bgsave(true)` sends
 `BGSAVE SCHEDULE`. `lastsave()` returns the Unix timestamp (seconds) of the last successful
-save. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1055-1161 -->
+save. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1040-1146 -->
 
 ```cpp
 // <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:338-363 -->
@@ -375,7 +379,7 @@ qb::io::async::task<void> persist(qb::redis::tcp::client &redis) {
 
 `flushdb(true)` / `flushall(true)` append `ASYNC` so the server reclaims memory in the background; the default is
 synchronous. These are **destructive** — `flushall` erases every database, not just the selected
-one. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1199-1249 -->
+one. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1184-1234 -->
 
 ```cpp
 // <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:267-306 -->
@@ -398,10 +402,10 @@ qb::io::async::task<void> db(qb::redis::tcp::client &redis) {
 `info()` returns the textual `INFO` payload boxed as a `qb::json` **string** (`result().is_string()` is `true`) —
 like `CLIENT LIST`. Use `result().get<std::string>()` and parse the lines yourself; pass a section name (`"memory"`,
 `"replication"`, ...) to narrow the text. `time()`'s two overloads return **different** types — see the [
-`TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only). <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1266-1287 (info), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
+`TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only). <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1251-1272 (info), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
 
 ```cpp
-// <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1266-1287 (info), :1299-1323 (time coroutine) -->
+// <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1251-1272 (info), :1299-1323 (time coroutine) -->
 qb::io::async::task<void> server_info(qb::redis::tcp::client &redis) {
     auto info = co_await redis.info("server");         // Reply<qb::json>
     qb::io::cout() << info.result().dump() << std::endl;
@@ -429,7 +433,7 @@ cluster API ([cluster_commands.md](./cluster_commands.md)) for managed topology,
 `shutdown()` with no argument sends `SHUTDOWN`; pass `"SAVE"` or `"NOSAVE"` to control the final snapshot. `SHUTDOWN` *
 *stops the server**: the connection drops and you will typically see a connection error rather than a status reply.
 `SYNC`/`PSYNC` are internal replication primitives and are rarely called
-directly. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:929-947 (slaveof always emits host+port), :1003 (sync), :1029 (psync), :1617 (failover), :895-916 (shutdown) -->
+directly. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:914-932 (slaveof always emits host+port), :1003 (sync), :1029 (psync), :1617 (failover), :895-916 (shutdown) -->
 
 ```cpp
 qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
@@ -454,8 +458,8 @@ qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
 - **`time()`'s coroutine and callback forms return different types** (`std::pair<long long,long long>` vs
   `std::vector<std::string>`). The coroutine form also degrades gracefully (`ok() == false`,
   `error() == "Malformed TIME reply"`) on a malformed reply instead of throwing.
-- **`monitor` never resolves.** It is callback-only and streams indefinitely; do not `co_await` it (there is no awaiter
-  overload) and do not run it on a shared command connection.
+- **`monitor` is a callback stream.** It has no awaiter overload; use a dedicated connection and end it with `reset()`,
+  `quit()` or `disconnect()`. The callback receives one terminal failure, and the stream is never replayed on reconnect.
 - **Destructive admin has no guard rails.** `flushall`, `flushdb`, `shutdown`, `debug_segfault`, `config_set`, and the
   replication commands all do exactly what they say with no confirmation. Most wrappers do not validate subcommand
   strings (`client_kill` type, `shutdown` save-option) — invalid values fail only on the server. The typed

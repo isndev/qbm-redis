@@ -75,6 +75,7 @@ qredis_test(system ssl-context system/connection/redis-ssl-context.cpp REQUIRES 
 qredis_test(system reconnect-carries-nothing system/connection/reconnect-carries-nothing.cpp)
 qredis_test(system co-consumer-lifecycle system/connection/co-consumer-lifecycle.cpp EXTRA_LABELS pubsub coroutine)
 qredis_test(system reconnect-disconnected-callback system/connection/reconnect-disconnected-callback.cpp EXTRA_LABELS coroutine)
+qredis_test(system monitor-stream system/connection/monitor-stream.cpp)
 
 # INTEGRATION — live redis:6379 (REQUIRES live, RESOURCE_LOCK)
 qredis_itest(connection-commands integration/connection/connection-commands.cpp)

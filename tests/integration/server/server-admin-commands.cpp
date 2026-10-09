@@ -18,7 +18,7 @@
 /**
  * @file integration/server/server-admin-commands.cpp
  * @brief Live RESP2/RESP3 integration tests for the server *admin* surface of
- *        `qb::redis::tcp::client`: CLIENT / CONFIG / COMMAND / DEBUG.
+ *        `qb::redis::tcp::client`: CLIENT / CONFIG / COMMAND / DEBUG / MONITOR.
  *
  * Effect-verified throughout (setname→getname, config_set→config_get readback,
  * setinfo→client_info), not `.ok()`-only. Introspection verbs (INFO/TIME/ROLE/SLOWLOG/
@@ -28,6 +28,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <chrono>
 #include <string>
 #include <vector>
 #include <qb/io/async.h>
@@ -44,6 +45,47 @@ namespace {
 class ServerAdminTest : public ProtocolModesTestBase {};
 
 INSTANTIATE_PROTOCOL_MODES(ServerAdminTest);
+
+TEST_F(RedisIntegrationTest, MonitorStreamsTwoRealCommandsAndResetReleasesConnection) {
+    qb::redis::tcp::client observer{qb::redis::test::redis_test_uri()};
+    ASSERT_TRUE(qb::io::async::run_sync(observer.connect()));
+
+    std::vector<std::string> lines;
+    int                      terminal = 0;
+    observer.monitor([&](qb::redis::Reply<std::string> &&r) {
+        if (r)
+            lines.push_back(r.result());
+        else
+            ++terminal;
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (lines.empty() && std::chrono::steady_clock::now() < deadline)
+        qb::io::async::run(EVRUN_NOWAIT);
+    ASSERT_EQ(lines, (std::vector<std::string>{"OK"}));
+
+    const std::string key = "qb651-monitor-stream";
+    auto              set = qb::io::async::run_sync(redis.set(key, "value"));
+    ASSERT_TRUE(set.ok()) << set.error();
+    auto get = qb::io::async::run_sync(redis.get(key));
+    ASSERT_TRUE(get.ok()) << get.error();
+    ASSERT_EQ(get.value_or(""), "value");
+    while (lines.size() < 3 && std::chrono::steady_clock::now() < deadline)
+        qb::io::async::run(EVRUN_NOWAIT);
+    ASSERT_GE(lines.size(), 3u);
+    EXPECT_NE(lines[1].find("\"SET\" \"" + key + "\""), std::string::npos) << lines[1];
+    EXPECT_NE(lines[2].find("\"GET\" \"" + key + "\""), std::string::npos) << lines[2];
+    EXPECT_EQ(observer.pending_reply_count(), 0u);
+
+    auto reset = qb::io::async::run_sync(observer.reset());
+    ASSERT_TRUE(reset.ok()) << reset.error();
+    EXPECT_EQ(std::string(reset.result()), "RESET");
+    EXPECT_EQ(terminal, 1);
+    auto ping = qb::io::async::run_sync(observer.ping());
+    ASSERT_TRUE(ping.ok()) << ping.error();
+    EXPECT_EQ(ping.result(), "PONG");
+    observer.disconnect();
+    EXPECT_EQ(terminal, 1);
+}
 
 // =============== CLIENT MANAGEMENT ===============
 
