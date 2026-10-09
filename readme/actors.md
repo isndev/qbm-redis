@@ -180,17 +180,17 @@ So a parked command ends in exactly four ways:
 
 The second row is the one to build on. It is not incidental: `on(disconnected)` swaps the reply queue out *before*
 draining it, precisely so a failing handler that re-issues a command does not get failed by the same drain loop.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1158-1182 (swap before drain, then fail each pending handler) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1165-1189 (swap before drain, then fail each pending handler) -->
 
 ### Pub/sub: `receive()` ends on close
 
 The coroutine consumer is the exception worth knowing. `receive()` does **not** return a `redis_awaiter`; it awaits a
 `qb::io::async::channel<message>` that the consumer fills from its RESP push frames.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2034-2037 (receive() → co_await current_channel().recv()) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2041-2044 (receive() → co_await current_channel().recv()) -->
 
 A channel `recv()` is still not cancellation-aware — `cancel()` does nothing to it — but it *is* woken by
 `close()`, and the consumer closes the channel in two places: when the connection drops, and in its own destructor.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1992-1996 (on disconnected → _msg_channel->close()), :2039-2041 (destructor closes it) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1999-2003 (on disconnected → _msg_channel->close()), :2046-2048 (destructor closes it) -->
 
 That makes `receive()` yield `std::nullopt` after buffered messages drain. If the actor can be reaped before a
 scheduled receiver resumes, keep the consumer in the coroutine frame and check actor-scope cancellation before
@@ -205,7 +205,7 @@ using actor state or forwarding a message.
 > yields what was already received, then `std::nullopt` for as long as the consumer stays disconnected.
 > After a reconnect it serves the new connection, starting with whatever was received and not yet read
 > (re-subscribe yourself: nothing is replayed).
-> <!-- src: qbm/redis/src/qbm/redis/redis.h:744-747 (disconnect()), :1932 (the friend), :1992-1996 (the disconnected handler), :1954-1962 (the next connection's queue) -->
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:744-747 (disconnect()), :1939 (the friend), :1999-2003 (the disconnected handler), :1961-1969 (the next connection's queue) -->
 > In the ordinary actor handler below, `disconnect()` closes the channel before it returns.
 > If called from this consumer's own message callback, teardown waits until that callback
 > returns; no nested loop pass runs. The parked loop resumes on a later scheduler pass.
@@ -331,7 +331,7 @@ void on(TouchSession const &ev) {
 has landed. For the duration this core dispatches no actor events, ticks no `ICallback` and reaps nothing, and there is
 no diagnostic: the guard those calls carry only fires inside the coroutine scheduler's ready-drain, which an actor
 handler is not running under.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1304-1309 (await: spin the loop until the reply queue empties) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1311-1316 (await: spin the loop until the reply queue empties) -->
 
 Inside an actor, that call has no job to do anyway — the loop pass already drains the queue.
 See [pipeline_and_await.md](./pipeline_and_await.md) for what `await()` is for, which is a thread you own.

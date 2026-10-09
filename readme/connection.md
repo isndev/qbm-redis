@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2054-2080 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2061-2087 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -411,7 +411,7 @@ lands. The retry runs on the same I/O loop — there is no extra thread.
 For a callback consumer, `on_disconnected` runs after pending replies fail and before the connector decides whether to
 start that retry loop. If it throws, the connector logs the error and still checks the current policy. A callback that
 calls `disable_auto_reconnect()` therefore prevents the retry even if it later throws.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:365-389 (disconnect order, exception containment, reconnect decision), :1755-1777 (consumer pending-reply drain before notification) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:365-389 (disconnect order, exception containment, reconnect decision), :1762-1784 (consumer pending-reply drain before notification) -->
 
 > **Auto-reconnect re-dials, it does not restore session state.** A reconnected socket is a *fresh* connection. It
 > defaults to RESP2 (call `hello(3)` again if you need RESP3), it is unauthenticated (re-issue `auth(...)`), it is back
@@ -445,7 +445,7 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1149-1184 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1156-1191 -->
 
 The queue is swapped *before* the drain loop so that a failing handler may legitimately re-issue a command (for example
 to kick off a reconnect-and-retry) without that brand-new command being failed by the same loop.
@@ -483,7 +483,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1317-1343 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1324-1350 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,

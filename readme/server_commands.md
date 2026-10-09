@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:834 (public inheritance), qbm/redis/src/qbm/redis/redis.h:2059 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:834 (public inheritance), qbm/redis/src/qbm/redis/redis.h:2066 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -113,8 +113,9 @@ The two `TIME` overloads return **different types**:
 `monitor(func)` has **no** coroutine overload. Use a dedicated client connection. The callback receives the initial
 `+OK`, then one `Reply<std::string>` per command the server processes. It receives one failed reply when `RESET` or
 `QUIT` ends monitoring, or when the connection drops. While the stream is active, other commands fail locally; the
-`RESET`/`QUIT` reply goes to its own callback. Reconnect does not restart monitoring.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1241-1267,1075-1129,1162-1167,1212-1236 -->
+`RESET`/`QUIT` reply goes to its own callback. If you disconnect from a line callback while either is pending, its
+callback fails with `"disconnected"`; later frames from that read batch are discarded. Reconnect does not restart
+monitoring. <!-- src: qbm/redis/src/qbm/redis/redis.h:1248-1274,1087-1136,1169-1182,1219-1243,1360-1371 -->
 
 ### `COMMAND`'s named overload actually issues `COMMAND INFO`
 
@@ -164,7 +165,7 @@ Notes:
   `"WRITE"`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:273-293 -->
 - `client_tracking(true)` sends `CLIENT TRACKING ON`; `false` sends `OFF`. `client_caching`, `client_no_evict`,
   `client_no_touch` map `true`/`false` to `YES`/`NO` or `ON`/`OFF`
-  respectively. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:313-317, 1701-1713, 1762-1795 -->
+  respectively. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:313-317, 1686-1698, 1747-1780 -->
 - `client_reply("ON")` waits for Redis's `+OK`. `"OFF"` and `"SKIP"` fail locally, before a byte is sent, in both
   callback and coroutine forms: Redis sends **no reply even for the mode command**, so a `Reply<status>` could not
   complete or prove server acceptance. The generic raw `command()` escape hatch does not manage no-reply mode; do not
@@ -205,7 +206,7 @@ redis.client_id([](qb::redis::Reply<long long> &&r) {
 `MONITOR` (callback-only, streaming):
 
 ```cpp
-// <!-- src: qbm/redis/src/qbm/redis/redis.h:1241-1267 -->
+// <!-- src: qbm/redis/src/qbm/redis/redis.h:1248-1274 -->
 // The callback receives +OK, each command line, and one terminal failure.
 redis.monitor([](qb::redis::Reply<std::string> &&line) {
     if (line.ok())
@@ -405,7 +406,7 @@ like `CLIENT LIST`. Use `result().get<std::string>()` and parse the lines yourse
 `TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only). <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1251-1272 (info), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
 
 ```cpp
-// <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1251-1272 (info), :1299-1323 (time coroutine) -->
+// <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1251-1272 (info), :1284-1308 (time coroutine) -->
 qb::io::async::task<void> server_info(qb::redis::tcp::client &redis) {
     auto info = co_await redis.info("server");         // Reply<qb::json>
     qb::io::cout() << info.result().dump() << std::endl;
@@ -433,7 +434,7 @@ cluster API ([cluster_commands.md](./cluster_commands.md)) for managed topology,
 `shutdown()` with no argument sends `SHUTDOWN`; pass `"SAVE"` or `"NOSAVE"` to control the final snapshot. `SHUTDOWN` *
 *stops the server**: the connection drops and you will typically see a connection error rather than a status reply.
 `SYNC`/`PSYNC` are internal replication primitives and are rarely called
-directly. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:914-932 (slaveof always emits host+port), :1003 (sync), :1029 (psync), :1617 (failover), :895-916 (shutdown) -->
+directly. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:914-932 (slaveof always emits host+port), :988 (sync), :1014 (psync), :1602 (failover), :880-901 (shutdown) -->
 
 ```cpp
 qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {

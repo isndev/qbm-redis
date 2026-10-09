@@ -23,7 +23,7 @@ how the command surface is organized.
 ### Where the methods come from
 
 The client class composes a stack of CRTP mixins, one per Redis command group. `qb::redis::tcp::client` is an alias for
-`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:2059`), and that class inherits — in this order — from
+`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:2066`), and that class inherits — in this order — from
 `connection_commands`, `server_commands`, `key_commands`, `string_commands`, `list_commands`, `hash_commands`,
 `set_commands`, `sorted_set_commands`, `hyperloglog_commands`, `geo_commands`, `scripting_commands`, `publish_commands`,
 `stream_commands`, `bitmap_commands`, `transaction_commands`, `cluster_commands`, `acl_commands`, `module_commands`, and
@@ -47,7 +47,7 @@ Both forms end in the same place. The callback form serializes the command name 
 then pushes one reply handler onto a FIFO queue:
 
 ```cpp
-// redis.h:1209-1266 — the callback dispatcher, simplified
+// redis.h:1216-1273 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);
@@ -83,7 +83,7 @@ sequenceDiagram
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
-resumes your coroutine when the reply lands (`redis.h:1345-1349`, `redis.h:783-794`).
+resumes your coroutine when the reply lands (`redis.h:1352-1356`, `redis.h:783-794`).
 
 ### The reply type: `qb::redis::Reply<T>`
 

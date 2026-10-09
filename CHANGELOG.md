@@ -23,7 +23,8 @@ All notable changes to the qbm-redis module are documented here. The format is b
   command on a dedicated connection; the stream no longer consumes ordinary FIFO replies. `RESET` or `QUIT` ends it at
   its own reply, and disconnect reports one terminal failure without replaying MONITOR on reconnect. Other commands
   on that connection fail locally until the stream ends. A disconnect requested from inside a line callback stops
-  delivery before any other line already parsed from the same read batch.
+  delivery before any other line already parsed from the same read batch; a pending `RESET` or `QUIT` callback fails
+  on disconnect instead of consuming one of those leftover stream lines.
 - **A throwing consumer disconnect callback no longer suppresses auto-reconnect (Huly QB-663).** The connector contains
   standard and non-standard exceptions from the disconnect notification, logs them, and then checks the current retry
   policy. A callback may still disable that policy before the decision; pending replies fail once and no old subscription

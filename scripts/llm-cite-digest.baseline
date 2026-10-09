@@ -34,15 +34,15 @@ llm/qbm-redis.llm.api.md	parser/types.h:50-50	fbe1faa57c66	enum class ParseError
 llm/qbm-redis.llm.api.md	parser/types.h:66-66	1f85eaa019e5	class ParseError {
 llm/qbm-redis.llm.api.md	publish_commands.h:37-37	3c65ae0990bb	class publish_commands {
 llm/qbm-redis.llm.api.md	redis.h:101-103	39cb75f31c29	struct message {
-llm/qbm-redis.llm.api.md	redis.h:1391-1391	fe3c529f759a	class RedisPipeline {
-llm/qbm-redis.llm.api.md	redis.h:1447-1447	cd678de7f8c1	class RedisConsumer
-llm/qbm-redis.llm.api.md	redis.h:1821-1821	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
-llm/qbm-redis.llm.api.md	redis.h:1928-1928	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
-llm/qbm-redis.llm.api.md	redis.h:2035-2035	1d2fe40d4864	receive() {
-llm/qbm-redis.llm.api.md	redis.h:2052-2052	5b0051a25645	using database = detail::Redis<QB_IO_>;
-llm/qbm-redis.llm.api.md	redis.h:2058-2058	e19a828745ea	struct tcp {
-llm/qbm-redis.llm.api.md	redis.h:2070-2070	97c8e8c3b177	struct ssl {
-llm/qbm-redis.llm.api.md	redis.h:2083-2083	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
+llm/qbm-redis.llm.api.md	redis.h:1398-1398	fe3c529f759a	class RedisPipeline {
+llm/qbm-redis.llm.api.md	redis.h:1454-1454	cd678de7f8c1	class RedisConsumer
+llm/qbm-redis.llm.api.md	redis.h:1828-1828	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
+llm/qbm-redis.llm.api.md	redis.h:1935-1935	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
+llm/qbm-redis.llm.api.md	redis.h:2042-2042	1d2fe40d4864	receive() {
+llm/qbm-redis.llm.api.md	redis.h:2059-2059	5b0051a25645	using database = detail::Redis<QB_IO_>;
+llm/qbm-redis.llm.api.md	redis.h:2065-2065	e19a828745ea	struct tcp {
+llm/qbm-redis.llm.api.md	redis.h:2077-2077	97c8e8c3b177	struct ssl {
+llm/qbm-redis.llm.api.md	redis.h:2090-2090	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
 llm/qbm-redis.llm.api.md	redis.h:224-224	faac5b76e250	struct RetryPolicy {
 llm/qbm-redis.llm.api.md	redis.h:296-319	bb3b89039e82	template <typename QB_IO_, typename Derived>
 llm/qbm-redis.llm.api.md	redis.h:465-468	76c91e8904ff	* @struct connect_awaiter
