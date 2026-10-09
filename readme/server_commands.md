@@ -177,7 +177,7 @@ Notes:
   comes back as a JSON object. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1332-1348 (client_list), qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json string boxing) -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:51-75,103-111 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:93-117,145-153 -->
 qb::io::async::task<void> clients(qb::redis::tcp::client &redis) {
     co_await redis.client_setname("worker-1");
     auto name = co_await redis.client_getname();      // Reply<std::optional<std::string>>
@@ -229,7 +229,7 @@ redis.monitor([](qb::redis::Reply<std::string> &&line) {
 array into pairs for you. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:362-393 -->
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:189-232 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:231-274 -->
 qb::io::async::task<void> config(qb::redis::tcp::client &redis) {
     auto cur = co_await redis.config_get("maxmemory");   // Reply<vector<pair<string,string>>>
     if (cur && !cur.result().empty()) {
@@ -259,7 +259,7 @@ See the [`COMMAND` named-overload note](#commands-named-overload-actually-issues
 with a non-empty vector returns `COMMAND INFO` data.
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:296-336,339-368 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:338-378,381-410 -->
 qb::io::async::task<void> introspect(qb::redis::tcp::client &redis) {
     auto n = co_await redis.command_count();          // Reply<long long>
     qb::io::cout() << "command count: " << n.result() << std::endl;
@@ -339,7 +339,7 @@ qb::io::async::task<void> slowlog(qb::redis::tcp::client &redis) {
 `debug_segfault` **crashes the server** — it exists for fault-injection testing only.
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:378-410 -->
+// <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:420-452 -->
 qb::io::async::task<void> debug(qb::redis::tcp::client &redis) {
     // qb::duration accepts any std::chrono unit.
     auto r = co_await redis.debug_sleep(std::chrono::milliseconds(10));  // Reply<status>

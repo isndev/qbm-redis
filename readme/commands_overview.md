@@ -47,7 +47,7 @@ Both forms end in the same place. The callback form serializes the command name 
 then pushes one reply handler onto a FIFO queue:
 
 ```cpp
-// redis.h:1216-1273 — the callback dispatcher, simplified
+// redis.h:1216-1246 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);

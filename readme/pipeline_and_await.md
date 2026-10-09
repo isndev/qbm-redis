@@ -22,7 +22,7 @@ code in `<qbm/redis/redis.h>`; link the target rather than adding the include di
 
 Pipelining is a property of the client, not a separate object. Every callback command — `redis.set(cb, …)`,
 `redis.get(cb, …)`, or the low-level `redis.command<Ret>(cb, "SET", …)` — pushes one reply handler onto a FIFO queue and
-writes one RESP request to the outbound pipe, in call order (`redis.h:1216-1273`). Redis answers in request order, so the
+writes one RESP request to the outbound pipe, in call order (`redis.h:1216-1246`). Redis answers in request order, so the
 queue stays positionally consistent. Issue several commands back-to-back without waiting, then call `await()` once to
 run the loop until every handler has fired.
 
@@ -78,7 +78,7 @@ The client holds an internal `std::queue<PendingReply>` (`redis.h:875`). Each ca
 into the outbound pipe, then registers its handler — still **before** a byte leaves, since writing to the pipe sends
 nothing, so no delivery can run ahead of the queued handler. A command that cannot be serialized leaves neither a
 handler nor a partial frame behind: the pipe is rolled back and the callback receives a failed `Reply` (Huly QB-255;
-`redis.h:1220-1272`). Because Redis preserves request order on a single connection, the head of the queue always
+`redis.h:1220-1245`). Because Redis preserves request order on a single connection, the head of the queue always
 matches the next reply on the wire.
 
 `pending_reply_count()` returns the current queue depth (`redis.h:1319-1321`) — useful for tests and for confirming a
@@ -143,7 +143,7 @@ while (redis.pending_reply_count() > 0)
 `qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:2068`);
 the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:2076-2079`). It is a thin, optional
 wrapper that holds a reference to a `Redis` client and chains the low-level `command<Ret>(callback, name, args...)` (
-`redis.h:1216-1273`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
+`redis.h:1216-1246`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
 
 - Construct it with `pipeline pipe{redis}` over an existing client (`redis.h:1402-1403`).
 - `pipe.command<Ret>(cb, "SET", k, v)` returns `*pipe` for fluent chaining (`redis.h:1422-1425`).
