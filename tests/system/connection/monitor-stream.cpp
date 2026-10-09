@@ -285,3 +285,46 @@ TEST(RedisMonitorStream, DisconnectInsideLineCallbackEndsCurrentSession) {
     EXPECT_EQ(lines, (std::vector<std::string>{"OK", "stop"}));
     EXPECT_EQ(client.pending_reply_count(), 0u);
 }
+
+TEST(RedisMonitorStream, DisconnectInsideLineDoesNotGiveStreamFrameToPendingExit) {
+    for (bool quitting : {false, true}) {
+        SCOPED_TRACE(quitting ? "QUIT" : "RESET");
+        qb::io::async::init();
+        qb::io::tcp::listener listener;
+        ASSERT_EQ(listener.listen_v4(0, "127.0.0.1"), qb::io::SocketStatus::Done);
+        qb::redis::tcp::client client{qb::io::uri{"tcp://127.0.0.1:" + std::to_string(listener.local_endpoint().port())}};
+        ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
+        qb::io::tcp::socket peer;
+        ASSERT_EQ(listener.accept(peer), qb::io::SocketStatus::Done);
+
+        int monitor_terminal = 0;
+        client.monitor([&](qb::redis::Reply<std::string> &&r) {
+            if (!r)
+                ++monitor_terminal;
+            else if (r.result() == "stop")
+                client.disconnect();
+        });
+        const std::string admission = "+OK\r\n";
+        ASSERT_EQ(peer.write(admission.data(), admission.size()), static_cast<int>(admission.size()));
+        ASSERT_TRUE(run_until([&] { return client.pending_reply_count() == 0; }));
+
+        int         exit_calls = 0;
+        bool        exit_ok    = true;
+        std::string exit_error;
+        auto        on_exit = [&](qb::redis::Reply<qb::redis::status> &&r) {
+            ++exit_calls;
+            exit_ok    = r.ok();
+            exit_error = r.error();
+        };
+        if (quitting)
+            client.quit(on_exit);
+        else
+            client.reset(on_exit);
+        const std::string frames = quitting ? "+stop\r\n+stale\r\n+OK\r\n" : "+stop\r\n+stale\r\n+RESET\r\n";
+        ASSERT_EQ(peer.write(frames.data(), frames.size()), static_cast<int>(frames.size()));
+        ASSERT_TRUE(run_until([&] { return exit_calls == 1 && monitor_terminal == 1; }));
+        EXPECT_FALSE(exit_ok) << "a monitor line reached the pending exit's FIFO handler";
+        EXPECT_EQ(exit_error, "disconnected");
+        EXPECT_EQ(client.pending_reply_count(), 0u);
+    }
+}

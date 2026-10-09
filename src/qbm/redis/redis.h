@@ -1081,32 +1081,39 @@ private:
         if (msg.reply && reply::is_push(*msg.reply)) {
             return;
         }
-        if (_monitor && _monitor->admitted) {
-            if (!_replies.empty() && _replies.front().kind != PendingReply::Kind::command
-                && _replies.front().kind != PendingReply::Kind::monitor_admission && msg.reply
-                && is_monitor_exit_reply(*msg.reply, _replies.front().kind)) {
-                auto entry = std::move(_replies.front());
-                _replies.pop();
-                ++_reply_progress;
-                arm_deadline();
-                auto session = std::move(_monitor);
-                if (msg.reply->is_error()) {
-                    _monitor           = std::move(session);
-                    _monitor->stopping = false;
-                } else {
-                    end_monitor(session, "monitor stopped");
+        // disconnect_now() can defer teardown until this read dispatch returns.
+        // Drop any remaining frames from that socket without consuming a queued
+        // RESET/QUIT handler; the disconnect event will fail it exactly once.
+        if (qb__unlikely(_monitor || !this->is_connected())) {
+            if (!this->is_connected())
+                return;
+            if (_monitor->admitted) {
+                if (!_replies.empty() && _replies.front().kind != PendingReply::Kind::command
+                    && _replies.front().kind != PendingReply::Kind::monitor_admission && msg.reply
+                    && is_monitor_exit_reply(*msg.reply, _replies.front().kind)) {
+                    auto entry = std::move(_replies.front());
+                    _replies.pop();
+                    ++_reply_progress;
+                    arm_deadline();
+                    auto session = std::move(_monitor);
+                    if (msg.reply->is_error()) {
+                        _monitor           = std::move(session);
+                        _monitor->stopping = false;
+                    } else {
+                        end_monitor(session, "monitor stopped");
+                    }
+                    try {
+                        (*entry.handler)(std::move(msg.reply));
+                    } catch (const std::exception &ex) {
+                        QB_LOG_WARN("[qbm][redis] reply handler error: " << ex.what());
+                    } catch (...) {
+                        QB_LOG_WARN("[qbm][redis] reply handler threw a non-std exception");
+                    }
+                    return;
                 }
-                try {
-                    (*entry.handler)(std::move(msg.reply));
-                } catch (const std::exception &ex) {
-                    QB_LOG_WARN("[qbm][redis] reply handler error: " << ex.what());
-                } catch (...) {
-                    QB_LOG_WARN("[qbm][redis] reply handler threw a non-std exception");
-                }
+                deliver_monitor(_monitor, std::move(msg.reply));
                 return;
             }
-            deliver_monitor(_monitor, std::move(msg.reply));
-            return;
         }
         if (_replies.empty()) {
             QB_LOG_WARN("[qbm][redis] Received unsolicited reply with no pending command, discarding");
