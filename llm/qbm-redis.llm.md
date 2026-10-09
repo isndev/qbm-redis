@@ -93,8 +93,9 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
 - **Raw command arguments follow RESP bulk count.** `std::vector<char>` is one
   binary bulk (including an empty vector); a disengaged `std::optional` emits
   none. Containers, pairs and tuples expand their present elements. Floating
-  arguments use a locale-independent decimal spelling that round-trips to the
-  original value, so small increments remain nonzero on the wire.
+  arguments, including numeric `json_value` and `qb::json` raw-command values,
+  use a locale-independent decimal spelling that round-trips to the original
+  value, so small increments remain nonzero on the wire.
 - **RetryPolicy** drives connect-with-retry and auto-reconnect (exponential
   backoff). A reconnect does **not** replay in-flight commands or subscriptions.
 

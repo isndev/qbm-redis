@@ -555,7 +555,7 @@ template <typename T> struct Reply {
 | `type predicates` | `reply.h:202-286` · noexcept free fns | `is_string/is_error/is_integer/is_nil/is_array/is_double/is_bool/is_map/is_set/is_push/is_bignum/is_status`. |
 | `is_array_or_push` / `get_pubsub_element` / `get_pubsub_size` | `reply.h:254-272` · free fns | Uniform pub/sub accessors (Array in RESP2, Push in RESP3); element returns nullptr if OOB. |
 | `type_to_string` | `reply.h:660` · free fn | RESP type name of a reply. |
-| `put_in_pipe` / `to_redis_string` / `redis_count` | `reply.h:1178, :787-925, :706-753, :1032-1169` · serialization | Serialize a command into a qb-io pipe; `vector<char>` is one binary bulk, absent optionals emit none, and nested containers/pairs/tuples count their emitted bulks. Floating arguments use locale-independent round-trip decimal text; integral and chrono `seconds`/`milliseconds` arguments retain their integer `.count()` spelling. |
+| `put_in_pipe` / `to_redis_string` / `redis_count` | `reply.h:1178, :787-1027, :706-753, :1032-1169` · serialization | Serialize a command into a qb-io pipe; `vector<char>` is one binary bulk, absent optionals emit none, and nested containers/pairs/tuples count their emitted bulks. Floating arguments, including numeric `json_value` and `qb::json` values, use locale-independent round-trip decimal text; integral and chrono `seconds`/`milliseconds` arguments retain their integer `.count()` spelling. |
 | `REDIS_MAX_STRING_SIZE` / `is_valid_redis_string_size` | `reply.h:768, :777` | 512MB max serialized arg; exceeding throws `SecurityError` inside serialization, which the client turns into the command's failed `Reply` (`"String too large"`) with nothing queued or written (QB-255). |
 
 ### Error hierarchy (`reply.h`)

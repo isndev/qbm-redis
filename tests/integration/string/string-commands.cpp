@@ -248,6 +248,11 @@ TEST_P(StringProtocolModesTest, INCRBYFLOAT) {
         EXPECT_TRUE(small.ok()) << small.error();
         EXPECT_DOUBLE_EQ(small.result(), 1e-7);
 
+        const std::string json_key   = protocol_key("incrbyfloat_json");
+        auto              json_small = co_await redis.command<double>("INCRBYFLOAT", json_key, qb::json(1e-7));
+        EXPECT_TRUE(json_small.ok()) << json_small.error();
+        EXPECT_DOUBLE_EQ(json_small.result(), 1e-7);
+
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());

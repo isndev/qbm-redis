@@ -79,7 +79,7 @@ llm/qbm-redis.llm.api.md	reply.h:706-753	2b4e4b6e1de0	redis_count(const char (&)
 llm/qbm-redis.llm.api.md	reply.h:768-768	5a2e88e33883	constexpr std::size_t REDIS_MAX_STRING_SIZE = 512 * 1024 * 1024; // 5...
 llm/qbm-redis.llm.api.md	reply.h:770-770	942df14650e3	class SecurityError : public Error {
 llm/qbm-redis.llm.api.md	reply.h:777-777	700a3550088e	is_valid_redis_string_size(const std::string &s) {
-llm/qbm-redis.llm.api.md	reply.h:787-925	3e794fa682c2	to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
+llm/qbm-redis.llm.api.md	reply.h:787-1027	82aa371f9ffb	to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
 llm/qbm-redis.llm.api.md	reply.h:88-88	8fb3eba7b399	class ProtoError : public Error {
 llm/qbm-redis.llm.api.md	scripting_commands.h:36-36	ad1c3b4f6a52	class scripting_commands {
 llm/qbm-redis.llm.api.md	server_commands.h:42-42	6b7e173c7bf2	class server_commands {

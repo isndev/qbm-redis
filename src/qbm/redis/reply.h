@@ -977,7 +977,7 @@ to_redis_string(qb::allocator::pipe<char> &pipe, qb::redis::json_value const &js
             to_redis_string(pipe, std::get<bool>(json.data) ? "true" : "false");
             break;
         case Type::Number:
-            to_redis_string(pipe, std::to_string(std::get<double>(json.data)));
+            to_redis_string(pipe, std::get<double>(json.data));
             break;
         case Type::String:
             to_redis_string(pipe, std::get<std::string>(json.data));
@@ -1007,7 +1007,7 @@ to_redis_string(qb::allocator::pipe<char> &pipe, qb::json const &json) {
         if (json.is_number_integer()) {
             to_redis_string(pipe, std::to_string(json.get<int64_t>()));
         } else {
-            to_redis_string(pipe, std::to_string(json.get<double>()));
+            to_redis_string(pipe, json.get<double>());
         }
     } else if (json.is_string()) {
         to_redis_string(pipe, json.get<std::string>());

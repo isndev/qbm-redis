@@ -27,7 +27,8 @@ All notable changes to the qbm-redis module are documented here. The format is b
   still reaches its own callback.
 - **Floating command arguments retain their significant digits (Huly QB-636).** Locale-independent `std::to_chars`
   emits a round-trip representation for `double`, including small `INCRBYFLOAT` and `HINCRBYFLOAT` increments that
-  previously rounded to `0.000000` before reaching Redis. Integer argument formatting is unchanged.
+  previously rounded to `0.000000` before reaching Redis. Numeric `json_value` and `qb::json` arguments to raw commands
+  use the same floating path; integer argument formatting is unchanged.
 - **Server-side `extract_*` helpers preserve their result across C++20/C++23 library and consumer builds (Huly QB-286).**
   A C++20 Redis archive returned qb's variant-backed `expected`, while a C++23 consumer interpreted the same
   symbol and bytes as `std::expected` (and vice versa). The compiled functions now exchange values and errors

@@ -47,6 +47,29 @@ ser(const T &v) {
     qb::redis::to_redis_string(p, v);
     return p.str();
 }
+
+void
+expect_small_float_command(const std::string &frame) {
+    constexpr std::string_view prefix = "*3\r\n$11\r\nINCRBYFLOAT\r\n$3\r\nkey\r\n$";
+    ASSERT_TRUE(std::string_view(frame).starts_with(prefix)) << frame;
+    const auto length_end = frame.find("\r\n", prefix.size());
+    ASSERT_NE(length_end, std::string::npos);
+    const auto  length_text      = std::string_view(frame).substr(prefix.size(), length_end - prefix.size());
+    std::size_t length           = 0;
+    auto [length_ptr, length_ec] = std::from_chars(length_text.data(), length_text.data() + length_text.size(), length);
+    ASSERT_EQ(length_ec, std::errc{});
+    ASSERT_EQ(length_ptr, length_text.data() + length_text.size());
+    const auto payload_start = length_end + 2;
+    ASSERT_EQ(frame.size(), payload_start + length + 2);
+    EXPECT_EQ(frame.substr(frame.size() - 2), "\r\n");
+    const auto payload = std::string_view(frame).substr(payload_start, length);
+    EXPECT_NE(payload, "0.000000");
+    double increment             = 0;
+    auto [number_ptr, number_ec] = std::from_chars(payload.data(), payload.data() + payload.size(), increment);
+    ASSERT_EQ(number_ec, std::errc{});
+    ASSERT_EQ(number_ptr, payload.data() + payload.size());
+    EXPECT_EQ(increment, 1e-7);
+}
 } // namespace
 
 // ============================================================================
@@ -265,8 +288,7 @@ TEST(ReplySerJsonValue, Number) {
     qb::redis::json_value     jv{qb::redis::json_value::Type::Number, 3.0};
     qb::allocator::pipe<char> p;
     qb::redis::to_redis_string(p, jv);
-    // std::to_string(3.0) == "3.000000".
-    EXPECT_EQ(p.str(), "$8\r\n3.000000\r\n");
+    EXPECT_EQ(p.str(), "$1\r\n3\r\n");
 }
 
 TEST(ReplySerJsonValue, String) {
@@ -330,11 +352,11 @@ TEST(ReplySerQbJson, NumberIntegerLargeNoTruncation) {
 }
 
 TEST(ReplySerQbJson, NumberDouble) {
-    // non-integer number -> std::to_string(double).
+    // Non-integer number follows the arithmetic double serializer.
     qb::json                  j(2.5);
     qb::allocator::pipe<char> p;
     qb::redis::to_redis_string(p, j);
-    EXPECT_EQ(p.str(), "$8\r\n2.500000\r\n");
+    EXPECT_EQ(p.str(), "$3\r\n2.5\r\n");
 }
 
 TEST(ReplySerQbJson, String) {
@@ -574,7 +596,20 @@ TEST(ReplyPutInPipe, MapWithOptionalValuesCountsEachEntry) {
 TEST(ReplyPutInPipe, SmallFloatingIncrementKeepsSignificantDigits) {
     qb::allocator::pipe<char> p;
     qb::redis::put_in_pipe(p, "INCRBYFLOAT", "key", 1e-7);
-    EXPECT_EQ(p.str(), "*3\r\n$11\r\nINCRBYFLOAT\r\n$3\r\nkey\r\n$5\r\n1e-07\r\n");
+    expect_small_float_command(p.str());
+}
+
+TEST(ReplyPutInPipe, JsonValueNumberKeepsSmallFloatingIncrement) {
+    qb::allocator::pipe<char>   p;
+    const qb::redis::json_value increment{qb::redis::json_value::Type::Number, 1e-7};
+    qb::redis::put_in_pipe(p, "INCRBYFLOAT", "key", increment);
+    expect_small_float_command(p.str());
+}
+
+TEST(ReplyPutInPipe, QbJsonNumberKeepsSmallFloatingIncrement) {
+    qb::allocator::pipe<char> p;
+    qb::redis::put_in_pipe(p, "INCRBYFLOAT", "key", qb::json(1e-7));
+    expect_small_float_command(p.str());
 }
 
 // ============================================================================

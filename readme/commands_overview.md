@@ -60,6 +60,10 @@ sent: writing to the pipe sends nothing, so no reply can run ahead of its handle
 lockstep. This ordering guarantee is what makes pipelining work —
 see [Pipelining and `await()`](./pipeline_and_await.md).
 
+A numeric `qb::json` or `json_value` passed to a generic command emits its number as one decimal bulk string, not a
+JSON document. Floating values use the same round-trip formatting as a direct `double` argument; `1e-7` stays nonzero
+for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:979-980`, `reply.h:1006-1010`).
+
 ```mermaid
 sequenceDiagram
     participant App as your code
