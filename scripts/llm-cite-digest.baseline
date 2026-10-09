@@ -93,8 +93,8 @@ llm/qbm-redis.llm.api.md	server_reply.h:49-49	f62abfceba6a	struct ServerReply {
 llm/qbm-redis.llm.api.md	set_commands.h:37-37	abd3bbcd2d8d	class set_commands {
 llm/qbm-redis.llm.api.md	sorted_set_commands.h:39-39	3ca9c8d4c2be	class sorted_set_commands {
 llm/qbm-redis.llm.api.md	src/qbm/redis/parser/types.h:455-455	2cba24c099e9	struct Value : ValueBase {
-llm/qbm-redis.llm.api.md	stream_commands.h:35-35	4816175b91eb	class stream_commands {
-llm/qbm-redis.llm.api.md	stream_commands.h:85-85	20a4409c5b05	parse_stream_id(const std::string &id_str) {
+llm/qbm-redis.llm.api.md	stream_commands.h:36-36	4816175b91eb	class stream_commands {
+llm/qbm-redis.llm.api.md	stream_commands.h:95-95	20a4409c5b05	parse_stream_id(const std::string &id_str) {
 llm/qbm-redis.llm.api.md	string_commands.h:49-49	c879e6021a5d	class string_commands {
 llm/qbm-redis.llm.api.md	subscription_commands.h:41-41	a1757770a5f5	class subscription_commands {
 llm/qbm-redis.llm.api.md	transaction_commands.h:38-38	d12ba69a350e	class transaction_commands {

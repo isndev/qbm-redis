@@ -17,6 +17,7 @@
  */
 #ifndef QBM_REDIS_STREAM_COMMANDS_H
 #define QBM_REDIS_STREAM_COMMANDS_H
+#include <algorithm>
 #include <qb/system/parse.h>
 #include "../reply.h"
 
@@ -37,6 +38,15 @@ private:
     constexpr Derived &
     derived() {
         return static_cast<Derived &>(*this);
+    }
+
+    static bool
+    has_justid_option(const std::vector<std::string> &options) {
+        return std::any_of(options.begin(), options.end(), [](const std::string &option) {
+            return option.size() == 6 && std::equal(option.begin(), option.end(), "JUSTID", [](char actual, char expected) {
+                       return (actual >= 'a' && actual <= 'z' ? actual - 'a' + 'A' : actual) == expected;
+                   });
+        });
     }
 
 public:
@@ -769,7 +779,7 @@ public:
      * @param consumer Consumer name claiming the messages
      * @param min_idle_time Minimum idle time in milliseconds
      * @param ids Message IDs to claim
-     * @param options Optional vector of options (e.g. "IDLE", "TIME", "RETRYCOUNT")
+     * @param options Optional vector of options (e.g. "IDLE", "TIME", "RETRYCOUNT"); use xclaim_justid for JUSTID
      * @return redis_awaiter yielding Reply<stream_entry_list>
      * @see https://redis.io/commands/xclaim
      */
@@ -800,10 +810,51 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_entry_list> &&>, Derived &>
     xclaim(Func &&func, const std::string &key, const std::string &group, const std::string &consumer, long long min_idle_time,
            const std::vector<std::string> &ids, const std::vector<std::string> &options = {}) {
+        if (has_justid_option(options)) {
+            fail_client<stream_entry_list>(std::forward<Func>(func), "XCLAIM JUSTID requires xclaim_justid");
+            return derived();
+        }
         std::vector<std::string> args = {key, group, consumer, std::to_string(min_idle_time)};
         args.insert(args.end(), ids.begin(), ids.end());
         args.insert(args.end(), options.begin(), options.end());
         return derived().template command<stream_entry_list>(std::forward<Func>(func), "XCLAIM", args);
+    }
+
+    /**
+     * @brief Claim pending messages and return only their IDs (coroutine awaitable)
+     *
+     * @param key Stream key
+     * @param group Consumer group name
+     * @param consumer Consumer name claiming the messages
+     * @param min_idle_time Minimum idle time in milliseconds
+     * @param ids Message IDs to claim
+     * @param options Optional XCLAIM modifiers other than JUSTID
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @see https://redis.io/commands/xclaim
+     */
+    auto
+    xclaim_justid(const std::string &key, const std::string &group, const std::string &consumer, long long min_idle_time,
+                  const std::vector<std::string> &ids, const std::vector<std::string> &options = {}) {
+        return derived().template make_coro_command<std::vector<std::string>>(
+            [this, key, group, consumer, min_idle_time, ids, options](auto &&callback) {
+                this->xclaim_justid(std::move(callback), key, group, consumer, min_idle_time, ids, options);
+            });
+    }
+
+    /** @brief Callback form of xclaim_justid; invokes @p func with Reply<std::vector<std::string>>. */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
+    xclaim_justid(Func &&func, const std::string &key, const std::string &group, const std::string &consumer, long long min_idle_time,
+                  const std::vector<std::string> &ids, const std::vector<std::string> &options = {}) {
+        if (has_justid_option(options)) {
+            fail_client<std::vector<std::string>>(std::forward<Func>(func), "xclaim_justid adds JUSTID automatically");
+            return derived();
+        }
+        std::vector<std::string> args = {key, group, consumer, std::to_string(min_idle_time)};
+        args.insert(args.end(), ids.begin(), ids.end());
+        args.insert(args.end(), options.begin(), options.end());
+        args.push_back("JUSTID");
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "XCLAIM", args);
     }
 
     /**
