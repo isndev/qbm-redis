@@ -45,8 +45,8 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    `std::is_invocable_v<Func, Reply<T>&&>`, so a wrong callback signature silently fails to
    select the overload instead of erroring where you wrote it.
 2. **The client is single-threaded.** One I/O thread, one in-flight accessor; the reply queue
-   and outbound pipe are unsynchronized. `command()` registers the reply handler *before*
-   sending bytes, so pipelining is FIFO-safe and replies match commands positionally.
+   and outbound pipe are unsynchronized. `command()` serializes into the outbound pipe, then
+   registers the reply handler before any byte leaves; replies match commands positionally.
 3. **`set_command_timeout` is a connection watchdog, not a per-command deadline.** On expiry
    it drops the whole connection, because a FIFO cannot fail one command mid-queue; pending
    commands fail with "command timed out". Blocking commands (`BLPOP`, `BRPOP`, `BLMOVE`,
@@ -105,6 +105,11 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
 - **Pipelining is implicit.** Issue several callback-form commands without
   awaiting; each enqueues one handler, bytes go out in order, replies return
   positionally (FIFO). Drain with `await()`.
+- **Raw command arguments follow RESP bulk count.** `std::vector<char>` is one
+  binary bulk (including an empty vector); a disengaged `std::optional` emits
+  none. Containers, pairs and tuples expand their present elements. Floating
+  arguments use a locale-independent decimal spelling that round-trips to the
+  original value, so small increments remain nonzero on the wire.
 - **RetryPolicy** drives connect-with-retry and auto-reconnect (exponential
   backoff). A reconnect does **not** replay in-flight commands or subscriptions.
 
@@ -415,7 +420,7 @@ Every signature in this file is confirmed against the headers. For prose/concept
 - **Two API styles per command.** Every command mixin exposes (1) a **coroutine** form `cmd(args...)` returning a `redis_awaiter` you `co_await` to get `Reply<T>`, and (2) a **callback** form `cmd(Func&& func, args...)` (callback first) that invokes `func(Reply<T>&&)` and returns `Derived&` for chaining. Signatures below show the coroutine form; the callback overload is implied unless noted "callback-only" / "coroutine-only".
 - **`Reply<T>`** is the universal result wrapper: `ok()` / `operator bool` = no Redis error; `result()` / `value()` = parsed `T`; `raw()` = owning `parser::Value`; `error()` = owned error string.
 - **`awaiter<Reply<T>>`** below is shorthand for the `redis_awaiter<T, ...>` returned by the coroutine form.
-- **Empty-argument guard.** A required-variadic / required-collection command called with nothing to act on (`del`/`exists`/`touch`/`unlink` with no keys, `lpush`/`rpush(x)`, `sadd`/`srem`/`smismember`, `sdiff(store)`/`sinter(card/store)`/`sunion(store)`, `hdel`/`hmget`/`hmset`, `zmpop`/`bzmpop`, `lmpop`/`blmpop`, `geoadd`/`geohash`/`geopos`, `pfcount`/`pfmerge`, `cluster addslots`/`delslots`, `script exists`, …) does **not** send a frame: it resolves the callback / awaiter with a **failed `Reply`** (`ok()==false`, reason in `error()`) via `fail_client` (`reply.h:1284-1288`). **No exceptions**: the callback cursor forms `hscan`/`zscan` on an empty key and `lpos` on an empty key/element used to return unfired — parking the coroutine form forever — and now resolve the same way.
+- **Empty-argument guard.** A required-variadic / required-collection command called with nothing to act on (`del`/`exists`/`touch`/`unlink` with no keys, `lpush`/`rpush(x)`, `sadd`/`srem`/`smismember`, `sdiff(store)`/`sinter(card/store)`/`sunion(store)`, `hdel`/`hmget`/`hmset`, `zmpop`/`bzmpop`, `lmpop`/`blmpop`, `geoadd`/`geohash`/`geopos`, `pfcount`/`pfmerge`, `cluster addslots`/`delslots`, `script exists`, …) does **not** send a frame: it resolves the callback / awaiter with a **failed `Reply`** (`ok()==false`, reason in `error()`) via `fail_client` (`reply.h:1387-1391`). **No exceptions**: the callback cursor forms `hscan`/`zscan` on an empty key and `lpos` on an empty key/element used to return unfired — parking the coroutine form forever — and now resolve the same way.
 
 ### TIME / UNITS — the boundary you must get right
 
@@ -925,7 +930,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 ## Reply types — `reply.h`
 
 ### `qb::redis::Reply<T>`
-`reply.h:1108-1109` · `struct template`. Typed command result.
+`reply.h:1205-1206` · `struct template`. Typed command result.
 
 ```cpp
 template <typename T> struct Reply {
@@ -939,32 +944,32 @@ template <typename T> struct Reply {
 
 | Symbol | Header / kind | Purpose |
 |---|---|---|
-| `ReplyValue` | `reply.h:47` · type alias | `= parser::Value`; the native RESP reply value (variant over RESP2/RESP3 nodes). |
-| `ReplyErrorType` | `reply.h:56` · enum class | `{ ERR, MOVED, ASK }` — declared, not produced: no `Reply` carries an error type yet, so branch on the prefix of `reply.error()` (`MOVED …` / `ASK …` for a cluster redirect). |
-| `IReply` | `reply.h:1196` · abstract class | `virtual void operator()(std::unique_ptr<ReplyValue>)=0; virtual void fail(const std::string&)`. `operator()` **takes ownership** (nullptr = disconnect). |
-| `TReply<Func,T>` | `reply.h:1218-1219` · class template | Concrete handler: parses `T`, invokes `func(Reply<T>{...})`; nullptr→`{ok=false,error="disconnected"}`; thrown `qb::redis::Error`→`{ok=false}` with `e.what()` copied. |
-| `is_optional_like<T>` | `reply.h:1096-1099` · trait | True for `std::optional<U>`; drives `value_or`. |
-| `parse<T>` | `reply.h:305-306` (generic dispatcher) / `reply.h:411` (`ParseTag<T>` overloads) · function template | Convert `parser::Value` → `T` via `ParseTag<T>` dispatch; throws `ReplyParseError`/`ProtoError` on mismatch. |
-| `ParseTag<T>` | `reply.h:193` · struct template | Empty tag for parse overload dispatch. |
-| `to_status` / `parse_set_reply` / `parse_scan_reply` | `reply.h:665, :677, :588` · free fns | Extract `status`; `parse_set_reply` true iff "OK" (false, not throw, on nil); `parse_scan_reply` → new cursor (unsigned 64-bit). |
-| `type predicates` | `reply.h:200-284` · noexcept free fns | `is_string/is_error/is_integer/is_nil/is_array/is_double/is_bool/is_map/is_set/is_push/is_bignum/is_status`. |
-| `is_array_or_push` / `get_pubsub_element` / `get_pubsub_size` | `reply.h:252-270` · free fns | Uniform pub/sub accessors (Array in RESP2, Push in RESP3); element returns nullptr if OOB. |
-| `type_to_string` | `reply.h:658` · free fn | RESP type name of a reply. |
-| `put_in_pipe` / `to_redis_string` / `redis_count` | `reply.h:1081, :805-893, :704-757` · serialization | Serialize a command into a qb-io pipe; chrono `seconds`/`milliseconds` overloads emit `.count()` (native-unit command boundary). |
-| `REDIS_MAX_STRING_SIZE` / `is_valid_redis_string_size` | `reply.h:786, :795` | 512MB max serialized arg; exceeding throws `SecurityError` inside serialization, which the client turns into the command's failed `Reply` (`"String too large"`) with nothing queued or written (QB-255). |
+| `ReplyValue` | `reply.h:49` · type alias | `= parser::Value`; the native RESP reply value (variant over RESP2/RESP3 nodes). |
+| `ReplyErrorType` | `reply.h:58` · enum class | `{ ERR, MOVED, ASK }` — declared, not produced: no `Reply` carries an error type yet, so branch on the prefix of `reply.error()` (`MOVED …` / `ASK …` for a cluster redirect). |
+| `IReply` | `reply.h:1293` · abstract class | `virtual void operator()(std::unique_ptr<ReplyValue>)=0; virtual void fail(const std::string&)`. `operator()` **takes ownership** (nullptr = disconnect). |
+| `TReply<Func,T>` | `reply.h:1315-1316` · class template | Concrete handler: parses `T`, invokes `func(Reply<T>{...})` once; nullptr→`{ok=false,error="disconnected"}`; decode-time `qb::redis::Error`→`{ok=false}` with `e.what()` copied. Callback throws propagate to the dispatch boundary without a second completion. |
+| `is_optional_like<T>` | `reply.h:1193-1196` · trait | True for `std::optional<U>`; drives `value_or`. |
+| `parse<T>` | `reply.h:307-308` (generic dispatcher) / `reply.h:413` (`ParseTag<T>` overloads) · function template | Convert `parser::Value` → `T` via `ParseTag<T>` dispatch; throws `ReplyParseError`/`ProtoError` on mismatch. |
+| `ParseTag<T>` | `reply.h:195` · struct template | Empty tag for parse overload dispatch. |
+| `to_status` / `parse_set_reply` / `parse_scan_reply` | `reply.h:667, :679, :590` · free fns | Extract `status`; `parse_set_reply` true iff "OK" (false, not throw, on nil); `parse_scan_reply` → new cursor (unsigned 64-bit). |
+| `type predicates` | `reply.h:202-286` · noexcept free fns | `is_string/is_error/is_integer/is_nil/is_array/is_double/is_bool/is_map/is_set/is_push/is_bignum/is_status`. |
+| `is_array_or_push` / `get_pubsub_element` / `get_pubsub_size` | `reply.h:254-272` · free fns | Uniform pub/sub accessors (Array in RESP2, Push in RESP3); element returns nullptr if OOB. |
+| `type_to_string` | `reply.h:660` · free fn | RESP type name of a reply. |
+| `put_in_pipe` / `to_redis_string` / `redis_count` | `reply.h:1178, :787-925, :706-753, :1032-1169` · serialization | Serialize a command into a qb-io pipe; `vector<char>` is one binary bulk, absent optionals emit none, and nested containers/pairs/tuples count their emitted bulks. Floating arguments use locale-independent round-trip decimal text; integral and chrono `seconds`/`milliseconds` arguments retain their integer `.count()` spelling. |
+| `REDIS_MAX_STRING_SIZE` / `is_valid_redis_string_size` | `reply.h:768, :777` | 512MB max serialized arg; exceeding throws `SecurityError` inside serialization, which the client turns into the command's failed `Reply` (`"String too large"`) with nothing queued or written (QB-255). |
 
 ### Error hierarchy (`reply.h`)
-All derive from `qb::redis::Error : std::exception` (`reply.h:62`; `what()` valid for the exception's lifetime).
+All derive from `qb::redis::Error : std::exception` (`reply.h:64`; `what()` valid for the exception's lifetime).
 
 | Class | Header | Meaning |
 |---|---|---|
-| `ProtoError` | `reply.h:86` | Malformed/unexpected RESP structure. |
-| `ConnectionError` | `reply.h:102` | TCP connection could not be established. |
-| `AuthError` | `reply.h:118` | NOAUTH / WRONGPASS. |
-| `CommandError` | `reply.h:134` | Redis returned `-ERR` for a command. |
-| `TimeoutError` | `reply.h:150` | A connect/command exceeded its deadline. |
-| `ReplyParseError` | `reply.h:166` (: `ProtoError`) | Wrong RESP type for the requested C++ type. |
-| `SecurityError` | `reply.h:788` | Serialized argument exceeds `REDIS_MAX_STRING_SIZE`. |
+| `ProtoError` | `reply.h:88` | Malformed/unexpected RESP structure. |
+| `ConnectionError` | `reply.h:104` | TCP connection could not be established. |
+| `AuthError` | `reply.h:120` | NOAUTH / WRONGPASS. |
+| `CommandError` | `reply.h:136` | Redis returned `-ERR` for a command. |
+| `TimeoutError` | `reply.h:152` | A connect/command exceeded its deadline. |
+| `ReplyParseError` | `reply.h:168` (: `ProtoError`) | Wrong RESP type for the requested C++ type. |
+| `SecurityError` | `reply.h:770` | Serialized argument exceeds `REDIS_MAX_STRING_SIZE`. |
 
 ### Server-side reply helpers (`server_reply.h`)
 - `ServerReply<T>` (`server_reply.h:49`, +`void` specialization) — `{bool ok; T value; std::string error;}` with ref-qualified `result()`.

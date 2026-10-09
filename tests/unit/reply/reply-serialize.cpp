@@ -23,7 +23,9 @@
 //
 
 #include <chrono>
+#include <charconv>
 #include <gtest/gtest.h>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -98,8 +100,32 @@ TEST(ReplySerArithmetic, NegativeInt) {
 }
 
 TEST(ReplySerArithmetic, Double) {
-    // std::to_string(double) yields fixed 6-decimal notation.
-    EXPECT_EQ(ser(1.5), "$8\r\n1.500000\r\n");
+    EXPECT_EQ(ser(1.5), "$3\r\n1.5\r\n");
+}
+
+TEST(ReplySerArithmetic, DoubleRoundTripsAtMagnitudeLimits) {
+    for (double value :
+         {1.2345678901234567, std::numeric_limits<double>::min(), std::numeric_limits<double>::max(),
+          std::numeric_limits<double>::denorm_min()}) {
+        const std::string wire = ser(value);
+        const auto        sep  = wire.find("\r\n");
+        ASSERT_NE(sep, std::string::npos);
+        ASSERT_EQ(wire.substr(wire.size() - 2), "\r\n");
+        const auto payload = wire.substr(sep + 2, wire.size() - sep - 4);
+        EXPECT_EQ(wire.substr(0, sep), "$" + std::to_string(payload.size()));
+        double parsed  = 0;
+        auto [end, ec] = std::from_chars(payload.data(), payload.data() + payload.size(), parsed);
+        EXPECT_EQ(ec, std::errc{});
+        EXPECT_EQ(end, payload.data() + payload.size());
+        EXPECT_EQ(parsed, value);
+    }
+    EXPECT_EQ(ser(1.2345678901234567), "$18\r\n1.2345678901234567\r\n");
+}
+
+TEST(ReplySerArithmetic, NonFiniteSpellingIsPreserved) {
+    EXPECT_EQ(ser(std::numeric_limits<double>::infinity()), "$3\r\ninf\r\n");
+    EXPECT_EQ(ser(-std::numeric_limits<double>::infinity()), "$4\r\n-inf\r\n");
+    EXPECT_EQ(ser(std::numeric_limits<double>::quiet_NaN()), "$3\r\nnan\r\n");
 }
 
 TEST(ReplySerOptional, Engaged) {
@@ -175,8 +201,7 @@ TEST(ReplySerGeoPos, LongitudeThenLatitude) {
     qb::redis::geo_pos        pos{1.0, 2.0};
     qb::allocator::pipe<char> p;
     qb::redis::to_redis_string(p, pos);
-    // longitude then latitude, each as std::to_string(double).
-    EXPECT_EQ(p.str(), "$8\r\n1.000000\r\n$8\r\n2.000000\r\n");
+    EXPECT_EQ(p.str(), "$1\r\n1\r\n$1\r\n2\r\n");
 }
 
 TEST(ReplySerStreamId, ToStringForm) {
@@ -191,15 +216,14 @@ TEST(ReplySerScore, SingleDouble) {
     qb::redis::score          sc{2.5};
     qb::allocator::pipe<char> p;
     qb::redis::to_redis_string(p, sc);
-    EXPECT_EQ(p.str(), "$8\r\n2.500000\r\n");
+    EXPECT_EQ(p.str(), "$3\r\n2.5\r\n");
 }
 
 TEST(ReplySerScoreMember, ScoreThenMember) {
     qb::redis::score_member   sm{1.0, "alice"};
     qb::allocator::pipe<char> p;
     qb::redis::to_redis_string(p, sm);
-    // sm.score first, then sm.member.
-    EXPECT_EQ(p.str(), "$8\r\n1.000000\r\n$5\r\nalice\r\n");
+    EXPECT_EQ(p.str(), "$1\r\n1\r\n$5\r\nalice\r\n");
 }
 
 TEST(ReplySerSearchResult, KeyFieldsValues) {
@@ -512,6 +536,45 @@ TEST(ReplyPutInPipe, DisengagedOptionalDropsFromCount) {
     std::optional<std::string> absent;
     qb::redis::put_in_pipe(p, "GET", "k", absent);
     EXPECT_EQ(p.str(), "*2\r\n$3\r\nGET\r\n$1\r\nk\r\n");
+}
+
+TEST(ReplyPutInPipe, BinaryArgumentCountsOneAtEveryLength) {
+    for (const std::vector<char> &bytes : {std::vector<char>{}, {'x'}, {'a', '\0', 'b'}}) {
+        qb::allocator::pipe<char> p;
+        qb::redis::put_in_pipe(p, "SET", "key", bytes, "tail");
+        const std::string payload(bytes.begin(), bytes.end());
+        EXPECT_EQ(p.str(), "*4\r\n$3\r\nSET\r\n$3\r\nkey\r\n$" + std::to_string(bytes.size()) + "\r\n" + payload + "\r\n$4\r\ntail\r\n");
+    }
+}
+
+TEST(ReplyPutInPipe, MixedOptionalAndPairCountsEmittedBulks) {
+    const std::vector<std::optional<std::string>>            values{std::nullopt, "x", std::nullopt, "yz"};
+    const std::pair<std::optional<std::string>, std::string> pair{"f", "v"};
+    qb::allocator::pipe<char>                                p;
+    qb::redis::put_in_pipe(p, "CMD", values, pair, "tail");
+    EXPECT_EQ(p.str(), "*6\r\n$3\r\nCMD\r\n$1\r\nx\r\n$2\r\nyz\r\n$1\r\nf\r\n$1\r\nv\r\n$4\r\ntail\r\n");
+}
+
+TEST(ReplyPutInPipe, NestedTupleAndBinaryOptionalCountEmittedBulks) {
+    const std::tuple<std::optional<std::string>, std::pair<std::optional<std::string>, std::vector<char>>> nested{
+        std::nullopt, {"f", {'a', '\0', 'b'}}
+    };
+    qb::allocator::pipe<char> p;
+    qb::redis::put_in_pipe(p, "CMD", nested, "tail");
+    EXPECT_EQ(p.str(), std::string("*4\r\n$3\r\nCMD\r\n$1\r\nf\r\n$3\r\na") + '\0' + "b\r\n$4\r\ntail\r\n");
+}
+
+TEST(ReplyPutInPipe, MapWithOptionalValuesCountsEachEntry) {
+    const std::map<std::string, std::optional<std::string>> values{{"a", std::nullopt}, {"b", "v"}};
+    qb::allocator::pipe<char>                               p;
+    qb::redis::put_in_pipe(p, "CMD", values);
+    EXPECT_EQ(p.str(), "*4\r\n$3\r\nCMD\r\n$1\r\na\r\n$1\r\nb\r\n$1\r\nv\r\n");
+}
+
+TEST(ReplyPutInPipe, SmallFloatingIncrementKeepsSignificantDigits) {
+    qb::allocator::pipe<char> p;
+    qb::redis::put_in_pipe(p, "INCRBYFLOAT", "key", 1e-7);
+    EXPECT_EQ(p.str(), "*3\r\n$11\r\nINCRBYFLOAT\r\n$3\r\nkey\r\n$5\r\n1e-07\r\n");
 }
 
 // ============================================================================

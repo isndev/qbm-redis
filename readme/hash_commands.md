@@ -48,7 +48,7 @@ remain `qb::duration` at the client level — see [connection.md](./connection.m
 
 ## Reply types at a glance
 
-`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1102-1177`): `reply.ok()` reports success, `reply.result()` (alias
+`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1199-1274`): `reply.ok()` reports success, `reply.result()` (alias
 `reply.value()`) holds the parsed payload, `reply.error()` holds the server error string, and `Reply<T>` is contextually
 convertible to `bool` (explicit). Container payloads are **mixed**: `hgetall` (and the default `Out` of `hscan`) uses
 a qb-core container, `qb::unordered_map<std::string, std::string>`; `hkeys`, `hvals`, `hmget` and `hget` are all `std::`
@@ -134,7 +134,7 @@ auto first  = co_await redis.hsetnx("user:1", "field1", "value1"); // result() =
 auto second = co_await redis.hsetnx("user:1", "field1", "other");  // result() == false
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:238-258 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:242-262 -->
 
 ### `HMSET key field value [field value ...]` — `hmset`
 
@@ -281,7 +281,7 @@ auto r = co_await redis.hvals("user:1");
 if (r.ok()) { /* r.result() == {"value1", "value2", ...} */ }
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:280-283 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:284-287 -->
 
 #### `hvals` multi-key fan-out (callback-only)
 
@@ -388,7 +388,7 @@ auto r = co_await redis.hstrlen("user:1", "field1");
 if (r.ok()) { /* r.result() == length in bytes */ }
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:300-308 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:304-312 -->
 
 ### `HINCRBY key field increment` — `hincrby`
 
@@ -416,7 +416,8 @@ auto down = co_await redis.hincrby("user:1", "counter", -5); // result() == 5
 ### `HINCRBYFLOAT key field increment` — `hincrbyfloat`
 
 Increments the float value of `field` by a `double` and returns the value after the operation. Negative increments
-decrement.
+decrement. The increment uses a locale-independent, round-trip `double` representation, so `1e-7` is sent as a nonzero
+value.
 
 ```cpp
 // Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:381-382
@@ -472,7 +473,7 @@ do {
 } while (cursor != 0);
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:325-335 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:329-339 -->
 
 > The callback cursor form sends nothing when `key` is empty — but it does not go silent: it routes through
 > `fail_client` with `"HSCAN requires a non-empty key"` and then returns `derived()`, so the handler runs with

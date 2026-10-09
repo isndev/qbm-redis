@@ -155,7 +155,7 @@ auth(Func &&func, const std::string &user, const std::string &password);
 
 Two argument shapes: one string is the legacy `requirepass` form (authenticates as the `default` user); two strings are
 the ACL `user` + `password` form. A rejected credential resolves with `ok() == false` and the server message (
-`WRONGPASS`, `NOPERM`) in `error()`. A `qb::redis::AuthError` class is declared (`reply.h:118`) but nothing in the
+`WRONGPASS`, `NOPERM`) in `error()`. A `qb::redis::AuthError` class is declared (`reply.h:120`) but nothing in the
 module ever constructs or throws it — a rejected `auth` reaches you only as `reply.error()` text, so do not write a
 `catch` clause for it. Credentials are **not** stored
 on the client, so auto-reconnect does not re-authenticate — re-issue `auth(...)` yourself after a reconnect (

@@ -21,6 +21,7 @@
 #include <atomic>
 #include <chrono>
 #include <gtest/gtest.h>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <qb/io/async.h>
@@ -134,18 +135,34 @@ TEST_F(PipelineCallbackTest, CallbacksRunInSendOrder) {
 // catch only covers std::exception; the onMessage backstop catches the rest. Before the fix
 // this aborts the binary; after it the throw is swallowed and the connection keeps working.
 TEST_F(PipelineCallbackTest, NonStdExceptionInCallbackDoesNotTerminate) {
-    bool first_ran = false;
+    int first_calls = 0;
     redis.ping([&](qb::redis::Reply<std::string> &&) {
-        first_ran = true;
+        ++first_calls;
         throw 42; // non-std-exception type — bypasses every catch(const std::exception&)
     });
     redis.await(); // dispatches the reply; the throw must be contained, not terminate
-    EXPECT_TRUE(first_ran);
+    EXPECT_EQ(first_calls, 1);
+    EXPECT_EQ(redis.pending_reply_count(), 0u);
 
     bool second_ok = false;
     redis.ping([&](qb::redis::Reply<std::string> &&r) { second_ok = r.ok(); });
     redis.await();
     EXPECT_TRUE(second_ok);
+}
+
+TEST_F(PipelineCallbackTest, StdExceptionInSuccessCallbackPreservesReplyQueue) {
+    int  first_calls = 0;
+    bool second_ok   = false;
+    redis.ping([&](qb::redis::Reply<std::string> &&reply) {
+        ++first_calls;
+        EXPECT_TRUE(reply.ok());
+        throw std::runtime_error("callback failure");
+    });
+    redis.ping([&](qb::redis::Reply<std::string> &&reply) { second_ok = reply.ok(); });
+    redis.await();
+    EXPECT_EQ(first_calls, 1);
+    EXPECT_TRUE(second_ok);
+    EXPECT_EQ(redis.pending_reply_count(), 0u);
 }
 
 TEST_F(PipelineCallbackTest, DeepPipelineIncrSequence) {

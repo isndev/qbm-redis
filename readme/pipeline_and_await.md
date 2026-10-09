@@ -49,7 +49,7 @@ redis.get([&](qb::redis::Reply<std::optional<std::string>> &&r) { if (r.ok()) ++
 redis.await();  // polls the loop until all three callbacks have run; done == 3
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:79-106 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:80-107 -->
 
 ```mermaid
 sequenceDiagram
@@ -91,7 +91,7 @@ redis.await();
 // pending_reply_count() == 0 here
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:79-106 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:80-107 -->
 
 ### Pipelining cuts round trips
 
@@ -109,7 +109,7 @@ redis.await();
 // order == {1, 2, 3}
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:108-130 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:109-131 -->
 
 ### What `await()` does and does not do
 
@@ -123,7 +123,7 @@ redis.await();
   coroutine to yield — the command deadline's watcher among them, so from a coroutine `await()` returns on the replies
   or a disconnect, never on `set_command_timeout()`.
 - On **disconnect**, the queue is failed: every pending handler runs with `ok() == false` and
-  `error() == "disconnected"` (`reply.h:1234-1237`). If an opt-in command deadline tripped first, the failure reason is
+  `error() == "disconnected"` (`reply.h:1331-1334`). If an opt-in command deadline tripped first, the failure reason is
   `"command timed out"` instead (`redis.h:950-966,1018-1019`). See [error_handling.md](./error_handling.md).
 
 ```cpp
@@ -136,7 +136,7 @@ while (redis.pending_reply_count() > 0)
     qb::io::async::run(EVRUN_NOWAIT);
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:309-326 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:326-343 -->
 
 ### `qb::redis::tcp::pipeline`
 
@@ -167,7 +167,7 @@ pipe
 pipe.flush();  // == client().await(); NOT Redis FLUSHDB/FLUSHALL
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:328-348 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:345-365 -->
 
 Mixing the named wrapper with the client's mixin methods is fine — they share one queue:
 
@@ -178,7 +178,7 @@ pipe.client().get([](qb::redis::Reply<std::optional<std::string>> &&r) { /* ... 
 pipe.flush();  // drains both
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:350-375 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:367-392 -->
 
 ---
 

@@ -243,6 +243,11 @@ TEST_P(StringProtocolModesTest, INCRBYFLOAT) {
         EXPECT_TRUE(reply3.ok()) << reply3.error();
         EXPECT_DOUBLE_EQ(reply3.result(), 1.5);
 
+        const std::string small_key = protocol_key("incrbyfloat_small");
+        auto              small     = co_await redis.incrbyfloat(small_key, 1e-7);
+        EXPECT_TRUE(small.ok()) << small.error();
+        EXPECT_DOUBLE_EQ(small.result(), 1e-7);
+
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());

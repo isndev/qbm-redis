@@ -150,7 +150,7 @@ command deadlines remain `qb::duration` at the client level — see [connection.
 
 ## Reply types at a glance
 
-`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1102-1177`): `reply.ok()` reports success,
+`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1199-1274`): `reply.ok()` reports success,
 `reply.result()` (alias `reply.value()`) holds the parsed payload, `reply.error()` holds the server error string, and
 `Reply<T>` is contextually convertible to `bool` (explicit). In this group the payloads are standard-library types
 (`std::vector`, `std::optional`, `std::pair`, `std::tuple`); the one exception is `zscan`, whose `scan<...>.items` is a

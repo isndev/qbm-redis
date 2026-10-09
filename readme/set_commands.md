@@ -46,7 +46,7 @@ remain `qb::duration` at the client level — see [connection.md](./connection.m
 
 ## Reply types at a glance
 
-`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1102-1177`): `reply.ok()` reports success, `reply.result()` (alias
+`Reply<T>` is the uniform envelope (`qbm/redis/src/qbm/redis/reply.h:1199-1274`): `reply.ok()` reports success, `reply.result()` (alias
 `reply.value()`) holds the parsed payload, `reply.error()` holds the server error string, and `Reply<T>` is contextually
 convertible to `bool` (explicit). Container payloads are **mixed**: only `smembers` uses a qb-core container
 (`qb::unordered_set<std::string>` — `set_commands.h:464`); every other multi-value reply in this group is a `std::`

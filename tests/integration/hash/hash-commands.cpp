@@ -179,6 +179,10 @@ TEST_P(HashProtocolModesTest, INCR) {
         EXPECT_TRUE(f3.ok());
         EXPECT_FLOAT_EQ(f3.result(), 9.5);
 
+        auto small = co_await redis.hincrbyfloat(key, "small", 1e-7);
+        EXPECT_TRUE(small.ok()) << small.error();
+        EXPECT_DOUBLE_EQ(small.result(), 1e-7);
+
         auto counter = co_await redis.hget(key, "counter");
         if (!(counter.ok() && counter.result().has_value())) {
             ADD_FAILURE() << "precondition failed: counter.ok() && counter.result().has_value()";

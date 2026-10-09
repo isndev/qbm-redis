@@ -181,7 +181,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
-  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:158-159`, `reply.h:1284-1288`).
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:158-159`, `reply.h:1387-1391`).
 - **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
   (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
   with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /
@@ -198,7 +198,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 
 The integration tests under [`../tests/`](../tests/) are executable documentation and run in both RESP2 and RESP3 modes.
 When a signature or behavior is unclear, grep a test and read it — for example `integration/connection/pipeline.cpp` drives `connect` /
-`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:324-325`).
+`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:341-342`).
 
 ## See also
 

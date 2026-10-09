@@ -30,8 +30,8 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    `std::is_invocable_v<Func, Reply<T>&&>`, so a wrong callback signature silently fails to
    select the overload instead of erroring where you wrote it.
 2. **The client is single-threaded.** One I/O thread, one in-flight accessor; the reply queue
-   and outbound pipe are unsynchronized. `command()` registers the reply handler *before*
-   sending bytes, so pipelining is FIFO-safe and replies match commands positionally.
+   and outbound pipe are unsynchronized. `command()` serializes into the outbound pipe, then
+   registers the reply handler before any byte leaves; replies match commands positionally.
 3. **`set_command_timeout` is a connection watchdog, not a per-command deadline.** On expiry
    it drops the whole connection, because a FIFO cannot fail one command mid-queue; pending
    commands fail with "command timed out". Blocking commands (`BLPOP`, `BRPOP`, `BLMOVE`,
@@ -90,6 +90,11 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
 - **Pipelining is implicit.** Issue several callback-form commands without
   awaiting; each enqueues one handler, bytes go out in order, replies return
   positionally (FIFO). Drain with `await()`.
+- **Raw command arguments follow RESP bulk count.** `std::vector<char>` is one
+  binary bulk (including an empty vector); a disengaged `std::optional` emits
+  none. Containers, pairs and tuples expand their present elements. Floating
+  arguments use a locale-independent decimal spelling that round-trips to the
+  original value, so small increments remain nonzero on the wire.
 - **RetryPolicy** drives connect-with-retry and auto-reconnect (exponential
   backoff). A reconnect does **not** replay in-flight commands or subscriptions.
 

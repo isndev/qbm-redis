@@ -26,6 +26,8 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -727,29 +729,9 @@ redis_count(T const &) noexcept {
     return 1;
 }
 
-template <typename... Args>
 [[nodiscard]] constexpr std::size_t
-redis_count(std::tuple<Args...> const &) noexcept {
-    return sizeof...(Args);
-}
-
-template <typename... Args>
-[[nodiscard]] constexpr std::size_t
-redis_count(std::pair<Args...> const &) noexcept {
-    return sizeof...(Args);
-}
-
-template <typename T>
-[[nodiscard]] std::size_t
-redis_count(std::optional<T> const &opt) {
-    return opt ? redis_count(opt.value()) : 0;
-}
-
-template <typename T>
-requires qb::is_container<T>::value
-[[nodiscard]] std::size_t
-redis_count(T const &cnt) {
-    return cnt.empty() ? 0 : redis_count(*cnt.begin()) * cnt.size();
+redis_count(std::vector<char> const &) noexcept {
+    return 1;
 }
 
 [[nodiscard]] inline std::size_t
@@ -839,8 +821,42 @@ template <typename T>
 requires std::is_arithmetic_v<T>
 inline bool
 to_redis_string(qb::allocator::pipe<char> &pipe, T const &val) {
-    return to_redis_string(pipe, std::to_string(val));
+    if constexpr (std::is_floating_point_v<T>) {
+        char buf[128];
+        auto [end, ec] = std::to_chars(buf, buf + sizeof(buf), val, std::chars_format::general);
+        if (ec != std::errc{})
+            throw Error("Cannot serialize floating-point argument");
+        const auto size = static_cast<std::size_t>(end - buf);
+        pipe << '$' << size << "\r\n";
+        pipe.write(buf, size);
+        pipe << "\r\n";
+        return true;
+    } else {
+        return to_redis_string(pipe, std::to_string(val));
+    }
 }
+
+// Recursive arguments need every overload visible at their definition site.
+template <typename T>
+bool to_redis_string(qb::allocator::pipe<char> &, std::optional<T> const &);
+template <typename... Args>
+bool to_redis_string(qb::allocator::pipe<char> &, std::tuple<Args...> const &);
+template <typename... Args>
+bool to_redis_string(qb::allocator::pipe<char> &, std::pair<Args...> const &);
+template <typename T>
+requires qb::is_container<T>::value
+bool        to_redis_string(qb::allocator::pipe<char> &, T const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, std::vector<char> const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, std::chrono::milliseconds const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, std::chrono::seconds const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, geo_pos const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, stream_id const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, score const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, score_member const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, search_result const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, cluster_node const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, json_value const &);
+inline bool to_redis_string(qb::allocator::pipe<char> &, qb::json const &);
 
 template <typename T>
 bool
@@ -1072,6 +1088,87 @@ redis_count(qb::redis::json_value const &json) {
     return 0;
 }
 
+namespace detail {
+template <typename T>
+struct fixed_redis_count : std::integral_constant<std::size_t, 0> {};
+template <typename T>
+requires std::is_arithmetic_v<T>
+struct fixed_redis_count<T> : std::integral_constant<std::size_t, 1> {};
+template <>
+struct fixed_redis_count<std::string> : std::integral_constant<std::size_t, 1> {};
+template <>
+struct fixed_redis_count<std::string_view> : std::integral_constant<std::size_t, 1> {};
+template <>
+struct fixed_redis_count<const char *> : std::integral_constant<std::size_t, 1> {};
+template <>
+struct fixed_redis_count<std::vector<char>> : std::integral_constant<std::size_t, 1> {};
+template <>
+struct fixed_redis_count<score> : std::integral_constant<std::size_t, 1> {};
+template <>
+struct fixed_redis_count<score_member> : std::integral_constant<std::size_t, 2> {};
+template <>
+struct fixed_redis_count<cluster_node> : std::integral_constant<std::size_t, 1> {};
+template <>
+struct fixed_redis_count<geo_pos> : std::integral_constant<std::size_t, 2> {};
+template <>
+struct fixed_redis_count<stream_id> : std::integral_constant<std::size_t, 1> {};
+template <typename A, typename B>
+struct fixed_redis_count<std::pair<A, B>>
+    : std::integral_constant<std::size_t,
+                             (fixed_redis_count<std::remove_cv_t<A>>::value != 0 && fixed_redis_count<std::remove_cv_t<B>>::value != 0)
+                                 ? fixed_redis_count<std::remove_cv_t<A>>::value + fixed_redis_count<std::remove_cv_t<B>>::value
+                                 : 0> {};
+template <typename... Args>
+struct fixed_redis_count<std::tuple<Args...>>
+    : std::integral_constant<std::size_t, (((fixed_redis_count<std::remove_cv_t<Args>>::value != 0) && ...)
+                                               ? (fixed_redis_count<std::remove_cv_t<Args>>::value + ... + 0)
+                                               : 0)> {};
+} // namespace detail
+
+template <typename... Args>
+[[nodiscard]] std::size_t redis_count(std::tuple<Args...> const &);
+template <typename A, typename B>
+[[nodiscard]] std::size_t redis_count(std::pair<A, B> const &);
+template <typename T>
+[[nodiscard]] std::size_t redis_count(std::optional<T> const &);
+template <typename T>
+requires qb::is_container<T>::value
+[[nodiscard]] std::size_t redis_count(T const &);
+
+template <typename... Args>
+[[nodiscard]] std::size_t
+redis_count(std::tuple<Args...> const &tuple) {
+    return std::apply([](auto const &...items) { return (redis_count(items) + ... + 0); }, tuple);
+}
+
+template <typename A, typename B>
+[[nodiscard]] std::size_t
+redis_count(std::pair<A, B> const &pair) {
+    return redis_count(pair.first) + redis_count(pair.second);
+}
+
+template <typename T>
+[[nodiscard]] std::size_t
+redis_count(std::optional<T> const &opt) {
+    return opt ? redis_count(*opt) : 0;
+}
+
+template <typename T>
+requires qb::is_container<T>::value
+[[nodiscard]] std::size_t
+redis_count(T const &cnt) {
+    // Preserve constant-time counting for homogeneous fixed-arity containers.
+    constexpr auto per_element = detail::fixed_redis_count<std::remove_cv_t<typename T::value_type>>::value;
+    if constexpr (per_element != 0) {
+        return per_element * cnt.size();
+    } else {
+        std::size_t count = 0;
+        for (auto const &item : cnt)
+            count += redis_count(item);
+        return count;
+    }
+}
+
 // ============================================================================
 // put_in_pipe - main command serialization
 // ============================================================================
@@ -1245,13 +1342,14 @@ public:
             return;
         }
 
+        std::optional<T> value;
         try {
-            auto value = parse<T>(*raw);
-            func(Reply<T>{true, std::move(value), std::move(raw), {}});
+            value.emplace(parse<T>(*raw));
         } catch (const Error &e) {
             // Catch all qb::redis::Error subclasses (ProtoError, CommandError, etc.)
             // e.what() is valid only for the lifetime of e, so copy it now.
             func(Reply<T>{false, {}, std::move(raw), std::string(e.what())});
+            return;
         } catch (const std::exception &e) {
             // A non-redis exception from decoding — e.g. std::bad_alloc / std::length_error while
             // materializing a large (but within-limit) reply under memory pressure — is NOT a
@@ -1260,9 +1358,14 @@ public:
             // escape (it is only logged at the libev dispatch boundary) means func() never runs and
             // the caller's callback / awaiting coroutine is NEVER resolved — a silent hang.
             func(Reply<T>{false, {}, std::move(raw), std::string(e.what())});
+            return;
         } catch (...) {
             func(Reply<T>{false, {}, std::move(raw), "unknown reply-decode error"});
+            return;
         }
+        // User callbacks run outside the decode catch: a throwing callback is
+        // contained by the dispatch boundary, never delivered a second Reply.
+        func(Reply<T>{true, std::move(*value), std::move(raw), {}});
     }
 };
 

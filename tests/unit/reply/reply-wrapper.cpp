@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 #include <type_traits>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include "../../shared/reply_value_builders.h"
 
@@ -161,6 +162,24 @@ TEST(ReplyTReply, SuccessParsesValue) {
     EXPECT_EQ(got.value(), 123);
     EXPECT_TRUE(got.error().empty());
     EXPECT_NE(got.raw(), nullptr);
+}
+
+TEST(ReplyTReply, ThrowingSuccessCallbackRunsOnce) {
+    const auto check = [](auto exception) {
+        int  calls   = 0;
+        auto handler = std::function<void(qb::redis::Reply<long long>)>([&](qb::redis::Reply<long long> r) {
+            ++calls;
+            EXPECT_TRUE(r.ok());
+            EXPECT_EQ(r.result(), 123);
+            throw exception;
+        });
+        qb::redis::TReply<decltype(handler), long long> tr(std::move(handler));
+        EXPECT_ANY_THROW(tr(std::make_unique<Value>(Value(Integer{123}))));
+        EXPECT_EQ(calls, 1);
+    };
+    check(std::runtime_error("user callback"));
+    check(qb::redis::Error("user callback"));
+    check(42);
 }
 
 TEST(ReplyTReply, FailRoutesReason) {

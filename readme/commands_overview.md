@@ -83,7 +83,7 @@ resumes your coroutine when the reply lands (`redis.h:1150-1154`, `redis.h:773-7
 
 ### The reply type: `qb::redis::Reply<T>`
 
-Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1102`), where `T` is the **expected successful result type**
+Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1199`), where `T` is the **expected successful result type**
 for that command — fixed per command, never chosen by you for the wrapped methods. Examples:
 
 | Command                 | Result type `T`                           |
@@ -98,7 +98,7 @@ for that command — fixed per command, never chosen by you for the wrapped meth
 | `SCAN`                  | `qb::redis::scan<Out>`                    |
 
 `Reply<T>` carries four things: a success flag, the parsed result, the raw owning `parser::Value`, and an owned error
-string (`reply.h:1102`). Its surface:
+string (`reply.h:1199`). Its surface:
 
 - `reply.ok()` / `if (reply)` — `true` when the command was sent, a reply arrived, and it was **not** a Redis error.
 - `reply.result()` / `reply.value()` — the decoded `T` (aliases; `value()` is preferred in new code).
@@ -122,7 +122,7 @@ if (auto v = r.value_or(""); !v.empty()) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1102-1177 (Reply<T>) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1199-1274 (Reply<T>) -->
 
 #### `qb::redis::status` — the "OK" reply
 
@@ -134,7 +134,7 @@ fail at the protocol level, and `reply.value().ok()` confirms the server replied
 ### How replies are decoded
 
 Decoding lives in `reply.h` and runs inside the reply handler (`TReply<Func, T>`), which takes ownership of the parsed
-RESP node and produces the `Reply<T>` (`reply.h:1219`). The handler distinguishes three cases:
+RESP node and produces the `Reply<T>` (`reply.h:1316`). The handler distinguishes three cases:
 
 1. **Disconnect / failure** — a null reply yields `Reply{ ok = false, error = "disconnected" }` (or the explicit
    `fail()` reason, e.g. `"command timed out"`).
@@ -150,7 +150,7 @@ arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the m
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1233-1266 (the TReply call-operator decode path) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1330-1369 (the TReply call-operator decode path) -->
 
 ### Coroutine vs callback
 

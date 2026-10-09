@@ -46,7 +46,7 @@ In both forms `T` is the command's reply payload. Read it through `qb::redis::Re
 - `reply.result()` (alias `reply.value()`) — the decoded payload of type `T`.
 - `reply.error()` — the error message string when `!reply.ok()`.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1102-1177 (ok/result/value/error) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1199-1274 (ok/result/value/error) -->
 
 ---
 
@@ -142,7 +142,7 @@ redis.set([](qb::redis::Reply<qb::redis::status>&& r) {
 }, "session:42", "active");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:518-625; tests/integration/string/string-commands.cpp:402-413 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:518-625; tests/integration/string/string-commands.cpp:407-418 -->
 
 > The previous version of this page documented a `set_get` method for the `SET ... GET` form. **No such method exists**
 > in `string_commands.h`. To read-then-overwrite atomically, use [`getset`](#getset) (or run `GET` and `SET` as separate
@@ -198,7 +198,7 @@ auto taken = co_await redis.getdel("one_shot_token");
 if (taken.ok() && taken.result().has_value()) { /* consume token */ }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:796-827; tests/integration/string/string-commands.cpp:537-552 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:796-827; tests/integration/string/string-commands.cpp:542-557 -->
 
 ### `getex`
 
@@ -216,7 +216,7 @@ auto a = co_await redis.getex("k", 5000LL);                       // 5000 SECOND
 auto b = co_await redis.getex("k", std::chrono::milliseconds{10000}); // 10000 ms = 10 s
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:829-897; tests/integration/string/string-commands.cpp:567-589 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:829-897; tests/integration/string/string-commands.cpp:572-594 -->
 
 ---
 
@@ -236,7 +236,7 @@ auto setex(const std::string &key, std::chrono::seconds const &ttl,
 co_await redis.setex("cache:home", std::chrono::seconds{60}, payload); // expires in 60 s
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:627-694; tests/integration/string/string-commands.cpp:340-355 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:627-694; tests/integration/string/string-commands.cpp:345-360 -->
 
 ### `psetex`
 
@@ -253,7 +253,7 @@ co_await redis.psetex("cache:flash", 500, "data");                     // expire
 co_await redis.psetex("cache:flash", std::chrono::milliseconds{500}, "data");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:448-516; tests/integration/string/string-commands.cpp:370-385 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:448-516; tests/integration/string/string-commands.cpp:375-390 -->
 
 ### `setnx`
 
@@ -269,7 +269,7 @@ auto got = co_await redis.setnx("lock:report", "worker-7");
 if (got.ok() && got.result()) { /* lock acquired */ }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:696-726; tests/integration/string/string-commands.cpp:463-477 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:696-726; tests/integration/string/string-commands.cpp:468-482 -->
 
 ---
 
@@ -292,7 +292,7 @@ if (r.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:357-386; tests/integration/string/string-commands.cpp:264-285 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:357-386; tests/integration/string/string-commands.cpp:269-290 -->
 
 ### `mset`
 
@@ -307,7 +307,7 @@ auto mset(const std::vector<std::pair<std::string, std::string>> &keys); // -> R
 co_await redis.mset({{"a", "1"}, {"b", "2"}, {"c", "3"}});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:388-416; tests/integration/string/string-commands.cpp:260-262 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:388-416; tests/integration/string/string-commands.cpp:265-267 -->
 
 ### `msetnx`
 
@@ -323,7 +323,7 @@ auto r = co_await redis.msetnx({{"x", "1"}, {"y", "2"}});
 if (r.ok() && r.result()) { /* all created */ }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:418-446; tests/integration/string/string-commands.cpp:301-324 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:418-446; tests/integration/string/string-commands.cpp:306-329 -->
 
 ---
 
@@ -333,6 +333,9 @@ These commands interpret the stored string as a number. A missing key is treated
 non-numeric value yields a server-side error (`reply.ok()` is `false`).
 
 ### `incr` / `incrby` / `incrbyfloat`
+
+The floating increment is serialized with a locale-independent, round-trip `double` representation. Small values such
+as `1e-7` reach Redis without rounding to zero in the command frame.
 
 ```cpp
 auto incr(const std::string &key);                                     // INCR        -> Reply<long long>
@@ -422,7 +425,7 @@ auto len = co_await redis.setrange("greeting", 6, "Redis");
 // "greeting" is now "Hello Redis"; len.result() == 11
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:728-764; tests/integration/string/string-commands.cpp:492-502 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:728-764; tests/integration/string/string-commands.cpp:497-507 -->
 
 ### `strlen`
 
@@ -436,7 +439,7 @@ auto strlen(const std::string &key);                                   // -> Rep
 auto n = co_await redis.strlen("greeting");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:766-794; tests/integration/string/string-commands.cpp:517-523 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:766-794; tests/integration/string/string-commands.cpp:522-528 -->
 
 ---
 
@@ -457,7 +460,7 @@ auto r = co_await redis.lcs("a", "b");
 // r.result() == "mytext"
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:899-933; tests/integration/string/string-commands.cpp:603-608 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:899-933; tests/integration/string/string-commands.cpp:608-613 -->
 
 > The `LEN`, `IDX`, `MINMATCHLEN`, and `WITHMATCHLEN` options of `LCS` are **not** exposed by this method — only the
 > plain two-key subsequence form is available. A prior version of this page described those options; they are not in

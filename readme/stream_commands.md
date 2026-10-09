@@ -55,7 +55,7 @@ navigate yourself.
 | `qb::redis::stream_entry_list` | a list of entries with their fields              | `xrange`, `xrevrange`, `xclaim`                                                                                  |
 | `qb::json`                     | loosely structured server data                   | `xread`, `xreadgroup`, `xpending`, `xautoclaim`, `xinfo_stream`, `xinfo_groups`, `xinfo_consumers`, `xinfo_help` |
 
-`qb::redis::Reply<T>` (`reply.h:1102-1177`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1199-1274`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. You read a successful payload through `reply.result()` after checking `reply.ok()`.
 
 ### `qb::redis::stream_id`
