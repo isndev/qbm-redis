@@ -406,6 +406,111 @@ TEST_P(StreamProtocolModesTest, XCLAIM_XAUTOCLAIM) {
     run_coro_test_until(completed);
 }
 
+// JUSTID uses its own ID-only reply type and must not be sent through the entry decoder.
+TEST_P(StreamProtocolModesTest, XCLAIM_JUSTID) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        std::string key   = protocol_key("claim-justid");
+        std::string group = "claim-justid-group";
+
+        auto added = co_await redis.xadd(key, {{"field", "value"}});
+        EXPECT_TRUE(added.ok()) << added.error();
+        if (!added) {
+            completed = true;
+            co_return;
+        }
+        std::string id = added.result().to_string();
+        EXPECT_TRUE((co_await redis.xgroup_create(key, group, "0", true)).ok());
+        EXPECT_TRUE((co_await redis.xreadgroup(key, group, "before", ">", 1)).ok());
+
+        auto rejected = co_await redis.xclaim(key, group, "after", 0, {id}, {"justid"});
+        EXPECT_FALSE(rejected.ok());
+        EXPECT_EQ(rejected.error(), "XCLAIM JUSTID requires xclaim_justid");
+        auto still_before = co_await redis.xpending(key, group, "-", "+", 10, std::string("before"));
+        EXPECT_TRUE(still_before.ok()) << still_before.error();
+        if (still_before)
+            EXPECT_TRUE(json_contains(still_before.result(), id));
+        auto not_after = co_await redis.xpending(key, group, "-", "+", 10, std::string("after"));
+        EXPECT_TRUE(not_after.ok()) << not_after.error();
+        if (not_after)
+            EXPECT_TRUE(not_after.result().empty());
+
+        int rejected_callbacks = 0;
+        redis.xclaim(
+            [&](qb::redis::Reply<qb::redis::stream_entry_list> &&reply) {
+                ++rejected_callbacks;
+                EXPECT_FALSE(reply.ok());
+                EXPECT_EQ(reply.error(), "XCLAIM JUSTID requires xclaim_justid");
+            },
+            key, group, "after", 0, {id}, {"IDLE", "0", "JUSTID"});
+        EXPECT_EQ(rejected_callbacks, 1);
+
+        auto duplicate = co_await redis.xclaim_justid(key, group, "after", 0, {id}, {"JUSTID"});
+        EXPECT_FALSE(duplicate.ok());
+        EXPECT_EQ(duplicate.error(), "xclaim_justid adds JUSTID automatically");
+        auto missing = co_await redis.xclaim(key, group, "after", 0, {"0-0"}, {"JUSTID"});
+        EXPECT_FALSE(missing.ok());
+        EXPECT_EQ(missing.error(), "XCLAIM JUSTID requires xclaim_justid");
+        EXPECT_EQ(rejected_callbacks, 1);
+        auto still_pending = co_await redis.xpending(key, group, "-", "+", 10, std::string("before"));
+        EXPECT_TRUE(still_pending.ok()) << still_pending.error();
+        if (still_pending)
+            EXPECT_TRUE(json_contains(still_pending.result(), id));
+
+        auto claimed = co_await redis.xclaim_justid(key, group, "after", 0, {id});
+        EXPECT_TRUE(claimed.ok()) << claimed.error();
+        if (claimed)
+            EXPECT_EQ(claimed.result(), std::vector<std::string>{id});
+        auto after = co_await redis.xpending(key, group, "-", "+", 10, std::string("after"));
+        EXPECT_TRUE(after.ok()) << after.error();
+        if (after)
+            EXPECT_TRUE(json_contains(after.result(), id));
+
+        auto empty = co_await redis.xclaim_justid(key, group, "after", 0, {"0-0"});
+        EXPECT_TRUE(empty.ok()) << empty.error();
+        if (empty)
+            EXPECT_TRUE(empty.result().empty());
+
+        auto fields = co_await redis.xclaim(key, group, "with-fields", 0, {id}, {"IDLE", "0", "RETRYCOUNT", "2"});
+        EXPECT_TRUE(fields.ok()) << fields.error();
+        if (fields && fields.result().size() == 1u) {
+            EXPECT_EQ(fields.result()[0].id.to_string(), id);
+            EXPECT_EQ(fields.result()[0].fields.at("field"), "value");
+        } else {
+            ADD_FAILURE() << "XCLAIM with field-bearing options returned no entry";
+        }
+
+        auto second = co_await redis.xadd(key, {{"field", "callback"}});
+        EXPECT_TRUE(second.ok()) << second.error();
+        if (!second) {
+            completed = true;
+            co_return;
+        }
+        std::string second_id = second.result().to_string();
+        EXPECT_TRUE((co_await redis.xreadgroup(key, group, "before", ">", 1)).ok());
+        int callback_count = 0;
+        redis.xclaim_justid(
+            [&](qb::redis::Reply<std::vector<std::string>> &&reply) {
+                ++callback_count;
+                EXPECT_TRUE(reply.ok()) << reply.error();
+                if (reply)
+                    EXPECT_EQ(reply.result(), std::vector<std::string>{second_id});
+            },
+            key, group, "callback-owner", 0, {second_id}, {"IDLE", "0"});
+        EXPECT_TRUE((co_await redis.ping()).ok());
+        EXPECT_EQ(callback_count, 1);
+        auto callback_owner = co_await redis.xpending(key, group, "-", "+", 10, std::string("callback-owner"));
+        EXPECT_TRUE(callback_owner.ok()) << callback_owner.error();
+        if (callback_owner)
+            EXPECT_TRUE(json_contains(callback_owner.result(), second_id));
+        EXPECT_EQ(callback_count, 1);
+
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}
+
 // XINFO STREAM / GROUPS / CONSUMERS / HELP — concrete fields.
 TEST_P(StreamProtocolModesTest, XINFO) {
     bool completed = false;

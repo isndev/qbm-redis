@@ -87,7 +87,7 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
   `string_commands.h:498,676,896`). Reply TTL values (`ttl`, `pttl`, `expiretime`, `pexpiretime`) are plain integers —
   the unit lives in the method name, not a wrapped type (`key_commands.h:655,459,812,833`). Stream blocking and
   idle-time arguments (`XREAD`/`XREADGROUP` `block`, `XCLAIM`/`XAUTOCLAIM` `min_idle_time`) are raw `long long`
-  milliseconds with no chrono overload (`stream_commands.h:426,513,801,848`). Blocking-list timeouts (`BLPOP`,
+  milliseconds with no chrono overload (`stream_commands.h:436,523,811,899`). Blocking-list timeouts (`BLPOP`,
   `BLMOVE`, ...) are seconds.
 
 ## API at a glance
@@ -189,7 +189,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   left the callback unfired and parked the coroutine form forever; they now behave like the rest.
 - **Multi-stream `xread` / `xreadgroup` throw synchronously.** They throw `std::invalid_argument` from the callback body
   when `keys` is empty or `keys.size() != ids.size()` — catch it; it is not delivered as a `Reply` error (
-  `stream_commands.h:514-515,427-428`).
+  `stream_commands.h:524-525,437-438`).
 - **`GETEX` unit asymmetry.** The integer overload uses `EX` (seconds) while the `std::chrono::milliseconds` overload
   uses `PX` (milliseconds) — unlike `SET`, whose integer and chrono overloads both use milliseconds (
   `string_commands.h:586,880,896`).

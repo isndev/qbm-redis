@@ -9,6 +9,10 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **`xclaim_justid` returns claimed stream IDs without entry fields (Huly QB-677).** Both coroutine and callback forms
+  return `Reply<std::vector<std::string>>`, keeping the server's ID strings intact. The existing `xclaim` keeps its
+  `Reply<stream_entry_list>` contract for field-bearing claims and rejects a `JUSTID` option locally before Redis can
+  transfer ownership and leave the client with a decode error. Other XCLAIM modifiers remain available in either form.
 - **A coroutine parked on Redis says so in qb's `CoroutineScheduler::dump()` (Huly QB-71).** `redis_awaiter` (every
   command) and `connect_awaiter` begin their `await_suspend` with `qb::io::async::track_suspension(h, ...)`: with
   suspension tracking on, the dump shows the coroutine waiting on `"redis"` or `"redis connect"`, for how long. An

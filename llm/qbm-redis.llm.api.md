@@ -319,7 +319,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 ---
 
 ## Stream commands — `stream_commands<Derived>`
-`stream_commands.h:35`. Stream block timeouts (`block`/`min_idle_time`) are raw `long long` **milliseconds**.
+`stream_commands.h:36`. Stream block timeouts (`block`/`min_idle_time`) are raw `long long` **milliseconds**.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -337,11 +337,12 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 | `xreadgroup` | `auto xreadgroup(key, group, consumer, id, count=nullopt, block=nullopt)` (+ multi-stream `keys`/`ids` overload) | XREADGROUP. **block = ms.** `Reply<qb::json>` | `co_await c.xreadgroup("s","g","c",">");` |
 | `xrange` / `xrevrange` | `auto xrange(key, start, end, std::optional<long long> count=nullopt)` (`xrevrange(key, end, start, ...)`) | Range forward / reverse (note arg order). `Reply<stream_entry_list>` | `co_await c.xrange("s","-","+");` |
 | `xpending` | `auto xpending(key, group, start="-", end="+", long long count=10, const std::optional<std::string>& consumer=nullopt)` | XPENDING extended. `Reply<qb::json>` | `co_await c.xpending("s","g");` |
-| `xclaim` | `auto xclaim(key, group, consumer, long long min_idle_time, const std::vector<std::string>& ids, const std::vector<std::string>& options={})` | XCLAIM; **min_idle_time = ms**; options verbatim. `Reply<stream_entry_list>` | `co_await c.xclaim("s","g","c",0,{"1-0"});` |
+| `xclaim` | `auto xclaim(key, group, consumer, long long min_idle_time, const std::vector<std::string>& ids, const std::vector<std::string>& options={})` | XCLAIM with fields; **min_idle_time = ms**. `Reply<stream_entry_list>`; rejects `JUSTID` locally before sending. | `co_await c.xclaim("s","g","c",0,{"1-0"});` |
+| `xclaim_justid` | `auto xclaim_justid(key, group, consumer, long long min_idle_time, const std::vector<std::string>& ids, const std::vector<std::string>& options={})` | XCLAIM with `JUSTID` appended; returns `Reply<std::vector<std::string>>` (ID strings only). Other options pass through; duplicate `JUSTID` fails locally. Callback overload takes `Reply<std::vector<std::string>>&&`. | `co_await c.xclaim_justid("s","g","c",0,{"1-0"});` |
 | `xautoclaim` | `auto xautoclaim(key, group, consumer, long long min_idle_time, start, count=nullopt, bool justid=false)` | XAUTOCLAIM; **min_idle_time = ms**; +JUSTID. `Reply<qb::json>` | `co_await c.xautoclaim("s","g","c",0,"0-0");` |
 | `xinfo_stream` / `xinfo_groups` / `xinfo_consumers` / `xinfo_help` | `auto xinfo_stream(const std::string& key)` (etc.) | XINFO subcommands. `Reply<qb::json>` | `co_await c.xinfo_stream("s");` |
 
-`parse_stream_id` (`stream_commands.h:85`) · `static stream_id parse_stream_id(const std::string&)` — parses `ts-seq`; returns `{0,0}` on parse error (swallows exception).
+`parse_stream_id` (`stream_commands.h:95`) · `static stream_id parse_stream_id(const std::string&)` — parses `ts-seq`; returns `{0,0}` on parse error (swallows exception).
 
 ---
 
