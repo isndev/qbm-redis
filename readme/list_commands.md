@@ -57,12 +57,12 @@ See [Command API model](./commands_overview.md) for the full reply surface.
 
 Two enums from `src/qbm/redis/types.h` parameterize this group:
 
-- `qb::redis::InsertPosition` (`src/qbm/redis/types.h:51`) — `BEFORE`, `AFTER` — selects where `linsert` places the
+- `qb::redis::InsertPosition` (`src/qbm/redis/types.h:54`) — `BEFORE`, `AFTER` — selects where `linsert` places the
   element relative to the pivot.
-- `qb::redis::ListPosition` (`src/qbm/redis/types.h:53`) — `LEFT`, `RIGHT` — selects the list end for `lmove`,
+- `qb::redis::ListPosition` (`src/qbm/redis/types.h:56`) — `LEFT`, `RIGHT` — selects the list end for `lmove`,
   `blmove`, `lmpop`, and `blmpop`.
 
-Both are serialized to wire keywords through `to_string(...)` (`src/qbm/redis/types.h:590`, `:592`); you pass the enum,
+Both are serialized to wire keywords through `to_string(...)` (`src/qbm/redis/types.h:617`, `:619`); you pass the enum,
 not a string.
 
 ### Variadic pushes

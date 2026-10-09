@@ -21,7 +21,10 @@
 #ifndef QBM_REDIS_TYPES_H
 #define QBM_REDIS_TYPES_H
 
+#include <bit>
 #include <chrono>
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -336,13 +339,37 @@ struct geo_distance {
 
 /** @brief Redis stream entry ID in `timestamp-sequence` form. */
 struct stream_id {
+    static_assert(sizeof(long long) == sizeof(std::uint64_t) && std::numeric_limits<long long>::digits == 63,
+                  "stream_id requires a 64-bit signed long long");
+
+    // Keep the public signed fields for source compatibility. Their bit patterns
+    // carry Redis's unsigned 64-bit components; use the unsigned accessors for
+    // IDs beyond INT64_MAX.
     long long timestamp{}; ///< Millisecond timestamp component.
     long long sequence{};  ///< Sequence component within the timestamp.
+
+    /** @return An ID from the full unsigned Redis stream-ID domain. */
+    [[nodiscard]] static constexpr stream_id
+    from_unsigned(std::uint64_t timestamp, std::uint64_t sequence) noexcept {
+        return {std::bit_cast<long long>(timestamp), std::bit_cast<long long>(sequence)};
+    }
+
+    /** @return The millisecond component as Redis's unsigned 64-bit value. */
+    [[nodiscard]] constexpr std::uint64_t
+    timestamp_u64() const noexcept {
+        return std::bit_cast<std::uint64_t>(timestamp);
+    }
+
+    /** @return The sequence component as Redis's unsigned 64-bit value. */
+    [[nodiscard]] constexpr std::uint64_t
+    sequence_u64() const noexcept {
+        return std::bit_cast<std::uint64_t>(sequence);
+    }
 
     /** @return The ID rendered as `"<timestamp>-<sequence>"`. */
     [[nodiscard]] std::string
     to_string() const {
-        return std::to_string(timestamp) + "-" + std::to_string(sequence);
+        return std::to_string(timestamp_u64()) + "-" + std::to_string(sequence_u64());
     }
 
     bool operator==(const stream_id &other) const = default;
@@ -351,7 +378,7 @@ struct stream_id {
     /** @return @c true if this ID orders strictly before @p other. */
     bool
     operator<(const stream_id &other) const {
-        return timestamp < other.timestamp || (timestamp == other.timestamp && sequence < other.sequence);
+        return timestamp_u64() < other.timestamp_u64() || (timestamp == other.timestamp && sequence_u64() < other.sequence_u64());
     }
 };
 

@@ -179,13 +179,13 @@ parse(ParseTag<qb::redis::stream_id>, const ReplyValue &reply) {
     }
 
     qb::redis::stream_id id;
-    auto                 ts  = qb::to_number<long long>(sv.substr(0, pos));
-    auto                 seq = qb::to_number<long long>(sv.substr(pos + 1));
+    auto                 ts  = qb::to_number<std::uint64_t>(sv.substr(0, pos));
+    auto                 seq = qb::to_number<std::uint64_t>(sv.substr(pos + 1));
     if (!ts || !seq) {
         throw ProtoError("Invalid stream ID values");
     }
-    id.timestamp = *ts;
-    id.sequence  = *seq;
+    id = qb::redis::stream_id::from_unsigned(*ts, *seq);
+    // The public signed fields retain the unsigned components' bit patterns.
 
     return id;
 }

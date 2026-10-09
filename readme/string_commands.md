@@ -67,7 +67,7 @@ In both forms `T` is the command's reply payload. Read it through `qb::redis::Re
 comparison. For `std::optional<std::string>` payloads (a key that may be absent), check `reply.ok()` first, then
 `reply.result().has_value()` before dereferencing.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:507-558 (status), qbm/redis/src/qbm/redis/commands/string_commands.h (per-command R) -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:534-585 (status), qbm/redis/src/qbm/redis/commands/string_commands.h (per-command R) -->
 
 ---
 
@@ -104,7 +104,7 @@ substitute `qb::duration` for the TTL arguments here. (The retired tokens `qb::T
 conditional-set flag.
 
 ```cpp
-// qb::redis::UpdateType { EXIST, NOT_EXIST, ALWAYS };  // types.h:49
+// qb::redis::UpdateType { EXIST, NOT_EXIST, ALWAYS };  // types.h:52
 auto set(const std::string &key, const std::string &val,
          UpdateType type = UpdateType::ALWAYS);                          // -> Reply<status>
 auto set(const std::string &key, const std::string &val, long long ttl_ms,

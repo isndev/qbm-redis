@@ -47,8 +47,11 @@
  */
 
 #include <gtest/gtest.h>
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 // Umbrella header: brings in types.h (the value-domain structs under test) and
@@ -85,6 +88,32 @@ TEST(StreamId, OrderingByTimestampThenSequence) {
     EXPECT_FALSE((qb::redis::stream_id{5, 2}) < (qb::redis::stream_id{5, 1}));
     // Strict: an id is not less than itself.
     EXPECT_FALSE((qb::redis::stream_id{5, 2}) < (qb::redis::stream_id{5, 2}));
+}
+
+TEST(StreamId, UnsignedFactoryAccessorsAndOrdering) {
+    using id = qb::redis::stream_id;
+    static_assert(std::is_aggregate_v<id>);
+    static_assert(std::is_same_v<decltype(id::timestamp), long long>);
+    static_assert(std::is_same_v<decltype(id::sequence), long long>);
+    static_assert(sizeof(id) == 16);
+
+    constexpr auto boundary = id::from_unsigned(9223372036854775808ULL, 0);
+    constexpr auto maximum  = id::from_unsigned(18446744073709551615ULL, 18446744073709551615ULL);
+    static_assert(boundary.timestamp_u64() == 9223372036854775808ULL);
+    static_assert(maximum.sequence_u64() == std::numeric_limits<std::uint64_t>::max());
+    EXPECT_EQ(boundary.to_string(), "9223372036854775808-0");
+    EXPECT_EQ(maximum.to_string(), "18446744073709551615-18446744073709551615");
+    EXPECT_TRUE((id{9223372036854775807LL, 0} < boundary));
+    EXPECT_TRUE((boundary < maximum));
+    EXPECT_FALSE((maximum < boundary));
+    EXPECT_TRUE((id::from_unsigned(1, 9223372036854775807ULL) < id::from_unsigned(1, 9223372036854775808ULL)));
+}
+
+TEST(StreamId, StaticParserAcceptsFullDomainAndRejectsInvalidComponents) {
+    using client = qb::redis::tcp::client;
+    EXPECT_EQ(client::parse_stream_id("9223372036854775808-18446744073709551615").to_string(), "9223372036854775808-18446744073709551615");
+    EXPECT_EQ(client::parse_stream_id("18446744073709551616-1").to_string(), "0-1");
+    EXPECT_EQ(client::parse_stream_id("1--1").to_string(), "1-0");
 }
 
 // ============================================================================

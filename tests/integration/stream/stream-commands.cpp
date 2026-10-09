@@ -115,6 +115,41 @@ TEST_P(StreamProtocolModesTest, XADD_EXPLICIT_AND_DUPLICATE_ID) {
     run_coro_test_until(completed);
 }
 
+// Redis accepts each 64-bit component past INT64_MAX; typed XADD/XRANGE must preserve it.
+TEST_P(StreamProtocolModesTest, XADD_XRANGE_UNSIGNED_ID_BOUNDARY) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        for (const auto *id_text : {"1-9223372036854775808", "1-18446744073709551615", "9223372036854775808-0", "18446744073709551615-0"}) {
+            const std::string key   = protocol_key("unsigned") + "-" + id_text;
+            auto              added = co_await redis.xadd(key, {{"f", "v"}}, std::string(id_text));
+            EXPECT_TRUE(added.ok()) << id_text << ": " << added.error();
+            if (added.ok()) {
+                EXPECT_EQ(added.result().to_string(), id_text);
+                EXPECT_GT(added.result().timestamp_u64(), 0u);
+            }
+
+            auto length = co_await redis.xlen(key);
+            EXPECT_TRUE(length.ok()) << length.error();
+            if (length.ok())
+                EXPECT_EQ(length.result(), 1) << id_text; // Redis committed even if local decode failed.
+
+            auto range = co_await redis.xrange(key, "-", "+");
+            EXPECT_TRUE(range.ok()) << id_text << ": " << range.error();
+            if (range.ok()) {
+                EXPECT_EQ(range.result().size(), 1u);
+                if (!range.result().empty()) {
+                    EXPECT_EQ(range.result()[0].id.to_string(), id_text);
+                    EXPECT_EQ(range.result()[0].fields.at("f"), "v");
+                }
+            }
+            CO_IGNORE(co_await redis.del(key));
+        }
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}
+
 // XDEL.
 TEST_P(StreamProtocolModesTest, XDEL) {
     bool completed = false;

@@ -101,8 +101,8 @@ public:
             // splitting on '-', so parse them strictly. Parsing is best effort:
             // on any malformed component the field is left at its default 0,
             // matching the original catch-all-and-return-defaults behaviour.
-            result.timestamp = qb::to_number<long long>(sv.substr(0, pos)).value_or(0);
-            result.sequence  = qb::to_number<long long>(sv.substr(pos + 1)).value_or(0);
+            result = stream_id::from_unsigned(qb::to_number<std::uint64_t>(sv.substr(0, pos)).value_or(0),
+                                              qb::to_number<std::uint64_t>(sv.substr(pos + 1)).value_or(0));
         }
         return result;
     }

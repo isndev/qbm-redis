@@ -394,8 +394,7 @@ TEST(ExtractStringMap, NonStringKeyIsError) {
 struct StreamIdCase {
     const char *input;
     bool        ok;
-    long long   timestamp;
-    long long   sequence;
+    const char *canonical;
 };
 
 class ExtractStreamIdParam : public ::testing::TestWithParam<StreamIdCase> {};
@@ -406,19 +405,21 @@ TEST_P(ExtractStreamIdParam, Edges) {
     auto        r = qb::redis::extract_stream_id(val);
     if (c.ok) {
         ASSERT_TRUE(r.has_value()) << "input=" << c.input;
-        EXPECT_EQ(r.value().timestamp, c.timestamp);
-        EXPECT_EQ(r.value().sequence, c.sequence);
+        EXPECT_EQ(r.value().to_string(), c.canonical);
     } else {
         EXPECT_FALSE(r.has_value()) << "input=" << c.input;
     }
 }
 
 INSTANTIATE_TEST_SUITE_P(ExtractStreamId, ExtractStreamIdParam,
-                         ::testing::Values(StreamIdCase{"1234567890-0", true, 1234567890, 0}, StreamIdCase{"1-5", true, 1, 5},
-                                           StreamIdCase{"0-0", true, 0, 0}, StreamIdCase{"invalid", false, 0, 0},
-                                           StreamIdCase{"123", false, 0, 0},                         // no dash
-                                           StreamIdCase{"x-y", false, 0, 0},                         // non-numeric components
-                                           StreamIdCase{"99999999999999999999999-0", false, 0, 0})); // overflow
+                         ::testing::Values(StreamIdCase{"1234567890-0", true, "1234567890-0"}, StreamIdCase{"1-5", true, "1-5"},
+                                           StreamIdCase{"0-0", true, "0-0"},
+                                           StreamIdCase{"9223372036854775808-0", true, "9223372036854775808-0"},
+                                           StreamIdCase{"0-18446744073709551615", true, "0-18446744073709551615"},
+                                           StreamIdCase{"invalid", false, ""}, StreamIdCase{"123", false, ""}, StreamIdCase{"x-y", false, ""},
+                                           StreamIdCase{"-1-0", false, ""}, StreamIdCase{"1--1", false, ""}, StreamIdCase{"1-+2", false, ""},
+                                           StreamIdCase{"1-2junk", false, ""}, StreamIdCase{"18446744073709551616-0", false, ""},
+                                           StreamIdCase{"0-18446744073709551616", false, ""}));
 
 // stream id from a non-string value is rejected.
 TEST(ExtractStreamId, NonStringIsError) {

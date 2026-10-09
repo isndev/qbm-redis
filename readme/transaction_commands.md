@@ -91,7 +91,7 @@ and the `EXEC`, the server aborts the transaction: `EXEC` returns a nil array an
 | `watch`        | `Reply<status>`              | `Reply<status> &&`              |
 | `unwatch`      | `Reply<status>`              | `Reply<status> &&`              |
 
-`qb::redis::status` (defined in `types.h:507`) wraps a Redis simple-string reply such as `"OK"`. It converts to `bool` (
+`qb::redis::status` (defined in `types.h:534`) wraps a Redis simple-string reply such as `"OK"`. It converts to `bool` (
 `true` when the string is `"OK"`), to `std::string`, and exposes `.str()` and `.ok()`. Read the outcome through the
 surrounding `Reply`: `reply.ok()` for success, `reply.result()` (alias `reply.value()`) for the payload, `reply.error()`
 for the message on failure.
@@ -100,7 +100,7 @@ For `exec<Result>`, you pick `Result` to match what your queued commands return.
 status strings, so `exec<std::string>()` yields a `std::vector<std::string>` of `"OK"` values — one element per queued
 command, in order.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:507-558, qbm/redis/src/qbm/redis/reply.h:1199-1324 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:534-585, qbm/redis/src/qbm/redis/reply.h:1199-1324 -->
 
 > **Time units:** No method in this group takes a time argument. Connect and command timeouts and the `RetryPolicy`
 > delays are `qb::duration` and live on the client, not here. Redis command arguments that *do* carry time (for example
@@ -181,7 +181,7 @@ qb::io::async::task<void> run_tx(qb::redis::tcp::client &redis) {
 > prefer the pipeline path and read the raw EXEC array through `Reply<pipeline_result>.raw()`: per-command
 `parser::Value`
 > results are move-only and are not cloned into a typed vector. See [pipeline_and_await.md](./pipeline_and_await.md). (
-`qbm/redis/src/qbm/redis/types.h:429-439`, `qbm/redis/src/qbm/redis/reply.cpp:444-462`.)
+`qbm/redis/src/qbm/redis/types.h:456-466`, `qbm/redis/src/qbm/redis/reply.cpp:444-462`.)
 
 ### `DISCARD`
 

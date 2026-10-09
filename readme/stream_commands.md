@@ -60,21 +60,29 @@ an explicit `operator bool()`. You read a successful payload through `reply.resu
 
 ### `qb::redis::stream_id`
 
-`stream_id` (`src/qbm/redis/types.h:338-356`) is `{ long long timestamp; long long sequence; }` with `to_string()`
-(renders `"<timestamp>-<sequence>"`), full equality, and an ordering `operator<`. `XADD` returns one of these. To feed
-an ID back into a later command (e.g. `xdel`, `xack`), pass `id.to_string()` or build the `"<ts>-<seq>"` string
-yourself.
+`stream_id` (`src/qbm/redis/types.h:341-383`) keeps its public `{ long long timestamp; long long sequence; }` layout
+for 3.x source compatibility. Redis IDs have two **unsigned** 64-bit components. For an ID above `INT64_MAX`, a raw
+signed field may look negative: read `timestamp_u64()` and `sequence_u64()` for the Redis values, and build high IDs
+with `stream_id::from_unsigned(timestamp, sequence)`. `to_string()` renders the unsigned `"<timestamp>-<sequence>"`
+form; equality and `operator<` use the complete unsigned domain. `XADD` returns a `stream_id`, and `XRANGE` entry IDs
+use the same representation. To feed an ID into a later command (e.g. `xdel`, `xack`), pass `id.to_string()`.
+
+```cpp
+auto id = qb::redis::stream_id::from_unsigned(1, 18446744073709551615ULL);
+std::cout << id.sequence_u64() << '\n'; // 18446744073709551615
+std::cout << id.to_string() << '\n';     // 1-18446744073709551615
+```
 
 ### `qb::redis::stream_entry` and `stream_entry_list`
 
-`stream_entry` (`src/qbm/redis/types.h:359-362`) is
+`stream_entry` (`src/qbm/redis/types.h:386-389`) is
 `{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`. `stream_entry_list`
-(`src/qbm/redis/types.h:364`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
+(`src/qbm/redis/types.h:391`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
 `XCLAIM`. You iterate it directly: `entry.id` is the entry ID and `entry.fields` is the field map.
 
 ### `qb::redis::status`
 
-`status` (`src/qbm/redis/types.h:507-558`) wraps a status string. It converts to `bool` (true when the string is
+`status` (`src/qbm/redis/types.h:534-585`) wraps a status string. It converts to `bool` (true when the string is
 `"OK"`), to `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said
 OK".
 
@@ -181,7 +189,7 @@ if (add.ok())
 // Callback
 redis.xadd([](qb::redis::Reply<qb::redis::stream_id> &&r) {
     if (r.ok())
-        std::cout << r.result().timestamp << '-' << r.result().sequence << '\n';
+        std::cout << r.result().to_string() << '\n';
 }, "mystream", entries);
 ```
 
@@ -228,7 +236,7 @@ if (del.ok())
     std::cout << "deleted " << del.result() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:135 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:170 -->
 
 ### `xtrim`
 
@@ -253,7 +261,7 @@ auto trimmed = co_await redis.xtrim("mystream", 1000);          // exact cap at 
 auto fast    = co_await redis.xtrim("mystream", 1000, true);    // approximate, faster
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:189 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:224 -->
 
 ### `xrange`
 
@@ -283,7 +291,7 @@ if (range.ok())
 auto first_two = co_await redis.xrange("mystream", "-", "+", 2);   // COUNT 2
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:311 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:346 -->
 
 ### `xrevrange`
 
@@ -310,7 +318,7 @@ if (rev.ok() && !rev.result().empty())
     std::cout << "latest: " << rev.result().front().id.to_string() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:325 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:360 -->
 
 ### `xread`
 
@@ -355,7 +363,7 @@ if (read.ok() && read.result().is_array())
 auto live = co_await redis.xread("mystream", "$", std::nullopt, 5000);
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:211,222 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:246,257 -->
 
 ### `xgroup_create`
 
@@ -380,7 +388,7 @@ if (created.ok() && created.result())   // status converts to bool ("OK")
     std::cout << "group ready\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:162 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:197 -->
 
 ### `xgroup_destroy`
 
@@ -399,7 +407,7 @@ Derived &xgroup_destroy(Func &&func, const std::string &key,
 auto destroyed = co_await redis.xgroup_destroy("mystream", "mygroup");
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:166 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:201 -->
 
 ### `xgroup_delconsumer`
 
@@ -443,7 +451,7 @@ skip to the tail, or a specific entry ID.
 auto setid = co_await redis.xgroupSetid("mystream", "mygroup", "0");
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:353 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:388 -->
 
 ### `xgroupCreateconsumer`
 
@@ -467,7 +475,7 @@ if (created.ok() && created.result())
     std::cout << "new consumer registered\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:356 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:391 -->
 
 ### `xreadgroup`
 
@@ -513,7 +521,7 @@ if (read.ok())
     /* navigate read.result() (qb::json) */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:245 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:280 -->
 
 ### `xack`
 
@@ -536,7 +544,7 @@ if (acked.ok())
     std::cout << "acknowledged " << acked.result() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:280 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:315 -->
 
 ### `xclaim`
 
@@ -570,7 +578,7 @@ if (claimed.ok())
     std::cout << "claimed " << claimed.result().size() << " entries\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:389 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:424 -->
 
 ### `xclaim_justid`
 
@@ -602,7 +610,7 @@ if (ids.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:410 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:445 -->
 
 ### `xautoclaim`
 
@@ -635,7 +643,7 @@ if (claimed.ok())
     /* navigate claimed.result() (qb::json): [next-cursor, entries, deleted-ids] */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:399 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:434 -->
 
 ### `xpending`
 
@@ -665,7 +673,7 @@ if (pending.ok() && pending.result().is_array())
     std::cout << pending.result().size() << " pending entries\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:578 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:613 -->
 
 ### `xinfo_stream`
 
@@ -685,7 +693,7 @@ if (info.ok())
     /* navigate info.result() (qb::json): length, first/last entry, groups, ... */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:527 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:562 -->
 
 ### `xinfo_groups`
 
@@ -705,7 +713,7 @@ if (groups.ok() && groups.result().is_array())
     /* iterate the group records */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:536 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:571 -->
 
 ### `xinfo_consumers`
 
@@ -726,7 +734,7 @@ if (consumers.ok() && consumers.result().is_array())
     /* iterate the consumer records */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:545 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:580 -->
 
 ### `xinfo_help`
 
@@ -744,7 +752,7 @@ Derived &xinfo_help(Func &&func);
 auto help = co_await redis.xinfo_help();
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:549 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:584 -->
 
 ### `parse_stream_id` (static helper)
 
@@ -756,10 +764,10 @@ static qb::redis::stream_id
 parse_stream_id(const std::string &id_str);
 ```
 
-**Pitfall:** parse failures are swallowed. If `id_str` has no `-` or non-numeric halves, the method returns the default
-`stream_id{0, 0}` with no error signaled, so a caller cannot tell a genuine `0-0` ID from a parse failure (
-`stream_commands.h:95`). Prefer reading `stream_id` straight out of a typed reply (`xadd`, `xrange`) over re-parsing
-strings.
+**Pitfall:** parse failures are swallowed. A missing `-` returns `stream_id{0, 0}`; with a dash, each malformed or
+out-of-range component becomes zero independently. The numeric scan is strict and covers `0` through `UINT64_MAX`,
+but no error is signaled (`stream_commands.h:95`). Prefer reading `stream_id` straight out of a typed reply (`xadd`,
+`xrange`) when validity matters.
 
 ## Pitfalls
 
@@ -777,7 +785,7 @@ strings.
   typed `stream_entry_list`; `xclaim_justid` returns a typed vector of ID strings.
 - **Mixed naming.** `xgroupSetid` and `xgroupCreateconsumer` are camelCase; the other group helpers are snake_case.
   Spell each exactly.
-- **`parse_stream_id` hides parse errors.** A malformed string yields `{0, 0}` silently. Read IDs from typed replies
+- **`parse_stream_id` hides parse errors.** An invalid component becomes zero silently. Read IDs from typed replies
   where you can.
 - **Trim is `MAXLEN`-only.** `xtrim` does not expose `MINID` or `LIMIT`, and `xadd` does not expose inline trimming or
   `NOMKSTREAM`. Build the command manually (see [Command API model](./commands_overview.md)) if you need those

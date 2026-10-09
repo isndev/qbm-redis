@@ -58,7 +58,7 @@ sticky error state that tears the connection down instead of looping forever on 
 
 The per-command failure message is a `std::string` you read through `reply.error()`. The exception classes (`Error`,
 `ProtoError`, `CommandError`, …) exist for the internal parse seam; in adopter code you read strings, not catch types.
-Do not confuse that string with `qb::redis::error` — a distinct struct (`types.h:572-575`) that is the pub/sub consumer's
+Do not confuse that string with `qb::redis::error` — a distinct struct (`types.h:599-602`) that is the pub/sub consumer's
 error *event* (`{std::string what; reply_ptr raw;}`), delivered to a consumer's `on_error` callback, not to a command
 reply.
 
@@ -196,7 +196,7 @@ while materializing a large reply) or even a non-standard throw — these names 
 for `catch` blocks in your code: nothing thrown while decoding a reply escapes to your call site, it always becomes a
 failed `Reply`. A user callback that throws is invoked only once; the dispatch boundary contains its exception after
 the handler has left the reply FIFO. In practice the parsers avoid throwing standard exceptions at all anyway (e.g.
-stream-id decoding parses each half with `qb::to_number<long long>`, which returns `std::nullopt` rather than throwing
+stream-id decoding parses each half with `qb::to_number<std::uint64_t>`, which returns `std::nullopt` rather than throwing
 on an out-of-range or malformed value, and the parser folds that `nullopt` into a `ProtoError`) (`reply.h:1345-1368`, `reply.cpp:182-183`
 stream-id path).
 
@@ -399,7 +399,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   cannot keep feeding the same socket. Reconnect (or rely on auto-reconnect) to get a fresh parser (
   `src/qbm/redis/parser/parser.h:153-154`, `redis.h:201-206`).
 - **`reply.error()` is the per-command message; `qb::redis::error` is a different thing.** Command failures hand you a
-  `std::string` through `reply.error()` — compare and log it as text. `qb::redis::error` (`types.h:572-575`) is the pub/sub
+  `std::string` through `reply.error()` — compare and log it as text. `qb::redis::error` (`types.h:599-602`) is the pub/sub
   consumer's error event struct (`.what` message + `.raw` reply), routed to a consumer `on_error` callback, not to a
   command `Reply<T>`. The exception classes (`Error`, `ProtoError`, …) live only at the internal parse seam.
 - **Cluster redirects are not automatic.** `MOVED`/`ASK` arrive as `Reply{ok=false}` with the redirect in `error()`;

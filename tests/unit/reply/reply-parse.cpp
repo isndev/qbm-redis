@@ -169,6 +169,25 @@ TEST(ReplyStreamId, Valid) {
     EXPECT_EQ(id.sequence, 5);
 }
 
+TEST(ReplyStreamId, FullUnsignedDomain) {
+    for (const auto *text : {"9223372036854775808-0", "0-9223372036854775808", "18446744073709551615-18446744073709551615"}) {
+        Value v(BulkString{text});
+        auto  id = do_parse<qb::redis::stream_id>(v);
+        EXPECT_EQ(id.to_string(), text);
+    }
+    Value max(BulkString{"18446744073709551615-18446744073709551615"});
+    auto  id = do_parse<qb::redis::stream_id>(max);
+    EXPECT_EQ(id.timestamp_u64(), 18446744073709551615ULL);
+    EXPECT_EQ(id.sequence_u64(), 18446744073709551615ULL);
+}
+
+TEST(ReplyStreamId, RejectsUnsignedOverflowAndMalformedComponents) {
+    for (const auto *text : {"18446744073709551616-0", "0-18446744073709551616", "-1-0", "1--1", "1-", "-1", "1-2junk", "+1-2", "1-+2"}) {
+        Value v(BulkString{text});
+        EXPECT_THROW(do_parse<qb::redis::stream_id>(v), qb::redis::ProtoError) << text;
+    }
+}
+
 TEST(ReplyStreamId, EmptyReturnsDefault) {
     Value v(BulkString{""});
     auto  id = do_parse<qb::redis::stream_id>(v);

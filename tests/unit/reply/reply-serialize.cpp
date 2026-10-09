@@ -235,6 +235,13 @@ TEST(ReplySerStreamId, ToStringForm) {
     EXPECT_EQ(p.str(), "$12\r\n1234567890-5\r\n");
 }
 
+TEST(ReplySerStreamId, FullUnsignedDomain) {
+    auto                      id = qb::redis::stream_id::from_unsigned(1, 18446744073709551615ULL);
+    qb::allocator::pipe<char> p;
+    qb::redis::to_redis_string(p, id);
+    EXPECT_EQ(p.str(), "$22\r\n1-18446744073709551615\r\n");
+}
+
 TEST(ReplySerScore, SingleDouble) {
     qb::redis::score          sc{2.5};
     qb::allocator::pipe<char> p;

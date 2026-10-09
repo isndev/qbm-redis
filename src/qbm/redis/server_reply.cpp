@@ -104,15 +104,15 @@ extract_stream_id_value(const parser::Value &input, stream_id &value, std::strin
         return false;
     }
 
-    auto ts  = qb::to_number<long long>(sv.substr(0, pos));
-    auto seq = qb::to_number<long long>(sv.substr(pos + 1));
+    auto ts  = qb::to_number<std::uint64_t>(sv.substr(0, pos));
+    auto seq = qb::to_number<std::uint64_t>(sv.substr(pos + 1));
     if (!ts || !seq) {
         error = "invalid stream id values";
         return false;
     }
 
-    value.timestamp = *ts;
-    value.sequence  = *seq;
+    value = stream_id::from_unsigned(*ts, *seq);
+    // Keep the full Redis domain in the source-compatible signed fields.
     return true;
 }
 

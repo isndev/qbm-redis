@@ -23,6 +23,13 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **Stream IDs round-trip across the full Redis unsigned 64-bit domain (Huly QB-640).** Typed `XADD` and `XRANGE`
+  no longer report a local decode error after Redis accepts an ID component above `INT64_MAX`; both RESP2 and RESP3
+  preserve values through `UINT64_MAX`. The reply parser and server-side extractor reject numeric overflow and
+  negative components; the static helper retains its best-effort fallback to zero for invalid components.
+  `stream_id` keeps its two public `long long` fields and 16-byte aggregate layout
+  for 3.x source compatibility, while `from_unsigned`, `timestamp_u64` and `sequence_u64` expose the native domain.
+  Raw signed fields may read as negative for high IDs; `to_string` and ordering interpret their bits as unsigned.
 - **`MONITOR` keeps its callback for the full stream (Huly QB-651).** The initial `+OK` is followed by each observed
   command on a dedicated connection; the stream no longer consumes ordinary FIFO replies. `RESET` or `QUIT` ends it at
   its own reply, and disconnect reports one terminal failure without replaying MONITOR on reconnect. Other commands
