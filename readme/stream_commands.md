@@ -236,7 +236,7 @@ if (del.ok())
     std::cout << "deleted " << del.result() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:170 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:171 -->
 
 ### `xtrim`
 
@@ -261,7 +261,7 @@ auto trimmed = co_await redis.xtrim("mystream", 1000);          // exact cap at 
 auto fast    = co_await redis.xtrim("mystream", 1000, true);    // approximate, faster
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:224 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:225 -->
 
 ### `xrange`
 
@@ -291,7 +291,7 @@ if (range.ok())
 auto first_two = co_await redis.xrange("mystream", "-", "+", 2);   // COUNT 2
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:346 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:347 -->
 
 ### `xrevrange`
 
@@ -318,7 +318,7 @@ if (rev.ok() && !rev.result().empty())
     std::cout << "latest: " << rev.result().front().id.to_string() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:360 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:361 -->
 
 ### `xread`
 
@@ -363,7 +363,7 @@ if (read.ok() && read.result().is_array())
 auto live = co_await redis.xread("mystream", "$", std::nullopt, 5000);
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:246,257 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:247,258 -->
 
 ### `xgroup_create`
 
@@ -388,7 +388,7 @@ if (created.ok() && created.result())   // status converts to bool ("OK")
     std::cout << "group ready\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:197 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:198 -->
 
 ### `xgroup_destroy`
 
@@ -407,7 +407,7 @@ Derived &xgroup_destroy(Func &&func, const std::string &key,
 auto destroyed = co_await redis.xgroup_destroy("mystream", "mygroup");
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:201 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:202 -->
 
 ### `xgroup_delconsumer`
 
@@ -451,7 +451,7 @@ skip to the tail, or a specific entry ID.
 auto setid = co_await redis.xgroupSetid("mystream", "mygroup", "0");
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:388 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:389 -->
 
 ### `xgroupCreateconsumer`
 
@@ -475,7 +475,7 @@ if (created.ok() && created.result())
     std::cout << "new consumer registered\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:391 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:392 -->
 
 ### `xreadgroup`
 
@@ -521,7 +521,7 @@ if (read.ok())
     /* navigate read.result() (qb::json) */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:280 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:281 -->
 
 ### `xack`
 
@@ -544,7 +544,7 @@ if (acked.ok())
     std::cout << "acknowledged " << acked.result() << '\n';
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:315 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:316 -->
 
 ### `xclaim`
 
@@ -578,7 +578,7 @@ if (claimed.ok())
     std::cout << "claimed " << claimed.result().size() << " entries\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:424 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:425 -->
 
 ### `xclaim_justid`
 
@@ -610,7 +610,7 @@ if (ids.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:445 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:446 -->
 
 ### `xautoclaim`
 
@@ -643,7 +643,7 @@ if (claimed.ok())
     /* navigate claimed.result() (qb::json): [next-cursor, entries, deleted-ids] */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:434 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:435 -->
 
 ### `xpending`
 
@@ -673,7 +673,7 @@ if (pending.ok() && pending.result().is_array())
     std::cout << pending.result().size() << " pending entries\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:613 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:622 -->
 
 ### `xinfo_stream`
 
@@ -693,7 +693,7 @@ if (info.ok())
     /* navigate info.result() (qb::json): length, first/last entry, groups, ... */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:562 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:571 -->
 
 ### `xinfo_groups`
 
@@ -713,7 +713,7 @@ if (groups.ok() && groups.result().is_array())
     /* iterate the group records */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:571 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:580 -->
 
 ### `xinfo_consumers`
 
@@ -734,7 +734,7 @@ if (consumers.ok() && consumers.result().is_array())
     /* iterate the consumer records */;
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:580 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:589 -->
 
 ### `xinfo_help`
 
@@ -752,7 +752,7 @@ Derived &xinfo_help(Func &&func);
 auto help = co_await redis.xinfo_help();
 ```
 
-<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:584 -->
+<!-- src: qbm/redis/tests/integration/stream/stream-commands.cpp:593 -->
 
 ### `parse_stream_id` (static helper)
 
