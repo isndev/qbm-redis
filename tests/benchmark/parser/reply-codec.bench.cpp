@@ -399,6 +399,125 @@ BM_TReply_SuccessDispatch(benchmark::State &state) {
     state.SetItemsProcessed(completed);
 }
 
+// Both witnesses use the same preparation, callback and ownership checks. The
+// empty witness dispatches while paused; its timed interval contains only a
+// compiler barrier. Compare per-batch times before normalizing by reply count:
+// timer-boundary cost is not a measured dispatch and must not be subtracted as
+// though it were an independently additive codec cost.
+template <bool TimedDispatch>
+void
+treply_success_batch(benchmark::State &state) {
+    using Reply                  = qb::redis::Reply<long long>;
+    constexpr long long values[] = {123, -7, 0, 42};
+    const auto          batch    = static_cast<std::size_t>(state.range(0));
+    if (batch != 1 && batch != 64 && batch != 128) {
+        state.SkipWithError("unsupported TReply witness batch size");
+        return;
+    }
+
+    std::vector<std::unique_ptr<Value>>              raw(batch);
+    std::vector<const Value *>                       identities(batch);
+    std::vector<long long>                           expected(batch);
+    std::vector<Reply>                               got(batch);
+    std::size_t                                      calls    = 0;
+    auto                                             callback = std::function<void(Reply)>([&](Reply r) {
+        // A duplicate callback must fail the count oracle without overflowing
+        // the result buffer. Keep every normal Reply alive until batch validation.
+        if (calls < batch)
+            got[calls] = std::move(r);
+        ++calls;
+    });
+    qb::redis::TReply<decltype(callback), long long> handler(std::move(callback));
+
+    const auto prepare = [&](std::int64_t completed) {
+        calls = 0;
+        for (std::size_t i = 0; i < batch; ++i) {
+            expected[i]      = values[(static_cast<std::size_t>(completed) + i) % std::size(values)];
+            raw[i]           = mk_int(expected[i]);
+            identities[i]    = raw[i].get();
+            auto *opaque_raw = raw[i].get();
+            benchmark::DoNotOptimize(opaque_raw);
+        }
+        // Each allocated Value escapes before dispatch; the optimizer cannot
+        // substitute the four known integers for all callbacks in a batch.
+        benchmark::ClobberMemory();
+    };
+    const auto dispatch = [&] {
+        for (auto &value : raw)
+            handler(std::move(value));
+    };
+    const auto valid = [&] {
+        if (calls != batch)
+            return false;
+        for (std::size_t i = 0; i < batch; ++i) {
+            if (raw[i] || !got[i].ok() || got[i].value() != expected[i] || !got[i].error().empty() || got[i].raw().get() != identities[i]
+                || !got[i].raw()->is_integer() || got[i].raw()->as_integer().value != expected[i])
+                return false;
+        }
+        return true;
+    };
+    const auto dispose = [&] {
+        for (auto &reply : got)
+            reply = Reply{};
+    };
+
+    prepare(0);
+    dispatch();
+    if (!valid()) {
+        state.SkipWithError("TReply batch preflight value, count or raw ownership mismatch");
+        return;
+    }
+    dispose();
+
+    std::int64_t  completed    = 0;
+    std::uint64_t observed_sum = 0;
+    std::uint64_t expected_sum = 0;
+    for (auto _ : state) {
+        state.PauseTiming();
+        if (completed > std::numeric_limits<std::int64_t>::max() - static_cast<std::int64_t>(batch)) {
+            state.SkipWithError("TReply batch cumulative completion count overflow");
+            return;
+        }
+        prepare(completed);
+        state.ResumeTiming();
+        if constexpr (TimedDispatch)
+            dispatch();
+        benchmark::ClobberMemory();
+        state.PauseTiming();
+        if constexpr (!TimedDispatch)
+            dispatch();
+        if (!valid()) {
+            state.SkipWithError("TReply batch value, count or raw ownership mismatch");
+            return;
+        }
+        for (std::size_t i = 0; i < batch; ++i) {
+            observed_sum += static_cast<std::uint64_t>(got[i].value());
+            expected_sum += static_cast<std::uint64_t>(expected[i]);
+        }
+        completed += static_cast<std::int64_t>(batch);
+        dispose();
+        state.ResumeTiming();
+    }
+    if (completed / static_cast<std::int64_t>(batch) != state.iterations() || observed_sum != expected_sum) {
+        state.SkipWithError("incomplete cumulative TReply batch workload");
+        return;
+    }
+    if constexpr (TimedDispatch)
+        state.SetItemsProcessed(completed);
+    else
+        state.SetItemsProcessed(state.iterations()); // empty timed intervals, not dispatches
+}
+
+void
+BM_TReply_TimerBoundaryEmpty(benchmark::State &state) {
+    treply_success_batch<false>(state);
+}
+
+void
+BM_TReply_SuccessDispatchBatch(benchmark::State &state) {
+    treply_success_batch<true>(state);
+}
+
 } // namespace
 
 BENCHMARK(BM_ReplyParse_ScoreMemberVector)->Arg(100)->Arg(1000)->ArgNames({"members"})->Unit(benchmark::kMicrosecond);
@@ -409,5 +528,7 @@ BENCHMARK(BM_ReplyParse_JsonWideMap)->Arg(100)->Arg(1000)->ArgNames({"fields"})-
 BENCHMARK(BM_ReplyFormat_IntervalToChars)->Unit(benchmark::kNanosecond);
 
 BENCHMARK(BM_TReply_SuccessDispatch)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_TReply_TimerBoundaryEmpty)->Arg(1)->Arg(64)->Arg(128)->ArgNames({"replies"})->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_TReply_SuccessDispatchBatch)->Arg(64)->Arg(128)->ArgNames({"replies"})->Unit(benchmark::kNanosecond);
 
 BENCHMARK_MAIN();
