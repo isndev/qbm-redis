@@ -21,12 +21,16 @@
 // dispatch paths (disconnect / error reply / parse-throw / success / fail).
 //
 
+#include <cstddef>
 #include <functional>
 #include <gtest/gtest.h>
+#include <memory>
 #include <type_traits>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 #include "../../shared/reply_value_builders.h"
 
 using namespace qb::redis::test;
@@ -162,6 +166,33 @@ TEST(ReplyTReply, SuccessParsesValue) {
     EXPECT_EQ(got.value(), 123);
     EXPECT_TRUE(got.error().empty());
     EXPECT_NE(got.raw(), nullptr);
+}
+
+TEST(ReplyTReply, RepeatedSuccessRepliesKeepTheirOwnValueAndRaw) {
+    qb::redis::Reply<long long> got;
+    int                         calls = 0;
+    std::vector<long long>      observed;
+    auto                        callback = std::function<void(qb::redis::Reply<long long>)>([&](qb::redis::Reply<long long> r) {
+        ++calls;
+        if (r.ok())
+            observed.push_back(r.value());
+        got = std::move(r);
+    });
+    qb::redis::TReply<decltype(callback), long long> handler(std::move(callback));
+    const std::vector<long long>                     expected{123, -7, 0, 42};
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        got                  = {};
+        auto        raw      = mk_int(expected[i]);
+        const auto *identity = raw.get();
+        handler(std::move(raw));
+        EXPECT_EQ(calls, static_cast<int>(i + 1));
+        ASSERT_TRUE(got.ok());
+        EXPECT_EQ(got.value(), expected[i]);
+        EXPECT_TRUE(got.error().empty());
+        EXPECT_EQ(got.raw().get(), identity);
+    }
+    EXPECT_EQ(calls, static_cast<int>(expected.size()));
+    EXPECT_EQ(observed, expected);
 }
 
 TEST(ReplyTReply, ThrowingSuccessCallbackRunsOnce) {

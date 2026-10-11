@@ -48,6 +48,9 @@
 #include <benchmark/benchmark.h>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -336,6 +339,66 @@ BM_ReplyFormat_IntervalToChars(benchmark::State &state) {
     state.SetItemsProcessed(state.iterations() * 2); // two bounds formatted per iter
 }
 
+// A normal TReply dispatch: parse -> one non-throwing callback -> ownership transfer.
+// Raw Value construction, reply disposal and all correctness checks are pause-timed.
+// The callback's one count/store is common work on control and candidate.
+static void
+BM_TReply_SuccessDispatch(benchmark::State &state) {
+    using Reply                                               = qb::redis::Reply<long long>;
+    constexpr long long                              values[] = {123, -7, 0, 42};
+    Reply                                            got;
+    std::int64_t                                     calls    = 0;
+    auto                                             callback = std::function<void(Reply)>([&](Reply r) {
+        ++calls;
+        got = std::move(r);
+    });
+    qb::redis::TReply<decltype(callback), long long> handler(std::move(callback));
+
+    {
+        auto        raw      = mk_int(values[0]);
+        const auto *identity = raw.get();
+        handler(std::move(raw));
+        if (calls != 1 || !got.ok() || got.value() != values[0] || !got.error().empty() || got.raw().get() != identity) {
+            state.SkipWithError("TReply success preflight value, count or raw ownership mismatch");
+            return;
+        }
+    }
+    got                        = Reply{};
+    calls                      = 0;
+    std::int64_t  completed    = 0;
+    std::uint64_t observed_sum = 0;
+    std::uint64_t expected_sum = 0;
+    for (auto _ : state) {
+        state.PauseTiming();
+        if (completed == std::numeric_limits<std::int64_t>::max()) {
+            state.SkipWithError("TReply cumulative completion count overflow");
+            return;
+        }
+        got                    = Reply{};
+        const auto  expected   = values[static_cast<std::size_t>(completed) % std::size(values)];
+        auto        raw        = mk_int(expected);
+        const auto *identity   = raw.get();
+        auto       *opaque_raw = raw.get();
+        benchmark::DoNotOptimize(opaque_raw);
+        state.ResumeTiming();
+        handler(std::move(raw));
+        state.PauseTiming();
+        if (calls != completed + 1 || !got.ok() || got.value() != expected || !got.error().empty() || got.raw().get() != identity) {
+            state.SkipWithError("measured TReply success value, count or raw ownership mismatch");
+            return;
+        }
+        ++completed;
+        observed_sum += static_cast<std::uint64_t>(got.value());
+        expected_sum += static_cast<std::uint64_t>(expected);
+        state.ResumeTiming();
+    }
+    if (completed != state.iterations() || calls != completed || observed_sum != expected_sum) {
+        state.SkipWithError("incomplete cumulative TReply success workload");
+        return;
+    }
+    state.SetItemsProcessed(completed);
+}
+
 } // namespace
 
 BENCHMARK(BM_ReplyParse_ScoreMemberVector)->Arg(100)->Arg(1000)->ArgNames({"members"})->Unit(benchmark::kMicrosecond);
@@ -344,5 +407,7 @@ BENCHMARK(BM_ReplySerialize_MultiBulk)->Arg(100)->Arg(1000)->ArgNames({"pairs"})
 BENCHMARK(BM_ReplySerialize_PutInPipe)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_ReplyParse_JsonWideMap)->Arg(100)->Arg(1000)->ArgNames({"fields"})->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_ReplyFormat_IntervalToChars)->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_TReply_SuccessDispatch)->Unit(benchmark::kNanosecond);
 
 BENCHMARK_MAIN();
