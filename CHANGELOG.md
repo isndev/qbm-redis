@@ -21,6 +21,14 @@ All notable changes to the qbm-redis module are documented here. The format is b
   `tests/integration/connection/connection-commands.cpp`; qb's `scripts/check-awaiter-tracking.py`, run over this
   module from the superproject, refuses an awaiter without it.
 
+### Changed
+
+- **The maintainer approved the limited 3.3 source exception for result-function addresses (Huly QB-286).**
+  Ordinary calls are unchanged; an untyped helper or parser-member address can require `<>` to select the
+  caller-side template. This prevents mixing C++20/C++23 result representations and inline bodies.
+  The general source-compatibility policy remains in force; Huly QB-1019 tracks restoring the former
+  syntax without losing ABI correctness or ordinary-path performance.
+
 ### Fixed
 
 - **Stream IDs round-trip across the full Redis unsigned 64-bit domain (Huly QB-640).** Typed `XADD` and `XRANGE`
