@@ -291,7 +291,7 @@ currently cached.
 ```cpp
 // coroutine — <!-- src: qbm/redis/tests/integration/scripting/scripting-commands.cpp:213-227 -->
 auto exists = co_await redis.script_exists(sha);          // Reply<std::vector<bool>>, size 1
-bool cached = exists.result()[0];
+bool cached = exists.ok() && !exists.result().empty() && exists.result()[0];
 
 auto miss = co_await redis.script_exists("invalid_sha");  // Reply<std::vector<bool>> -> {false}
 ```

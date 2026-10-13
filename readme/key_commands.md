@@ -526,7 +526,14 @@ template <typename Func> Derived &restore(Func &&, const std::string &key,
 
 ```cpp
 auto d = co_await redis.dump("k");
-auto r = co_await redis.restore("k_copy", *d.result(), /*ttl_ms=*/0);
+if (!d) {
+    qb::io::cerr() << "DUMP failed: " << d.error() << '\n';
+} else if (!d.result().has_value()) {
+    qb::io::cout() << "source key is absent\n";
+} else {
+    auto r = co_await redis.restore("k_copy", *d.result(), /*ttl_ms=*/0);
+    if (!r) qb::io::cerr() << "RESTORE failed: " << r.error() << '\n';
+}
 ```
 
 <!-- src: qbm/redis/tests/integration/key/key-commands.cpp:88-118 -->

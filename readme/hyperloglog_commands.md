@@ -236,9 +236,11 @@ redis.pfmerge(
   builds and queues the command, and the result reaches you asynchronously. The `Reply<bool> pfadd(...)` "Sync"
   signatures and the `pfadd_async` / `pfcount_async` / `pfmerge_async` method names in older docs do not exist — the
   async form is the same `pfadd` / `pfcount` / `pfmerge` overload that takes the handler first.
-- **No `std::vector` parameters.** Earlier docs showed `pfcount(const std::vector<std::string> &keys)` and
-  `pfmerge(dest, const std::vector<std::string> &sourcekeys)`. The real signatures take keys *variadically* (
-  `Keys &&...keys`); pass the keys directly as arguments, not as a vector.
+- **A non-empty `std::vector<std::string>` can be one variadic argument.** There is no dedicated vector overload, but
+  the command serializer expands a string vector and counts each element as one key. Both
+  `pfcount(std::vector<std::string>{"hll:a", "hll:b"})` and
+  `pfmerge("hll:all", std::vector<std::string>{"hll:a", "hll:b"})` are supported. Keep the container non-empty;
+  empty required key sets fail client-side.
 - **`pfcount()` and `pfmerge(dest)` with no keys compile, and fail *client-side*.** The variadic packs have no mandatory
   leading key beyond `pfmerge`'s `destination`, so there is no compile-time guard — but neither call ever reaches Redis:
   each callback overload tests the pack and routes an empty one through `fail_client`, which resolves the callback (and

@@ -126,6 +126,8 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Documentation
 
+- **Command and Pub/Sub documentation now preserves reply states and native Redis semantics (Huly QB-678, QB-679, QB-698, QB-701, QB-703–706, QB-708, QB-709, QB-695).** Examples distinguish failed replies, nil values, and empty values before dereference; HyperLogLog documents supported string vectors; hash migration no longer invents a variadic named `hset`; XGROUP/ZDIFF comments describe their real results; Pub/Sub distinguishes RESP2 restrictions from RESP3 and counts remaining channels plus patterns. The quickstart points `main.cpp` at the complete standalone program.
+
 - **`ROADMAP.md` removed (Huly QB-137).** It described a hiredis-based parser (`redisReaderGetReply`) and a
   `*_async` API this module never shipped, listed the shipped pipelining as still to do, and `llms.txt`
   linked it, so agents were served it as current. The CHANGELOG and the published milestones are where

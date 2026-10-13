@@ -454,7 +454,9 @@ template <typename Func> Derived &blpop(Func &&, const std::vector<std::string> 
 
 ```cpp
 auto r = co_await redis.blpop({"high", "low"}, 5s);   // 5-second block
-if (r.result().has_value()) {
+if (!r) {
+    qb::io::cerr() << "BLPOP failed: " << r.error() << "\n";
+} else if (r.result().has_value()) {
     const auto &[key, element] = *r.result();
     qb::io::cout() << "got " << element << " from " << key << "\n";
 } else {

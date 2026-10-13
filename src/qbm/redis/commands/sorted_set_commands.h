@@ -1034,7 +1034,7 @@ public:
     /**
      * @brief Return the difference between the first and successive sorted sets (coroutine awaitable)
      *
-     * @param keys Keys of sorted sets (first is subtracted from others)
+     * @param keys Keys of sorted sets (members of the later sets are subtracted from the first)
      * @return redis_awaiter yielding Reply<std::vector<std::string>>
      * @see https://redis.io/commands/zdiff
      */
@@ -1046,7 +1046,7 @@ public:
     /**
      * @brief Return the difference between sorted sets with scores (coroutine awaitable)
      *
-     * @param keys Keys of sorted sets (first is subtracted from others)
+     * @param keys Keys of sorted sets (members of the later sets are subtracted from the first)
      * @return redis_awaiter yielding Reply<std::vector<score_member>>
      * @see https://redis.io/commands/zdiff
      */
@@ -1088,7 +1088,7 @@ public:
      * @brief Store the difference of sorted sets in destination (coroutine awaitable)
      *
      * @param destination Destination key for the result
-     * @param keys Keys of sorted sets (first is subtracted from others)
+     * @param keys Keys of sorted sets (members of the later sets are subtracted from the first)
      * @return redis_awaiter yielding Reply<long long> (number of elements in result)
      * @see https://redis.io/commands/zdiffstore
      */

@@ -218,7 +218,7 @@ public:
      *
      * @param key The key of the stream containing the group
      * @param group The name of the consumer group to delete
-     * @return The number of messages that were deleted
+     * @return 1 if the consumer group was destroyed, 0 if it did not exist
      */
     auto
     xgroup_destroy(const std::string &key, const std::string &group) {
