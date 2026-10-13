@@ -138,7 +138,7 @@ completion with `qb::io::async::run_sync(...)`. Inside a coroutine on the loop,
 
 ```cpp
 qb::redis::tcp::client redis{qb::io::uri{"tcp://127.0.0.1:6379"}};
-// tcp:// or redis:// (plaintext), rediss:// (TLS, needs QB_HAS_SSL).
+// tcp:// or redis://: plaintext. The client alias fixes the transport type.
 // URI is endpoint-only: credentials and DB are NOT parsed from it;
 // call co_await redis.auth(...) / redis.select(n) after connect.
 
@@ -158,11 +158,24 @@ A coroutine parked on a command shows as `"redis"` in qb's
 tracks suspensions (3.3).
 
 Enable RESP3 yourself: issue `co_await redis.hello(3)` as the first command
-after connect (the session is RESP2 until you do). For TLS on `rediss://`,
-call `redis.set_verify_peer(false)` (trusted/self-signed only) — or, for a
-private CA, `redis.set_ssl_root_cert("ca.pem")`, and for mutual TLS
-`redis.set_ssl_client_certificate("cl.pem","cl.key")` — all **before**
-`connect()`.
+after connect (the session is RESP2 until you do). TLS requires the separate
+`qb::redis::tcp::ssl::client` alias, compiled only with `QB_HAS_SSL`; changing
+the URI of `tcp::client` to `rediss://` cannot change its plaintext transport:
+
+```cpp
+#ifdef QB_HAS_SSL
+qb::redis::tcp::ssl::client secure_redis{qb::io::uri{"rediss://redis.example:6380"}};
+secure_redis.set_ssl_root_cert("ca.pem"); // private CA; keep default peer verification enabled
+// For mutual TLS, also set_ssl_client_certificate("cl.pem", "cl.key") before connect.
+if (!co_await secure_redis.connect())
+    co_return;
+#endif
+```
+
+The system trust store and peer verification are the defaults. Use
+`set_verify_peer(false)` only when deliberately accepting an unverified
+trusted/self-signed endpoint; a private CA alone calls for `set_ssl_root_cert`,
+not disabled verification. Set TLS options before `connect()`.
 
 ### Basic commands and Reply<T>
 

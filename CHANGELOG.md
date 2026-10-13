@@ -31,6 +31,9 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **The TLS connection recipe selects a TLS transport before using `rediss://` (Huly QB-696).**
+  The plaintext `tcp::client` and `tcp::ssl::client` are distinct aliases; the URI alone cannot upgrade one.
+  The example keeps peer verification enabled with a private CA and identifies disabling verification as a separate choice.
 - **The Redis references describe the values and units callers actually receive (Huly QB-658, QB-697, QB-700, QB-702, QB-707, QB-694).**
   INFO and CLIENT LIST return raw text boxed in a JSON string; HELLO RESP2's flat map becomes a JSON object; LREM
   distinguishes positive, negative, and zero counts. The time table separates relative durations, absolute expiry
