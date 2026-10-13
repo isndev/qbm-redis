@@ -239,8 +239,9 @@ redis.pfmerge(
 - **A non-empty `std::vector<std::string>` can be one variadic argument.** There is no dedicated vector overload, but
   the command serializer expands a string vector and counts each element as one key. Both
   `pfcount(std::vector<std::string>{"hll:a", "hll:b"})` and
-  `pfmerge("hll:all", std::vector<std::string>{"hll:a", "hll:b"})` are supported. Keep the container non-empty;
-  empty required key sets fail client-side.
+  `pfmerge("hll:all", std::vector<std::string>{"hll:a", "hll:b"})` are supported. Keep the container non-empty. An
+  empty vector still makes `sizeof...(keys) == 1`, so it passes the client-side empty-pack guard; the serializer emits
+  no key bulk and Redis returns its command-arity error.
 - **`pfcount()` and `pfmerge(dest)` with no keys compile, and fail *client-side*.** The variadic packs have no mandatory
   leading key beyond `pfmerge`'s `destination`, so there is no compile-time guard — but neither call ever reaches Redis:
   each callback overload tests the pack and routes an empty one through `fail_client`, which resolves the callback (and
