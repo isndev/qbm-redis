@@ -331,6 +331,10 @@ if (!r.ok()) {
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,
   `on(disconnected)`) is caught and logged, never terminating the process.
+- `TReply` constructs the successful `Reply<T>` directly from `parse<T>(*raw)` before
+  invoking the callback. Decoder exceptions become failed replies with the original raw
+  value; the callback runs outside those catches, so its exception cannot cause a second
+  completion. _(src/qbm/redis/reply.h:1331-1347,1353-1371)_
 
 ---
 

@@ -162,23 +162,30 @@ See [cluster_commands.md](./cluster_commands.md).
 
 ### The parse seam: where exceptions live, and why you never see them
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1345-1368 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1331-1347,1353-1371 -->
 
 After a non-error reply arrives, the dispatcher calls `parse<T>(*raw)` to decode it into `T`. The typed parsers throw on
 a shape or type mismatch — but the dispatcher catches every `qb::redis::Error` subclass at that exact seam and folds it
-into `Reply{ok=false}`. The application callback runs after the decode catch:
+into `Reply{ok=false}`. A private decoder returns a `Reply<T>` prvalue, constructing its result directly
+from `parse<T>(*raw)`. Parsing completes before ownership of the raw reply moves, so a decode failure
+still carries that original raw value. The application callback runs after the decoder returns:
 
 ```cpp
-// reply.h, TReply::operator()
-std::optional<T> value;
-try {
-    value.emplace(parse<T>(*raw));
-} catch (const Error &e) {
-    func(Reply<T>{false, {}, std::move(raw), std::string(e.what())});
-    return;
+// Inside TReply::operator(), after the null and server-error branches:
+func(decode(raw));
+
+// Private TReply helper:
+static Reply<T> decode(reply_ptr &raw) {
+    try {
+        return Reply<T>{true, parse<T>(*raw), std::move(raw), {}};
+    } catch (const Error &e) {
+        return Reply<T>{false, {}, std::move(raw), std::string(e.what())};
+    } catch (const std::exception &e) {
+        return Reply<T>{false, {}, std::move(raw), std::string(e.what())};
+    } catch (...) {
+        return Reply<T>{false, {}, std::move(raw), "unknown reply-decode error"};
+    }
 }
-// The std::exception and catch-all decode cases also return a failed Reply.
-func(Reply<T>{true, std::move(*value), std::move(raw), {}});
 ```
 
 The exception hierarchy (all in `reply.h`, all deriving from `qb::redis::Error : std::exception`):
@@ -197,7 +204,7 @@ for `catch` blocks in your code: nothing thrown while decoding a reply escapes t
 failed `Reply`. A user callback that throws is invoked only once; the dispatch boundary contains its exception after
 the handler has left the reply FIFO. In practice the parsers avoid throwing standard exceptions at all anyway (e.g.
 stream-id decoding parses each half with `qb::to_number<std::uint64_t>`, which returns `std::nullopt` rather than throwing
-on an out-of-range or malformed value, and the parser folds that `nullopt` into a `ProtoError`) (`reply.h:1345-1368`, `reply.cpp:182-183`
+on an out-of-range or malformed value, and the parser folds that `nullopt` into a `ProtoError`) (`reply.h:1353-1371`, `reply.cpp:182-183`
 stream-id path).
 
 ### Numeric-parse strictness

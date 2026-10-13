@@ -35,6 +35,36 @@
 
 using namespace qb::redis::test;
 
+namespace reply_wrapper_test {
+struct DecodeProbe {
+    long long value{};
+    unsigned  moves{};
+
+    DecodeProbe() = default;
+    explicit DecodeProbe(long long value)
+        : value(value) {}
+    DecodeProbe(DecodeProbe &&other) noexcept
+        : value(other.value)
+        , moves(other.moves + 1) {}
+    DecodeProbe &operator=(DecodeProbe &&) = default;
+};
+} // namespace reply_wrapper_test
+
+namespace qb::redis {
+template <>
+reply_wrapper_test::DecodeProbe
+parse<reply_wrapper_test::DecodeProbe>(const ReplyValue &reply) {
+    const auto value = reply.as_integer().value;
+    if (value == -1)
+        throw Error("decode redis error");
+    if (value == -2)
+        throw std::length_error("decode standard error");
+    if (value == -3)
+        throw 42;
+    return reply_wrapper_test::DecodeProbe{value};
+}
+} // namespace qb::redis
+
 // ============================================================================
 // 30. Reply<T> accessors: value_or (engaged / disengaged / !ok), bool, raw
 //
@@ -166,6 +196,55 @@ TEST(ReplyTReply, SuccessParsesValue) {
     EXPECT_EQ(got.value(), 123);
     EXPECT_TRUE(got.error().empty());
     EXPECT_NE(got.raw(), nullptr);
+}
+
+TEST(ReplyTReply, SuccessConstructsDecodedValueDirectlyOnLvalueCallback) {
+    auto        raw      = mk_int(123);
+    const auto *identity = raw.get();
+    int         calls    = 0;
+    struct Callback {
+        int         &calls;
+        const Value *identity;
+
+        void
+        operator()(qb::redis::Reply<reply_wrapper_test::DecodeProbe> &&reply) & {
+            ++calls;
+            EXPECT_TRUE(reply.ok());
+            EXPECT_EQ(reply.value().value, 123);
+            EXPECT_EQ(reply.value().moves, 0u);
+            EXPECT_TRUE(reply.error().empty());
+            EXPECT_EQ(reply.raw().get(), identity);
+        }
+        void operator()(qb::redis::Reply<reply_wrapper_test::DecodeProbe> &&) && = delete;
+    } callback{calls, identity};
+    qb::redis::TReply<Callback, reply_wrapper_test::DecodeProbe> handler(std::move(callback));
+
+    handler(std::move(raw));
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(raw, nullptr);
+}
+
+TEST(ReplyTReply, DecodeExceptionsCompleteOnceWithOriginalRaw) {
+    const std::pair<long long, const char *> cases[] = {
+        {-1, "decode redis error"}, {-2, "decode standard error"}, {-3, "unknown reply-decode error"}
+    };
+    for (const auto &[value, error] : cases) {
+        auto        raw      = mk_int(value);
+        const auto *identity = raw.get();
+        int         calls    = 0;
+        auto        callback = [&](qb::redis::Reply<reply_wrapper_test::DecodeProbe> &&reply) {
+            ++calls;
+            EXPECT_FALSE(reply.ok());
+            EXPECT_EQ(reply.error(), error);
+            EXPECT_EQ(reply.value().value, 0);
+            EXPECT_EQ(reply.raw().get(), identity);
+        };
+        qb::redis::TReply<decltype(callback), reply_wrapper_test::DecodeProbe> handler(std::move(callback));
+
+        handler(std::move(raw));
+        EXPECT_EQ(calls, 1);
+        EXPECT_EQ(raw, nullptr);
+    }
 }
 
 TEST(ReplyTReply, RepeatedSuccessRepliesKeepTheirOwnValueAndRaw) {

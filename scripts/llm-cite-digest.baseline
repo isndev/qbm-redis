@@ -59,8 +59,10 @@ llm/qbm-redis.llm.api.md	reply.h:120-120	7ecd93eaad38	class AuthError : public E
 llm/qbm-redis.llm.api.md	reply.h:1205-1206	08ef64174d03	template <typename T>
 llm/qbm-redis.llm.api.md	reply.h:1293-1293	910efe302e14	class IReply {
 llm/qbm-redis.llm.api.md	reply.h:1315-1316	4d349f3ac8e9	template <typename Func, typename T>
+llm/qbm-redis.llm.api.md	reply.h:1331-1347	f8fa08ea7092	operator()(std::unique_ptr<ReplyValue> raw) final {
+llm/qbm-redis.llm.api.md	reply.h:1353-1371	98e558340f5f	[[nodiscard]] static Reply<T>
 llm/qbm-redis.llm.api.md	reply.h:136-136	1f4c9e70302c	class CommandError : public Error {
-llm/qbm-redis.llm.api.md	reply.h:1387-1391	d2914eb92b29	template <typename Ret, typename Func>
+llm/qbm-redis.llm.api.md	reply.h:1390-1394	d2914eb92b29	template <typename Ret, typename Func>
 llm/qbm-redis.llm.api.md	reply.h:152-152	3d0bb61a8d05	class TimeoutError : public Error {
 llm/qbm-redis.llm.api.md	reply.h:168-168	71dfda1919a5	class ReplyParseError : public ProtoError {
 llm/qbm-redis.llm.api.md	reply.h:195-195	e097c35dc8d6	struct ParseTag {};
@@ -98,3 +100,5 @@ llm/qbm-redis.llm.api.md	stream_commands.h:95-95	20a4409c5b05	parse_stream_id(co
 llm/qbm-redis.llm.api.md	string_commands.h:49-49	c879e6021a5d	class string_commands {
 llm/qbm-redis.llm.api.md	subscription_commands.h:41-41	a1757770a5f5	class subscription_commands {
 llm/qbm-redis.llm.api.md	transaction_commands.h:38-38	d12ba69a350e	class transaction_commands {
+llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1331-1347	f8fa08ea7092	operator()(std::unique_ptr<ReplyValue> raw) final {
+llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1353-1371	98e558340f5f	[[nodiscard]] static Reply<T>

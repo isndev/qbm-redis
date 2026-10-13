@@ -53,7 +53,8 @@ All notable changes to the qbm-redis module are documented here. The format is b
   so the announced array length remains correct without changing the omitted-optional wire contract.
 - **A throwing success callback is invoked once (Huly QB-635).** Only decoding exceptions become failed `Reply` values;
   callback exceptions reach the existing dispatch boundary after the reply has left the FIFO. A later pipelined reply
-  still reaches its own callback.
+  still reaches its own callback. The decoder constructs the successful `Reply` directly from the parsed value,
+  without an intermediate optional; decoding failures keep the original raw reply and resolve the callback once.
 - **Floating command arguments retain their significant digits (Huly QB-636).** Locale-independent `std::to_chars`
   emits a round-trip representation for `double`, including small `INCRBYFLOAT` and `HINCRBYFLOAT` increments that
   previously rounded to `0.000000` before reaching Redis. Numeric `json_value` and `qb::json` arguments to raw commands

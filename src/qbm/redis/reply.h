@@ -1342,14 +1342,22 @@ public:
             return;
         }
 
-        std::optional<T> value;
+        // User callbacks run outside the decode catch: a throwing callback is
+        // contained by the dispatch boundary, never delivered a second Reply.
+        func(decode(raw));
+    }
+
+private:
+    // Return a prvalue so decoding constructs the callback's Reply directly,
+    // without moving T through an intermediate optional and destroying it.
+    [[nodiscard]] static Reply<T>
+    decode(reply_ptr &raw) {
         try {
-            value.emplace(parse<T>(*raw));
+            return Reply<T>{true, parse<T>(*raw), std::move(raw), {}};
         } catch (const Error &e) {
             // Catch all qb::redis::Error subclasses (ProtoError, CommandError, etc.)
             // e.what() is valid only for the lifetime of e, so copy it now.
-            func(Reply<T>{false, {}, std::move(raw), std::string(e.what())});
-            return;
+            return Reply<T>{false, {}, std::move(raw), std::string(e.what())};
         } catch (const std::exception &e) {
             // A non-redis exception from decoding — e.g. std::bad_alloc / std::length_error while
             // materializing a large (but within-limit) reply under memory pressure — is NOT a
@@ -1357,15 +1365,10 @@ public:
             // already popped from the reply FIFO before being invoked, so letting the exception
             // escape (it is only logged at the libev dispatch boundary) means func() never runs and
             // the caller's callback / awaiting coroutine is NEVER resolved — a silent hang.
-            func(Reply<T>{false, {}, std::move(raw), std::string(e.what())});
-            return;
+            return Reply<T>{false, {}, std::move(raw), std::string(e.what())};
         } catch (...) {
-            func(Reply<T>{false, {}, std::move(raw), "unknown reply-decode error"});
-            return;
+            return Reply<T>{false, {}, std::move(raw), "unknown reply-decode error"};
         }
-        // User callbacks run outside the decode catch: a throwing callback is
-        // contained by the dispatch boundary, never delivered a second Reply.
-        func(Reply<T>{true, std::move(*value), std::move(raw), {}});
     }
 };
 
