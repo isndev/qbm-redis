@@ -321,8 +321,20 @@ TEST(RespAggregateReserve, OrdinaryAggregatesStillDecodeCorrectly) {
         frame += ":" + std::to_string(i) + "\r\n";
 
     ParserConfig config;
-    auto         result = parse(frame, config);
-    ASSERT_TRUE(result.has_value()) << "a well-formed aggregate must still decode";
+    RespParser   parser(config);
+    ASSERT_TRUE(parser.feed(frame));
+    auto values = parser.parse_all();
+    ASSERT_EQ(values.size(), 1u) << "a well-formed aggregate must decode as one value";
+    EXPECT_TRUE(parser.unparsed_data().empty()) << "the parser reported success before consuming the complete aggregate";
+
+    const auto &result = values.front();
+    ASSERT_TRUE(result.is_array());
+    const auto &decoded = result.as_array();
+    ASSERT_EQ(decoded.size(), static_cast<std::size_t>(elements));
+    for (const std::size_t index : {std::size_t{0}, std::size_t{4095}, std::size_t{4096}, std::size_t{elements - 1}}) {
+        ASSERT_TRUE(decoded[index]->is_integer()) << "element " << index << " changed RESP kind";
+        EXPECT_EQ(decoded[index]->as_integer().value, static_cast<std::int64_t>(index));
+    }
 }
 
 } // namespace

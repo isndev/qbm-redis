@@ -44,6 +44,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -94,11 +95,17 @@ struct Harness {
     int                                          messages_seen = 0;
     int                                          handler_calls = 0;
     bool                                         handler_ok    = false;
+    bool                                         throw_on_message{false};
 
-    Harness() {
+    explicit Harness(bool throw_messages = false)
+        : throw_on_message(throw_messages) {
         lfd      = open_loopback_listener(port);
         consumer = std::make_unique<qb::redis::tcp::cb_consumer>(qb::io::uri{"tcp://127.0.0.1:" + std::to_string(port)},
-                                                                 [this](qb::redis::message &&) { ++messages_seen; });
+                                                                 [this](qb::redis::message &&) {
+                                                                     ++messages_seen;
+                                                                     if (throw_on_message)
+                                                                         throw std::runtime_error("intentional message callback failure");
+                                                                 });
         EXPECT_TRUE(qb::io::async::run_sync(consumer->connect())) << "the loopback listener completes the handshake";
         sfd = ::accept(lfd, nullptr, nullptr);
         EXPECT_NE(sfd, qb::io::inet::invalid_socket) << "the server end of the consumer's connection";
@@ -171,6 +178,20 @@ TEST(ConsumerUnknownPush, KnownMessagePushStillDelivers) {
     EXPECT_EQ(h.messages_seen, 2);
     EXPECT_EQ(h.handler_calls, 0);
     EXPECT_EQ(h.consumer->pending_reply_count(), 1u);
+}
+
+TEST(ConsumerUnknownPush, ThrowingMessageDoesNotConsumeThePendingConfirmation) {
+    qb::io::async::init();
+    Harness           h{/*throw_messages=*/true};
+    const std::string confirmation = ">3\r\n$9\r\nsubscribe\r\n$4\r\nnews\r\n:1\r\n";
+
+    ASSERT_TRUE(h.serve(kKnownMessage + confirmation, 1));
+    ASSERT_TRUE(run_until([&] { return h.handler_calls == 1; }))
+        << "the confirmation queued behind the throwing MESSAGE callback was not delivered";
+    EXPECT_EQ(h.messages_seen, 1);
+    EXPECT_EQ(h.handler_calls, 1);
+    EXPECT_TRUE(h.handler_ok);
+    EXPECT_EQ(h.consumer->pending_reply_count(), 0u);
 }
 
 TEST(ConsumerUnknownPush, KnownSubscribePushStillResolvesTheHandler) {

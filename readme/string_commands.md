@@ -216,7 +216,7 @@ auto a = co_await redis.getex("k", 5000LL);                       // 5000 SECOND
 auto b = co_await redis.getex("k", std::chrono::milliseconds{10000}); // 10000 ms = 10 s
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:829-897; tests/integration/string/string-commands.cpp:577-599 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:829-897; tests/integration/string/string-commands.cpp:570-628 -->
 
 ---
 
@@ -460,7 +460,7 @@ auto r = co_await redis.lcs("a", "b");
 // r.result() == "mytext"
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:899-933; tests/integration/string/string-commands.cpp:613-618 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:899-933; tests/integration/string/string-commands.cpp:636-641 -->
 
 > The `LEN`, `IDX`, `MINMATCHLEN`, and `WITHMATCHLEN` options of `LCS` are **not** exposed by this method — only the
 > plain two-key subsequence form is available. A prior version of this page described those options; they are not in

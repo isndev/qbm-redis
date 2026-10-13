@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
@@ -48,6 +49,14 @@ namespace qb::redis::test {
 /// Exact phrase CTest's SKIP_REGULAR_EXPRESSION matches (set by `REQUIRES live`) to mark a
 /// daemon-down binary as Skipped. Keep in sync with qb/cmake/qbFunctions.cmake.
 inline constexpr const char *kDaemonUnreachableSentinel = "QBM_INTEGRATION_SKIP_DAEMON_UNREACHABLE";
+
+/// Redis' stable diagnostic for a command the server version does not implement.
+/// Permission, transport and decoder errors must fail their test instead of being
+/// relabelled as an old-server capability skip.
+[[nodiscard]] inline bool
+is_unknown_command_error(std::string_view error) {
+    return error.find("unknown command") != std::string_view::npos;
+}
 
 /// Redis endpoint, overridable via `REDIS_URI` (local daemon / container / CI), default
 /// `tcp://localhost:6379`.

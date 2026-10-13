@@ -571,28 +571,51 @@ TEST_P(StringProtocolModesTest, GETEX) {
     bool completed = false;
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
-        const std::string key = protocol_key("getex");
-        CO_IGNORE(co_await redis.set(key, "value"));
+        const std::string key    = protocol_key("getex");
+        auto              seeded = co_await redis.set(key, "value");
+        if (!seeded.ok()) {
+            ADD_FAILURE() << seeded.error();
+            completed = true;
+            co_return;
+        }
 
         auto reply1 = co_await redis.getex(key, 5000LL);
-        EXPECT_TRUE(reply1.ok()) << reply1.error();
-        if (!(reply1.result().has_value())) {
-            ADD_FAILURE() << "precondition failed: reply1.result().has_value()";
+        if (!(reply1.ok() && reply1.result().has_value())) {
+            ADD_FAILURE() << "integer GETEX did not return the seeded value: " << reply1.error();
+            completed = true;
             co_return;
         }
         EXPECT_EQ(*reply1.result(), "value");
 
         auto pttl_reply = co_await redis.pttl(key);
-        EXPECT_TRUE(pttl_reply.ok()) << pttl_reply.error();
-        EXPECT_GT(pttl_reply.result(), 0);
+        if (!pttl_reply.ok()) {
+            ADD_FAILURE() << pttl_reply.error();
+            completed = true;
+            co_return;
+        }
+        EXPECT_GT(pttl_reply.result(), 1'000'000) << "integer GETEX must use EX seconds, not PX milliseconds";
+        EXPECT_LE(pttl_reply.result(), 5'000'000);
 
-        auto reply2 = co_await redis.getex(key, std::chrono::milliseconds{10000});
-        EXPECT_TRUE(reply2.ok()) << reply2.error();
-        if (!(reply2.result().has_value())) {
-            ADD_FAILURE() << "precondition failed: reply2.result().has_value()";
+        // Keep PX alive beyond the CTest budget, so a descheduled runner cannot
+        // turn a correct millisecond TTL into a false failure before PTTL reads it.
+        constexpr std::chrono::milliseconds kChronoTtl{600'000};
+        auto                                reply2 = co_await redis.getex(key, kChronoTtl);
+        if (!(reply2.ok() && reply2.result().has_value())) {
+            ADD_FAILURE() << "chrono GETEX did not return the seeded value: " << reply2.error();
+            completed = true;
             co_return;
         }
         EXPECT_EQ(*reply2.result(), "value");
+
+        auto renewed_pttl = co_await redis.pttl(key);
+        if (!renewed_pttl.ok()) {
+            ADD_FAILURE() << renewed_pttl.error();
+            completed = true;
+            co_return;
+        }
+        EXPECT_GT(renewed_pttl.result(), 0) << "chrono GETEX must leave the key alive for the requested TTL";
+        EXPECT_LE(renewed_pttl.result(), kChronoTtl.count()) << "chrono GETEX must use PX milliseconds, not EX seconds";
+        EXPECT_LT(renewed_pttl.result(), pttl_reply.result()) << "the second GETEX did not replace the first TTL";
 
         auto reply3 = co_await redis.getex(protocol_key("nonexistent_getex"), 1000LL);
         EXPECT_TRUE(reply3.ok()) << reply3.error();

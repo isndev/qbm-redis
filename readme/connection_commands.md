@@ -87,7 +87,7 @@ if (r.ok() && r.result().ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-223 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-232 -->
 
 ---
 
@@ -277,7 +277,7 @@ auto r = co_await redis.select(1);
 assert(r.ok() && r.result().ok());
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-223 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-232 -->
 
 ### `swapdb` — swap two databases
 
@@ -299,7 +299,7 @@ auto r = co_await redis.swapdb(0, 1);
 assert(r.ok() && r.result().ok());
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:225-239 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:234-267 -->
 
 ### `reset` — reset connection state
 

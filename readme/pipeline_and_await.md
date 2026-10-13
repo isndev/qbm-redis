@@ -109,7 +109,7 @@ redis.await();
 // order == {1, 2, 3}
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:109-131 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:109-145 -->
 
 ### What `await()` does and does not do
 
@@ -136,7 +136,7 @@ while (redis.pending_reply_count() > 0)
     qb::io::async::run(EVRUN_NOWAIT);
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:326-343 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:340-357 -->
 
 ### `qb::redis::tcp::pipeline`
 
@@ -167,7 +167,7 @@ pipe
 pipe.flush();  // == client().await(); NOT Redis FLUSHDB/FLUSHALL
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:345-365 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:359-379 -->
 
 Mixing the named wrapper with the client's mixin methods is fine — they share one queue:
 
@@ -178,7 +178,7 @@ pipe.client().get([](qb::redis::Reply<std::optional<std::string>> &&r) { /* ... 
 pipe.flush();  // drains both
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:367-392 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:381-406 -->
 
 ---
 

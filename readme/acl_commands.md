@@ -39,7 +39,7 @@ There is no blocking variant — this module has never shipped "Sync" signatures
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
-// <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:130-163 -->
+// <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:132-165 -->
 qb::io::async::task<void> who_am_i(qb::redis::tcp::client &redis) {
     auto reply = co_await redis.acl_whoami();             // Reply<std::string>
     if (reply)                                            // Reply<T> is contextually bool (== ok())
@@ -86,7 +86,7 @@ rather than flattening to strings. Inspect the value with the usual `qb::json` a
 `contains(key)`, `operator[]`, and `get<T>()`:
 
 ```cpp
-// <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:107-127 -->
+// <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:109-129 -->
 auto reply = co_await redis.acl_getuser("default");      // Reply<qb::json>
 if (reply) {
     auto user = reply.result();
@@ -118,7 +118,7 @@ compile time.
 explanation when it would be denied (a string on most servers, occasionally a structured object on newer ones — test for
 both, as the test suite does). Use it to validate a rule set before you rely on it.
 
-<!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:235-267 -->
+<!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:237-269 -->
 
 ### Availability
 
@@ -184,7 +184,7 @@ Derived &acl_getuser(Func &&func, const std::string &username);
 Returns a `qb::json` object describing `username` — its `flags`, `passwords`, `commands`, `keys`, and `channels`.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:107-127 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:109-129 -->
 auto reply = co_await redis.acl_getuser("default");
 if (reply && reply.result().is_object())
     qb::io::cout() << reply.result().dump() << std::endl;
@@ -206,7 +206,7 @@ Derived &acl_list(Func &&func);
 Returns a `qb::json` array, one entry per user, each a full ACL rule line (e.g. `"user default on nopass ~* &* +@all"`).
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:130-163 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:132-165 -->
 auto reply = co_await redis.acl_list();
 if (reply && reply.result().is_array())
     for (const auto &line : reply.result())
@@ -229,7 +229,7 @@ Derived &acl_users(Func &&func);
 Returns the configured user names. `default` is always present.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:130-163 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:132-165 -->
 auto reply = co_await redis.acl_users();
 if (reply)
     for (const auto &user : reply.result())
@@ -285,7 +285,7 @@ Returns the user name this connection is authenticated as (`default` until you `
 see [connection.md](./connection.md)).
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:130-163 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:132-165 -->
 auto reply = co_await redis.acl_whoami();
 if (reply)
     qb::io::cout() << reply.result() << std::endl;   // "default"
@@ -309,7 +309,7 @@ With no argument, returns every ACL command category (`string`, `keyspace`, `rea
 the raw structured form a newer server may return, reach for `redis.command<qb::json>("ACL", "CAT", category)`.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:61-104 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:63-106 -->
 auto reply = co_await redis.acl_cat();                 // all categories
 if (reply)
     for (const auto &cat : reply.result())
@@ -345,7 +345,7 @@ the client address, and a reason. Pass `count` to cap the number of entries. To 
 `redis.command<qb::json>("ACL", "LOG", "RESET")`.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:166-183 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:168-185 -->
 auto all     = co_await redis.acl_log();      // entire log
 auto last_5  = co_await redis.acl_log(5);     // at most 5 entries
 if (last_5 && last_5.result().is_array())
@@ -369,7 +369,7 @@ Asks the server to generate a cryptographically secure random password, returned
 server uses its default entropy (256 bits); pass `bits` to request a specific strength.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:209-229 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:211-231 -->
 auto pw      = co_await redis.acl_genpass();      // default entropy
 auto pw_128  = co_await redis.acl_genpass(128);   // 128 bits
 if (pw)
@@ -396,7 +396,7 @@ Returns `"OK"` (as a `qb::json` string) if `username` would be allowed to run `c
 otherwise. The command is never executed. Requires Redis 7.0+.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:235-267 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:237-269 -->
 auto reply = co_await redis.acl_dryrun("default", "GET", {"nonexistent_key"});
 // "OK" (string) when allowed; a denial string — or, on some server versions,
 // an object — when not. Mirror the test and accept both.
@@ -420,7 +420,7 @@ Derived &acl_help(Func &&func);
 Returns the server's `ACL` help lines as a string vector.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:186-206 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/acl-commands.cpp:188-208 -->
 auto reply = co_await redis.acl_help();
 if (reply)
     for (const auto &line : reply.result())

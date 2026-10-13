@@ -32,10 +32,11 @@
  *    second client), plus LSET/LINDEX out-of-range and LINSERT pivot-not-found edges.
  */
 
-#include <algorithm>
 #include <gtest/gtest.h>
+#include <string_view>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include <qb/system/parse.h>
 #include "../../shared/redis_integration_fixture.h"
 #include <qbm/redis/redis.h>
 
@@ -43,6 +44,35 @@ using namespace qb::redis;
 using namespace qb::redis::test;
 
 namespace {
+
+template <typename Pred>
+bool
+pump_until(Pred &&pred, std::chrono::milliseconds budget = std::chrono::milliseconds(15000)) {
+    const auto deadline = std::chrono::steady_clock::now() + budget;
+    while (!pred()) {
+        qb::io::async::run(EVRUN_NOWAIT);
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+    }
+    return true;
+}
+
+[[nodiscard]] long long
+blocked_clients(qb::redis::tcp::client &client) {
+    auto info = qb::io::async::run_sync(client.info("clients"));
+    if (!info.ok())
+        return -1;
+    const std::string                 body = info.result().is_string() ? info.result().get<std::string>() : info.result().dump();
+    static constexpr std::string_view kKey = "blocked_clients:";
+    const auto                        pos  = body.find(kKey);
+    if (pos == std::string::npos)
+        return -1;
+    const auto        start = pos + kKey.size();
+    const auto        end   = body.find_first_of("\r\n", start);
+    const std::string value = body.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    const auto        count = qb::to_number<long long>(value);
+    return count ? *count : -1;
+}
 
 class ListProtocolModesTest : public ProtocolModesTestBase {};
 
@@ -258,16 +288,20 @@ TEST_P(ListProtocolModesTest, REMOVE) {
 
         auto after = co_await redis.lrange(key, 0, -1);
         EXPECT_TRUE(after.ok());
-        EXPECT_EQ(after.result().size(), 5u);
-        EXPECT_EQ(std::count(after.result().begin(), after.result().end(), std::string("item2")), 1);
+        EXPECT_EQ(after.result(), (std::vector<std::string>{"item1", "item3", "item4", "item2", "item5"}));
 
-        auto rem2 = co_await redis.lrem(key, -1, "item2");
+        // Re-seed multiple matches so a negative count has a direction to prove.
+        EXPECT_TRUE((co_await redis.del(key)).ok());
+        auto reseed = co_await redis.rpush(key, "item2", "front", "item2", "back", "item2");
+        EXPECT_TRUE(reseed.ok()) << reseed.error();
+
+        auto rem2 = co_await redis.lrem(key, -2, "item2");
         EXPECT_TRUE(rem2.ok());
-        EXPECT_EQ(rem2.result(), 1);
+        EXPECT_EQ(rem2.result(), 2);
 
         auto after2 = co_await redis.lrange(key, 0, -1);
         EXPECT_TRUE(after2.ok());
-        EXPECT_EQ(std::count(after2.result().begin(), after2.result().end(), std::string("item2")), 0);
+        EXPECT_EQ(after2.result(), (std::vector<std::string>{"item2", "front", "back"}));
 
         completed = true;
     });
@@ -398,6 +432,8 @@ TEST_P(ListProtocolModesTest, BLOCKING_IMMEDIATE) {
 TEST_P(ListProtocolModesTest, BLPOP_BLOCKS_THEN_WOKEN_BY_SECOND_CLIENT) {
     qb::redis::tcp::client pusher{redis_test_uri()};
     ASSERT_TRUE(redis_try_connect(pusher)) << kDaemonUnreachableSentinel;
+    const long long blocked_before = blocked_clients(pusher);
+    ASSERT_GE(blocked_before, 0) << "could not read blocked_clients before BLPOP";
 
     const std::string key = protocol_key("blpop_wake");
 
@@ -423,13 +459,9 @@ TEST_P(ListProtocolModesTest, BLPOP_BLOCKS_THEN_WOKEN_BY_SECOND_CLIENT) {
         popped = true;
     });
 
-    // Producer: after a short delay (so the consumer is definitely parked), RPUSH from the 2nd
-    // client. The delay is a producer-side stagger, not a delivery-assert sleep.
-    qb::io::async::coro_scheduler().spawn([&pusher, key]() -> qb::io::async::task<void> {
-        co_await qb::io::async::sleep(std::chrono::milliseconds(150));
-        (void) co_await pusher.rpush(key, "woke-up");
-        co_return;
-    });
+    ASSERT_TRUE(pump_until([&] { return blocked_clients(pusher) >= blocked_before + 1; })) << "BLPOP never became blocked on the server";
+    auto pushed = qb::io::async::run_sync(pusher.rpush(key, "woke-up"));
+    ASSERT_TRUE(pushed.ok()) << pushed.error();
 
     run_coro_test_until(popped, std::chrono::seconds(10));
     EXPECT_TRUE(wake_ok);
@@ -631,6 +663,8 @@ TEST_P(ListProtocolModesTest, BLMOVE) {
 TEST_P(ListProtocolModesTest, BRPOPLPUSH_BLOCKS_THEN_WOKEN_BY_SECOND_CLIENT) {
     qb::redis::tcp::client pusher{redis_test_uri()};
     ASSERT_TRUE(redis_try_connect(pusher)) << kDaemonUnreachableSentinel;
+    const long long blocked_before = blocked_clients(pusher);
+    ASSERT_GE(blocked_before, 0) << "could not read blocked_clients before BRPOPLPUSH";
 
     const std::string src = protocol_key("brpoplpush_wake_src");
     const std::string dst = protocol_key("brpoplpush_wake_dst");
@@ -652,11 +686,9 @@ TEST_P(ListProtocolModesTest, BRPOPLPUSH_BLOCKS_THEN_WOKEN_BY_SECOND_CLIENT) {
         done = true;
     });
 
-    qb::io::async::coro_scheduler().spawn([&pusher, src]() -> qb::io::async::task<void> {
-        co_await qb::io::async::sleep(std::chrono::milliseconds(150));
-        (void) co_await pusher.rpush(src, "transit");
-        co_return;
-    });
+    ASSERT_TRUE(pump_until([&] { return blocked_clients(pusher) >= blocked_before + 1; })) << "BRPOPLPUSH never became blocked on the server";
+    auto pushed = qb::io::async::run_sync(pusher.rpush(src, "transit"));
+    ASSERT_TRUE(pushed.ok()) << pushed.error();
 
     run_coro_test_until(done, std::chrono::seconds(10));
     EXPECT_TRUE(wake_ok);
