@@ -188,8 +188,9 @@ TEST(HscanAggregation, NonstandardMergeAndCallbackErrorsCompleteOnlyOnce) {
             EXPECT_EQ(adapter.page_requests, 1u);
             EXPECT_FALSE(ControlledMergeLess::armed);
             EXPECT_EQ(ok, !fail_merge);
-            if (fail_merge)
+            if (fail_merge) {
                 EXPECT_EQ(error, "unknown HSCAN aggregation error");
+            }
         }
     }
 }

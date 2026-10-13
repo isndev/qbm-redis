@@ -496,10 +496,12 @@ TEST(ReplyJsonCommands, RoleSentinelKeepsPositionAndAllMasterNames) {
         EXPECT_EQ(reply.result()[0], "sentinel");
         ASSERT_TRUE(reply.result()[1].is_array());
         EXPECT_EQ(reply.result()[1].size(), count);
-        if (count > 0)
+        if (count > 0) {
             EXPECT_EQ(reply.result()[1][0], "primary-a");
-        if (count > 1)
+        }
+        if (count > 1) {
             EXPECT_EQ(reply.result()[1][1], "primary-b");
+        }
         ASSERT_NE(reply.raw(), nullptr);
         EXPECT_TRUE(reply.raw()->is_array());
     }

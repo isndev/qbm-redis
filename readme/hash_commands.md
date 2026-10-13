@@ -110,7 +110,7 @@ redis.hset([](qb::redis::Reply<long long> &&r) {
 }, "user:1", "field2", "value2");
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:254-259 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:255-260 -->
 
 ### `HSETNX key field value` — `hsetnx`
 
@@ -134,7 +134,7 @@ auto first  = co_await redis.hsetnx("user:1", "field1", "value1"); // result() =
 auto second = co_await redis.hsetnx("user:1", "field1", "other");  // result() == false
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:441-461 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:442-462 -->
 
 ### `HMSET key field value [field value ...]` — `hmset`
 
@@ -164,7 +164,7 @@ auto r = co_await redis.hmset("user:1", "field1", "value1", "field2", "value2");
 if (r.ok() && r.result().ok()) { /* all fields written */ }
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:312-314 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:313-315 -->
 
 ### `HGET key field` — `hget`
 
@@ -192,7 +192,7 @@ redis.hget([](qb::redis::Reply<std::optional<std::string>> &&r) {
 }, "user:1", "field1");
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:261-275 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:262-276 -->
 
 ### `HMGET key field [field ...]` — `hmget`
 
@@ -220,7 +220,7 @@ if (r.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:316-337 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:317-338 -->
 
 ### `HGETALL key` — `hgetall`
 
@@ -244,7 +244,7 @@ if (r.ok())
         qb::io::cout() << field << " = " << value << "\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:339-347 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:340-348 -->
 
 ### `HKEYS key` — `hkeys`
 
@@ -283,7 +283,7 @@ auto r = co_await redis.hvals("user:1");
 if (r.ok()) { /* r.result() == {"value1", "value2", ...} */ }
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:483-486 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:484-487 -->
 
 #### `hvals` multi-key fan-out (callback-only)
 
@@ -333,7 +333,7 @@ if (r.ok())
     qb::io::cout() << "removed " << r.result() << " field(s)\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:288-290 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:289-291 -->
 
 ### `HEXISTS key field` — `hexists`
 
@@ -390,7 +390,7 @@ auto r = co_await redis.hstrlen("user:1", "field1");
 if (r.ok()) { /* r.result() == length in bytes */ }
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:503-511 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:504-512 -->
 
 ### `HINCRBY key field increment` — `hincrby`
 
@@ -413,7 +413,7 @@ auto up   = co_await redis.hincrby("user:1", "counter", 10); // result() == 10
 auto down = co_await redis.hincrby("user:1", "counter", -5); // result() == 5
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:361-369 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:362-370 -->
 
 ### `HINCRBYFLOAT key field increment` — `hincrbyfloat`
 
@@ -435,7 +435,7 @@ Derived &hincrbyfloat(Func &&func, const std::string &key, const std::string &fi
 auto r = co_await redis.hincrbyfloat("user:1", "balance", 10.5); // result() == 10.5
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:371-379 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:372-380 -->
 
 ### `HSCAN key cursor [MATCH pattern] [COUNT count]` — `hscan`
 
@@ -478,7 +478,7 @@ do {
 } while (cursor != 0);
 ```
 
-<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:528-538 -->
+<!-- src: qbm/redis/tests/integration/hash/hash-commands.cpp:529-539 -->
 
 > The callback cursor form sends nothing when `key` is empty — but it does not go silent: it routes through
 > `fail_client` with `"HSCAN requires a non-empty key"` and then returns `derived()`, so the handler runs with
