@@ -65,7 +65,7 @@ it out.
 
 ### Daemons
 
-27 of the 42 tests are `REQUIRES live`: they need a reachable Redis at `tcp://localhost:6379`
+27 integration tests are `REQUIRES live`: they need a reachable Redis at `tcp://localhost:6379`
 (`REDIS_URI`). Nothing needs pre-start setup, so CI uses a plain `services:` container — unlike
 qbm-pgsql, whose postgres needs a TLS certificate generated *before* the server starts and therefore
 cannot be a service container.
@@ -105,8 +105,7 @@ an executable on disk for every registered test, an **executed** floor, and `ski
 reachable Redis, 27 tests would self-skip, `ctest` would exit 0 and print `100% tests passed` — that
 outcome fails this lane. A floor may only ever go **up**.
 
-Unlike qbm-http, nothing here is host-varying: 42 registered (13 unit + 2 system + 27 integration) on
-macOS and 42 on `ubuntu-latest`, measured. qbm-http has to derive part of its floor from a capability
-because `ubuntu-latest` cannot build its four HTTP/3 tests. If a capability gate is ever added to this
-module, its floor has to become derived in the same way — a constant would then be red on a host that
-is merely different, not broken.
+The current source roster has 14 unit, 6 unconditional system, 1 `REQUIRES ssl` system, and
+27 integration registrations: 47 without SSL or 48 with SSL. These are roster counts, not
+results from a fresh CI run; report registered / executed / skipped for each run. The CI floor
+remains a minimum, not an exact count. A future capability change needs a matching floor review.
