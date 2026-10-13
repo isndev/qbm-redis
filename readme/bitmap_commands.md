@@ -324,9 +324,12 @@ redis.bitcount([](qb::redis::Reply<long long> &&r) {
 
 ## Pitfalls
 
-- **No blocking API.** These methods are coroutine- or callback-based only. A call without `co_await` (or a callback)
-  just builds and queues the command; the result reaches you asynchronously. The `long long bitcount(...)` /
-  `bool getbit(...)` "Sync" signatures in older docs do not exist.
+- **No blocking API.** These methods are coroutine- or callback-based only. The coroutine form
+  constructs an awaiter and captures arguments; it does not queue or send the command until
+  `co_await` reaches `redis_awaiter::await_suspend`. The callback form starts the command at
+  the call. For example, `auto pending = redis.bitcount(key);` has not sent `BITCOUNT`;
+  `auto reply = co_await pending;` starts it and yields `Reply<long long>`. The
+  `long long bitcount(...)` / `bool getbit(...)` "Sync" signatures in older docs do not exist.
 - **`getbit`/`setbit` yield `Reply<long long>`, not `Reply<bool>`.** Compare `result()` against `0`/`1`. `setbit`
   returns the *previous* bit, which is the idiom for atomic test-and-set on a flag.
 - **`bitop` returns a length, not a status.** A non-error reply carries the destination string's byte length; check

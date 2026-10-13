@@ -392,9 +392,13 @@ wrong-typed handler still binds it and the error appears deeper rather than as "
 
 ## Pitfalls
 
-- **No blocking API.** These methods are coroutine- or callback-based only. A call without `co_await` (or a callback)
-  builds and queues the command, and the result reaches you asynchronously. The `Reply<...> geoadd(...)` "Sync"
-  signatures and the `*_async` method names in older docs do not exist.
+- **No blocking API.** These methods are coroutine- or callback-based only. The coroutine form
+  constructs an awaiter and captures arguments; it does not queue or send the command until
+  `co_await` reaches `redis_awaiter::await_suspend`. The callback form starts at the call.
+  For example, `auto pending = redis.geosearch(key, member, 200.0);` has not sent
+  `GEOSEARCH`; `auto reply = co_await pending;` starts it and yields the reply.
+  The `Reply<...> geoadd(...)` "Sync" signatures and the `*_async` method names in older
+  docs do not exist.
 - **`geosearch` covers only `FROMMEMBER` + `BYRADIUS`.** The single overload hard-codes the center to
   `FROMMEMBER <member>` and the area to `BYRADIUS <radius> <unit>`; there is no `FROMLONLAT` and no `BYBOX`. The
   trailing `options` vector *is* forwarded (so `COUNT`/`ASC`/`WITH*` reach the server), but if you need a coordinate
