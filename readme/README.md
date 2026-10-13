@@ -20,9 +20,9 @@ session on the qb-io event loop. It implements its own RESP2/RESP3 parser, so it
 The public surface lives in the `qb::redis` namespace; `qb::redis::detail` holds the implementation. The umbrella header
 is `<qbm/redis/redis.h>`.
 
-The module is a **compiled library**, not header-only. The build registers it through `qb_register_module`, producing an
-archive under the alias `qbm::redis` (`qbm/redis/CMakeLists.txt`). Only `redis.cpp`, `reply.cpp`, and `server_reply.cpp`
-compile into that archive; the 200-plus command methods are template code pulled in through the umbrella header — but you
+The module is a **compiled library**, not header-only. The build registers it through `qb_register_module`, producing a
+static or shared target under the alias `qbm::redis` (`qbm/redis/CMakeLists.txt`). Only `redis.cpp`, `reply.cpp`, and
+`server_reply.cpp` compile into that target; the 200-plus command methods are template code pulled in through the umbrella header — but you
 still link the target to get those translation units and the `PUBLIC` include directory. It compiles at C++20 by default
 and at
 C++23 when `QB_CXX_STANDARD=23`; the standard is governed by the framework, not the module, and propagates to consumers
@@ -45,7 +45,8 @@ actor on it stops with you — silently, because nothing in the framework diagno
 
 ## Integration in one place
 
-You consume qbm-redis through the qb module loader, not `find_package`:
+**Building from source:** configure the qb-dev superproject; its qb module loader registers qbm-redis. The module's
+`CMakeLists.txt` is not standalone-configurable because it needs qb's development-time CMake helpers.
 
 <!-- src: qbm/redis/README.md:68-72 -->
 
@@ -56,13 +57,26 @@ qb_load_modules("${CMAKE_CURRENT_SOURCE_DIR}/qbm")     # discovers and adds qbm 
 target_link_libraries(your_app PRIVATE qbm::redis)     # links qb::core PUBLIC, qb::io transitively
 ```
 
+**Consuming an installed package:** build and install the superproject's `package` preset, set `CMAKE_PREFIX_PATH` to
+that installation prefix, then link the exported target:
+
+```sh
+cmake --preset package
+cmake --build --preset package
+cmake --install build/presets/package --prefix <prefix>
+```
+
+```cmake
+find_package(qbm-redis CONFIG REQUIRED)                # resolves installed qb through find_dependency(qb)
+target_link_libraries(your_app PRIVATE qbm::redis)
+```
+
 ```cpp
 #include <qbm/redis/redis.h>   // client aliases, the command surface, Reply<T>, RetryPolicy
 ```
 
-The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the framework is absent, so
-`add_subdirectory(qb)` must come first. Do not hand-add the include directory; the `redis/` headers arrive through the
-`PUBLIC` include attached to `qbm::redis`.
+In the source path, `add_subdirectory(qb)` must come before module loading. In the installed path, the package config
+resolves qb itself. Do not hand-add the include directory; the `redis/` headers arrive through the linked target.
 
 ## TLS and time
 
@@ -75,16 +89,21 @@ The module's `CMakeLists.txt` guards on `QB_FOUND` and returns early if the fram
   `command_timeout` is `qb::duration::zero()` (disabled). `set_command_timeout` is a connection-health watchdog, not a
   per-command timer: on deadline it drops the whole connection (`redis.h:1324-1344,1056-1072`). `debug_sleep` also takes
   `qb::duration`.
-- **Time — Redis-protocol side (a documented boundary, not a bug).** Redis command time arguments keep their native wire
-  units, exposed through `std::chrono`-unit overloads, and are **not** forced onto `qb::duration`:
+- **Time — Redis-protocol side.** Command arguments retain native Redis units. A duration is relative; an expiry
+  timestamp is an absolute `system_clock` instant. The available overloads differ by command:
 
-  | Granularity | Commands | Argument type |
-        |---|---|---|
-  | Seconds | `EXPIRE`, `EXPIREAT`, `SETEX`, `GETEX` (`EX`) | `std::chrono::seconds` (or the raw `long long` overload) |
-  | Milliseconds | `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX` (`PX`), `WAIT`, `RESTORE` TTL, `MIGRATE` | `std::chrono::milliseconds` (or the raw `long long` overload) |
+  | Meaning | Commands | C++ argument |
+  |---|---|---|
+  | Relative seconds | `EXPIRE`, `SETEX` | `std::chrono::seconds` or raw `long long` seconds |
+  | Relative seconds | `GETEX` (`EX`) | raw `long long` seconds |
+  | Relative milliseconds | `PEXPIRE`, `PSETEX`, `GETEX` (`PX`), `WAIT` | `std::chrono::milliseconds` or raw `long long` milliseconds |
+  | Absolute Unix seconds | `EXPIREAT` | `std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>` or raw `long long` epoch seconds |
+  | Absolute Unix milliseconds | `PEXPIREAT` | `std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds>` or raw `long long` epoch milliseconds |
+  | Relative milliseconds | `RESTORE` TTL, `MIGRATE` timeout | raw `long long` milliseconds; no chrono overload |
 
-  So `expire(key, 60s)` sets 60 seconds and `pexpire(key, 60ms)` sets 60 milliseconds (`key_commands.h:237-238,393-394`;
-  `string_commands.h:498,676,896`). Reply TTL values (`ttl`, `pttl`, `expiretime`, `pexpiretime`) are plain integers —
+  So `expire(key, 60s)` sets 60 seconds, while `expireat` needs an absolute time point, not `60s`.
+  `restore(key, dump, 60000)` uses a raw integer in milliseconds. Reply TTL values (`ttl`, `pttl`, `expiretime`,
+  `pexpiretime`) are plain integers —
   the unit lives in the method name, not a wrapped type (`key_commands.h:655,459,812,833`). Stream blocking and
   idle-time arguments (`XREAD`/`XREADGROUP` `block`, `XCLAIM`/`XAUTOCLAIM` `min_idle_time`) are raw `long long`
   milliseconds with no chrono overload (`stream_commands.h:436,523,811,899`). Blocking-list timeouts (`BLPOP`,

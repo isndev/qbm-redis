@@ -81,9 +81,9 @@ Each command therefore exists as a matched pair of overloads:
 
 A HyperLogLog stores counts, not times. Every argument to these commands is a key name or a string element, and the only
 reply payloads are `bool`, `long long`, and `status`. There is no expiry, no timeout, and no `std::chrono` value on any
-signature here. The `qb::duration` values in qbm-redis live exclusively on the connection and retry path (
-connect/command timeouts, `RetryPolicy` delays — see [connection.md](./connection.md)); the native-unit `std::chrono`
-split that applies to `EXPIRE` (seconds) versus `PEXPIRE` (milliseconds) is a property of the key-expiry commands
+signature here. Client-level deadlines and retry delays use `qb::duration` (see [connection.md](./connection.md));
+Redis command arguments have their own units and may offer chrono overloads. The `std::chrono` split that applies
+to `EXPIRE` (seconds) versus `PEXPIRE` (milliseconds) is a property of the key-expiry commands
 in [key_commands.md](./key_commands.md), not of this group.
 
 ### Reply types at a glance
@@ -262,9 +262,8 @@ redis.pfmerge(
 - **A HyperLogLog is just a string.** `DEL`, `EXISTS`, `TYPE` (it reports `string`), and `EXPIRE`
   from [key_commands.md](./key_commands.md) all work on the key. Be aware that `GET`/`SET` on the same key will read or
   clobber the raw HyperLogLog representation.
-- **No `qb::duration` here.** These commands take only keys and string elements; do not substitute the framework time
-  types onto any argument. The only `std::chrono`-shaped values in qbm-redis live on the connection and retry path (
-  see [connection.md](./connection.md)).
+- **No time arguments here.** These commands take only keys and string elements. Other command groups have chrono
+  overloads for expiry or blocking timeouts; see [the time table](./README.md#tls-and-time).
 
 ---
 

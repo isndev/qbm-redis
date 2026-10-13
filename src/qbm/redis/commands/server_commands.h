@@ -1239,13 +1239,13 @@ public:
     // =============== Server Information Commands ===============
 
     /**
-     * @brief Gets information and statistics about the server as JSON
+     * @brief Gets raw server information and statistics as a qb::json string
      *
-     * This command returns information and statistics about the Redis server as a qb::json object,
-     * preserving the full hierarchical structure of the information.
+     * INFO returns a bulk text report. The qb::json result is a JSON string containing
+     * that report, not a parsed object; parse its sections and fields explicitly if needed.
      *
      * @param section Optional section name to get specific information
-     * @return Server information as a qb::json object
+     * @return Server information as a qb::json string
      * @see https://redis.io/commands/info
      */
     auto
@@ -1322,12 +1322,12 @@ public:
     }
 
     /**
-     * @brief Lists client connections as structured JSON
+     * @brief Lists client connections as raw text boxed in qb::json
      *
-     * This command returns information about client connections as a JSON array,
-     * with each client connection represented as a JSON object with proper types.
+     * CLIENT LIST returns a newline-delimited bulk text report. The qb::json result
+     * is a JSON string, not a parsed array of client objects.
      *
-     * @return qb::json array of client information
+     * @return qb::json string containing the raw client list
      * @see https://redis.io/commands/client-list
      */
     auto

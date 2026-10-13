@@ -78,9 +78,8 @@ A geo distance is a length, not a time, so it never touches the framework time m
 <!-- src: qbm/redis/src/qbm/redis/types.h:83, qbm/redis/src/qbm/redis/redis.cpp:354 -->
 
 `GEODIST`, `GEORADIUS`, `GEORADIUSBYMEMBER`, and `GEOSEARCH` all default to `GeoUnit::M`. The radius argument itself is
-a `double` in the chosen unit. Do not reach for `qb::duration` / `std::chrono` here — these are distances, and the only
-`std::chrono`-shaped values in qbm-redis live on the connection and retry path, not on command arguments (
-see [connection.md](./connection.md)).
+a `double` in the chosen unit. Do not use `qb::duration` / `std::chrono` for a geo distance. Other Redis command
+groups do offer chrono overloads for expiry and blocking timeouts; see [the time table](./README.md#tls-and-time).
 
 ### Reply types in this group
 
@@ -414,9 +413,8 @@ wrong-typed handler still binds it and the error appears deeper rather than as "
   module. `WITHCOORD`/`WITHDIST`/`WITHHASH` passed through the raw `options` vector still yield a
   `std::vector<std::string>` of member names, because `parse<std::string>` collapses each nested reply array to its
   first element.
-- **No `qb::duration` here.** Distances are `double` plus a `GeoUnit`; do not substitute the framework time types. The
-  only `std::chrono`-shaped values in qbm-redis live on the connection and retry path (connect/command timeouts,
-  `RetryPolicy` delays — see [connection.md](./connection.md)), never on a geo command argument.
+- **No time type in geo commands.** Distances are `double` plus a `GeoUnit`; do not substitute framework or chrono
+  time types. The [time table](./README.md#tls-and-time) lists actual expiry and blocking-command chrono overloads.
 
 ---
 

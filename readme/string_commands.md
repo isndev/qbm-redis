@@ -145,8 +145,8 @@ redis.set([](qb::redis::Reply<qb::redis::status>&& r) {
 <!-- src: qbm/redis/src/qbm/redis/commands/string_commands.h:518-625; tests/integration/string/string-commands.cpp:412-423 -->
 
 > The previous version of this page documented a `set_get` method for the `SET ... GET` form. **No such method exists**
-> in `string_commands.h`. To read-then-overwrite atomically, use [`getset`](#getset) (or run `GET` and `SET` as separate
-> commands).
+> in `string_commands.h`. To read the old value while replacing it atomically, use [`getset`](#getset).
+> A separate `GET` followed by `SET` allows another client to write between the two commands.
 
 ### `get`
 

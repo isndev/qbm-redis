@@ -258,6 +258,8 @@ if (r.result())  // status converts to bool: true when "OK"
 
 `LREM key count element` — remove occurrences of `val`. `count > 0` removes from head to tail, `count < 0` from tail to
 head, `count == 0` removes all. Returns the number removed.
+For `[v, a, v, b, v]`, removing one `v` with `count = 1` leaves `[a, v, b, v]`; with `count = -1` it leaves
+`[v, a, v, b]`; with `count = 0` it leaves `[a, b]`.
 
 ```cpp
 // Coroutine

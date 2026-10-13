@@ -31,6 +31,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **The Redis references describe the values and units callers actually receive (Huly QB-658, QB-697, QB-700, QB-702, QB-707, QB-694).**
+  INFO and CLIENT LIST return raw text boxed in a JSON string; HELLO RESP2's flat map becomes a JSON object; LREM
+  distinguishes positive, negative, and zero counts. The time table separates relative durations, absolute expiry
+  instants, and raw millisecond integers. The integration guide covers both source builds and installed CMake packages,
+  and no longer suggests separate GET and SET as an atomic replacement.
 - **Redis coroutine command guides identify their lazy start (Huly QB-699).** Constructing a
   command awaiter captures arguments but does not enqueue a request. Multi-stream XREAD
   validation in the coroutine form runs at `co_await`, while callback forms validate at the call;
