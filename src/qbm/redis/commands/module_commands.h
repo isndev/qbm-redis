@@ -86,7 +86,7 @@ public:
     auto
     module_load(const std::string &path, Args &&...args) {
         return derived().template make_coro_command<status>([this, path, ... args = std::forward<Args>(args)](auto &&callback) mutable {
-            this->module_load(std::move(callback), path, std::forward<Args>(args)...);
+            this->module_load(std::move(callback), path, std::forward<decltype(args)>(args)...);
         });
     }
 

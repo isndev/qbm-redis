@@ -431,6 +431,18 @@ parse(ParseTag<qb::redis::status>, const ReplyValue &reply) {
 [[nodiscard]] qb::redis::json_value                parse(ParseTag<qb::redis::json_value>, const ReplyValue &reply);
 [[nodiscard]] qb::json                             parse(ParseTag<qb::json>, const ReplyValue &reply);
 
+// Command-local decoding tags for server_commands' public Reply<qb::json>.
+// Parsing stays inside TReply's decode boundary; its ordinary JSON policy and
+// the public reply layout do not depend on these internal result carriers.
+struct role_json_reply {
+    qb::json value;
+};
+struct command_stats_json_reply {
+    qb::json value;
+};
+[[nodiscard]] role_json_reply          parse(ParseTag<role_json_reply>, const ReplyValue &reply);
+[[nodiscard]] command_stats_json_reply parse(ParseTag<command_stats_json_reply>, const ReplyValue &reply);
+
 // ============================================================================
 // Generic container parsers
 // ============================================================================
@@ -1005,7 +1017,14 @@ to_redis_string(qb::allocator::pipe<char> &pipe, qb::json const &json) {
         to_redis_string(pipe, std::string(json.get<bool>() ? "true" : "false"));
     } else if (json.is_number()) {
         if (json.is_number_integer()) {
-            to_redis_string(pipe, std::to_string(json.get<int64_t>()));
+            // Both JSON integer subtypes satisfy is_number_integer(). Keep the
+            // native signed/unsigned domain and format without a string temporary.
+            char       buf[std::numeric_limits<qb::json::number_unsigned_t>::digits10 + 2];
+            const auto formatted = json.is_number_unsigned() ? std::to_chars(buf, buf + sizeof(buf), json.get<qb::json::number_unsigned_t>())
+                                                             : std::to_chars(buf, buf + sizeof(buf), json.get<qb::json::number_integer_t>());
+            if (formatted.ec != std::errc{}) [[unlikely]]
+                throw Error("Cannot serialize JSON integer argument");
+            to_redis_string(pipe, std::string_view{buf, static_cast<std::size_t>(formatted.ptr - buf)});
         } else {
             to_redis_string(pipe, json.get<double>());
         }

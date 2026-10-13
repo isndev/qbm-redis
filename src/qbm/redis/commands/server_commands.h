@@ -22,6 +22,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <qb/system/parse.h>
 #include <qb/system/time.h> // qb::duration / qb::detail::to_ev_seconds — debug_sleep() takes one
@@ -191,10 +192,8 @@ public:
             args.push_back("TYPE");
             args.push_back(type);
         }
-        if (skipme) {
-            args.push_back("SKIPME");
-            args.push_back("yes");
-        }
+        args.push_back("SKIPME");
+        args.push_back(skipme ? "yes" : "no");
         return derived().template command<long long>(std::forward<Func>(func), "CLIENT", "KILL", args);
     }
 
@@ -616,10 +615,11 @@ public:
     /**
      * @brief Gets statistics about command usage as JSON
      *
-     * This command returns statistics about command usage as a structured JSON object.
+     * Reads INFO commandstats into a JSON object. Each native cmdstat_* key maps
+     * to its complete textual value; individual counter fields are not coerced.
      *
      * @return Structured qb::json with command statistics
-     * @see https://redis.io/commands/command-stats
+     * @see https://redis.io/commands/info
      */
     auto
     command_stats() {
@@ -631,12 +631,16 @@ public:
      *
      * @param func Callback function to handle the result
      * @return Reference to the derived class
-     * @see https://redis.io/commands/command-stats
+     * @see https://redis.io/commands/info
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     command_stats(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "COMMAND", "STATS");
+        return derived().template command<reply::command_stats_json_reply>(
+            [f = std::tuple<Func>{std::forward<Func>(func)}](Reply<reply::command_stats_json_reply> &&reply) mutable {
+                std::get<0>(f)(Reply<qb::json>{reply.ok(), std::move(reply.result().value), std::move(reply.raw()), std::move(reply.error())});
+            },
+            "INFO", "commandstats");
     }
 
     // =============== Debug Commands ===============
@@ -842,9 +846,9 @@ public:
      *         - replica: ["slave",   <master_ip>, <master_port:int>, <state>, <offset:int>]
      *         - sentinel:["sentinel", [<master_name>, ...]]
      *       Because elements mix string / integer / nested-array, the typed result is a
-     *       `qb::json` (mirrors INFO/COMMAND/SLOWLOG). Index [0] is the role token; the
-     *       remaining elements are role-specific. Parsing it as std::vector<std::string>
-     *       throws on the integer offset ("expect STRING ... got ARRAY/INTEGER").
+     *       `qb::json` with the positional arrays preserved for every role. Index [0]
+     *       is the role token; the remaining elements are role-specific. Names remain
+     *       opaque strings and replication offsets remain native integers.
      * @see https://redis.io/commands/role
      */
     auto
@@ -862,7 +866,11 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     role(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "ROLE");
+        return derived().template command<reply::role_json_reply>(
+            [f = std::tuple<Func>{std::forward<Func>(func)}](Reply<reply::role_json_reply> &&reply) mutable {
+                std::get<0>(f)(Reply<qb::json>{reply.ok(), std::move(reply.result().value), std::move(reply.raw()), std::move(reply.error())});
+            },
+            "ROLE");
     }
 
     // =============== Shutdown Commands ===============

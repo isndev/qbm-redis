@@ -28,6 +28,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #include <qb/system/container/unordered_map.h>
@@ -347,17 +348,45 @@ extract_string_map(const parser::Value &input) {
  * @class AsyncResult
  * @brief Coroutine-friendly result wrapper using expected
  * @tparam T The value type on success
+ *
+ * For T = std::string, the value constructor always means success; use
+ * from_error() to construct a failure. Other supported T retain their string
+ * error constructor.
  */
 template <typename T>
 class AsyncResult {
+    struct error_tag {};
+    // A private carrier distinguishes errors even when T is unexpected<string>:
+    // the C++20 expected backport otherwise selects its T&& value constructor.
+    struct error_ref {
+        std::string &value;
+
+        operator std::string &&() const noexcept {
+            return std::move(value);
+        }
+    };
+
     expected<T, std::string> _result;
+
+    AsyncResult(error_tag, std::string &&e)
+        : _result(unexpected(error_ref{e})) {}
 
 public:
     AsyncResult() = default;
     explicit AsyncResult(T &&v)
         : _result(std::move(v)) {}
     explicit AsyncResult(std::string &&e)
+    requires(!std::is_same_v<T, std::string>)
         : _result(unexpected(std::move(e))) {}
+
+    /**
+     * @brief Construct a failure for any supported value type, including string.
+     * @param error The owned error message; an empty message is still a failure.
+     */
+    [[nodiscard]] static AsyncResult
+    from_error(std::string error) {
+        return AsyncResult(error_tag{}, std::move(error));
+    }
 
     [[nodiscard]] bool
     is_ok() const noexcept {
@@ -410,6 +439,15 @@ public:
     AsyncResult() = default;
     explicit AsyncResult(std::string &&e)
         : _error(std::move(e)) {}
+
+    /**
+     * @brief Construct a void failure with an owned error message.
+     * @param error The error message; an empty message is still a failure.
+     */
+    [[nodiscard]] static AsyncResult
+    from_error(std::string error) {
+        return AsyncResult(std::move(error));
+    }
 
     [[nodiscard]] bool
     is_ok() const noexcept {

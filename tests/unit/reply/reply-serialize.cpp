@@ -24,6 +24,7 @@
 
 #include <chrono>
 #include <charconv>
+#include <cstdint>
 #include <gtest/gtest.h>
 #include <limits>
 #include <map>
@@ -347,6 +348,24 @@ TEST(ReplySerQbJson, NumberInteger) {
     qb::allocator::pipe<char> p;
     qb::redis::to_redis_string(p, j);
     EXPECT_EQ(p.str(), "$2\r\n42\r\n");
+
+    struct SignedCase {
+        std::int64_t value;
+        const char  *wire;
+    };
+    const SignedCase cases[] = {
+        {0, "$1\r\n0\r\n"},
+        {-42, "$3\r\n-42\r\n"},
+        {std::numeric_limits<std::int64_t>::max(), "$19\r\n9223372036854775807\r\n"},
+        {std::numeric_limits<std::int64_t>::min(), "$20\r\n-9223372036854775808\r\n"}
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(c.wire);
+        const qb::json signed_value(c.value);
+        ASSERT_TRUE(signed_value.is_number_integer());
+        ASSERT_FALSE(signed_value.is_number_unsigned());
+        EXPECT_EQ(ser(signed_value), c.wire);
+    }
 }
 
 // ADD: a 64-bit integer above the double-exact boundary must serialize without
@@ -356,6 +375,26 @@ TEST(ReplySerQbJson, NumberIntegerLargeNoTruncation) {
     qb::allocator::pipe<char> p;
     qb::redis::to_redis_string(p, j);
     EXPECT_EQ(p.str(), "$16\r\n9007199254740993\r\n");
+
+    struct UnsignedCase {
+        std::uint64_t value;
+        const char   *wire;
+    };
+    // The wire oracle is literal decimal text, independent of JSON get<T>()
+    // and the argument serializer's signed/unsigned dispatch.
+    const UnsignedCase cases[] = {
+        {0, "$1\r\n0\r\n"},
+        {42, "$2\r\n42\r\n"},
+        {9223372036854775807ULL, "$19\r\n9223372036854775807\r\n"},
+        {9223372036854775808ULL, "$19\r\n9223372036854775808\r\n"},
+        {18446744073709551615ULL, "$20\r\n18446744073709551615\r\n"}
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(c.wire);
+        const qb::json unsigned_value(c.value);
+        ASSERT_TRUE(unsigned_value.is_number_unsigned());
+        EXPECT_EQ(ser(unsigned_value), c.wire);
+    }
 }
 
 TEST(ReplySerQbJson, NumberDouble) {
@@ -617,6 +656,18 @@ TEST(ReplyPutInPipe, QbJsonNumberKeepsSmallFloatingIncrement) {
     qb::allocator::pipe<char> p;
     qb::redis::put_in_pipe(p, "INCRBYFLOAT", "key", qb::json(1e-7));
     expect_small_float_command(p.str());
+}
+
+TEST(ReplyPutInPipe, NestedUnsignedJsonArgumentsKeepDecimalAndBulkCount) {
+    const qb::json values =
+        qb::json::array({qb::json(std::uint64_t{18446744073709551615ULL}), qb::json(std::uint64_t{9223372036854775808ULL})});
+    qb::json fields = qb::json::object();
+    fields["high"]  = qb::json(std::uint64_t{9223372036854775808ULL});
+    qb::allocator::pipe<char> p;
+    qb::redis::put_in_pipe(p, "CMD", values, fields, "tail");
+    EXPECT_EQ(p.str(), "*6\r\n$3\r\nCMD\r\n$20\r\n18446744073709551615\r\n"
+                       "$19\r\n9223372036854775808\r\n$4\r\nhigh\r\n"
+                       "$19\r\n9223372036854775808\r\n$4\r\ntail\r\n");
 }
 
 // ============================================================================

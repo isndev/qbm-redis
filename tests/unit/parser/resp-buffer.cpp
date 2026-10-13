@@ -451,4 +451,22 @@ TEST_F(ViewBufferTest, HugeLengthDoesNotOverflow) {
     ASSERT_TRUE(vb.peek(0).has_value());
     EXPECT_EQ(*vb.peek(0), 'l');
     EXPECT_FALSE(vb.peek(2).has_value()); // only 2 remain
+
+    // Skipping has the same saturation contract as the view accessors. These
+    // explicit cursor oracles also distinguish a wrapped-back cursor from end.
+    struct SkipCase {
+        size_t start;
+        size_t bytes;
+        size_t expected;
+    };
+    const SkipCase cases[] = {{0, 0, 0}, {0, huge, 5}, {3, 0, 3}, {3, 1, 4}, {3, 2, 5}, {3, 3, 5}, {3, huge, 5}};
+    for (const auto &c : cases) {
+        SCOPED_TRACE(::testing::Message() << "start=" << c.start << " bytes=" << c.bytes);
+        ViewBuffer cursor(std::span<const char>(data, 5));
+        cursor.consume(c.start);
+        cursor.consume(c.bytes);
+        EXPECT_EQ(cursor.position(), c.expected);
+        EXPECT_GE(cursor.position(), c.start);
+        EXPECT_EQ(cursor.empty(), c.expected == 5);
+    }
 }

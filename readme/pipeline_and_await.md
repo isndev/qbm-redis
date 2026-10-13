@@ -123,7 +123,7 @@ redis.await();
   coroutine to yield — the command deadline's watcher among them, so from a coroutine `await()` returns on the replies
   or a disconnect, never on `set_command_timeout()`.
 - On **disconnect**, the queue is failed: every pending handler runs with `ok() == false` and
-  `error() == "disconnected"` (`reply.h:1331-1334`). If an opt-in command deadline tripped first, the failure reason is
+  `error() == "disconnected"` (`reply.h:1350-1353`). If an opt-in command deadline tripped first, the failure reason is
   `"command timed out"` instead (`redis.h:1056-1072,1178-1179`). See [error_handling.md](./error_handling.md).
 
 ```cpp

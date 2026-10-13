@@ -118,7 +118,7 @@ extract_stream_id_value(const parser::Value &input, stream_id &value, std::strin
 
 bool
 extract_score_member_value(const parser::Array &arr, size_t index, score_member &value, std::string &error) {
-    if (index + 1 >= arr.size()) {
+    if (arr.size() < 2 || index >= arr.size() - 1) {
         error = "not enough elements for score-member pair";
         return false;
     }

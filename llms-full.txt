@@ -116,9 +116,29 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   none. Containers, pairs and tuples expand their present elements. Floating
   arguments, including numeric `json_value` and `qb::json` raw-command values,
   use a locale-independent decimal spelling that round-trips to the original
-  value, so small increments remain nonzero on the wire.
+  value, so small increments remain nonzero on the wire. Numeric `qb::json`
+  integers retain their signed or unsigned 64-bit decimal value, including
+  unsigned values above `INT64_MAX`.
+- **Administrative JSON preserves the command contract.** `role()` returns
+  native positional arrays for master, replica and Sentinel; names remain strings
+  and offsets remain integers. `command_stats()` reads `INFO commandstats` into
+  an object with the exact `cmdstat_*` keys and complete raw text values. Errors
+  keep their original `error()` and `raw()`; generic `info()` still returns a
+  JSON string. `client_kill(..., skipme)` always emits `SKIPME yes` or `no`.
 - **RetryPolicy** drives connect-with-retry and auto-reconnect (exponential
   backoff). A reconnect does **not** replay in-flight commands or subscriptions.
+- **HSCAN preserves `Out` across pages.** The cursor coroutine and automatic callback
+  forms use the selected container (default `qb::unordered_map<std::string,std::string>`).
+  Automatic scans require owning output: nested standard containers/wrappers of
+  `std::string_view` are rejected. For borrowed views, use cursor pages and retain each
+  `Reply` that owns their raw data. Custom parse-result types carry their own ownership
+  responsibility. Terminal page errors survive aggregation; ordinary page setup or merge
+  exceptions fail the automatic scan once. Completion callback exceptions are logged and
+  cannot trigger a second completion (`hash_commands.h:49-62`, `:88-101`, `:131-182`, `:673-682`).
+- **`AsyncResult<std::string>` stores string success values.** Construct an error explicitly
+  with `AsyncResult<T>::from_error(std::string)` (also on `void`); an empty message still
+  means failure. Other supported payload types retain their existing constructors
+  (`server_reply.h:357-389`, `:435-450`).
 
 ### Time / units (critical boundary)
 
@@ -362,7 +382,7 @@ if (!r.ok()) {
 - `TReply` constructs the successful `Reply<T>` directly from `parse<T>(*raw)` before
   invoking the callback. Decoder exceptions become failed replies with the original raw
   value; the callback runs outside those catches, so its exception cannot cause a second
-  completion. _(src/qbm/redis/reply.h:1331-1347,1353-1371)_
+  completion. _(src/qbm/redis/reply.h:1350-1366,1372-1390)_
 
 ---
 
@@ -457,7 +477,7 @@ Every signature in this file is confirmed against the headers. For prose/concept
 - **Two API styles per command.** Every command mixin exposes (1) a **coroutine** form `cmd(args...)` returning a `redis_awaiter` you `co_await` to get `Reply<T>`, and (2) a **callback** form `cmd(Func&& func, args...)` (callback first) that invokes `func(Reply<T>&&)` and returns `Derived&` for chaining. Signatures below show the coroutine form; the callback overload is implied unless noted "callback-only" / "coroutine-only".
 - **`Reply<T>`** is the universal result wrapper: `ok()` / `operator bool` = no Redis error; `result()` / `value()` = parsed `T`; `raw()` = owning `parser::Value`; `error()` = owned error string.
 - **`awaiter<Reply<T>>`** below is shorthand for the `redis_awaiter<T, ...>` returned by the coroutine form.
-- **Empty-argument guard.** A required-variadic / required-collection command called with nothing to act on (`del`/`exists`/`touch`/`unlink` with no keys, `lpush`/`rpush(x)`, `sadd`/`srem`/`smismember`, `sdiff(store)`/`sinter(card/store)`/`sunion(store)`, `hdel`/`hmget`/`hmset`, `zmpop`/`bzmpop`, `lmpop`/`blmpop`, `geoadd`/`geohash`/`geopos`, `pfcount`/`pfmerge`, `cluster addslots`/`delslots`, `script exists`, …) does **not** send a frame: it resolves the callback / awaiter with a **failed `Reply`** (`ok()==false`, reason in `error()`) via `fail_client` (`reply.h:1390-1394`). **No exceptions**: the callback cursor forms `hscan`/`zscan` on an empty key and `lpos` on an empty key/element used to return unfired — parking the coroutine form forever — and now resolve the same way.
+- **Empty-argument guard.** A required-variadic / required-collection command called with nothing to act on (`del`/`exists`/`touch`/`unlink` with no keys, `lpush`/`rpush(x)`, `sadd`/`srem`/`smismember`, `sdiff(store)`/`sinter(card/store)`/`sunion(store)`, `hdel`/`hmget`/`hmset`, `zmpop`/`bzmpop`, `lmpop`/`blmpop`, `geoadd`/`geohash`/`geopos`, `pfcount`/`pfmerge`, `cluster addslots`/`delslots`, `script exists`, …) does **not** send a frame: it resolves the callback / awaiter with a **failed `Reply`** (`ok()==false`, reason in `error()`) via `fail_client` (`reply.h:1409-1413`). **No exceptions**: the callback cursor forms `hscan`/`zscan` on an empty key and `lpos` on an empty key/element used to return unfired — parking the coroutine form forever — and now resolve the same way.
 
 ### TIME / UNITS — the boundary you must get right
 
@@ -665,7 +685,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 ---
 
 ## Hash commands — `hash_commands<Derived>`
-`hash_commands.h:38`.
+`hash_commands.h:40`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -680,7 +700,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 | `hmset` | `template<class...FieldValues> auto hmset(const std::string& key, FieldValues&&...field_values)` | Set multiple pairs (emits HMSET). `Reply<status>` | `co_await c.hmset("h","a","1","b","2");` |
 | `hset` | `auto hset(key, field, val); auto hset(key, const std::pair<std::string,std::string>& item)` | Set one field; number of NEW fields. `Reply<long long>` | `co_await c.hset("h","f","v");` |
 | `hsetnx` | `auto hsetnx(key, field, val); auto hsetnx(key, const std::pair<...>& item)` | Set field if absent. `Reply<bool>` | `co_await c.hsetnx("h","f","v");` |
-| `hscan` | `template<class Out=qb::unordered_map<std::string,std::string>> auto hscan(key, long long cursor, pattern="*", long long count=10)` | Cursor scan, output container `Out`. Callback-only no-cursor overload auto-iterates. `Reply<qb::redis::scan<Out>>` | `co_await c.hscan("h",0);` |
+| `hscan` | `template<class Out=qb::unordered_map<std::string,std::string>> auto hscan(key, long long cursor, pattern="*", long long count=10)` | Cursor scan, output container `Out` propagated into the page. Callback-only no-cursor overload auto-iterates into the same `Out` and requires owning elements; nested standard wrappers of `std::string_view` are rejected. `Reply<qb::redis::scan<Out>>` | `co_await c.hscan("h",0);` |
 | `hvals` (fan-out) | `template<class Func> Derived& hvals(Func&&, std::vector<std::string> keys)` | **Callback-only**: HVALS across many hashes (concatenated); `ok()` AND-folded. No coroutine form. | `c.hvals(cb,{"h1","h2"});` |
 
 ---
@@ -862,7 +882,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 ---
 
 ## Server commands — `server_commands<Derived>`
-`server_commands.h:42`.
+`server_commands.h:43`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -871,17 +891,18 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 | `debug_segfault` | `auto debug_segfault()` | DEBUG SEGFAULT (crashes server, testing). `Reply<status>` | `co_await c.debug_segfault();` |
 | `client_id` | `auto client_id()` | CLIENT ID. `Reply<long long>` | `co_await c.client_id();` |
 | `client_getname` / `client_setname` | `auto client_getname(); auto client_setname(const std::string& name)` | CLIENT GETNAME/SETNAME. `Reply<std::optional<std::string>>` / `Reply<status>` | `co_await c.client_setname("w1");` |
-| `client_kill` | `auto client_kill(addr="", long long id=0, type="", bool skipme=true)` | CLIENT KILL (default/zero args omitted); always the FILTER form, whose reply is a COUNT. `Reply<long long>` = connections killed | `co_await c.client_kill("",42);` |
+| `client_kill` | `auto client_kill(addr="", long long id=0, type="", bool skipme=true)` | CLIENT KILL (default ADDR/ID/TYPE args omitted; SKIPME always explicit yes/no); always the FILTER form, whose reply is a COUNT. `Reply<long long>` = connections killed | `co_await c.client_kill("",42);` |
 | `client_pause` / `client_unpause` | `auto client_pause(long long timeout, const std::string& mode="ALL"); auto client_unpause()` | CLIENT PAUSE; **timeout = raw long long milliseconds (native, NOT qb::duration)**. `Reply<status>` | `co_await c.client_pause(100);` |
 | `client_unblock` | `auto client_unblock(long long client_id, bool error=false)` | CLIENT UNBLOCK (+ERROR). `Reply<status>` | `co_await c.client_unblock(42);` |
 | `client_tracking` / `client_tracking_info` / `client_caching` / `client_getredir` / `client_no_evict` / `client_no_touch` / `client_setinfo` / `client_info` / `client_list` | `auto client_tracking(bool enabled=true)` (etc.) | CLIENT subcommands; mostly `Reply<status>`. `client_info`→`std::string`, `client_list`→`qb::json` string containing raw text, `client_tracking_info`→`qb::json` object, `client_getredir`→`long long`. | `co_await c.client_list();` |
 | `client_reply` | `auto client_reply(const std::string& mode)` | `Reply<status>`; `ON` awaits Redis `+OK`. `OFF`/`SKIP` fail locally before send (no server reply exists); callback form has callback first. Raw `command()` does not track no-reply state. | `co_await c.client_reply("ON");` |
 | `config_get` | `auto config_get(const std::string& parameter)` | CONFIG GET. `Reply<std::vector<std::pair<std::string,std::string>>>` | `co_await c.config_get("maxmemory");` |
 | `config_set` / `config_resetstat` / `config_rewrite` | `auto config_set(parameter, value)` (etc.) | CONFIG SET/RESETSTAT/REWRITE. `Reply<status>` | `co_await c.config_set("maxmemory","0");` |
+| `command_stats` | `auto command_stats()` | INFO commandstats. `Reply<qb::json>` object: exact native `cmdstat_*` keys map to complete text values; no counter coercion. | `co_await c.command_stats();` |
 | `command_info` | `auto command_info(const std::vector<std::string>& command_names={})` | COMMAND INFO. `Reply<std::vector<std::map<std::string,std::string>>>` | `co_await c.command_info({"get"});` |
 | `command_count` | `auto command_count()` | COMMAND COUNT. `Reply<long long>` | `co_await c.command_count();` |
 | `command_getkeys` / `command_getkeysandflags` | `auto command_getkeys(command, const std::vector<std::string>& args)` | COMMAND GETKEYS / GETKEYSANDFLAGS. `Reply<std::vector<std::string>>` / `Reply<qb::json>` | `co_await c.command_getkeys("set",{"k","v"});` |
-| `command` / `command_stats` / `command_docs` / `command_list` | `auto command(); auto command(const std::vector<std::string>& names)` | COMMAND family. `Reply<qb::json>`; `command_list`→`std::vector<std::string>`. | `co_await c.command();` |
+| `command` / `command_docs` / `command_list` | `auto command(); auto command(const std::vector<std::string>& names)` | COMMAND family. `Reply<qb::json>`; `command_list`→`std::vector<std::string>`. | `co_await c.command();` |
 | `info` | `auto info(const std::string& section="")` | INFO [section] returns a `qb::json` string containing the raw report; sections and fields are not parsed. `Reply<qb::json>` | `co_await c.info("memory");` |
 | `dbsize` | `auto dbsize()` | DBSIZE. `Reply<long long>` | `co_await c.dbsize();` |
 | `flushall` / `flushdb` | `auto flushall(bool async=false); auto flushdb(bool async=false)` | FLUSHALL/FLUSHDB [ASYNC]. `Reply<status>` | `co_await c.flushdb();` |
@@ -891,7 +912,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 | `memory_doctor` / `memory_help` / `memory_malloc_stats` / `memory_purge` / `memory_stats` | `auto memory_doctor()` (etc.) | MEMORY subcommands. `std::string` / `std::vector<std::string>` / `status` / `qb::json`. | `co_await c.memory_stats();` |
 | `slowlog_get` / `slowlog_len` / `slowlog_reset` | `auto slowlog_get(long long count=10); auto slowlog_len(); auto slowlog_reset()` | SLOWLOG family. `qb::json` / `long long` / `status`. | `co_await c.slowlog_get();` |
 | `latency_latest` / `latency_history` / `latency_reset` / `latency_doctor` / `latency_graph` / `latency_histogram` | `auto latency_latest()` (etc.) | LATENCY family. `qb::json` / `long long` (reset) / `std::string` (doctor,graph). | `co_await c.latency_latest();` |
-| `role` | `auto role()` | ROLE. `Reply<qb::json>` | `co_await c.role();` |
+| `role` | `auto role()` | ROLE. `Reply<qb::json>` native positional arrays for every role; opaque string names and integer offsets retained. | `co_await c.role();` |
 | `shutdown` | `auto shutdown(const std::string& save_option="")` | SHUTDOWN [SAVE\|NOSAVE]. `Reply<status>` | `co_await c.shutdown("NOSAVE");` |
 | `slaveof` | `auto slaveof(const std::string& host, long long port)` | SLAVEOF host port. `Reply<status>` | `co_await c.slaveof("h",6379);` |
 | `failover` | `auto failover(const std::vector<std::string>& options={})` | FAILOVER. `Reply<status>` | `co_await c.failover();` |
@@ -968,7 +989,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 ## Reply types — `reply.h`
 
 ### `qb::redis::Reply<T>`
-`reply.h:1205-1206` · `struct template`. Typed command result.
+`reply.h:1224-1225` · `struct template`. Typed command result.
 
 ```cpp
 template <typename T> struct Reply {
@@ -984,17 +1005,17 @@ template <typename T> struct Reply {
 |---|---|---|
 | `ReplyValue` | `reply.h:49` · type alias | `= parser::Value`; the native RESP reply value (variant over RESP2/RESP3 nodes). |
 | `ReplyErrorType` | `reply.h:58` · enum class | `{ ERR, MOVED, ASK }` — declared, not produced: no `Reply` carries an error type yet, so branch on the prefix of `reply.error()` (`MOVED …` / `ASK …` for a cluster redirect). |
-| `IReply` | `reply.h:1293` · abstract class | `virtual void operator()(std::unique_ptr<ReplyValue>)=0; virtual void fail(const std::string&)`. `operator()` **takes ownership** (nullptr = disconnect). |
-| `TReply<Func,T>` | `reply.h:1315-1316,1331-1347,1353-1371` · class template | Concrete handler: constructs `Reply<T>` directly from the decoded `T`, then invokes `func` once; nullptr→`{ok=false,error="disconnected"}`. Decoder exceptions produce a failed reply retaining the original raw value; Redis and standard exceptions copy `e.what()`, other throws use `unknown reply-decode error`. Callback throws propagate to the dispatch boundary without a second completion. |
-| `is_optional_like<T>` | `reply.h:1193-1196` · trait | True for `std::optional<U>`; drives `value_or`. |
+| `IReply` | `reply.h:1312` · abstract class | `virtual void operator()(std::unique_ptr<ReplyValue>)=0; virtual void fail(const std::string&)`. `operator()` **takes ownership** (nullptr = disconnect). |
+| `TReply<Func,T>` | `reply.h:1334-1335,1350-1366,1372-1390` · class template | Concrete handler: constructs `Reply<T>` directly from the decoded `T`, then invokes `func` once; nullptr→`{ok=false,error="disconnected"}`. Decoder exceptions produce a failed reply retaining the original raw value; Redis and standard exceptions copy `e.what()`, other throws use `unknown reply-decode error`. Callback throws propagate to the dispatch boundary without a second completion. |
+| `is_optional_like<T>` | `reply.h:1212-1215` · trait | True for `std::optional<U>`; drives `value_or`. |
 | `parse<T>` | `reply.h:307-308` (generic dispatcher) / `reply.h:413` (`ParseTag<T>` overloads) · function template | Convert `parser::Value` → `T` via `ParseTag<T>` dispatch; throws `ReplyParseError`/`ProtoError` on mismatch. |
 | `ParseTag<T>` | `reply.h:195` · struct template | Empty tag for parse overload dispatch. |
-| `to_status` / `parse_set_reply` / `parse_scan_reply` | `reply.h:667, :679, :590` · free fns | Extract `status`; `parse_set_reply` true iff "OK" (false, not throw, on nil); `parse_scan_reply` → new cursor (unsigned 64-bit). |
+| `to_status` / `parse_set_reply` / `parse_scan_reply` | `reply.h:679, :691, :602` · free fns | Extract `status`; `parse_set_reply` true iff "OK" (false, not throw, on nil); `parse_scan_reply` → new cursor (unsigned 64-bit). |
 | `type predicates` | `reply.h:202-286` · noexcept free fns | `is_string/is_error/is_integer/is_nil/is_array/is_double/is_bool/is_map/is_set/is_push/is_bignum/is_status`. |
 | `is_array_or_push` / `get_pubsub_element` / `get_pubsub_size` | `reply.h:254-272` · free fns | Uniform pub/sub accessors (Array in RESP2, Push in RESP3); element returns nullptr if OOB. |
-| `type_to_string` | `reply.h:660` · free fn | RESP type name of a reply. |
-| `put_in_pipe` / `to_redis_string` / `redis_count` | `reply.h:1178, :787-1027, :706-753, :1032-1169` · serialization | Serialize a command into a qb-io pipe; `vector<char>` is one binary bulk, absent optionals emit none, and nested containers/pairs/tuples count their emitted bulks. Floating arguments, including numeric `json_value` and `qb::json` values, use locale-independent round-trip decimal text; integral and chrono `seconds`/`milliseconds` arguments retain their integer `.count()` spelling. |
-| `REDIS_MAX_STRING_SIZE` / `is_valid_redis_string_size` | `reply.h:768, :777` | 512MB max serialized arg; exceeding throws `SecurityError` inside serialization, which the client turns into the command's failed `Reply` (`"String too large"`) with nothing queued or written (QB-255). |
+| `type_to_string` | `reply.h:672` · free fn | RESP type name of a reply. |
+| `put_in_pipe` / `to_redis_string` / `redis_count` | `reply.h:1197, :799-1046, :718-765, :1051-1188` · serialization | Serialize a command into a qb-io pipe; `vector<char>` is one binary bulk, absent optionals emit none, and nested containers/pairs/tuples count their emitted bulks. Floating arguments, including numeric `json_value` and `qb::json` values, use locale-independent round-trip decimal text; numeric `qb::json` integers preserve the full signed/unsigned 64-bit domain; integral and chrono `seconds`/`milliseconds` arguments retain their integer `.count()` spelling. |
+| `REDIS_MAX_STRING_SIZE` / `is_valid_redis_string_size` | `reply.h:780, :789` | 512MB max serialized arg; exceeding throws `SecurityError` inside serialization, which the client turns into the command's failed `Reply` (`"String too large"`) with nothing queued or written (QB-255). |
 
 ### Error hierarchy (`reply.h`)
 All derive from `qb::redis::Error : std::exception` (`reply.h:64`; `what()` valid for the exception's lifetime).
@@ -1007,14 +1028,18 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:64`; `what()` vali
 | `CommandError` | `reply.h:136` | Redis returned `-ERR` for a command. |
 | `TimeoutError` | `reply.h:152` | A connect/command exceeded its deadline. |
 | `ReplyParseError` | `reply.h:168` (: `ProtoError`) | Wrong RESP type for the requested C++ type. |
-| `SecurityError` | `reply.h:770` | Serialized argument exceeds `REDIS_MAX_STRING_SIZE`. |
+| `SecurityError` | `reply.h:782` | Serialized argument exceeds `REDIS_MAX_STRING_SIZE`. |
 
 ### Server-side reply helpers (`server_reply.h`)
-- `ServerReply<T>` (`server_reply.h:49`, +`void` specialization) — `{bool ok; T value; std::string error;}` with ref-qualified `result()`.
-- `ValueExtractor` (`server_reply.h:103`) — non-throwing `std::optional`-based accessors over a **borrowed** `parser::Value` (must outlive the extractor): `as_string/as_string_view/as_integer/as_double/as_bool/as_array/as_map/as_set/is_null/is_error/raw`.
-- `AsyncResult<T>` (`server_reply.h:352`, +`void`) — coroutine-friendly `qb::expected<T,std::string>` wrapper; `operator bool`, `operator->`.
-- `extract_string` / `extract_integer` / `extract_string_array` / `extract_string_map` (`server_reply.h:287-334`), `extract_stream_id` / `extract_score_member` (`server_reply.h:445, :471`) — caller-side templates return `qb::expected` (no exceptions). An address of a helper needs a specialization, e.g. `&extract_integer<>`.
-- Compiled `detail::extract_string_value` through `detail::extract_score_member_value` (`server_reply.h:271-277`) exchange values/errors through references, so C++20 and C++23 may mix.
+- `ServerReply<T>` (`server_reply.h:50`, +`void` specialization) — `{bool ok; T value; std::string error;}` with ref-qualified `result()`.
+- `ValueExtractor` (`server_reply.h:104`) — non-throwing `std::optional`-based accessors over a **borrowed** `parser::Value` (must outlive the extractor): `as_string/as_string_view/as_integer/as_double/as_bool/as_array/as_map/as_set/is_null/is_error/raw`.
+- `AsyncResult<T>` (`server_reply.h:357`, +`void` at `server_reply.h:435`) — coroutine-friendly result wrapper; `is_ok()`, `has_error()`, `operator bool`, and for non-void `T`, ref-qualified `value()` and `operator->`.
+  `explicit AsyncResult(T&&)` constructs a value. For exact `T=std::string`, a string means success;
+  use `[[nodiscard]] static AsyncResult from_error(std::string error)` for failure (`server_reply.h:387`, `:448`).
+  The factory also accepts an empty error string. Other supported payload types retain the existing
+  `explicit AsyncResult(std::string&&)` error constructor; `AsyncResult<void>{}` succeeds.
+- `extract_string` / `extract_integer` / `extract_string_array` / `extract_string_map` (`server_reply.h:288-335`), `extract_stream_id` / `extract_score_member` (`server_reply.h:483, :509`) — caller-side templates return `qb::expected` (no exceptions). An address of a helper needs a specialization, e.g. `&extract_integer<>`.
+- Compiled `detail::extract_string_value` through `detail::extract_score_member_value` (`server_reply.h:272-278`) exchange values/errors through references, so C++20 and C++23 may mix.
 
 ---
 
@@ -1022,28 +1047,28 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:64`; `what()` vali
 
 | Type | Header / kind | Notes |
 |---|---|---|
-| `reply_ptr` | `types.h:45` · `= std::unique_ptr<parser::Value>` | Move-only owning reply pointer. |
-| `status` | `types.h:534` · struct | Simple-string reply wrapper; `operator bool`/`ok()` true iff payload == "OK". |
-| `stream_id` | `types.h:341` · struct | Public `{long long timestamp; long long sequence;}` layout retained for 3.x source compatibility. Redis components are unsigned 64-bit bit patterns: use `timestamp_u64()` / `sequence_u64()` (`types.h:359-366`) to read the full domain and `from_unsigned(uint64_t,uint64_t)` (`types.h:353`) to construct high IDs. Raw signed fields may appear negative above `INT64_MAX`; `to_string()` and `<` use unsigned values. |
-| `stream_entry` / `stream_entry_list` / `map_stream_entry_list` | `types.h:385-392` | `{stream_id id; qb::unordered_map<std::string,std::string> fields;}`; list; per-stream map. |
-| `score` / `score_member` | `types.h:395-412` | `score{double value}`; `score_member{double score; std::string member}` (field order: score then member). |
-| `geo_pos` / `geo_distance` | `types.h:327-338` | `geo_pos{double longitude; double latitude}`; `geo_distance{std::string member; double distance}`. |
-| `subscription` | `types.h:523` · struct | `{std::optional<std::string> channel; long long num;}`. |
-| `message` / `pmessage` | `types.h:512-520` | `message{pattern; channel; payload; reply_ptr raw}`; `pmessage : message`. |
-| `scan<Out=std::vector<std::string>>` | `types.h:592-593` · struct template | `{std::size_t cursor; Out items;}` (cursor 0 = complete). |
-| `json_value` | `types.h:470` · struct | Self-describing JSON-like variant (RedisJSON); RESP big numbers kept as strings. |
-| `pipeline_result` | `types.h:463` · struct | `{size_t size; size_t error_count; bool all_succeeded;}` — MULTI/EXEC summary; per-command replies NOT stored (use `Reply<pipeline_result>.raw()`). |
-| `memory_info` | `types.h:436` · struct | Parsed INFO-memory section (`size_t` fields, 0 fallback). |
-| `cluster_node` | `types.h:422` · struct | One CLUSTER NODES line parsed field-by-field. |
-| `search_result` | `types.h:415` · struct | FT.SEARCH per-document `{key; fields; values}`. |
-| `error` | `types.h:599` · struct | `{std::string what; reply_ptr raw;}`. |
-| `LimitOptions` | `types.h:317` · struct | `{long long offset=0; long long count=-1;}` (count -1 = unbounded). A **negative `offset`** on `zrangebylex`/`zrangebyscore` (and the `zrevrange*` variants) suppresses the `LIMIT` clause entirely (no triplet emitted); the default `{0,-1}` still sends `LIMIT 0 -1` (all). |
+| `reply_ptr` | `src/qbm/redis/types.h:45` · `= std::unique_ptr<parser::Value>` | Move-only owning reply pointer. |
+| `status` | `src/qbm/redis/types.h:534` · struct | Simple-string reply wrapper; `operator bool`/`ok()` true iff payload == "OK". |
+| `stream_id` | `src/qbm/redis/types.h:341` · struct | Public `{long long timestamp; long long sequence;}` layout retained for 3.x source compatibility. Redis components are unsigned 64-bit bit patterns: use `timestamp_u64()` / `sequence_u64()` (`src/qbm/redis/types.h:359-366`) to read the full domain and `from_unsigned(uint64_t,uint64_t)` (`src/qbm/redis/types.h:353`) to construct high IDs. Raw signed fields may appear negative above `INT64_MAX`; `to_string()` and `<` use unsigned values. |
+| `stream_entry` / `stream_entry_list` / `map_stream_entry_list` | `src/qbm/redis/types.h:385-392` | `{stream_id id; qb::unordered_map<std::string,std::string> fields;}`; list; per-stream map. |
+| `score` / `score_member` | `src/qbm/redis/types.h:395-412` | `score{double value}`; `score_member{double score; std::string member}` (field order: score then member). |
+| `geo_pos` / `geo_distance` | `src/qbm/redis/types.h:327-338` | `geo_pos{double longitude; double latitude}`; `geo_distance{std::string member; double distance}`. |
+| `subscription` | `src/qbm/redis/types.h:523` · struct | `{std::optional<std::string> channel; long long num;}`. |
+| `message` / `pmessage` | `src/qbm/redis/types.h:512-520` | `message{pattern; channel; payload; reply_ptr raw}`; `pmessage : message`. |
+| `scan<Out=std::vector<std::string>>` | `src/qbm/redis/types.h:592-593` · struct template | `{std::size_t cursor; Out items;}` (cursor 0 = complete). |
+| `json_value` | `src/qbm/redis/types.h:470` · struct | Self-describing JSON-like variant (RedisJSON); RESP big numbers kept as strings. |
+| `pipeline_result` | `src/qbm/redis/types.h:463` · struct | `{size_t size; size_t error_count; bool all_succeeded;}` — MULTI/EXEC summary; per-command replies NOT stored (use `Reply<pipeline_result>.raw()`). |
+| `memory_info` | `src/qbm/redis/types.h:436` · struct | Parsed INFO-memory section (`size_t` fields, 0 fallback). |
+| `cluster_node` | `src/qbm/redis/types.h:422` · struct | One CLUSTER NODES line parsed field-by-field. |
+| `search_result` | `src/qbm/redis/types.h:415` · struct | FT.SEARCH per-document `{key; fields; values}`. |
+| `error` | `src/qbm/redis/types.h:599` · struct | `{std::string what; reply_ptr raw;}`. |
+| `LimitOptions` | `src/qbm/redis/types.h:317` · struct | `{long long offset=0; long long count=-1;}` (count -1 = unbounded). A **negative `offset`** on `zrangebylex`/`zrangebyscore` (and the `zrevrange*` variants) suppresses the `LIMIT` clause entirely (no triplet emitted); the default `{0,-1}` still sends `LIMIT 0 -1` (all). |
 
-### Enums (`types.h:52-85`)
+### Enums (`src/qbm/redis/types.h:52-85`)
 `UpdateType{EXIST,NOT_EXIST,ALWAYS}` (→XX/NX, ALWAYS=no flag) · `InsertPosition{BEFORE,AFTER}` · `ListPosition{LEFT,RIGHT}` · `BoundType{CLOSED,OPEN,LEFT_OPEN,RIGHT_OPEN}` · `Aggregation{SUM,MIN,MAX}` · `BitOp{AND,OR,XOR,NOT}` · `GeoUnit{M,KM,MI,FT}` (default M) · `XtrimStrategy{MAXLEN,MINID}`.
-`to_string(...)` overloads (`types.h:608-619`) render `BitOp/UpdateType/Aggregation/GeoUnit/InsertPosition/ListPosition` to Redis keyword strings.
+`to_string(...)` overloads (`src/qbm/redis/types.h:608-619`) render `BitOp/UpdateType/Aggregation/GeoUnit/InsertPosition/ListPosition` to Redis keyword strings.
 
-### Interval types (`types.h:87-310`)
+### Interval types (`src/qbm/redis/types.h:87-310`)
 `UnboundedInterval<T>` / `BoundedInterval<T>` / `LeftBoundedInterval<T>` / `RightBoundedInterval<T>`; aliases `lex_interval = BoundedInterval<std::string>`, `score_interval = BoundedInterval<double>`. Each exposes `lower()`/`upper()` returning the RESP-encoded bound string (consumed by `zcount`/`zrangebyscore`/`zrangebylex`).
 
 ---

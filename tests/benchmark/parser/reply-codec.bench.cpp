@@ -53,6 +53,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -266,6 +267,50 @@ BM_ReplySerialize_PutInPipe(benchmark::State &state) {
         benchmark::DoNotOptimize(pipe.begin());
     }
 
+    state.SetItemsProcessed(state.iterations());
+}
+
+// All fixtures fit the signed wire domain accepted by both comparison roles.
+// UINT64_MAX belongs to correctness tests: the old encoder emits a wrong value,
+// so its throughput cannot be compared as equivalent work.
+void
+BM_ReplySerialize_JsonInteger(benchmark::State &state) {
+    const auto  fixture = state.range(0);
+    qb::json    input;
+    std::string expected;
+    switch (fixture) {
+        case 0:
+            input    = qb::json::number_integer_t{0};
+            expected = "0";
+            break;
+        case 1:
+            input    = std::numeric_limits<qb::json::number_integer_t>::min();
+            expected = "-9223372036854775808";
+            break;
+        case 2:
+            input    = qb::json::number_unsigned_t{9223372036854775807ULL};
+            expected = "9223372036854775807";
+            break;
+        default:
+            state.SkipWithError("unknown JSON integer fixture");
+            return;
+    }
+    const auto                wire = "$" + std::to_string(expected.size()) + "\r\n" + expected + "\r\n";
+    qb::allocator::pipe<char> pipe;
+    qb::redis::to_redis_string(pipe, input);
+    if (std::string_view{pipe.begin(), pipe.size()} != wire) {
+        state.SkipWithError("JSON integer serialization changed exact RESP bytes");
+        return;
+    }
+    for (auto _ : state) {
+        pipe.reset();
+        qb::redis::to_redis_string(pipe, input);
+        benchmark::DoNotOptimize(pipe.begin());
+        benchmark::DoNotOptimize(pipe.size());
+        benchmark::ClobberMemory();
+    }
+    if (std::string_view{pipe.begin(), pipe.size()} != wire)
+        state.SkipWithError("JSON integer serialization changed after timed loop");
     state.SetItemsProcessed(state.iterations());
 }
 
@@ -524,6 +569,7 @@ BENCHMARK(BM_ReplyParse_ScoreMemberVector)->Arg(100)->Arg(1000)->ArgNames({"memb
 BENCHMARK(BM_ReplyParse_MapStreamEntryList)->Arg(4)->Arg(16)->ArgNames({"streams"})->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_ReplySerialize_MultiBulk)->Arg(100)->Arg(1000)->ArgNames({"pairs"})->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_ReplySerialize_PutInPipe)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_ReplySerialize_JsonInteger)->Arg(0)->Arg(1)->Arg(2)->ArgNames({"fixture"})->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_ReplyParse_JsonWideMap)->Arg(100)->Arg(1000)->ArgNames({"fields"})->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_ReplyFormat_IntervalToChars)->Unit(benchmark::kNanosecond);
 

@@ -46,7 +46,7 @@ In both forms `T` is the command's reply payload. Read it through `qb::redis::Re
 - `reply.result()` (alias `reply.value()`) — the decoded payload of type `T`.
 - `reply.error()` — the error message string when `!reply.ok()`.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1199-1274 (ok/result/value/error) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1218-1293 (ok/result/value/error) -->
 
 ---
 
@@ -104,7 +104,7 @@ substitute `qb::duration` for the TTL arguments here. (The retired tokens `qb::T
 conditional-set flag.
 
 ```cpp
-// qb::redis::UpdateType { EXIST, NOT_EXIST, ALWAYS };  // types.h:52
+// qb::redis::UpdateType { EXIST, NOT_EXIST, ALWAYS };  // src/qbm/redis/types.h:52
 auto set(const std::string &key, const std::string &val,
          UpdateType type = UpdateType::ALWAYS);                          // -> Reply<status>
 auto set(const std::string &key, const std::string &val, long long ttl_ms,

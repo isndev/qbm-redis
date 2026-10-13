@@ -101,9 +101,29 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   none. Containers, pairs and tuples expand their present elements. Floating
   arguments, including numeric `json_value` and `qb::json` raw-command values,
   use a locale-independent decimal spelling that round-trips to the original
-  value, so small increments remain nonzero on the wire.
+  value, so small increments remain nonzero on the wire. Numeric `qb::json`
+  integers retain their signed or unsigned 64-bit decimal value, including
+  unsigned values above `INT64_MAX`.
+- **Administrative JSON preserves the command contract.** `role()` returns
+  native positional arrays for master, replica and Sentinel; names remain strings
+  and offsets remain integers. `command_stats()` reads `INFO commandstats` into
+  an object with the exact `cmdstat_*` keys and complete raw text values. Errors
+  keep their original `error()` and `raw()`; generic `info()` still returns a
+  JSON string. `client_kill(..., skipme)` always emits `SKIPME yes` or `no`.
 - **RetryPolicy** drives connect-with-retry and auto-reconnect (exponential
   backoff). A reconnect does **not** replay in-flight commands or subscriptions.
+- **HSCAN preserves `Out` across pages.** The cursor coroutine and automatic callback
+  forms use the selected container (default `qb::unordered_map<std::string,std::string>`).
+  Automatic scans require owning output: nested standard containers/wrappers of
+  `std::string_view` are rejected. For borrowed views, use cursor pages and retain each
+  `Reply` that owns their raw data. Custom parse-result types carry their own ownership
+  responsibility. Terminal page errors survive aggregation; ordinary page setup or merge
+  exceptions fail the automatic scan once. Completion callback exceptions are logged and
+  cannot trigger a second completion (`hash_commands.h:49-62`, `:88-101`, `:131-182`, `:673-682`).
+- **`AsyncResult<std::string>` stores string success values.** Construct an error explicitly
+  with `AsyncResult<T>::from_error(std::string)` (also on `void`); an empty message still
+  means failure. Other supported payload types retain their existing constructors
+  (`server_reply.h:357-389`, `:435-450`).
 
 ### Time / units (critical boundary)
 
@@ -347,7 +367,7 @@ if (!r.ok()) {
 - `TReply` constructs the successful `Reply<T>` directly from `parse<T>(*raw)` before
   invoking the callback. Decoder exceptions become failed replies with the original raw
   value; the callback runs outside those catches, so its exception cannot cause a second
-  completion. _(src/qbm/redis/reply.h:1331-1347,1353-1371)_
+  completion. _(src/qbm/redis/reply.h:1350-1366,1372-1390)_
 
 ---
 

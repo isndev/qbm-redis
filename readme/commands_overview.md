@@ -62,7 +62,9 @@ see [Pipelining and `await()`](./pipeline_and_await.md).
 
 A numeric `qb::json` or `json_value` passed to a generic command emits its number as one decimal bulk string, not a
 JSON document. Floating values use the same round-trip formatting as a direct `double` argument; `1e-7` stays nonzero
-for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:979-980`, `reply.h:1006-1010`).
+for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:991-992`, `reply.h:1018-1029`).
+Numeric `qb::json` integers preserve their signed or unsigned decimal value through the full 64-bit domain.
+A value above `INT64_MAX` remains a positive unsigned decimal argument; it is not cast to a signed value first.
 
 ```mermaid
 sequenceDiagram
@@ -87,7 +89,7 @@ resumes your coroutine when the reply lands (`redis.h:1352-1356`, `redis.h:783-7
 
 ### The reply type: `qb::redis::Reply<T>`
 
-Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1199`), where `T` is the **expected successful result type**
+Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1218`), where `T` is the **expected successful result type**
 for that command — fixed per command, never chosen by you for the wrapped methods. Examples:
 
 | Command                 | Result type `T`                           |
@@ -102,7 +104,7 @@ for that command — fixed per command, never chosen by you for the wrapped meth
 | `SCAN`                  | `qb::redis::scan<Out>`                    |
 
 `Reply<T>` carries four things: a success flag, the parsed result, the raw owning `parser::Value`, and an owned error
-string (`reply.h:1199`). Its surface:
+string (`reply.h:1218`). Its surface:
 
 - `reply.ok()` / `if (reply)` — `true` when the command was sent, a reply arrived, and it was **not** a Redis error.
 - `reply.result()` / `reply.value()` — the decoded `T` (aliases; `value()` is preferred in new code).
@@ -126,19 +128,19 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1199-1274 (Reply<T>) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1218-1293 (Reply<T>) -->
 
 #### `qb::redis::status` — the "OK" reply
 
 Commands that return a RESP simple string (such as `SET`, `MULTI`, `SELECT`) decode to `qb::redis::status` (
-`types.h:534`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
+`src/qbm/redis/types.h:534`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
 conversion rather than comparing strings yourself. So for `Reply<status>`, `reply.ok()` confirms the command did not
 fail at the protocol level, and `reply.value().ok()` confirms the server replied `+OK`.
 
 ### How replies are decoded
 
 Decoding lives in `reply.h` and runs inside the reply handler (`TReply<Func, T>`), which takes ownership of the parsed
-RESP node and produces the `Reply<T>` (`reply.h:1316`). The handler distinguishes three cases:
+RESP node and produces the `Reply<T>` (`reply.h:1335`). The handler distinguishes three cases:
 
 1. **Disconnect / failure** — a null reply yields `Reply{ ok = false, error = "disconnected" }` (or the explicit
    `fail()` reason, e.g. `"command timed out"`).
@@ -154,7 +156,7 @@ arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the m
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1331-1347,1353-1371 (the TReply call operator and decoder) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1350-1366,1372-1390 (the TReply call operator and decoder) -->
 
 ### Coroutine vs callback
 

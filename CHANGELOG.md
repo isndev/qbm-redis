@@ -48,6 +48,39 @@ All notable changes to the qbm-redis module are documented here. The format is b
   citation cannot hide an invalid later one.
 - **The CI guide reports the current Redis test roster by capability (Huly QB-688).**
   It distinguishes registered tests from each run's executed and skipped counts.
+- **String-valued `AsyncResult` distinguishes success from failure (Huly QB-638).**
+  `AsyncResult<std::string>` now accepts its string value without colliding with the error
+  constructor. `AsyncResult<T>::from_error(std::string)` and its `void` specialization
+  explicitly construct a failure, including an empty error message. Existing valid
+  constructors keep their meaning and result storage is unchanged.
+- **Coroutine key/module wrappers accept string literals (Huly QB-642).** `exists`, `touch`,
+  `unlink` and variadic `module_load` forward the values held by their captures instead of
+  reapplying the original array type. Owning lvalues are still copied, rvalues moved, and
+  pointers and string views remain borrowed until command serialization.
+- **HSCAN carries its requested output container through every page (Huly QB-643).**
+  The coroutine cursor form and callback-only automatic form preserve `Out`; maps and
+  sequences use their corresponding insertion operation. Automatic scans retain terminal
+  page errors and complete once after ordinary page setup or accumulation failures;
+  a throwing completion callback cannot cause a second completion. Automatic output must
+  own its data: nested standard containers/wrappers of `std::string_view` are rejected at
+  compile time. Use cursor pages and retain their replies for borrowed views; custom
+  parse-result types remain responsible for their ownership.
+- **Score-member extraction rejects oversized pair indices (Huly QB-637).** A supplied
+  index such as `SIZE_MAX` now returns the existing short-pair error before array access,
+  instead of overflowing the `index + 1` bounds check.
+- **View-buffer skips saturate without cursor overflow (Huly QB-632).** A large `consume()` count no longer
+  wraps a positive cursor backwards; ordinary streaming consumption retains its existing bounds.
+- **Unsigned numeric JSON command arguments retain their decimal value (Huly QB-639).** Values above
+  `INT64_MAX` are formatted from their unsigned subtype, including nested JSON arguments. Integer JSON
+  formatting uses a local character buffer rather than a temporary string; the RESP argument count is unchanged.
+- **`CLIENT KILL` honors `skipme=false` (Huly QB-654).** Both boolean values now emit an explicit `SKIPME yes/no`
+  filter, preserving the integer-count reply and allowing the calling client to be included when requested.
+- **`ROLE` retains its positional Sentinel reply (Huly QB-656).** All roles keep native arrays, integer offsets
+  and opaque string names. Command-specific decoding leaves the generic JSON flat-map policy unchanged.
+- **`command_stats()` reads the native INFO section (Huly QB-657).** It issues `INFO commandstats` and returns
+  an object of exact native `cmdstat_*` keys and complete text values. Native and decode errors retain their
+  reason and raw reply; generic `info()` keeps its raw JSON-string result.
+
 - **Stream IDs round-trip across the full Redis unsigned 64-bit domain (Huly QB-640).** Typed `XADD` and `XRANGE`
   no longer report a local decode error after Redis accepts an ID component above `INT64_MAX`; both RESP2 and RESP3
   preserve values through `UINT64_MAX`. The reply parser and server-side extractor reject numeric overflow and
@@ -252,7 +285,7 @@ in lockstep with the qb framework; see the qb CHANGELOG for what makes that rele
   answers with an *integer count of connections killed* in every form this wrapper can send: called
   with no arguments it sends `SKIPME yes`, so the filter form — which is the integer-replying one —
   is the only form reachable. Typing it as `status` mis-decoded that reply. The coroutine overload
-  changed at `src/qbm/redis/commands/server_commands.h:162`
+  changed at `src/qbm/redis/commands/server_commands.h:163`
   (`make_coro_command<status>` → `make_coro_command<long long>`) and the callback overload's SFINAE
   guard moved with it, so **an existing caller does not get a converted value — it gets no matching
   function, a hard compile error.** Migrate by changing the awaited/handled type:

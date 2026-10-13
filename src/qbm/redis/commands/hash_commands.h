@@ -16,7 +16,9 @@
  */
 #ifndef QBM_REDIS_HASH_COMMANDS_H
 #define QBM_REDIS_HASH_COMMANDS_H
+#include <cstdint>
 #include <type_traits>
+#include <tuple>
 #include <qb/io.h> // QB_LOG_WARN — the scanner callback guard below logs through it
 #include "../reply.h"
 
@@ -42,6 +44,24 @@ private:
         return static_cast<Derived &>(*this);
     }
 
+    template <typename T>
+    static constexpr bool
+    contains_borrowed_scan_view() {
+        using Value = std::remove_cvref_t<T>;
+        if constexpr (std::is_same_v<Value, std::string_view>) {
+            return true;
+        } else if constexpr (requires { std::tuple_size<Value>::value; }) {
+            return []<std::size_t... I>(std::index_sequence<I...>) {
+                return (contains_borrowed_scan_view<std::tuple_element_t<I, Value>>() || ...);
+            }(std::make_index_sequence<std::tuple_size_v<Value>>{});
+        } else if constexpr (requires { typename Value::value_type; }) {
+            return contains_borrowed_scan_view<typename Value::value_type>();
+        } else {
+            // A user-defined parse result is responsible for its own ownership contract.
+            return false;
+        }
+    }
+
     /**
      * @class scanner
      * @brief Helper class for implementing incremental scanning of hashes
@@ -52,15 +72,42 @@ private:
      *              it keeps itself alive across the cursor round-trips and therefore outlives
      *              the hscan() call that built it, so anything it merely referred to would be
      *              long gone by the time the callback fires. See the hscan() call site.
+     * @tparam Out Container used by each page and by the accumulated result.
      */
-    template <typename Func>
-    class scanner : public std::enable_shared_from_this<scanner<Func>> {
-        Derived                            &_handler;
-        std::string                         _key;
-        std::string                         _pattern;
-        Func                                _func;
-        qb::redis::Reply<qb::redis::scan<>> _reply;
-        bool                                _started{false};
+    template <typename Func, typename Out>
+    class scanner : public std::enable_shared_from_this<scanner<Func, Out>> {
+        Derived                               &_handler;
+        std::string                            _key;
+        std::string                            _pattern;
+        Func                                   _func;
+        qb::redis::Reply<qb::redis::scan<Out>> _reply;
+        enum class State : std::uint8_t { Ready, Running, Done };
+        State _state{State::Ready};
+
+        void
+        finish() {
+            if (_state == State::Done)
+                return;
+            _state = State::Done;
+            // A completed operation never interprets a user callback exception
+            // as another page failure, including synchronous continuation paths.
+            try {
+                _func(std::move(_reply));
+            } catch (const std::exception &e) {
+                QB_LOG_WARN("[qbm][redis] scanner callback failed: " << e.what());
+            } catch (...) {
+                QB_LOG_WARN("[qbm][redis] scanner callback failed with an unknown exception");
+            }
+        }
+
+        void
+        finish_error(const char *message) {
+            if (_state == State::Done)
+                return;
+            _reply.ok()    = false;
+            _reply.error() = message;
+            finish();
+        }
 
     public:
         /**
@@ -82,11 +129,19 @@ private:
          */
         void
         start() {
-            if (!_started) {
-                _started = true;
-                // Capture shared_ptr to keep alive during async operations
-                auto self = this->shared_from_this();
-                _handler.hscan([self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); }, _key, 0, _pattern, 100);
+            if (_state != State::Ready)
+                return;
+            _state = State::Running;
+            try {
+                auto self     = this->shared_from_this();
+                auto callback = [self](Reply<scan<Out>> &&reply) {
+                    (*self)(std::move(reply));
+                };
+                _handler.template hscan<decltype(callback), Out>(std::move(callback), _key, 0, _pattern, 100);
+            } catch (const std::exception &e) {
+                finish_error(e.what());
+            } catch (...) {
+                finish_error("unknown HSCAN setup error");
             }
         }
 
@@ -96,22 +151,35 @@ private:
          * @param reply The scan operation reply
          */
         void
-        operator()(qb::redis::Reply<qb::redis::scan<>> &&reply) {
-            _reply.ok() = reply.ok();
-            std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
-            if (reply.ok() && reply.result().cursor) {
-                // Continue scanning - capture shared_ptr to keep alive
-                auto self = this->shared_from_this();
-                _handler.hscan([self](auto &&reply) { (*self)(std::forward<decltype(reply)>(reply)); }, _key, reply.result().cursor, _pattern,
-                               100);
-            } else {
-                try {
-                    _func(std::move(_reply));
-                } catch (std::exception const &e) {
-                    QB_LOG_WARN("[qbm][redis] scanner callback failed: " << e.what());
+        operator()(qb::redis::Reply<qb::redis::scan<Out>> &&reply) {
+            if (_state == State::Done)
+                return;
+            try {
+                _reply.ok()    = reply.ok();
+                _reply.error() = std::move(reply.error());
+                if constexpr (is_mappish<Out>::value) {
+                    std::move(reply.result().items.begin(), reply.result().items.end(),
+                              std::inserter(_reply.result().items, _reply.result().items.end()));
+                } else {
+                    std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
                 }
-                // Automatically destroyed when shared_ptr reference count reaches 0
+                if (reply.ok() && reply.result().cursor) {
+                    // Continue scanning while this callback keeps the scanner alive.
+                    auto self     = this->shared_from_this();
+                    auto callback = [self](Reply<scan<Out>> &&page) {
+                        (*self)(std::move(page));
+                    };
+                    _handler.template hscan<decltype(callback), Out>(std::move(callback), _key, reply.result().cursor, _pattern, 100);
+                    return;
+                }
+            } catch (const std::exception &e) {
+                finish_error(e.what());
+                return;
+            } catch (...) {
+                finish_error("unknown HSCAN aggregation error");
+                return;
             }
+            finish();
         }
 
         /**
@@ -552,8 +620,9 @@ public:
     template <typename Out = qb::unordered_map<std::string, std::string>>
     auto
     hscan(const std::string &key, long long cursor, const std::string &pattern = "*", long long count = 10) {
-        return derived().template make_coro_command<qb::redis::scan<Out>>(
-            [this, key, cursor, pattern, count](auto &&callback) { this->hscan(std::move(callback), key, cursor, pattern, count); });
+        return derived().template make_coro_command<qb::redis::scan<Out>>([this, key, cursor, pattern, count](auto &&callback) {
+            this->template hscan<std::decay_t<decltype(callback)>, Out>(std::move(callback), key, cursor, pattern, count);
+        });
     }
 
     /**
@@ -589,8 +658,12 @@ public:
      *
      * This version manages cursor iteration internally, collecting all results
      * and calling the callback once with the complete result set.
+     * Output elements must own their data. For string_view elements (including
+     * nested standard wrappers), use the cursor overload and retain its Reply.
+     * User-defined parse results must honor the same ownership requirement.
      *
      * @tparam Func Callback function type
+     * @tparam Out Type of the accumulated output container
      * @param func Callback function to process complete results
      * @param key Key where the hash is stored
      * @param pattern Pattern to filter fields
@@ -600,11 +673,13 @@ public:
     template <typename Func, typename Out = qb::unordered_map<std::string, std::string>>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::scan<Out>> &&>, Derived &>
     hscan(Func &&func, const std::string &key, const std::string &pattern = "*") {
+        static_assert(!contains_borrowed_scan_view<Out>(),
+                      "Automatic HSCAN requires owning output; use cursor pages and retain each Reply for borrowed views");
         // decay_t, not Func: for an lvalue callback Func deduces to `Cb&`, and the member declared
         // `Func _func` in scanner<Cb&> is then a *reference* to the caller's functor. The scanner
         // outlives this call (it drives the cursor across async round-trips), so that reference
         // dangles before it is ever invoked. Decaying makes _func an owned copy.
-        scanner<std::decay_t<Func>>::create_and_start(derived(), key, pattern, std::forward<Func>(func));
+        scanner<std::decay_t<Func>, Out>::create_and_start(derived(), key, pattern, std::forward<Func>(func));
         return derived();
     }
 
