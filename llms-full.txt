@@ -130,7 +130,7 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   overloads — a documented boundary, **NOT** `qb::duration`:
   - **Seconds:** `EXPIRE`, `EXPIREAT`, `SETEX` → `std::chrono::seconds` (`GETEX`'s
     `EX` path is a raw `long long`, not a chrono overload).
-  - **Milliseconds:** `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX(PX)`, `WAIT` →
+  - **Milliseconds:** `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX` with `PX`, `WAIT` →
     `std::chrono::milliseconds`. Each forwards `.count()` to a raw `long long`
     overload.
   - **`RESTORE` ttl and `MIGRATE` timeout** take a raw `long long` in
@@ -983,7 +983,8 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:64`; `what()` vali
 - `ServerReply<T>` (`server_reply.h:49`, +`void` specialization) — `{bool ok; T value; std::string error;}` with ref-qualified `result()`.
 - `ValueExtractor` (`server_reply.h:103`) — non-throwing `std::optional`-based accessors over a **borrowed** `parser::Value` (must outlive the extractor): `as_string/as_string_view/as_integer/as_double/as_bool/as_array/as_map/as_set/is_null/is_error/raw`.
 - `AsyncResult<T>` (`server_reply.h:352`, +`void`) — coroutine-friendly `qb::expected<T,std::string>` wrapper; `operator bool`, `operator->`.
-- `extract_string` / `extract_integer` / `extract_string_array` / `extract_string_map` (`server_reply.h:287-334`), `extract_stream_id` / `extract_score_member` (`server_reply.h:445, :471`) — caller-side templates return `qb::expected` (no exceptions); compiled `detail::extract_*_value` functions (`server_reply.h:266-277`) exchange values/errors through references, so C++20 and C++23 may mix. An address of a helper needs a specialization, e.g. `&extract_integer<>`.
+- `extract_string` / `extract_integer` / `extract_string_array` / `extract_string_map` (`server_reply.h:287-334`), `extract_stream_id` / `extract_score_member` (`server_reply.h:445, :471`) — caller-side templates return `qb::expected` (no exceptions). An address of a helper needs a specialization, e.g. `&extract_integer<>`.
+- Compiled `detail::extract_string_value` through `detail::extract_score_member_value` (`server_reply.h:271-277`) exchange values/errors through references, so C++20 and C++23 may mix.
 
 ---
 
@@ -996,9 +997,9 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:64`; `what()` vali
 | `stream_id` | `types.h:341` · struct | Public `{long long timestamp; long long sequence;}` layout retained for 3.x source compatibility. Redis components are unsigned 64-bit bit patterns: use `timestamp_u64()` / `sequence_u64()` (`types.h:359-366`) to read the full domain and `from_unsigned(uint64_t,uint64_t)` (`types.h:353`) to construct high IDs. Raw signed fields may appear negative above `INT64_MAX`; `to_string()` and `<` use unsigned values. |
 | `stream_entry` / `stream_entry_list` / `map_stream_entry_list` | `types.h:385-392` | `{stream_id id; qb::unordered_map<std::string,std::string> fields;}`; list; per-stream map. |
 | `score` / `score_member` | `types.h:395-412` | `score{double value}`; `score_member{double score; std::string member}` (field order: score then member). |
-| `geo_pos` / `geo_distance` | `types.h:327, :304` | `geo_pos{double longitude; double latitude}`; `geo_distance{std::string member; double distance}`. |
+| `geo_pos` / `geo_distance` | `types.h:327-338` | `geo_pos{double longitude; double latitude}`; `geo_distance{std::string member; double distance}`. |
 | `subscription` | `types.h:523` · struct | `{std::optional<std::string> channel; long long num;}`. |
-| `message` / `pmessage` | `types.h:512, :489` | `message{pattern; channel; payload; reply_ptr raw}`; `pmessage : message`. |
+| `message` / `pmessage` | `types.h:512-520` | `message{pattern; channel; payload; reply_ptr raw}`; `pmessage : message`. |
 | `scan<Out=std::vector<std::string>>` | `types.h:592-593` · struct template | `{std::size_t cursor; Out items;}` (cursor 0 = complete). |
 | `json_value` | `types.h:470` · struct | Self-describing JSON-like variant (RedisJSON); RESP big numbers kept as strings. |
 | `pipeline_result` | `types.h:463` · struct | `{size_t size; size_t error_count; bool all_succeeded;}` — MULTI/EXEC summary; per-command replies NOT stored (use `Reply<pipeline_result>.raw()`). |

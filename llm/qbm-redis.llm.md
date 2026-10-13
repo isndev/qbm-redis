@@ -115,7 +115,7 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   overloads — a documented boundary, **NOT** `qb::duration`:
   - **Seconds:** `EXPIRE`, `EXPIREAT`, `SETEX` → `std::chrono::seconds` (`GETEX`'s
     `EX` path is a raw `long long`, not a chrono overload).
-  - **Milliseconds:** `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX(PX)`, `WAIT` →
+  - **Milliseconds:** `PEXPIRE`, `PEXPIREAT`, `PSETEX`, `GETEX` with `PX`, `WAIT` →
     `std::chrono::milliseconds`. Each forwards `.count()` to a raw `long long`
     overload.
   - **`RESTORE` ttl and `MIGRATE` timeout** take a raw `long long` in
