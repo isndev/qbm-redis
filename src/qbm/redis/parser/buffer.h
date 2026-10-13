@@ -492,7 +492,7 @@ public:
      */
     void
     consume(size_t bytes) noexcept {
-        _position = std::min(_position + bytes, _data.size());
+        _position += std::min(bytes, _data.size() - _position);
     }
 
     /**

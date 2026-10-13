@@ -185,7 +185,7 @@ public:
     auto
     exists(Keys &&...keys) {
         return derived().template make_coro_command<long long>([this, ... keys = std::forward<Keys>(keys)](auto &&callback) mutable {
-            this->exists(std::move(callback), std::forward<Keys>(keys)...);
+            this->exists(std::move(callback), std::forward<decltype(keys)>(keys)...);
         });
     }
 
@@ -627,7 +627,7 @@ public:
     auto
     touch(Keys &&...keys) {
         return derived().template make_coro_command<long long>([this, ... keys = std::forward<Keys>(keys)](auto &&callback) mutable {
-            this->touch(std::move(callback), std::forward<Keys>(keys)...);
+            this->touch(std::move(callback), std::forward<decltype(keys)>(keys)...);
         });
     }
 
@@ -697,7 +697,7 @@ public:
     auto
     unlink(Keys &&...keys) {
         return derived().template make_coro_command<long long>([this, ... keys = std::forward<Keys>(keys)](auto &&callback) mutable {
-            this->unlink(std::move(callback), std::forward<Keys>(keys)...);
+            this->unlink(std::move(callback), std::forward<decltype(keys)>(keys)...);
         });
     }
 

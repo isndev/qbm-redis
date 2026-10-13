@@ -47,7 +47,7 @@ actor on it stops with you — silently, because nothing in the framework diagno
 
 You consume qbm-redis through the qb module loader, not `find_package`:
 
-<!-- src: qbm/redis/README.md:68-72 -->
+<!-- src: qbm/redis/README.md:432-433 -->
 
 ```cmake
 add_subdirectory(qb)                                   # the framework first
@@ -176,12 +176,12 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   `sscan` / `zscan` / `hscan` — and multi-key `hvals` buffer the whole result and fire the callback once; there is no
   coroutine form, so `co_await redis.scan("prefix*")` does not compile (only the cursor-taking
   `scan(cursor, pattern, count)` is awaitable), and a throwing callback is caught and logged, not propagated
-  (`key_commands.h:609-618`, `:590`, `:109-113`, `set_commands.h:107-108`, `hash_commands.h:600-609,800-807`).
+  (`key_commands.h:609-618`, `:590`, `:109-113`, `set_commands.h:107-108`, `hash_commands.h:673-684,875-882`).
 - **Empty required arguments resolve as a failed `Reply`, not a bad frame.** A required-variadic / required-collection
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
-  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:158-159`, `reply.h:1387-1391`).
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:158-159`, `reply.h:1406-1410`).
 - **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
   (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
   with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /

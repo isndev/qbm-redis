@@ -660,6 +660,70 @@ parse(ParseTag<qb::json>, const ReplyValue &reply) {
     throw ProtoError("Unsupported type for JSON conversion");
 }
 
+namespace {
+
+const ReplyValue &
+command_reply_value(const ReplyValue &reply) {
+    const auto *value = &reply;
+    while (std::holds_alternative<parser::Attribute>(*value)) {
+        const auto &attribute = value->as_attribute();
+        if (!attribute.value)
+            throw ProtoError("Missing command reply behind attribute");
+        value = attribute.value.get();
+    }
+    if (value->is_error())
+        throw CommandError(std::string(value->get_error_message()));
+    return *value;
+}
+
+qb::json
+role_value_to_json(const ReplyValue &reply) {
+    const auto &value = command_reply_value(reply);
+    if (is_array(value)) {
+        qb::json result = qb::json::array();
+        for (const auto &element : value.as_array())
+            result.push_back(role_value_to_json(*element));
+        return result;
+    }
+    // ROLE names are strings even when their bytes look like embedded JSON.
+    if (is_string(value) || is_status(value))
+        return qb::json(std::string(value.as_string_view()));
+    return parse<qb::json>(value);
+}
+
+} // namespace
+
+role_json_reply
+parse(ParseTag<role_json_reply>, const ReplyValue &reply) {
+    const auto &value = command_reply_value(reply);
+    if (!is_array(value))
+        throw ReplyParseError("ARRAY", value);
+    return {role_value_to_json(value)};
+}
+
+command_stats_json_reply
+parse(ParseTag<command_stats_json_reply>, const ReplyValue &reply) {
+    auto     text   = parse<std::string_view>(command_reply_value(reply));
+    qb::json result = qb::json::object();
+    while (!text.empty()) {
+        const auto newline = text.find('\n');
+        auto       line    = text.substr(0, newline);
+        if (newline == std::string_view::npos)
+            text = {};
+        else
+            text.remove_prefix(newline + 1);
+        if (!line.empty() && line.back() == '\r')
+            line.remove_suffix(1);
+        if (line.empty() || line.front() == '#')
+            continue;
+        const auto separator = line.find(':');
+        if (separator == std::string_view::npos || separator == 0)
+            throw ProtoError("Invalid command statistics field");
+        result[std::string(line.substr(0, separator))] = std::string(line.substr(separator + 1));
+    }
+    return {std::move(result)};
+}
+
 } // namespace reply
 
 } // namespace qb::redis

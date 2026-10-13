@@ -31,7 +31,11 @@
  */
 
 #include <gtest/gtest.h>
+#include <map>
 #include <set>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include "../../shared/redis_integration_fixture.h"
@@ -39,9 +43,204 @@
 
 using namespace qb::redis::test;
 
-namespace {
+namespace hash_commands_test {
 
 class HashProtocolModesTest : public ProtocolModesTestBase {};
+
+struct ControlledMergeLess {
+    inline static bool armed             = false;
+    inline static bool nonstandard_error = false;
+    bool
+    operator()(const std::string &left, const std::string &right) const {
+        if (armed) {
+            if (nonstandard_error)
+                throw 7;
+            throw std::runtime_error("controlled HSCAN merge");
+        }
+        return left < right;
+    }
+};
+
+class HscanMergeAdapter : public qb::redis::hash_commands<HscanMergeAdapter> {
+public:
+    enum class ContinuationMode {
+        None,
+        CompleteThenThrow,
+        EnqueueThenThrow,
+        FirstEnqueueThenThrow,
+        FirstEnqueueThenUnknown,
+        FirstCompleteThenThrow
+    };
+
+private:
+    bool                               _arm_merge;
+    ContinuationMode                   _mode;
+    std::unique_ptr<qb::redis::IReply> _pending;
+
+public:
+    using qb::redis::hash_commands<HscanMergeAdapter>::hscan;
+    std::size_t page_requests = 0;
+    explicit HscanMergeAdapter(bool arm_merge, ContinuationMode mode = ContinuationMode::None)
+        : _arm_merge(arm_merge)
+        , _mode(mode) {}
+
+    void
+    deliver_late_page() {
+        auto handler = std::move(_pending);
+        if (!handler)
+            throw std::logic_error("no owned late page handler");
+        auto page = qb::redis::parser::parse("*2\r\n$1\r\n0\r\n*4\r\n$1\r\na\r\n$1\r\n1\r\n$1\r\nb\r\n$1\r\n2\r\n");
+        if (!page)
+            throw std::logic_error("valid owned late HSCAN page did not parse");
+        (*handler)(std::make_unique<qb::redis::parser::Value>(std::move(*page)));
+    }
+
+    template <typename Func, typename Out>
+    HscanMergeAdapter &
+    hscan(Func &&callback, const std::string &, long long, const std::string & = "*", long long = 10) {
+        const auto request = ++page_requests;
+        const auto cursor  = (_mode != ContinuationMode::None && _mode != ContinuationMode::FirstCompleteThenThrow && request == 1) ? "1" : "0";
+        auto page = qb::redis::parser::parse(std::string("*2\r\n$1\r\n") + cursor + "\r\n*4\r\n$1\r\na\r\n$1\r\n1\r\n$1\r\nb\r\n$1\r\n2\r\n");
+        if (!page)
+            throw std::logic_error("valid owned HSCAN page did not parse");
+        auto bridge = [callback = std::forward<Func>(callback), arm = _arm_merge](qb::redis::Reply<qb::redis::scan<Out>> &&reply) mutable {
+            struct RestoreGate {
+                bool saved;
+                ~RestoreGate() {
+                    ControlledMergeLess::armed = saved;
+                }
+            } restore{ControlledMergeLess::armed};
+            ControlledMergeLess::armed = arm;
+            callback(std::move(reply));
+        };
+        // Decode through the real reply handler before arming the merge gate.
+        auto handler = std::make_unique<qb::redis::TReply<decltype(bridge), qb::redis::scan<Out>>>(std::move(bridge));
+        if ((_mode == ContinuationMode::EnqueueThenThrow && request == 2)
+            || ((_mode == ContinuationMode::FirstEnqueueThenThrow || _mode == ContinuationMode::FirstEnqueueThenUnknown) && request == 1)) {
+            _pending = std::move(handler);
+            if (_mode == ContinuationMode::FirstEnqueueThenUnknown)
+                throw 17;
+            throw std::runtime_error("controlled continuation setup");
+        }
+        (*handler)(std::make_unique<qb::redis::parser::Value>(std::move(*page)));
+        if ((_mode == ContinuationMode::CompleteThenThrow && request == 2)
+            || (_mode == ContinuationMode::FirstCompleteThenThrow && request == 1))
+            throw std::runtime_error("controlled setup after synchronous completion");
+        return *this;
+    }
+};
+
+TEST(HscanAggregation, OwningContainerMergeErrorCompletesExactlyOnce) {
+    using Out = std::map<std::string, std::string, ControlledMergeLess>;
+    for (bool fail_merge : {false, true}) {
+        SCOPED_TRACE(fail_merge ? "controlled merge failure" : "ordinary merge control");
+        HscanMergeAdapter adapter(fail_merge);
+        int               completions = 0;
+        bool              ok          = false;
+        std::string       error;
+        std::size_t       item_count = 0;
+        auto              callback   = [&](qb::redis::Reply<qb::redis::scan<Out>> &&reply) {
+            ++completions;
+            ok         = reply.ok();
+            error      = reply.error();
+            item_count = reply.result().items.size();
+        };
+        EXPECT_NO_THROW((adapter.hscan<decltype(callback) &, Out>(callback, "owned-hash", "*")));
+        EXPECT_EQ(completions, 1);
+        EXPECT_EQ(adapter.page_requests, 1u);
+        EXPECT_FALSE(ControlledMergeLess::armed);
+        if (fail_merge) {
+            EXPECT_FALSE(ok);
+            EXPECT_NE(error.find("controlled HSCAN merge"), std::string::npos);
+        } else {
+            EXPECT_TRUE(ok);
+            EXPECT_EQ(item_count, 2u);
+        }
+    }
+}
+
+TEST(HscanAggregation, NonstandardMergeAndCallbackErrorsCompleteOnlyOnce) {
+    using Out = std::map<std::string, std::string, ControlledMergeLess>;
+    struct RestoreErrorMode {
+        ~RestoreErrorMode() {
+            ControlledMergeLess::nonstandard_error = false;
+        }
+    } restore;
+    ControlledMergeLess::nonstandard_error = true;
+    for (const bool standard_callback_error : {false, true}) {
+        SCOPED_TRACE(standard_callback_error ? "std::exception user callback" : "unknown user callback");
+        for (bool fail_merge : {false, true}) {
+            SCOPED_TRACE(fail_merge ? "unknown internal merge failure" : "ordinary merge control");
+            HscanMergeAdapter adapter(fail_merge);
+            int               completions = 0;
+            bool              ok          = false;
+            std::string       error;
+            auto              callback = [&](qb::redis::Reply<qb::redis::scan<Out>> &&reply) {
+                ++completions;
+                ok    = reply.ok();
+                error = reply.error();
+                if (standard_callback_error)
+                    throw std::runtime_error("controlled HSCAN user callback");
+                throw 11;
+            };
+            EXPECT_NO_THROW((adapter.hscan<decltype(callback) &, Out>(callback, "owned-hash", "*")));
+            EXPECT_EQ(completions, 1);
+            EXPECT_EQ(adapter.page_requests, 1u);
+            EXPECT_FALSE(ControlledMergeLess::armed);
+            EXPECT_EQ(ok, !fail_merge);
+            if (fail_merge)
+                EXPECT_EQ(error, "unknown HSCAN aggregation error");
+        }
+    }
+}
+
+TEST(HscanAggregation, ContinuationSetupAndLatePageDeliverOnlyOneResult) {
+    using Out  = std::map<std::string, std::string, ControlledMergeLess>;
+    using Mode = HscanMergeAdapter::ContinuationMode;
+    for (auto mode : {Mode::CompleteThenThrow, Mode::EnqueueThenThrow}) {
+        SCOPED_TRACE(mode == Mode::CompleteThenThrow ? "synchronous completion before setup throws" : "late page after setup failure");
+        HscanMergeAdapter adapter(false, mode);
+        int               completions = 0;
+        bool              ok          = false;
+        auto              callback    = [&](qb::redis::Reply<qb::redis::scan<Out>> &&reply) {
+            ++completions;
+            ok = reply.ok();
+        };
+        EXPECT_NO_THROW((adapter.hscan<decltype(callback) &, Out>(callback, "owned-hash", "*")));
+        EXPECT_EQ(adapter.page_requests, 2u);
+        EXPECT_EQ(completions, 1);
+        EXPECT_EQ(ok, mode == Mode::CompleteThenThrow);
+        if (mode == Mode::EnqueueThenThrow) {
+            EXPECT_NO_THROW(adapter.deliver_late_page());
+            EXPECT_EQ(completions, 1);
+            EXPECT_FALSE(ok);
+        }
+    }
+}
+
+TEST(HscanAggregation, FirstSetupErrorAndItsLatePageCompleteOnlyOnce) {
+    using Out  = std::map<std::string, std::string, ControlledMergeLess>;
+    using Mode = HscanMergeAdapter::ContinuationMode;
+    for (auto mode : {Mode::FirstEnqueueThenThrow, Mode::FirstEnqueueThenUnknown, Mode::FirstCompleteThenThrow}) {
+        SCOPED_TRACE(static_cast<int>(mode));
+        HscanMergeAdapter adapter(false, mode);
+        int               completions = 0;
+        bool              ok          = false;
+        auto              callback    = [&](qb::redis::Reply<qb::redis::scan<Out>> &&reply) {
+            ++completions;
+            ok = reply.ok();
+        };
+        EXPECT_NO_THROW((adapter.hscan<decltype(callback) &, Out>(callback, "owned-hash", "*")));
+        EXPECT_EQ(adapter.page_requests, 1u);
+        EXPECT_EQ(completions, 1);
+        EXPECT_EQ(ok, mode == Mode::FirstCompleteThenThrow);
+        if (mode != Mode::FirstCompleteThenThrow) {
+            EXPECT_NO_THROW(adapter.deliver_late_page());
+            EXPECT_EQ(completions, 1);
+            EXPECT_FALSE(ok);
+        }
+    }
+}
 
 INSTANTIATE_PROTOCOL_MODES(HashProtocolModesTest);
 
@@ -338,6 +537,45 @@ TEST_P(HashProtocolModesTest, SCAN_ASSERTS_FIELDS_AND_VALUES) {
         EXPECT_EQ(items.at("field2"), "value2");
         EXPECT_EQ(items.at("field3"), "value3");
 
+        using Flat    = std::vector<std::string>;
+        using Ordered = std::map<std::string, std::string>;
+        const Ordered expected{{"field1", "value1"}, {"field2", "value2"}, {"field3", "value3"}};
+
+        auto flat = co_await redis.hscan<Flat>(key, 0, "*", 100);
+        static_assert(std::is_same_v<decltype(flat), qb::redis::Reply<qb::redis::scan<Flat>>>);
+        EXPECT_TRUE(flat.ok()) << flat.error();
+        EXPECT_EQ(flat.result().cursor, 0u);
+        EXPECT_EQ(flat.result().items.size(), 6u);
+        Ordered flat_pairs;
+        for (size_t i = 0; i + 1 < flat.result().items.size(); i += 2)
+            flat_pairs.emplace(flat.result().items[i], flat.result().items[i + 1]);
+        EXPECT_EQ(flat_pairs, expected);
+
+        auto ordered = co_await redis.hscan<Ordered>(key, 0, "*", 100);
+        EXPECT_TRUE(ordered.ok()) << ordered.error();
+        EXPECT_EQ(ordered.result().cursor, 0u);
+        EXPECT_EQ(ordered.result().items, expected);
+
+        // The explicit-Out callback page is the working propagation control.
+        auto callback_page = co_await redis.make_coro_command<qb::redis::scan<Flat>>(
+            [this, key](auto &&callback) { redis.hscan<std::decay_t<decltype(callback)>, Flat>(std::move(callback), key, 0, "*", 100); });
+        EXPECT_TRUE(callback_page.ok()) << callback_page.error();
+        EXPECT_EQ(callback_page.result().items, flat.result().items);
+
+        auto automatic_flat = co_await redis.make_coro_command<qb::redis::scan<Flat>>(
+            [this, key](auto &&callback) { redis.hscan<std::decay_t<decltype(callback)>, Flat>(std::move(callback), key, "*"); });
+        EXPECT_TRUE(automatic_flat.ok()) << automatic_flat.error();
+        EXPECT_EQ(automatic_flat.result().cursor, 0u);
+        EXPECT_EQ(automatic_flat.result().items, flat.result().items);
+
+        auto wrong_type = co_await redis.set(protocol_key("scan_wrong_type"), "scalar");
+        EXPECT_TRUE(wrong_type.ok()) << wrong_type.error();
+        using Hash       = qb::unordered_map<std::string, std::string>;
+        auto failed_scan = co_await redis.make_coro_command<qb::redis::scan<Hash>>(
+            [this](auto &&callback) { redis.hscan(std::move(callback), protocol_key("scan_wrong_type"), "*"); });
+        EXPECT_FALSE(failed_scan.ok());
+        EXPECT_NE(failed_scan.error().find("WRONGTYPE"), std::string::npos);
+
         completed = true;
     });
     run_coro_test_until(completed);
@@ -417,9 +655,26 @@ TEST_P(HashProtocolModesTest, SCAN_LARGE_HASH_MULTI_CURSOR) {
         EXPECT_EQ(collected.at("f0"), "v0");
         EXPECT_EQ(collected.at("f499"), "v499");
 
+        // The automatic scanner must propagate its default map through both
+        // the first request and every subsequent cursor request.
+        using Hash     = qb::unordered_map<std::string, std::string>;
+        auto automatic = co_await redis.make_coro_command<qb::redis::scan<Hash>>(
+            [this, key](auto &&callback) { redis.hscan(std::move(callback), key, "*"); });
+        EXPECT_TRUE(automatic.ok()) << automatic.error();
+        EXPECT_EQ(automatic.result().cursor, 0u);
+        EXPECT_EQ(automatic.result().items, collected);
+
+        using Ordered          = std::map<std::string, std::string>;
+        auto automatic_ordered = co_await redis.make_coro_command<qb::redis::scan<Ordered>>(
+            [this, key](auto &&callback) { redis.hscan<std::decay_t<decltype(callback)>, Ordered>(std::move(callback), key, "*"); });
+        EXPECT_TRUE(automatic_ordered.ok()) << automatic_ordered.error();
+        EXPECT_EQ(automatic_ordered.result().cursor, 0u);
+        const Ordered expected(collected.begin(), collected.end());
+        EXPECT_EQ(automatic_ordered.result().items, expected);
+
         completed = true;
     });
     run_coro_test_until(completed, std::chrono::seconds(60));
 }
 
-} // namespace
+} // namespace hash_commands_test

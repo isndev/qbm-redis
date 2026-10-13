@@ -48,20 +48,25 @@ below are the correct way to express expiry.)
 | `std::vector<std::string>`   | a key/value list                       | `keys`, `sortKey`, `sortKeyRo`                                                                                    |
 | `qb::redis::scan<>`          | one SCAN round-trip: `{cursor, items}` | `scan`                                                                                                            |
 
-`qb::redis::Reply<T>` (`reply.h:1206`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1225`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. Reads of TTL/count replies go through `reply.result()`; optional replies are tested with
 `reply.result().has_value()`. See [Command API model](./commands_overview.md) for the full reply surface.
 
 ### `qb::redis::status`
 
-`status` (`types.h:534`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`src/qbm/redis/types.h:534`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
 
 ### `qb::redis::scan<Out>`
 
-`scan<Out>` (`types.h:592-596`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
+`scan<Out>` (`src/qbm/redis/types.h:592-596`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
 `SCAN` returns one of these per round-trip; a returned `cursor` of `0` signals the iteration is complete. You loop on
 the cursor yourself (see [`scan`](#scan) below).
+
+The coroutine `exists`, `touch` and `unlink` wrappers accept literal key arguments as well as strings and containers.
+Their by-value captures copy owning lvalues and move rvalues; pointers and `std::string_view` remain borrowed until
+the awaiter's command serialization. Keep borrowed key data alive through that point.
+<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:184-189,626-631,696-701 -->
 
 ### Method-name renames
 

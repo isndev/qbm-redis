@@ -26,7 +26,10 @@
 //
 
 #include <gtest/gtest.h>
+#include <limits>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include <qbm/redis/reply.h>
 #include <qbm/redis/server_reply.h>
@@ -457,12 +460,32 @@ TEST(ExtractScoreMember, IntegerScoreWidens) {
 }
 
 TEST(ExtractScoreMember, NotEnoughElementsIsError) {
+    for (size_t count = 0; count <= 2; ++count) {
+        Array arr;
+        if (count > 0)
+            arr.elements.push_back(heap(Value(BulkString{"member"})));
+        if (count > 1)
+            arr.elements.push_back(heap(Value(Integer{4})));
+        Value val(std::move(arr));
+        for (size_t index = count == 0 ? 0 : count - 1; index <= count; ++index) {
+            SCOPED_TRACE(::testing::Message() << "size=" << count << " index=" << index);
+            auto r = qb::redis::extract_score_member(val.as_array(), index);
+            ASSERT_FALSE(r.has_value());
+            EXPECT_EQ(r.error(), "not enough elements for score-member pair");
+        }
+    }
+}
+
+// Run this case under ASan/UBSan on the base: an unchecked wrapped index must
+// not be mistaken for a successful bounds check merely because it did not crash.
+TEST(ExtractScoreMember, LargestIndexIsRejected) {
     Array arr;
-    arr.elements.push_back(heap(Value(BulkString{"only-member"})));
+    arr.elements.push_back(heap(Value(BulkString{"member"})));
+    arr.elements.push_back(heap(Value(Integer{4})));
     Value val(std::move(arr));
 
-    auto r = qb::redis::extract_score_member(val.as_array(), 0);
-    EXPECT_FALSE(r.has_value());
+    auto r = qb::redis::extract_score_member(val.as_array(), std::numeric_limits<size_t>::max());
+    ASSERT_FALSE(r.has_value());
     EXPECT_EQ(r.error(), "not enough elements for score-member pair");
 }
 
@@ -514,6 +537,22 @@ TEST(AsyncResult, SuccessHoldsValue) {
     EXPECT_FALSE(r.has_error());
     EXPECT_EQ(r.value(), 42);
     EXPECT_TRUE(static_cast<bool>(r));
+
+    qb::redis::AsyncResult<std::unique_ptr<int>> owned(std::make_unique<int>(7));
+    ASSERT_TRUE(owned.is_ok());
+    auto moved = std::move(owned).value();
+    EXPECT_EQ(*moved, 7);
+
+    qb::redis::AsyncResult<std::string> empty;
+    EXPECT_TRUE(empty.is_ok());
+    EXPECT_TRUE(empty.value().empty());
+
+    // Only exact std::string loses the legacy error constructor. A const value
+    // type still has distinct value/error constructors, subject to expected<T>.
+    const std::string                         payload = "const value";
+    qb::redis::AsyncResult<const std::string> constant(std::move(payload));
+    EXPECT_TRUE(constant.is_ok());
+    EXPECT_EQ(constant.value(), "const value");
 }
 
 TEST(AsyncResult, ErrorHoldsMessage) {
@@ -522,15 +561,54 @@ TEST(AsyncResult, ErrorHoldsMessage) {
     EXPECT_TRUE(r.has_error());
     EXPECT_EQ(r.error(), "failure");
     EXPECT_FALSE(static_cast<bool>(r));
+
+    auto string_error = qb::redis::AsyncResult<std::string>::from_error("failure");
+    EXPECT_FALSE(string_error.is_ok());
+    EXPECT_TRUE(string_error.has_error());
+    EXPECT_EQ(string_error.error(), "failure");
+    EXPECT_FALSE(static_cast<bool>(string_error));
+
+    auto empty_error = qb::redis::AsyncResult<std::string>::from_error("");
+    EXPECT_TRUE(empty_error.has_error());
+    EXPECT_TRUE(empty_error.error().empty());
+
+    qb::redis::AsyncResult<const std::string> constant_error(std::string("const failure"));
+    EXPECT_TRUE(constant_error.has_error());
+    EXPECT_EQ(constant_error.error(), "const failure");
+
+    auto integer_error = qb::redis::AsyncResult<int>::from_error("explicit integer failure");
+    EXPECT_TRUE(integer_error.has_error());
+    EXPECT_EQ(integer_error.error(), "explicit integer failure");
+
+#if !QB_COMPAT_HAS_STD_EXPECTED
+    // std::expected forbids unexpected<T> as a payload. The C++20 backport
+    // allows it and historically selects its T&& value constructor here.
+    // Preserve that constructor while making the explicit factory a failure.
+    using Tagged = qb::unexpected<std::string>;
+    qb::redis::AsyncResult<Tagged> legacy(std::string("legacy"));
+    ASSERT_TRUE(legacy.is_ok());
+    EXPECT_EQ(legacy.value().error(), "legacy");
+    auto tagged_error = qb::redis::AsyncResult<Tagged>::from_error("explicit tagged failure");
+    EXPECT_FALSE(tagged_error.is_ok());
+    EXPECT_TRUE(tagged_error.has_error());
+    EXPECT_EQ(tagged_error.error(), "explicit tagged failure");
+#endif
 }
 
 TEST(AsyncResult, ArrowOperator) {
-    // NB: AsyncResult<std::string> is unusable (value ctor AsyncResult(T&&) and
-    // error ctor AsyncResult(std::string&&) collide), so exercise operator-> on
-    // a non-string value type.
     qb::redis::AsyncResult<std::vector<int>> r(std::vector<int>{1, 2, 3});
     ASSERT_TRUE(r.is_ok());
     EXPECT_EQ(r->size(), 3u);
+
+    qb::redis::AsyncResult<std::string> text(std::string("payload"));
+    ASSERT_TRUE(text.is_ok());
+    EXPECT_FALSE(text.has_error());
+    const auto &read = text;
+    EXPECT_EQ(read->size(), 7u);
+    EXPECT_EQ(read.value(), "payload");
+    text->append("!");
+    std::string moved = std::move(text).value();
+    EXPECT_EQ(moved, "payload!");
 }
 
 TEST(AsyncResult, VoidSuccessAndError) {
@@ -544,6 +622,15 @@ TEST(AsyncResult, VoidSuccessAndError) {
     EXPECT_TRUE(err.has_error());         // has_error() error path
     EXPECT_FALSE(static_cast<bool>(err)); // operator bool() error path
     EXPECT_EQ(err.error(), "void error");
+
+    auto explicit_error = qb::redis::AsyncResult<void>::from_error("void factory error");
+    EXPECT_FALSE(explicit_error.is_ok());
+    EXPECT_TRUE(explicit_error.has_error());
+    EXPECT_EQ(explicit_error.error(), "void factory error");
+
+    auto empty_error = qb::redis::AsyncResult<void>::from_error("");
+    EXPECT_TRUE(empty_error.has_error());
+    EXPECT_TRUE(empty_error.error().empty());
 }
 
 // ============================================================================

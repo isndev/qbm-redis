@@ -88,3 +88,35 @@ TEST(RedisSerializationFailure, ACommandBehindQueuedOnesRollsBackOnlyItsOwnBytes
     EXPECT_EQ(client.pending_reply_count(), 1u) << "the command queued before it keeps its handler";
     EXPECT_EQ(written(client.out()), before) << "the bytes queued before it are untouched";
 }
+
+TEST(RedisCommandFrames, ClientKillEncodesBothSkipmeValues) {
+    const auto noop = [](qb::redis::Reply<long long> &&) {
+    };
+    for (bool skipme : {false, true}) {
+        SCOPED_TRACE(skipme);
+        const std::string suffix = skipme ? "$6\r\nSKIPME\r\n$3\r\nyes\r\n" : "$6\r\nSKIPME\r\n$2\r\nno\r\n";
+        {
+            qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+            client.client_kill(noop, "", 37, "", skipme);
+            EXPECT_EQ(written(client.out()), "*6\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n$2\r\nID\r\n$2\r\n37\r\n" + suffix);
+            EXPECT_EQ(client.pending_reply_count(), 1u);
+        }
+        {
+            qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+            client.client_kill(noop, "127.0.0.1:45678", 0, "", skipme);
+            EXPECT_EQ(written(client.out()), "*6\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n$4\r\nADDR\r\n$15\r\n127.0.0.1:45678\r\n" + suffix);
+        }
+        {
+            qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+            client.client_kill(noop, "", 0, "", skipme);
+            EXPECT_EQ(written(client.out()), "*4\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n" + suffix);
+        }
+    }
+}
+
+TEST(RedisCommandFrames, CommandStatsUsesNativeInfoSection) {
+    qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+    client.command_stats([](qb::redis::Reply<qb::json> &&) {});
+    EXPECT_EQ(written(client.out()), "*2\r\n$4\r\nINFO\r\n$12\r\ncommandstats\r\n");
+    EXPECT_EQ(client.pending_reply_count(), 1u);
+}

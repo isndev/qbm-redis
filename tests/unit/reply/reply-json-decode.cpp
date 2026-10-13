@@ -28,16 +28,82 @@
 //
 
 #include <cmath>
+#include <cstdint>
 #include <gtest/gtest.h>
 #include <limits>
+#include <memory>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include "../../shared/reply_value_builders.h"
+#include <qbm/redis/commands/server_commands.h>
 
 using namespace qb::redis::test;
 using qb::redis::parser::BigNumber;
 using qb::redis::parser::Boolean;
 using qb::redis::parser::BulkError;
 using qb::redis::parser::SimpleError;
+
+namespace redis_json_commands_test {
+
+// Compose the public command mixin with a scripted command<T> transport seam.
+// The real TReply performs decoding and completion; no decoder is duplicated and
+// no Redis private member, socket, service or event-loop callback is invoked.
+class ScriptedServerCommands : public qb::redis::server_commands<ScriptedServerCommands> {
+    std::unique_ptr<Value>    _reply;
+    qb::allocator::pipe<char> _out;
+    size_t                    _commands{0};
+
+public:
+    explicit ScriptedServerCommands(Value raw)
+        : _reply(std::make_unique<Value>(std::move(raw))) {}
+
+    template <typename Ret, typename Func, typename... Args>
+    ScriptedServerCommands &
+    command(Func &&func, const std::string &name, Args &&...args) {
+        qb::redis::put_in_pipe(_out, name, std::forward<Args>(args)...);
+        qb::redis::TReply<Func, Ret> handler{std::forward<Func>(func)};
+        ++_commands;
+        handler(std::move(_reply));
+        return *this;
+    }
+
+    [[nodiscard]] std::string
+    written() const {
+        return {_out.begin(), _out.size()};
+    }
+
+    [[nodiscard]] size_t
+    commands() const {
+        return _commands;
+    }
+};
+
+enum class AdminCommand { role, stats };
+
+qb::redis::Reply<qb::json>
+reply_from(AdminCommand command, Value raw) {
+    ScriptedServerCommands     server(std::move(raw));
+    qb::redis::Reply<qb::json> result;
+    size_t                     completions = 0;
+    auto                       callback    = [&](qb::redis::Reply<qb::json> &&reply) {
+        ++completions;
+        result = std::move(reply);
+    };
+    if (command == AdminCommand::role) {
+        server.role(std::move(callback));
+        EXPECT_EQ(server.written(), "*1\r\n$4\r\nROLE\r\n");
+    } else {
+        server.command_stats(std::move(callback));
+    }
+    EXPECT_EQ(server.commands(), 1u);
+    EXPECT_EQ(completions, 1u);
+    return result;
+}
+
+} // namespace redis_json_commands_test
+
+using namespace redis_json_commands_test;
 
 // ============================================================================
 // 1. parse<qb::json> - all scalar types
@@ -409,4 +475,217 @@ TEST(ReplyJsonScalar, AttributeWithNoInnerValueIsNull) {
     Value v(qb::redis::parser::Attribute{});
     auto  j = do_parse<qb::json>(v);
     EXPECT_TRUE(j.is_null());
+}
+
+TEST(ReplyJsonCommands, RoleSentinelKeepsPositionAndAllMasterNames) {
+    for (size_t count : {0u, 1u, 2u}) {
+        SCOPED_TRACE(count);
+        std::vector<std::unique_ptr<Value>> names;
+        if (count > 0)
+            names.push_back(mk_bulk("primary-a"));
+        if (count > 1)
+            names.push_back(mk_bulk("primary-b"));
+        std::vector<std::unique_ptr<Value>> elements;
+        elements.push_back(mk_bulk("sentinel"));
+        elements.push_back(std::make_unique<Value>(make_array(std::move(names))));
+
+        auto reply = reply_from(AdminCommand::role, make_array(std::move(elements)));
+        ASSERT_TRUE(reply.ok()) << reply.error();
+        ASSERT_TRUE(reply.result().is_array()) << reply.result();
+        ASSERT_EQ(reply.result().size(), 2u);
+        EXPECT_EQ(reply.result()[0], "sentinel");
+        ASSERT_TRUE(reply.result()[1].is_array());
+        EXPECT_EQ(reply.result()[1].size(), count);
+        if (count > 0)
+            EXPECT_EQ(reply.result()[1][0], "primary-a");
+        if (count > 1)
+            EXPECT_EQ(reply.result()[1][1], "primary-b");
+        ASSERT_NE(reply.raw(), nullptr);
+        EXPECT_TRUE(reply.raw()->is_array());
+    }
+}
+
+TEST(ReplyJsonCommands, RoleMasterAndReplicaKeepNativeIntegerOffsets) {
+    constexpr int64_t offset = 9007199254740993LL; // above the double-exact boundary
+    {
+        std::vector<std::unique_ptr<Value>> replica;
+        replica.push_back(mk_bulk("127.0.0.1"));
+        replica.push_back(mk_int(6379));
+        replica.push_back(mk_int(offset));
+        std::vector<std::unique_ptr<Value>> replicas;
+        replicas.push_back(std::make_unique<Value>(make_array(std::move(replica))));
+        std::vector<std::unique_ptr<Value>> elements;
+        elements.push_back(mk_bulk("master"));
+        elements.push_back(mk_int(offset));
+        elements.push_back(std::make_unique<Value>(make_array(std::move(replicas))));
+        auto reply = reply_from(AdminCommand::role, make_array(std::move(elements)));
+        ASSERT_TRUE(reply.ok()) << reply.error();
+        ASSERT_TRUE(reply.result().is_array());
+        ASSERT_EQ(reply.result().size(), 3u);
+        EXPECT_EQ(reply.result()[0], "master");
+        ASSERT_TRUE(reply.result()[1].is_number_integer());
+        EXPECT_EQ(reply.result()[1].get<int64_t>(), offset);
+        ASSERT_TRUE(reply.result()[2].is_array());
+        ASSERT_EQ(reply.result()[2].size(), 1u);
+        ASSERT_TRUE(reply.result()[2][0].is_array());
+        ASSERT_EQ(reply.result()[2][0].size(), 3u);
+        EXPECT_TRUE(reply.result()[2][0][1].is_number_integer());
+        ASSERT_TRUE(reply.result()[2][0][2].is_number_integer());
+        EXPECT_EQ(reply.result()[2][0][2].get<int64_t>(), offset);
+        EXPECT_EQ(reply.result()[2][0], qb::json::array({"127.0.0.1", 6379, offset}));
+    }
+    {
+        std::vector<std::unique_ptr<Value>> elements;
+        elements.push_back(mk_bulk("slave"));
+        elements.push_back(mk_bulk("127.0.0.1"));
+        elements.push_back(mk_int(6379));
+        elements.push_back(mk_bulk("connected"));
+        elements.push_back(mk_int(offset));
+        auto reply = reply_from(AdminCommand::role, make_array(std::move(elements)));
+        ASSERT_TRUE(reply.ok()) << reply.error();
+        ASSERT_TRUE(reply.result().is_array());
+        ASSERT_EQ(reply.result().size(), 5u);
+        EXPECT_TRUE(reply.result()[2].is_number_integer());
+        ASSERT_TRUE(reply.result()[4].is_number_integer());
+        EXPECT_EQ(reply.result()[4].get<int64_t>(), offset);
+        EXPECT_EQ(reply.result(), qb::json::array({"slave", "127.0.0.1", 6379, "connected", offset}));
+    }
+}
+
+TEST(ReplyJsonCommands, CommandStatsKeepsNativeKeysAndCompleteTextValues) {
+    const std::string ping   = "calls=7,usec=13,usec_per_call=1.857,rejected_calls=0,failed_calls=0";
+    const std::string future = "calls=0,usec=0,usec_per_call=0,future_field=a:b";
+    const std::string native = "# Commandstats\r\n\r\ncmdstat_ping:" + ping + "\r\ncmdstat_future:" + future + "\r\n";
+    auto              reply  = reply_from(AdminCommand::stats, Value(BulkString{native}));
+    ASSERT_TRUE(reply.ok()) << reply.error();
+    ASSERT_TRUE(reply.result().is_object()) << reply.result();
+    qb::json expected          = qb::json::object();
+    expected["cmdstat_ping"]   = ping;
+    expected["cmdstat_future"] = future;
+    EXPECT_EQ(reply.result(), expected);
+    ASSERT_NE(reply.raw(), nullptr);
+    EXPECT_EQ(reply.raw()->as_string_view(), native);
+}
+
+// Keep this control independent so it still executes on the red base after the
+// command-specific object assertion fails in its own test.
+TEST(ReplyJsonCommands, GenericInfoBulkRemainsAString) {
+    const std::string native  = "# Commandstats\r\ncmdstat_ping:calls=7,usec=13,usec_per_call=1.857\r\n";
+    auto              generic = do_parse<qb::json>(Value(BulkString{native}));
+    ASSERT_TRUE(generic.is_string());
+    EXPECT_EQ(generic.get<std::string>(), native);
+}
+
+TEST(ReplyJsonCommands, EmptyCommandStatsIsASuccessfulEmptyObject) {
+    auto reply = reply_from(AdminCommand::stats, Value(BulkString{"# Commandstats\r\n\r\n"}));
+    ASSERT_TRUE(reply.ok()) << reply.error();
+    EXPECT_EQ(reply.result(), qb::json::object());
+}
+
+TEST(ReplyJsonCommands, AdministrativeErrorsKeepNativeReasonAndRawValue) {
+    for (auto command : {AdminCommand::role, AdminCommand::stats}) {
+        for (bool attributed : {false, true}) {
+            Value             error(SimpleError{"ERR", "denied"});
+            const std::string native_reason(error.get_error_message());
+            if (attributed) {
+                qb::redis::parser::Attribute attribute;
+                attribute.value = std::make_unique<Value>(std::move(error));
+                error           = Value(std::move(attribute));
+            }
+            auto reply = reply_from(command, std::move(error));
+            EXPECT_FALSE(reply.ok());
+            EXPECT_EQ(reply.error(), native_reason);
+            ASSERT_NE(reply.raw(), nullptr);
+            const auto &raw = attributed ? *reply.raw()->as_attribute().value : *reply.raw();
+            EXPECT_TRUE(raw.is_error());
+            EXPECT_EQ(raw.get_error_message(), native_reason);
+        }
+    }
+}
+
+TEST(ReplyJsonCommands, RoleNamesThatLookLikeJsonRemainStrings) {
+    std::vector<std::unique_ptr<Value>> names;
+    names.push_back(mk_bulk("[1]"));
+    names.push_back(mk_bulk("{\"name\":1}"));
+    std::vector<std::unique_ptr<Value>> elements;
+    elements.push_back(mk_bulk("sentinel"));
+    elements.push_back(std::make_unique<Value>(make_array(std::move(names))));
+    auto reply = reply_from(AdminCommand::role, make_array(std::move(elements)));
+    ASSERT_TRUE(reply.ok()) << reply.error();
+    ASSERT_TRUE(reply.result().is_array());
+    ASSERT_EQ(reply.result().size(), 2u);
+    EXPECT_EQ(reply.result()[1], qb::json::array({"[1]", "{\"name\":1}"}));
+    ASSERT_TRUE(reply.result()[1][0].is_string());
+    ASSERT_TRUE(reply.result()[1][1].is_string());
+}
+
+TEST(ReplyJsonCommands, LvalueCallbackStateRemainsCallerOwned) {
+    struct Counter {
+        size_t calls{0};
+        void
+        operator()(qb::redis::Reply<qb::json> &&) {
+            ++calls;
+        }
+    };
+    {
+        std::vector<std::unique_ptr<Value>> elements;
+        elements.push_back(mk_bulk("master"));
+        elements.push_back(mk_int(0));
+        elements.push_back(std::make_unique<Value>(make_array({})));
+        ScriptedServerCommands server(make_array(std::move(elements)));
+        Counter                counter;
+        server.role(counter);
+        EXPECT_EQ(counter.calls, 1u);
+    }
+    {
+        ScriptedServerCommands server(Value(BulkString{"# Commandstats\r\n"}));
+        Counter                counter;
+        server.command_stats(counter);
+        EXPECT_EQ(counter.calls, 1u);
+    }
+}
+
+TEST(ReplyJsonCommands, MalformedCommandRepliesKeepDecodeFailureAndRawValue) {
+    for (auto command : {AdminCommand::role, AdminCommand::stats}) {
+        const std::string malformed = "# Commandstats\r\nmissing-field-separator\r\n";
+        auto              reply     = reply_from(command, Value(BulkString{malformed}));
+        EXPECT_FALSE(reply.ok());
+        EXPECT_FALSE(reply.error().empty());
+        ASSERT_NE(reply.raw(), nullptr);
+        EXPECT_EQ(reply.raw()->as_string_view(), malformed);
+    }
+}
+
+TEST(ReplyJsonCommands, AttributedRoleKeepsCommandSpecificPolicyAndRaw) {
+    qb::redis::parser::Attribute name;
+    name.value = mk_bulk("{\"name\":true}");
+    std::vector<std::unique_ptr<Value>> names;
+    names.push_back(std::make_unique<Value>(std::move(name)));
+    names.push_back(mk_bulk("second"));
+    qb::redis::parser::Attribute nested;
+    nested.value = std::make_unique<Value>(make_array(std::move(names)));
+    std::vector<std::unique_ptr<Value>> elements;
+    elements.push_back(mk_bulk("sentinel"));
+    elements.push_back(std::make_unique<Value>(std::move(nested)));
+    qb::redis::parser::Attribute outer;
+    outer.value = std::make_unique<Value>(make_array(std::move(elements)));
+    auto reply  = reply_from(AdminCommand::role, Value(std::move(outer)));
+    ASSERT_TRUE(reply.ok()) << reply.error();
+    EXPECT_EQ(reply.result(), qb::json::array({"sentinel", qb::json::array({"{\"name\":true}", "second"})}));
+    ASSERT_NE(reply.raw(), nullptr);
+    EXPECT_TRUE(std::holds_alternative<qb::redis::parser::Attribute>(*reply.raw()));
+}
+
+TEST(ReplyJsonCommands, AttributedCommandStatsKeepsFieldsAndRaw) {
+    qb::redis::parser::Attribute inner;
+    inner.value = mk_bulk("# Commandstats\r\ncmdstat_ping:calls=7,future=a:b\r\n");
+    qb::redis::parser::Attribute outer;
+    outer.value = std::make_unique<Value>(std::move(inner));
+    auto reply  = reply_from(AdminCommand::stats, Value(std::move(outer)));
+    ASSERT_TRUE(reply.ok()) << reply.error();
+    qb::json expected        = qb::json::object();
+    expected["cmdstat_ping"] = "calls=7,future=a:b";
+    EXPECT_EQ(reply.result(), expected);
+    ASSERT_NE(reply.raw(), nullptr);
+    EXPECT_TRUE(std::holds_alternative<qb::redis::parser::Attribute>(*reply.raw()));
 }
