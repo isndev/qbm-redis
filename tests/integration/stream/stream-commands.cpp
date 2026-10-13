@@ -37,7 +37,10 @@
  */
 
 #include <gtest/gtest.h>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include "../../shared/redis_integration_fixture.h"
@@ -47,10 +50,101 @@ using namespace qb::io;
 using namespace qb::redis::test;
 
 namespace {
-/// True if the serialized JSON reply contains @p needle (mode-agnostic field/value probe).
-bool
-json_contains(const qb::json &j, const std::string &needle) {
-    return j.dump().find(needle) != std::string::npos;
+struct LogicalStreamEntry {
+    std::string                                      id;
+    std::vector<std::pair<std::string, std::string>> fields;
+
+    bool operator==(const LogicalStreamEntry &) const = default;
+};
+
+[[nodiscard]] bool
+json_contains(const qb::json &wire, const std::string &needle) {
+    return wire.dump().find(needle) != std::string::npos;
+}
+
+[[nodiscard]] std::optional<std::vector<std::pair<std::string, std::string>>>
+decode_fields(const qb::json &wire) {
+    std::vector<std::pair<std::string, std::string>> fields;
+    if (wire.is_object()) {
+        for (auto it = wire.begin(); it != wire.end(); ++it) {
+            if (!it.value().is_string())
+                return std::nullopt;
+            fields.emplace_back(it.key(), it.value().get<std::string>());
+        }
+        return fields;
+    }
+    if (!wire.is_array() || wire.size() % 2 != 0)
+        return std::nullopt;
+    for (std::size_t i = 0; i < wire.size(); i += 2) {
+        if (!wire[i].is_string() || !wire[i + 1].is_string())
+            return std::nullopt;
+        fields.emplace_back(wire[i].get<std::string>(), wire[i + 1].get<std::string>());
+    }
+    return fields;
+}
+
+[[nodiscard]] std::optional<std::vector<LogicalStreamEntry>>
+decode_entry_array(const qb::json &wire) {
+    if (!wire.is_array())
+        return std::nullopt;
+    std::vector<LogicalStreamEntry> entries;
+    for (const auto &entry : wire) {
+        std::string     id;
+        const qb::json *field_wire = nullptr;
+        if (entry.is_array() && entry.size() == 2 && entry[0].is_string()) {
+            id         = entry[0].get<std::string>();
+            field_wire = &entry[1];
+        } else if (entry.is_object() && entry.size() == 1) {
+            const auto it = entry.begin();
+            id            = it.key();
+            field_wire    = &it.value();
+        } else {
+            return std::nullopt;
+        }
+        auto fields = decode_fields(*field_wire);
+        if (!fields)
+            return std::nullopt;
+        entries.push_back({std::move(id), std::move(*fields)});
+    }
+    return entries;
+}
+
+/// Normalize RESP2's nested arrays and RESP3's map into one logical stream view.
+[[nodiscard]] std::optional<std::vector<LogicalStreamEntry>>
+decode_stream(const qb::json &wire, const std::string &key) {
+    if (wire.is_null() || (wire.is_array() && wire.empty()))
+        return std::vector<LogicalStreamEntry>{};
+    if (wire.is_object()) {
+        const auto it = wire.find(key);
+        if (it == wire.end())
+            return std::nullopt;
+        return decode_entry_array(*it);
+    }
+    if (!wire.is_array())
+        return std::nullopt;
+    for (const auto &stream : wire) {
+        if (stream.is_array() && stream.size() == 2 && stream[0].is_string() && stream[0].get<std::string>() == key)
+            return decode_entry_array(stream[1]);
+        if (stream.is_object()) {
+            const auto it = stream.find(key);
+            if (it != stream.end())
+                return decode_entry_array(*it);
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::vector<std::pair<std::string, std::string>>>
+decode_pending_owners(const qb::json &wire) {
+    if (!wire.is_array())
+        return std::nullopt;
+    std::vector<std::pair<std::string, std::string>> pending;
+    for (const auto &entry : wire) {
+        if (!entry.is_array() || entry.size() < 2 || !entry[0].is_string() || !entry[1].is_string())
+            return std::nullopt;
+        pending.emplace_back(entry[0].get<std::string>(), entry[1].get<std::string>());
+    }
+    return pending;
 }
 } // namespace
 
@@ -240,24 +334,47 @@ TEST_P(StreamProtocolModesTest, XREAD) {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
         std::string key = protocol_key("read");
 
-        CO_IGNORE(co_await redis.xadd(key, {{"field1", "value1"}}));
-        CO_IGNORE(co_await redis.xadd(key, {{"field2", "value2"}}));
-        CO_IGNORE(co_await redis.xadd(key, {{"field3", "value3"}}));
+        auto added1 = co_await redis.xadd(key, {{"field1", "value1"}});
+        auto added2 = co_await redis.xadd(key, {{"field2", "value2"}});
+        auto added3 = co_await redis.xadd(key, {{"field3", "value3"}});
+        if (!(added1.ok() && added2.ok() && added3.ok())) {
+            ADD_FAILURE() << "failed to seed all XREAD entries";
+            completed = true;
+            co_return;
+        }
 
         auto read_reply = co_await redis.xread(key, "0", 10);
-        EXPECT_TRUE(read_reply.ok()) << read_reply.error();
-        const auto &j = read_reply.result();
-        EXPECT_FALSE(j.is_null());
-        // All three field/value pairs must be present in the decoded reply.
-        EXPECT_TRUE(json_contains(j, "field1"));
-        EXPECT_TRUE(json_contains(j, "value1"));
-        EXPECT_TRUE(json_contains(j, "field3"));
-        EXPECT_TRUE(json_contains(j, "value3"));
+        if (!read_reply.ok()) {
+            ADD_FAILURE() << read_reply.error();
+            completed = true;
+            co_return;
+        }
+        auto entries = decode_stream(read_reply.result(), key);
+        if (!entries) {
+            ADD_FAILURE() << "XREAD reply has no decodable stream entry shape: " << read_reply.result().dump();
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(*entries, (std::vector<LogicalStreamEntry>{
+                                {added1.result().to_string(), {{"field1", "value1"}}},
+                                {added2.result().to_string(), {{"field2", "value2"}}},
+                                {added3.result().to_string(), {{"field3", "value3"}}},
+                            }));
 
         // Reading from the max id ("$" newest) with no new entries yields an empty reply.
         auto empty_reply = co_await redis.xread(key, "$", 10);
-        EXPECT_TRUE(empty_reply.ok()) << empty_reply.error();
-        EXPECT_FALSE(json_contains(empty_reply.result(), "value1"));
+        if (!empty_reply.ok()) {
+            ADD_FAILURE() << empty_reply.error();
+            completed = true;
+            co_return;
+        }
+        auto empty = decode_stream(empty_reply.result(), key);
+        if (!empty) {
+            ADD_FAILURE() << "empty XREAD reply has no decodable stream shape: " << empty_reply.result().dump();
+            completed = true;
+            co_return;
+        }
+        EXPECT_TRUE(empty->empty());
 
         CO_IGNORE(co_await redis.del(key));
         completed = true;
@@ -274,21 +391,51 @@ TEST_P(StreamProtocolModesTest, XREADGROUP) {
         std::string group    = "testgroup";
         std::string consumer = "testconsumer";
 
-        CO_IGNORE(co_await redis.xadd(key, {{"field", "value1"}}));
-        CO_IGNORE(co_await redis.xadd(key, {{"field", "value2"}}));
-        EXPECT_TRUE((co_await redis.xgroup_create(key, group, "0", true)).ok());
+        auto added1 = co_await redis.xadd(key, {{"field", "value1"}});
+        auto added2 = co_await redis.xadd(key, {{"field", "value2"}});
+        if (!(added1.ok() && added2.ok())) {
+            ADD_FAILURE() << "failed to seed all XREADGROUP entries";
+            completed = true;
+            co_return;
+        }
+        auto group_created = co_await redis.xgroup_create(key, group, "0", true);
+        if (!group_created.ok()) {
+            ADD_FAILURE() << "failed to create XREADGROUP group: " << group_created.error();
+            completed = true;
+            co_return;
+        }
 
         auto read_reply = co_await redis.xreadgroup(key, group, consumer, ">", 10);
-        EXPECT_TRUE(read_reply.ok()) << read_reply.error();
-        const auto &j = read_reply.result();
-        EXPECT_FALSE(j.is_null());
-        EXPECT_TRUE(json_contains(j, "value1"));
-        EXPECT_TRUE(json_contains(j, "value2"));
+        if (!read_reply.ok()) {
+            ADD_FAILURE() << read_reply.error();
+            completed = true;
+            co_return;
+        }
+        auto entries = decode_stream(read_reply.result(), key);
+        if (!entries) {
+            ADD_FAILURE() << "XREADGROUP reply has no decodable stream entry shape: " << read_reply.result().dump();
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(*entries, (std::vector<LogicalStreamEntry>{
+                                {added1.result().to_string(), {{"field", "value1"}}},
+                                {added2.result().to_string(), {{"field", "value2"}}},
+                            }));
 
         // A second ">" read returns nothing new (both already delivered to this consumer).
         auto again = co_await redis.xreadgroup(key, group, consumer, ">", 10);
-        EXPECT_TRUE(again.ok()) << again.error();
-        EXPECT_FALSE(json_contains(again.result(), "value1"));
+        if (!again.ok()) {
+            ADD_FAILURE() << again.error();
+            completed = true;
+            co_return;
+        }
+        auto no_new_entries = decode_stream(again.result(), key);
+        if (!no_new_entries) {
+            ADD_FAILURE() << "empty XREADGROUP reply has no decodable stream shape: " << again.result().dump();
+            completed = true;
+            co_return;
+        }
+        EXPECT_TRUE(no_new_entries->empty());
 
         CO_IGNORE(co_await redis.xgroup_destroy(key, group));
         CO_IGNORE(co_await redis.del(key));
@@ -415,25 +562,110 @@ TEST_P(StreamProtocolModesTest, XCLAIM_XAUTOCLAIM) {
         std::string consumer1 = "c1";
         std::string consumer2 = "c2";
 
-        auto add_r = co_await redis.xadd(key, {{"field", "value"}});
-        EXPECT_TRUE(add_r.ok()) << add_r.error();
-        std::string msg_id = add_r.result().to_string();
-        EXPECT_TRUE((co_await redis.xgroup_create(key, group, "0", true)).ok());
-
-        CO_IGNORE(co_await redis.xreadgroup(key, group, consumer1, ">", 1));
-
-        auto claim_r = co_await redis.xclaim(key, group, consumer2, 0, {msg_id});
-        EXPECT_TRUE(claim_r.ok()) << claim_r.error();
-        if (!(claim_r.result().size() == 1u)) {
-            ADD_FAILURE() << "precondition failed: claim_r.result().size() == 1u";
+        auto add1 = co_await redis.xadd(key, {{"field", "one"}});
+        auto add2 = co_await redis.xadd(key, {{"field", "two"}});
+        if (!(add1.ok() && add2.ok())) {
+            ADD_FAILURE() << "failed to seed both claim entries";
+            completed = true;
             co_return;
         }
-        EXPECT_EQ(claim_r.result()[0].fields.at("field"), "value");
+        const std::string id1           = add1.result().to_string();
+        const std::string id2           = add2.result().to_string();
+        auto              group_created = co_await redis.xgroup_create(key, group, "0", true);
+        if (!group_created.ok()) {
+            ADD_FAILURE() << "failed to create claim group: " << group_created.error();
+            completed = true;
+            co_return;
+        }
 
-        CO_IGNORE(co_await redis.xadd(key, {{"f2", "v2"}}));
-        CO_IGNORE(co_await redis.xreadgroup(key, group, consumer1, ">", 1));
+        auto delivered = co_await redis.xreadgroup(key, group, consumer1, ">", 2);
+        if (!delivered.ok()) {
+            ADD_FAILURE() << "failed to place both entries in consumer1's pending list: " << delivered.error();
+            completed = true;
+            co_return;
+        }
+
+        auto claim_r = co_await redis.xclaim(key, group, consumer2, 0, {id1});
+        if (!claim_r.ok()) {
+            ADD_FAILURE() << claim_r.error();
+            completed = true;
+            co_return;
+        }
+        if (!(claim_r.result().size() == 1u)) {
+            ADD_FAILURE() << "precondition failed: claim_r.result().size() == 1u";
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(claim_r.result()[0].id.to_string(), id1);
+        const auto claimed_field = claim_r.result()[0].fields.find("field");
+        if (claimed_field == claim_r.result()[0].fields.end()) {
+            ADD_FAILURE() << "XCLAIM omitted the seeded field";
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(claimed_field->second, "one");
+
+        auto pending1 = co_await redis.xpending(key, group, "-", "+", 10, consumer1);
+        auto pending2 = co_await redis.xpending(key, group, "-", "+", 10, consumer2);
+        if (!(pending1.ok() && pending2.ok())) {
+            ADD_FAILURE() << "failed to inspect pending ownership after XCLAIM";
+            completed = true;
+            co_return;
+        }
+        auto owners1 = decode_pending_owners(pending1.result());
+        auto owners2 = decode_pending_owners(pending2.result());
+        if (!(owners1 && owners2)) {
+            ADD_FAILURE() << "XPENDING ownership reply has an unexpected shape";
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(*owners1, (std::vector<std::pair<std::string, std::string>>{{id2, consumer1}}));
+        EXPECT_EQ(*owners2, (std::vector<std::pair<std::string, std::string>>{{id1, consumer2}}));
+
+        auto acked = co_await redis.xack(key, group, id1);
+        if (!acked.ok()) {
+            ADD_FAILURE() << acked.error();
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(acked.result(), 1);
+
         auto autoclaim_r = co_await redis.xautoclaim(key, group, consumer2, 0, "0", 10);
-        EXPECT_TRUE(autoclaim_r.ok()) << autoclaim_r.error();
+        if (!autoclaim_r.ok()) {
+            ADD_FAILURE() << autoclaim_r.error();
+            completed = true;
+            co_return;
+        }
+        if (!autoclaim_r.result().is_array() || autoclaim_r.result().size() < 2 || !autoclaim_r.result()[0].is_string()) {
+            ADD_FAILURE() << "XAUTOCLAIM reply has an unexpected shape: " << autoclaim_r.result().dump();
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(autoclaim_r.result()[0].get<std::string>(), "0-0");
+        auto auto_entries = decode_entry_array(autoclaim_r.result()[1]);
+        if (!auto_entries) {
+            ADD_FAILURE() << "XAUTOCLAIM entries have an unexpected shape: " << autoclaim_r.result().dump();
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(*auto_entries, (std::vector<LogicalStreamEntry>{{id2, {{"field", "two"}}}}));
+
+        auto no_longer_c1 = co_await redis.xpending(key, group, "-", "+", 10, consumer1);
+        auto now_c2       = co_await redis.xpending(key, group, "-", "+", 10, consumer2);
+        if (!(no_longer_c1.ok() && now_c2.ok())) {
+            ADD_FAILURE() << "failed to inspect pending ownership after XAUTOCLAIM";
+            completed = true;
+            co_return;
+        }
+        auto old_owner = decode_pending_owners(no_longer_c1.result());
+        auto new_owner = decode_pending_owners(now_c2.result());
+        if (!(old_owner && new_owner)) {
+            ADD_FAILURE() << "XPENDING ownership reply has an unexpected shape after XAUTOCLAIM";
+            completed = true;
+            co_return;
+        }
+        EXPECT_TRUE(old_owner->empty());
+        EXPECT_EQ(*new_owner, (std::vector<std::pair<std::string, std::string>>{{id2, consumer2}}));
 
         CO_IGNORE(co_await redis.xgroup_destroy(key, group));
         CO_IGNORE(co_await redis.del(key));

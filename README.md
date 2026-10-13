@@ -264,7 +264,7 @@ redis.await();   // drains all three on the current loop
 
 See [readme/pipeline_and_await.md](./readme/pipeline_and_await.md). `RedisPipeline::flush()` is unrelated to the
 `FLUSHDB`/`FLUSHALL` commands.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1216-1246 (command: serialized, then the handler queued -- before any byte leaves), 1283-1291 (coroutine command), 1428-1432 (RedisPipeline::flush calls await, not FLUSHDB), tests/integration/connection/pipeline.cpp:362 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1216-1246 (command: serialized, then the handler queued -- before any byte leaves), 1283-1291 (coroutine command), 1428-1432 (RedisPipeline::flush calls await, not FLUSHDB), tests/integration/connection/pipeline.cpp:376 -->
 
 ---
 
@@ -373,7 +373,7 @@ target_link_libraries(hello_redis PRIVATE qbm::redis)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build && ./build/hello_redis
 ```
 
-`main.cpp` is the actor of the first section above, with `#include <qbm/redis/redis.h>`. The actor engine's measurements are in
+`main.cpp` can be the complete program in [Outside an actor](#outside-an-actor), which includes its own `main()`. The actor in the first section is a class fragment intended for an existing qb application. The actor engine's measurements are in
 [qb's README](https://github.com/isndev/qb#measured); this module publishes no throughput figure yet.
 
 ## What this module is

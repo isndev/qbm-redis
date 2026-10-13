@@ -141,9 +141,11 @@ auto second = co_await redis.hsetnx("user:1", "field1", "other");  // result() =
 Sets multiple field/value pairs in one call. Returns `qb::redis::status` (check `reply.result().ok()`, which is `true`
 for `"OK"`).
 
-> `hmset` emits the literal `HMSET` wire command. `HMSET` is deprecated in Redis in favor of variadic `HSET`; the method
-> is kept for compatibility. Note the return type differs from `hset`: `hmset` returns `status`, while `hset` returns
-`long long`.
+> `hmset` emits the literal `HMSET` wire command and remains the named qbm-redis API for setting multiple pairs in one
+> call. The module's `hset` overload accepts one field/value pair, even though native Redis `HSET` is variadic. Use
+> repeated `hset` calls, keep `hmset` for one multi-pair command, or use the raw `command<long long>` escape hatch when
+> the native variadic `HSET` reply type is required. Note the return types: `hmset` returns `status`, while `hset`
+> returns `long long`.
 
 ```cpp
 // Coroutine — qbm/redis/src/qbm/redis/commands/hash_commands.h:509-511

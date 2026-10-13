@@ -49,10 +49,12 @@ protected:
         ProtocolModesTestBase::SetUp();
         if (::testing::Test::IsSkipped())
             return;
-        // FUNCTION exists since Redis 7.0; a non-ok FUNCTION LIST means it is unavailable.
+        // FUNCTION exists since Redis 7.0. Only Redis' native unknown-command
+        // diagnostic means the feature is absent; all other failures are real.
         auto probe = qb::io::async::run_sync(redis.function_list());
-        if (!probe.ok())
+        if (!probe.ok() && qb::redis::test::is_unknown_command_error(probe.error()))
             GTEST_SKIP() << "FUNCTION unavailable (pre-Redis-7 server): " << probe.error();
+        ASSERT_TRUE(probe.ok()) << "FUNCTION LIST capability probe failed: " << probe.error();
         // Start from a clean function namespace.
         (void) qb::io::async::run_sync(redis.function_flush());
     }

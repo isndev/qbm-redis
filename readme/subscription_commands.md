@@ -15,9 +15,10 @@ delivery) and `qb::redis::tcp::co_consumer` (coroutine `receive()` delivery) —
 
 ## Summary
 
-A normal `qb::redis::tcp::client` cannot be used as a subscriber: once a connection issues `SUBSCRIBE`/`PSUBSCRIBE` it
-enters subscribe mode and may only run subscription commands. `qbm-redis` therefore ships two purpose-built consumer
-types, both transport aliases in `namespace qb::redis`:
+A normal `qb::redis::tcp::client` is not the supported subscriber shape. `qbm-redis` therefore ships two purpose-built
+consumer types, both transport aliases in `namespace qb::redis`. Under RESP2, a subscribed connection is restricted to
+subscription commands plus `PING`, `QUIT`, and `RESET`; RESP3 permits ordinary commands too, but a dedicated consumer
+still keeps pushed messages and request/reply traffic under the module's consumer dispatch rules:
 
 - **`qb::redis::tcp::cb_consumer`** — incoming messages are pushed to a `void(qb::redis::message&&)` callback you
   register with `on_message(...)`.
@@ -99,9 +100,10 @@ target_link_libraries(your_app PRIVATE qbm::redis)
 - **Channel** — a named conduit. `SUBSCRIBE` listens to exact channel names.
 - **Pattern** — a glob (`news.*`, `h[ae]llo`) that `PSUBSCRIBE` matches against channel names: `h?llo` matches `hello`/
   `hallo`; `h*llo` matches `hllo`/`heeeello`; `h[ae]llo` matches `hello` and `hallo` but not `hillo`.
-- **Subscribe mode** — after the first subscription, the connection accepts only `SUBSCRIBE`, `UNSUBSCRIBE`,
-  `PSUBSCRIBE`, `PUNSUBSCRIBE`, `PING`, and `QUIT`. The dedicated consumers keep that connection separate from your
-  command client.
+- **Subscribe mode** — under RESP2, after the first subscription the server accepts only `SUBSCRIBE`, `UNSUBSCRIBE`,
+  `PSUBSCRIBE`, `PUNSUBSCRIBE`, `PING`, `QUIT`, and `RESET`. RESP3 removes that server restriction and consumers can,
+  for example, issue `HELLO` or `ECHO`; keep ordinary application commands on a separate client so their replies and
+  pushed subscription messages retain distinct ownership.
 
 ### Message and confirmation types
 
@@ -272,7 +274,9 @@ consumer.subscribe(
 ### `UNSUBSCRIBE [channel [channel ...]]`
 
 Unsubscribe from the named channels, or — with an empty string or empty vector — from **all** channels on this
-connection. After an unsubscribe-all, the final confirmation reports `num == 0`.
+connection. The confirmation's `num` is the total remaining channel **and pattern** subscriptions. It reaches zero
+only when both sets are empty; an unsubscribe-all for channels may therefore report a positive count while patterns
+remain active.
 After a successful connection-level `RESET`, the consumer's predicted channel and pattern sets are empty too;
 `unsubscribe("")` or `punsubscribe("")` therefore waits for one empty-state confirmation. Pub/Sub calls made before
 `RESET` answers fail locally; await it first. See [Connection commands](./connection_commands.md#reset--reset-connection-state).
@@ -288,7 +292,7 @@ auto reply = co_await consumer.unsubscribe("news");          // one channel
 EXPECT_TRUE(reply.ok());
 
 auto all = co_await consumer.unsubscribe("");                // every channel
-EXPECT_EQ(all.result().num, 0);
+// all.result().num is 0 only when no pattern subscriptions remain.
 ```
 
 <!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:307-331 -->
@@ -315,7 +319,7 @@ EXPECT_EQ(*reply.result().channel, "news.*");   // confirmation echoes the patte
 ### `PUNSUBSCRIBE [pattern [pattern ...]]`
 
 Unsubscribe from the named patterns, or — with an empty string or empty vector — from **all** patterns on this
-connection.
+connection. Its `num` likewise counts channels plus patterns still active, so it is zero only when neither remains.
 
 - **Coroutine, single/all:** `auto punsubscribe(const std::string &pattern = "")`
 - **Coroutine, multiple:** `auto punsubscribe(const std::vector<std::string> &patterns)`
@@ -327,7 +331,7 @@ auto reply = co_await consumer.punsubscribe("news.*");
 EXPECT_TRUE(reply.ok());
 
 auto all = co_await consumer.punsubscribe("");   // every pattern
-EXPECT_EQ(all.result().num, 0);
+// all.result().num is 0 only when no channel subscriptions remain.
 ```
 
 <!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:333-357 -->

@@ -360,9 +360,22 @@ if (!r.ok()) {
   `hscan`/`zscan` on an empty key, and `lpos` on an empty key/element, used to
   `return` without firing the callback — which parked the coroutine form forever.
   They now resolve like every other guard, with `ok()==false`.
-- **Multi-stream `xread`/`xreadgroup` throw synchronously** (`std::invalid_argument`
-  from the call body) when `keys` is empty or `keys.size() != ids.size()` — catch
-  it; it is not delivered as a `Reply` error.
+- **Multi-stream `xread`/`xreadgroup` reject mismatched vectors locally** with
+  `std::invalid_argument` when `keys` is empty or `keys.size() != ids.size()`.
+  The callback overload checks during the call. The coroutine overload only captures
+  its arguments at construction; its callback operation, including validation, starts
+  in `redis_awaiter::await_suspend`. Catch around `co_await`, not just construction:
+
+  ```cpp
+  try {
+      auto pending = redis.xread(keys, ids); // no Redis request or size validation yet
+      auto reply = co_await pending;         // may throw invalid_argument before enqueue
+      if (!reply.ok()) { /* inspect Redis/transport error in reply.error() */ }
+  } catch (const std::invalid_argument &) { /* local key/ID mismatch */ }
+  ```
+
+  This local exception is not delivered as a failed `Reply`. An inline
+  `co_await redis.xread(keys, ids)` inside the same `try` has the same handling.
 - **`pexpire`/`expire` unit mistakes:** `expire(k, 60)` and `expire(k, 60s)` both
   mean 60 **seconds**; `pexpire(k, 60ms)` is 60 ms. Passing a raw `long long`
   bypasses the type-level unit check.

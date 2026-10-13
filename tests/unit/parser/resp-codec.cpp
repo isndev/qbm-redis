@@ -1073,6 +1073,7 @@ TEST_F(RoundTripTest, ScalarValueEqualityProperty) {
         std::string wire = Serializer::serialize(v);
         auto        a    = parse(wire, resp3);
         ASSERT_TRUE(a.has_value()) << wire;
+        EXPECT_EQ(static_cast<const ValueBase &>(*a), static_cast<const ValueBase &>(v)) << "the first serialization changed the scalar value";
         // Re-serialize must yield the identical bytes (idempotent codec).
         EXPECT_EQ(Serializer::serialize(*a), wire);
     }
@@ -1267,14 +1268,28 @@ TEST(ReplyDecode, NonNumericScanCursorRejected) {
 }
 
 TEST(ReplyDecode, ParseDoubleRejectsTrailingGarbage) {
-    auto value_of = [](const char *resp) {
+    auto value_of = [](const char *resp) -> std::optional<Value> {
         RespParser parser;
-        EXPECT_TRUE(parser.feed(resp));
+        if (!parser.feed(resp)) {
+            ADD_FAILURE() << "parser rejected input before decoding";
+            return std::nullopt;
+        }
         auto values = parser.parse_all();
-        EXPECT_EQ(values.size(), 1u);
-        return std::move(values[0]);
+        if (values.size() != 1u) {
+            ADD_FAILURE() << "expected one decoded value, got " << values.size();
+            return std::nullopt;
+        }
+        return std::move(values.front());
     };
-    EXPECT_DOUBLE_EQ(qb::redis::reply::parse<double>(value_of("$3\r\n1.5\r\n")), 1.5);
-    EXPECT_THROW((void) qb::redis::reply::parse<double>(value_of("$7\r\n1.5junk\r\n")), qb::redis::ProtoError);
-    EXPECT_THROW((void) qb::redis::reply::parse<double>(value_of("$2\r\n3x\r\n")), qb::redis::ProtoError);
+    auto valid = value_of("$3\r\n1.5\r\n");
+    ASSERT_TRUE(valid.has_value());
+    EXPECT_DOUBLE_EQ(qb::redis::reply::parse<double>(*valid), 1.5);
+
+    auto trailing = value_of("$7\r\n1.5junk\r\n");
+    ASSERT_TRUE(trailing.has_value());
+    EXPECT_THROW((void) qb::redis::reply::parse<double>(*trailing), qb::redis::ProtoError);
+
+    auto partial = value_of("$2\r\n3x\r\n");
+    ASSERT_TRUE(partial.has_value());
+    EXPECT_THROW((void) qb::redis::reply::parse<double>(*partial), qb::redis::ProtoError);
 }

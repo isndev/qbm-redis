@@ -51,7 +51,7 @@ happens inside the Lua body in whatever unit you write. The `qb::duration` / nat
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
-// <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:92-94 -->
+// <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:94-96 -->
 qb::io::async::task<void> functions_demo(qb::redis::tcp::client &redis) {
     auto reply = co_await redis.function_list();   // Reply<qb::json>
     if (reply.ok()) {                              // Reply<T> is contextually bool (== ok())
@@ -183,7 +183,7 @@ redis.function_load(
 ```
 
 Invalid code yields an error reply (it does not throw across the coroutine
-boundary). <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:147-163 -->
+boundary). <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:149-165 -->
 
 ### `function_list` — enumerate libraries and functions
 
@@ -203,7 +203,7 @@ Pass `library` to restrict the listing to one library name (`FUNCTION LIST LIBRA
 parameter — see [the concept above](#function_list-filters-by-library-not-by-withcode).
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:92-94 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:94-96 -->
 auto reply = co_await redis.function_list();           // Reply<qb::json>
 if (reply.ok()) {
     const qb::json &functions = reply.result();
@@ -234,7 +234,7 @@ Deletes the named library and every function it registered. Deleting a library t
 `Library not found` error reply.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:165-178 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:167-180 -->
 auto reply = co_await redis.function_delete("mylib");   // Reply<status>
 if (!reply.ok())
     qb::io::cout() << "delete failed: " << reply.error() << std::endl;
@@ -257,7 +257,7 @@ Deletes **every** library. `mode` is `"SYNC"` (default, reclaim memory before re
 background); the string is not validated client-side.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:119-143 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:121-145 -->
 auto reply = co_await redis.function_flush();           // Reply<status>; "OK" on success
 // or asynchronous reclamation:
 auto async_flush = co_await redis.function_flush("ASYNC");
@@ -281,7 +281,7 @@ returns a `NOTBUSY` / `No scripts in execution` error reply, exactly like `scrip
 see [scripting_commands.md](./scripting_commands.md)).
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:180-193 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:182-195 -->
 auto reply = co_await redis.function_kill();            // Reply<status>
 // NOTBUSY error when no function is running
 ```
@@ -303,7 +303,7 @@ Returns a JSON object describing the function runtime — the currently running 
 engines.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:97-101 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:99-103 -->
 auto reply = co_await redis.function_stats();           // Reply<qb::json>
 if (reply.ok()) {
     const qb::json &stats = reply.result();
@@ -330,7 +330,7 @@ binary bulk string; this module wraps it in a `qb::json` value, so `result().is_
 holds. Treat the payload as opaque.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:119-143 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:121-145 -->
 auto reply = co_await redis.function_dump();            // Reply<qb::json>
 if (reply.ok()) {
     const qb::json &dump = reply.result();
@@ -359,7 +359,7 @@ overwrite name clashes). The string is not validated client-side. A corrupt payl
 `payload version or checksum are wrong` error reply.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:195-211 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:197-213 -->
 auto reply = co_await redis.function_restore(saved_payload, "REPLACE");   // Reply<status>
 if (!reply.ok())
     qb::io::cout() << "restore failed: " << reply.error() << std::endl;
@@ -381,7 +381,7 @@ Derived &function_help(Func &&func);
 Returns the server's `FUNCTION HELP` lines, one `std::string` per line.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:213-232 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:215-234 -->
 auto reply = co_await redis.function_help();            // Reply<std::vector<std::string>>
 if (reply.ok())
     for (const auto &line : reply.result())
@@ -412,7 +412,7 @@ exactly as for `eval<Ret>` — pick a type that matches what the function return
 parse mismatch surfaces as an error on the `Reply`, not a thrown exception.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:82-84 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:84-86 -->
 auto reply = co_await redis.fcall<qb::json>("myfunc", {"mykey"}, {"arg1"});  // Reply<qb::json>
 if (reply.ok())
     EXPECT_TRUE(reply.result().is_object() || reply.result().is_array());
@@ -454,7 +454,7 @@ server rejects any write it attempts, which makes the call safe to route to a re
 functions both as a correctness guard and to let a cluster load-balance reads.
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:87-89 -->
+// coroutine — <!-- src: qbm/redis/tests/integration/admin/function-commands.cpp:89-91 -->
 auto reply = co_await redis.fcallRo<qb::json>("readonly_func", {"mykey"}, {});  // Reply<qb::json>
 if (reply.ok())
     EXPECT_TRUE(reply.result().is_object() || reply.result().is_array());

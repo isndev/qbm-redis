@@ -81,9 +81,9 @@ Each command therefore exists as a matched pair of overloads:
 
 A HyperLogLog stores counts, not times. Every argument to these commands is a key name or a string element, and the only
 reply payloads are `bool`, `long long`, and `status`. There is no expiry, no timeout, and no `std::chrono` value on any
-signature here. The `qb::duration` values in qbm-redis live exclusively on the connection and retry path (
-connect/command timeouts, `RetryPolicy` delays — see [connection.md](./connection.md)); the native-unit `std::chrono`
-split that applies to `EXPIRE` (seconds) versus `PEXPIRE` (milliseconds) is a property of the key-expiry commands
+signature here. Client-level deadlines and retry delays use `qb::duration` (see [connection.md](./connection.md));
+Redis command arguments have their own units and may offer chrono overloads. The `std::chrono` split that applies
+to `EXPIRE` (seconds) versus `PEXPIRE` (milliseconds) is a property of the key-expiry commands
 in [key_commands.md](./key_commands.md), not of this group.
 
 ### Reply types at a glance
@@ -236,9 +236,12 @@ redis.pfmerge(
   builds and queues the command, and the result reaches you asynchronously. The `Reply<bool> pfadd(...)` "Sync"
   signatures and the `pfadd_async` / `pfcount_async` / `pfmerge_async` method names in older docs do not exist — the
   async form is the same `pfadd` / `pfcount` / `pfmerge` overload that takes the handler first.
-- **No `std::vector` parameters.** Earlier docs showed `pfcount(const std::vector<std::string> &keys)` and
-  `pfmerge(dest, const std::vector<std::string> &sourcekeys)`. The real signatures take keys *variadically* (
-  `Keys &&...keys`); pass the keys directly as arguments, not as a vector.
+- **A non-empty `std::vector<std::string>` can be one variadic argument.** There is no dedicated vector overload, but
+  the command serializer expands a string vector and counts each element as one key. Both
+  `pfcount(std::vector<std::string>{"hll:a", "hll:b"})` and
+  `pfmerge("hll:all", std::vector<std::string>{"hll:a", "hll:b"})` are supported. Keep the container non-empty. An
+  empty vector still makes `sizeof...(keys) == 1`, so it passes the client-side empty-pack guard; the serializer emits
+  no key bulk and Redis returns its command-arity error.
 - **`pfcount()` and `pfmerge(dest)` with no keys compile, and fail *client-side*.** The variadic packs have no mandatory
   leading key beyond `pfmerge`'s `destination`, so there is no compile-time guard — but neither call ever reaches Redis:
   each callback overload tests the pack and routes an empty one through `fail_client`, which resolves the callback (and
@@ -259,9 +262,8 @@ redis.pfmerge(
 - **A HyperLogLog is just a string.** `DEL`, `EXISTS`, `TYPE` (it reports `string`), and `EXPIRE`
   from [key_commands.md](./key_commands.md) all work on the key. Be aware that `GET`/`SET` on the same key will read or
   clobber the raw HyperLogLog representation.
-- **No `qb::duration` here.** These commands take only keys and string elements; do not substitute the framework time
-  types onto any argument. The only `std::chrono`-shaped values in qbm-redis live on the connection and retry path (
-  see [connection.md](./connection.md)).
+- **No time arguments here.** These commands take only keys and string elements. Other command groups have chrono
+  overloads for expiry or blocking timeouts; see [the time table](./README.md#tls-and-time).
 
 ---
 

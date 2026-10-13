@@ -78,9 +78,8 @@ A geo distance is a length, not a time, so it never touches the framework time m
 <!-- src: qbm/redis/src/qbm/redis/types.h:83, qbm/redis/src/qbm/redis/redis.cpp:354 -->
 
 `GEODIST`, `GEORADIUS`, `GEORADIUSBYMEMBER`, and `GEOSEARCH` all default to `GeoUnit::M`. The radius argument itself is
-a `double` in the chosen unit. Do not reach for `qb::duration` / `std::chrono` here — these are distances, and the only
-`std::chrono`-shaped values in qbm-redis live on the connection and retry path, not on command arguments (
-see [connection.md](./connection.md)).
+a `double` in the chosen unit. Do not use `qb::duration` / `std::chrono` for a geo distance. Other Redis command
+groups do offer chrono overloads for expiry and blocking timeouts; see [the time table](./README.md#tls-and-time).
 
 ### Reply types in this group
 
@@ -392,9 +391,13 @@ wrong-typed handler still binds it and the error appears deeper rather than as "
 
 ## Pitfalls
 
-- **No blocking API.** These methods are coroutine- or callback-based only. A call without `co_await` (or a callback)
-  builds and queues the command, and the result reaches you asynchronously. The `Reply<...> geoadd(...)` "Sync"
-  signatures and the `*_async` method names in older docs do not exist.
+- **No blocking API.** These methods are coroutine- or callback-based only. The coroutine form
+  constructs an awaiter and captures arguments; it does not queue or send the command until
+  `co_await` reaches `redis_awaiter::await_suspend`. The callback form starts at the call.
+  For example, `auto pending = redis.geosearch(key, member, 200.0);` has not sent
+  `GEOSEARCH`; `auto reply = co_await pending;` starts it and yields the reply.
+  The `Reply<...> geoadd(...)` "Sync" signatures and the `*_async` method names in older
+  docs do not exist.
 - **`geosearch` covers only `FROMMEMBER` + `BYRADIUS`.** The single overload hard-codes the center to
   `FROMMEMBER <member>` and the area to `BYRADIUS <radius> <unit>`; there is no `FROMLONLAT` and no `BYBOX`. The
   trailing `options` vector *is* forwarded (so `COUNT`/`ASC`/`WITH*` reach the server), but if you need a coordinate
@@ -410,9 +413,8 @@ wrong-typed handler still binds it and the error appears deeper rather than as "
   module. `WITHCOORD`/`WITHDIST`/`WITHHASH` passed through the raw `options` vector still yield a
   `std::vector<std::string>` of member names, because `parse<std::string>` collapses each nested reply array to its
   first element.
-- **No `qb::duration` here.** Distances are `double` plus a `GeoUnit`; do not substitute the framework time types. The
-  only `std::chrono`-shaped values in qbm-redis live on the connection and retry path (connect/command timeouts,
-  `RetryPolicy` delays — see [connection.md](./connection.md)), never on a geo command argument.
+- **No time type in geo commands.** Distances are `double` plus a `GeoUnit`; do not substitute framework or chrono
+  time types. The [time table](./README.md#tls-and-time) lists actual expiry and blocking-command chrono overloads.
 
 ---
 

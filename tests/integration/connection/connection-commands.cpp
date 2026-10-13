@@ -210,12 +210,21 @@ TEST_P(ConnectionProtocolModesTest, SELECT) {
         auto r0 = co_await redis.select(0);
         EXPECT_TRUE(r0.ok()) << r0.error();
         EXPECT_TRUE(r0.result().ok());
+        const std::string key = protocol_key("select-db-witness");
+        EXPECT_TRUE((co_await redis.set(key, "db-zero")).ok());
         auto r1 = co_await redis.select(1);
         EXPECT_TRUE(r1.ok()) << r1.error();
         EXPECT_TRUE(r1.result().ok());
+        EXPECT_TRUE((co_await redis.set(key, "db-one")).ok());
+        auto db1 = co_await redis.get(key);
+        EXPECT_TRUE(db1.ok()) << db1.error();
+        EXPECT_EQ(db1.value_or("missing"), "db-one");
         auto r2 = co_await redis.select(0); // restore db 0 for the next test
         EXPECT_TRUE(r2.ok()) << r2.error();
         EXPECT_TRUE(r2.result().ok());
+        auto db0 = co_await redis.get(key);
+        EXPECT_TRUE(db0.ok()) << db0.error();
+        EXPECT_EQ(db0.value_or("missing"), "db-zero");
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());
@@ -226,12 +235,31 @@ TEST_P(ConnectionProtocolModesTest, SWAPDB) {
     bool completed = false;
     auto test_task = [this, &completed]() -> qb::io::async::task<void> {
         PROTOCOL_ENSURE_RESP3_VAR(completed);
+        const std::string key = protocol_key("swapdb-witness");
+        EXPECT_TRUE((co_await redis.select(0)).ok());
+        EXPECT_TRUE((co_await redis.set(key, "original-zero")).ok());
+        EXPECT_TRUE((co_await redis.select(1)).ok());
+        EXPECT_TRUE((co_await redis.set(key, "original-one")).ok());
+        EXPECT_TRUE((co_await redis.select(0)).ok());
+
         auto r1 = co_await redis.swapdb(0, 1);
         EXPECT_TRUE(r1.ok()) << r1.error();
         EXPECT_TRUE(r1.result().ok());
+        auto swapped0 = co_await redis.get(key);
+        EXPECT_TRUE(swapped0.ok()) << swapped0.error();
+        EXPECT_EQ(swapped0.value_or("missing"), "original-one");
+        EXPECT_TRUE((co_await redis.select(1)).ok());
+        auto swapped1 = co_await redis.get(key);
+        EXPECT_TRUE(swapped1.ok()) << swapped1.error();
+        EXPECT_EQ(swapped1.value_or("missing"), "original-zero");
+        EXPECT_TRUE((co_await redis.select(0)).ok());
+
         auto r2 = co_await redis.swapdb(0, 1); // swap back
         EXPECT_TRUE(r2.ok()) << r2.error();
         EXPECT_TRUE(r2.result().ok());
+        auto restored = co_await redis.get(key);
+        EXPECT_TRUE(restored.ok()) << restored.error();
+        EXPECT_EQ(restored.value_or("missing"), "original-zero");
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());

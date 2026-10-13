@@ -515,14 +515,34 @@ TEST_P(ScriptingTest, EVAL_COMPARE_AND_SET) {
         EXPECT_TRUE((co_await redis.set(key, "initial")).ok());
 
         auto matched = co_await redis.eval<bool>(script, {key}, {"initial", "updated"});
-        EXPECT_TRUE(matched.ok()) << matched.error();
+        if (!matched.ok()) {
+            ADD_FAILURE() << matched.error();
+            completed = true;
+            co_return;
+        }
         EXPECT_TRUE(matched.result());
-        EXPECT_EQ(*(co_await redis.get(key)).result(), "updated");
+        auto after_match = co_await redis.get(key);
+        if (!(after_match.ok() && after_match.result().has_value())) {
+            ADD_FAILURE() << "CAS match witness missing: " << after_match.error();
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(*after_match.result(), "updated");
 
         auto unmatched = co_await redis.eval<bool>(script, {key}, {"wrong", "not_applied"});
-        EXPECT_TRUE(unmatched.ok()) << unmatched.error();
+        if (!unmatched.ok()) {
+            ADD_FAILURE() << unmatched.error();
+            completed = true;
+            co_return;
+        }
         EXPECT_FALSE(unmatched.result());
-        EXPECT_EQ(*(co_await redis.get(key)).result(), "updated"); // unchanged
+        auto after_miss = co_await redis.get(key);
+        if (!(after_miss.ok() && after_miss.result().has_value())) {
+            ADD_FAILURE() << "CAS no-op witness missing: " << after_miss.error();
+            completed = true;
+            co_return;
+        }
+        EXPECT_EQ(*after_miss.result(), "updated"); // unchanged
         completed = true;
     };
     qb::io::async::coro_scheduler().spawn(test_task());

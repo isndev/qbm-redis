@@ -321,11 +321,13 @@ TEST_F(RedisResilienceTest, ServerSideClientKillDiscardsTheQueuedTransaction) {
     const long long victim_id = id_reply.result();
 
     ASSERT_TRUE(qb::io::async::run_sync(redis.multi()).ok());
+    EXPECT_TRUE(redis.is_in_multi());
     ASSERT_TRUE(qb::io::async::run_sync(redis.set(key, "must-not-exist")).ok()) << "the SET should have been QUEUED";
 
     std::string why;
     ASSERT_TRUE(kill_client(victim_id, why)) << why;
     ASSERT_TRUE(pump_until([&] { return !redis.is_connected(); })) << "the client still reports connected after the server dropped it";
+    EXPECT_FALSE(redis.is_in_multi()) << "the local MULTI flag survived the observed connection loss";
 
     // Never applied — asserted from a connection that never saw the transaction.
     qb::redis::tcp::client witness{redis_test_uri()};
@@ -340,7 +342,10 @@ TEST_F(RedisResilienceTest, ServerSideClientKillDiscardsTheQueuedTransaction) {
     ASSERT_TRUE(qb::io::async::run_sync(redis.connect())) << "could not reconnect the killed handle";
     EXPECT_TRUE(qb::io::async::run_sync(redis.multi()).ok())
         << "the client still thinks it is inside the MULTI the server dropped: the drop did not reset the transaction state";
-    (void) qb::io::async::run_sync(redis.discard());
+    EXPECT_TRUE(redis.is_in_multi());
+    auto discarded = qb::io::async::run_sync(redis.discard());
+    EXPECT_TRUE(discarded.ok()) << discarded.error();
+    EXPECT_FALSE(redis.is_in_multi());
 }
 
 // ------------------------------------------------------------------------------------------

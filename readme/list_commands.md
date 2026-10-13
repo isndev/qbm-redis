@@ -258,6 +258,8 @@ if (r.result())  // status converts to bool: true when "OK"
 
 `LREM key count element` — remove occurrences of `val`. `count > 0` removes from head to tail, `count < 0` from tail to
 head, `count == 0` removes all. Returns the number removed.
+For `[v, a, v, b, v]`, removing one `v` with `count = 1` leaves `[a, v, b, v]`; with `count = -1` it leaves
+`[v, a, v, b]`; with `count = 0` it leaves `[a, b]`.
 
 ```cpp
 // Coroutine
@@ -454,7 +456,9 @@ template <typename Func> Derived &blpop(Func &&, const std::vector<std::string> 
 
 ```cpp
 auto r = co_await redis.blpop({"high", "low"}, 5s);   // 5-second block
-if (r.result().has_value()) {
+if (!r) {
+    qb::io::cerr() << "BLPOP failed: " << r.error() << "\n";
+} else if (r.result().has_value()) {
     const auto &[key, element] = *r.result();
     qb::io::cout() << "got " << element << " from " << key << "\n";
 } else {

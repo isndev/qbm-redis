@@ -108,26 +108,40 @@ TEST_F(PipelineCallbackTest, PendingReplyCountDrainsWithAwait) {
 
 TEST_F(PipelineCallbackTest, CallbacksRunInSendOrder) {
     std::vector<int> order;
-    int              step = 0;
 
-    redis.ping([&](qb::redis::Reply<std::string> &&r) {
-        EXPECT_TRUE(r.ok());
-        order.push_back(++step);
-    });
-    redis.ping([&](qb::redis::Reply<std::string> &&r) {
-        EXPECT_TRUE(r.ok());
-        order.push_back(++step);
-    });
-    redis.ping([&](qb::redis::Reply<std::string> &&r) {
-        EXPECT_TRUE(r.ok());
-        order.push_back(++step);
-    });
+    redis.ping(
+        [&](qb::redis::Reply<std::string> &&r) {
+            if (!r.ok()) {
+                ADD_FAILURE() << r.error();
+                return;
+            }
+            EXPECT_EQ(r.result(), "request-one");
+            order.push_back(1);
+        },
+        "request-one");
+    redis.ping(
+        [&](qb::redis::Reply<std::string> &&r) {
+            if (!r.ok()) {
+                ADD_FAILURE() << r.error();
+                return;
+            }
+            EXPECT_EQ(r.result(), "request-two");
+            order.push_back(2);
+        },
+        "request-two");
+    redis.ping(
+        [&](qb::redis::Reply<std::string> &&r) {
+            if (!r.ok()) {
+                ADD_FAILURE() << r.error();
+                return;
+            }
+            EXPECT_EQ(r.result(), "request-three");
+            order.push_back(3);
+        },
+        "request-three");
 
     redis.await();
-    ASSERT_EQ(order.size(), 3u);
-    EXPECT_EQ(order[0], 1);
-    EXPECT_EQ(order[1], 2);
-    EXPECT_EQ(order[2], 3);
+    EXPECT_EQ(order, (std::vector<int>{1, 2, 3}));
 }
 
 // A reply callback that throws a non-std exception must not cross the noexcept onMessage()

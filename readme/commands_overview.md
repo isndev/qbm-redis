@@ -117,12 +117,12 @@ string (`reply.h:1199`). Its surface:
 
 // GET → Reply<std::optional<std::string>>
 auto r = co_await redis.get("session:42");
-if (auto v = r.value_or(""); !v.empty()) {
-    qb::io::cout() << "value: " << v << '\n';
-} else if (r) {
-    qb::io::cout() << "key absent (nil)\n";   // ok() but no value
-} else {
+if (!r) {
     qb::io::cout() << "error: " << r.error() << '\n';
+} else if (!r.result().has_value()) {
+    qb::io::cout() << "key absent (nil)\n";
+} else {
+    qb::io::cout() << "value: " << *r.result() << '\n'; // an empty string is still present
 }
 ```
 

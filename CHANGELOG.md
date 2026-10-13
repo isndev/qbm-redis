@@ -31,6 +31,15 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **The Redis references describe the values and units callers actually receive (Huly QB-658, QB-697, QB-700, QB-702, QB-707, QB-694).**
+  INFO and CLIENT LIST return raw text boxed in a JSON string; HELLO RESP2's flat map becomes a JSON object; LREM
+  distinguishes positive, negative, and zero counts. The time table separates relative durations, absolute expiry
+  instants, and raw millisecond integers. The integration guide covers both source builds and installed CMake packages,
+  and no longer suggests separate GET and SET as an atomic replacement.
+- **Redis coroutine command guides identify their lazy start (Huly QB-699).** Constructing a
+  command awaiter captures arguments but does not enqueue a request. Multi-stream XREAD
+  validation in the coroutine form runs at `co_await`, while callback forms validate at the call;
+  local `invalid_argument` remains separate from Redis errors carried in `Reply<T>`.
 - **The shipped API documentation guard checks code names and every citation (Huly QB-561, QB-562).**
   It ignores comments and literals when indexing C++ identifiers, and a valid first
   citation cannot hide an invalid later one.
@@ -126,6 +135,8 @@ All notable changes to the qbm-redis module are documented here. The format is b
   replies or a disconnect, never on the deadline.
 
 ### Documentation
+
+- **Command and Pub/Sub documentation now preserves reply states and native Redis semantics (Huly QB-678, QB-679, QB-698, QB-701, QB-703–706, QB-708, QB-709, QB-695).** Examples distinguish failed replies, nil values, and empty values before dereference; HyperLogLog documents supported string vectors; hash migration no longer invents a variadic named `hset`; XGROUP/ZDIFF comments describe their real results; Pub/Sub distinguishes RESP2 restrictions from RESP3 and counts remaining channels plus patterns. The quickstart points `main.cpp` at the complete standalone program.
 
 - **`ROADMAP.md` removed (Huly QB-137).** It described a hiredis-based parser (`redisReaderGetReply`) and a
   `*_async` API this module never shipped, listed the shipped pipelining as still to do, and `llms.txt`

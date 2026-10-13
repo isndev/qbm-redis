@@ -355,7 +355,7 @@ auto policy = qb::redis::RetryPolicy{}
     });
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:281-295 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:309-323 -->
 
 The backoff is exponential: the delay starts at `initial_delay`, multiplies by `multiplier` after each failed attempt,
 and is capped at `max_delay`. With `jitter` on, each delay is randomized by ±25% to avoid thundering herds. The math
@@ -380,7 +380,7 @@ bool connected = co_await client.connect_with_retry(
 // co_await client.connect_with_retry(qb::io::uri{"tcp://..."}, policy);
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:246-310 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:274-338 -->
 
 ### `enable_auto_reconnect` — re-dial on drop
 

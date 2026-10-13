@@ -87,7 +87,7 @@ if (r.ok() && r.result().ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-223 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-232 -->
 
 ---
 
@@ -121,10 +121,11 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
 hello(Func &&func, int version = 3);
 ```
 
-`HELLO` switches the connection's protocol version (`2` for RESP2, `3` for RESP3) and returns a server-info structure.
-In RESP3 the reply is a `qb::json` **object** (map) carrying `server`, `version`, `proto`, `id`, and more; in RESP2 it
-is a `qb::json` **array**. `version` defaults to `3`. Issue `hello(3)` as the first command after `connect()` if you
-want RESP3 — the server stays on RESP2 until you ask.
+`HELLO` switches the connection's protocol version (`2` for RESP2, `3` for RESP3) and returns server information.
+RESP3 sends a map. RESP2 sends a flat alternating-key/value array, but the `qb::json` decoder recognizes its string
+keys and non-string values (`proto`, `id`) and presents **both** HELLO replies as JSON objects with fields such as
+`server`, `version`, `proto`, and `id`. `version` defaults to `3`. Issue `hello(3)` as the first command after
+`connect()` if you want RESP3 — the server stays on RESP2 until you ask.
 
 ```cpp
 auto reply = co_await redis.hello(3);
@@ -133,9 +134,13 @@ if (reply.ok()) {
     if (info.is_object() && info.contains("server"))
         qb::io::cout() << info["server"].get<std::string>() << std::endl;  // "redis"
 }
+
+auto resp2 = co_await redis.hello(2);
+if (resp2.ok() && resp2.result().is_object())
+    qb::io::cout() << resp2.result()["proto"].get<int>() << std::endl;     // 2
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:147-163 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.cpp:590-624; qbm/redis/tests/unit/reply/reply-json-decode.cpp:188-204 -->
 
 ### `auth` — authentication
 
@@ -277,7 +282,7 @@ auto r = co_await redis.select(1);
 assert(r.ok() && r.result().ok());
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-223 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-232 -->
 
 ### `swapdb` — swap two databases
 
@@ -299,7 +304,7 @@ auto r = co_await redis.swapdb(0, 1);
 assert(r.ok() && r.result().ok());
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:225-239 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:234-267 -->
 
 ### `reset` — reset connection state
 
@@ -400,8 +405,8 @@ redis.connect([&redis](bool connected) {
 - **`status` has two `ok()` layers.** For `Reply<status>` commands (`auth`, `select`, `swapdb`, `quit`, `reset`),
   `reply.ok()` only tells you the command round-tripped without a transport/server error. To confirm the server returned
   the literal `"OK"`, also check `reply.result().ok()`.
-- **`hello` returns `qb::json`, not a string.** In RESP3 it is an object; in RESP2 an array. Test `info.is_object()` /
-  `info.is_array()` before indexing, and use `contains(...)` before reading a field.
+- **`hello` returns `qb::json`, not a string.** Its RESP2 flat-map and RESP3 map both become objects with current
+  server replies. Check `info.is_object()` and `contains(...)` before indexing; other commands can retain array shape.
 - **Authentication is a command, not a connect parameter.** The URI carries no credentials, and the client never stores
   them. After auto-reconnect you must re-`auth`, re-`hello(3)`, re-`select`, and re-`subscribe` — none of this
   connection state survives a reconnect.

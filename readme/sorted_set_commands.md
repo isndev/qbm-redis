@@ -622,7 +622,7 @@ if (m.ok() && m.result().has_value())
     qb::io::cout() << m.result()->second.size() << " popped\n";
 ```
 
-<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:713-721, 740-746; qbm/redis/tests/integration/resilience/coro-cancel-and-connection-loss.cpp:365-381 -->
+<!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:713-721, 740-746; qbm/redis/tests/integration/resilience/coro-cancel-and-connection-loss.cpp:370-386 -->
 
 > `bzmpop` (like `zmpop`) rejects an empty `keys` list client-side: no frame is sent and the reply resolves at once with
 `ok() == false` and `error() == "BZMPOP requires at least one key"` (`sorted_set_commands.h:1446-1450`). It never blocks

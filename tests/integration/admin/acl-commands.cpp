@@ -48,10 +48,12 @@ protected:
         ProtocolModesTestBase::SetUp();
         if (::testing::Test::IsSkipped())
             return; // daemon unreachable — base already skipped.
-        // ACL WHOAMI exists since Redis 6.0; a non-ok reply means ACL is unavailable.
+        // ACL WHOAMI exists since Redis 6.0. Only Redis' native unknown-command
+        // diagnostic means the feature is absent; all other failures are real.
         auto probe = qb::io::async::run_sync(redis.acl_whoami());
-        if (!probe.ok())
+        if (!probe.ok() && qb::redis::test::is_unknown_command_error(probe.error()))
             GTEST_SKIP() << "ACL unavailable (pre-Redis-6 server): " << probe.error();
+        ASSERT_TRUE(probe.ok()) << "ACL WHOAMI capability probe failed: " << probe.error();
     }
 };
 

@@ -195,9 +195,9 @@ qb::io::async::task<void> demo() {
   for delivery with `reply.result()`, not with `ok()`.
 - **No replay for late subscribers.** A subscriber that connects or subscribes after you publish never sees the message.
   Pub/Sub has no backlog; if you need durability, reach for Redis Streams.
-- **`publish` is on the regular client, not the consumer.** The publishing side lives on `tcp::client`. A connection
-  that has entered subscribe mode (via `subscribe`/`psubscribe`) cannot issue arbitrary commands; keep publishing and
-  subscribing on separate client objects, as the example does.
+- **`publish` is on the regular client, not the consumer.** The publishing side lives on `tcp::client`. RESP2 restricts
+  a subscribed connection to subscription control commands; RESP3 permits ordinary commands, but the consumer API is
+  designed for subscription delivery. Keep publishing and subscribing on separate client objects, as the example does.
 - **Drive the loop.** Like every command in this module, `publish` resolves only while the qb-io event loop runs. Inside
   a `qb::io::async::task<>` that is automatic; from synchronous code, pump it with
   `qb::io::async::run_sync(redis.publish(...))`.
