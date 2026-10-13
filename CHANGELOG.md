@@ -31,6 +31,10 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **Redis coroutine command guides identify their lazy start (Huly QB-699).** Constructing a
+  command awaiter captures arguments but does not enqueue a request. Multi-stream XREAD
+  validation in the coroutine form runs at `co_await`, while callback forms validate at the call;
+  local `invalid_argument` remains separate from Redis errors carried in `Reply<T>`.
 - **The shipped API documentation guard checks code names and every citation (Huly QB-561, QB-562).**
   It ignores comments and literals when indexing C++ identifiers, and a valid first
   citation cannot hide an invalid later one.
