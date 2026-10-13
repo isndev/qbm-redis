@@ -31,6 +31,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **The shipped API documentation guard checks code names and every citation (Huly QB-561, QB-562).**
+  It ignores comments and literals when indexing C++ identifiers, and a valid first
+  citation cannot hide an invalid later one.
+- **The CI guide reports the current Redis test roster by capability (Huly QB-688).**
+  It distinguishes registered tests from each run's executed and skipped counts.
 - **Stream IDs round-trip across the full Redis unsigned 64-bit domain (Huly QB-640).** Typed `XADD` and `XRANGE`
   no longer report a local decode error after Redis accepts an ID component above `INT64_MAX`; both RESP2 and RESP3
   preserve values through `UINT64_MAX`. The reply parser and server-side extractor reject numeric overflow and

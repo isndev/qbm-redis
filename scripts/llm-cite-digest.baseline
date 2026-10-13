@@ -86,7 +86,7 @@ llm/qbm-redis.llm.api.md	reply.h:88-88	8fb3eba7b399	class ProtoError : public Er
 llm/qbm-redis.llm.api.md	scripting_commands.h:36-36	ad1c3b4f6a52	class scripting_commands {
 llm/qbm-redis.llm.api.md	server_commands.h:42-42	6b7e173c7bf2	class server_commands {
 llm/qbm-redis.llm.api.md	server_reply.h:103-103	85cf63923001	class ValueExtractor {
-llm/qbm-redis.llm.api.md	server_reply.h:266-277	d536b1c6177f	namespace detail {
+llm/qbm-redis.llm.api.md	server_reply.h:271-277	b725f32cfd36	[[nodiscard]] bool extract_string_value(const parser::Value &input, s...
 llm/qbm-redis.llm.api.md	server_reply.h:287-334	463bed51ccbf	extract_string(const parser::Value &input) {
 llm/qbm-redis.llm.api.md	server_reply.h:352-352	212d4c1ba27a	class AsyncResult {
 llm/qbm-redis.llm.api.md	server_reply.h:445-445	ff310f9d46fe	extract_stream_id(const parser::Value &input) {
