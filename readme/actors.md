@@ -266,7 +266,7 @@ In this `KillEvent` handler, `disconnect()` closes the channel in the call and s
 later pass. A buffered or already committed message can arrive first; `std::nullopt` follows once the channel is
 drained. If the actor was reaped first, `ctx.cancelled()` stops the loop before it forwards that message. The copied
 `shared_ptr` keeps the consumer alive through the next `receive()`; waiting for `~co_consumer` to close the channel
-would leave that frame parked. `examples/06-modules/redis/04-pubsub.cpp:255-265` follows the same pattern: it
+would leave that frame parked. `examples/06-modules/redis/04-pubsub.cpp:261-271` follows the same pattern: it
 captures the consumer, name and coordinator by value, then checks cancellation before using the context.
 
 ### Making a command interruptible
