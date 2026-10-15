@@ -209,7 +209,7 @@ public:
      * @param count Number of elements to pop (required). The single-element
      *              overload (no count argument) returns std::optional<std::string>;
      *              this count overload returns std::vector<std::string>.
-     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>; empty for a missing key (nil, kept in raw())
      * @see https://redis.io/commands/lpop
      */
     auto
@@ -222,16 +222,16 @@ public:
      * @brief Pop the first element(s) of the list asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
-     * @param count Number of elements to pop (required). The single-element
-     *              overload (no count argument) returns std::optional<std::string>;
-     *              this count overload returns std::vector<std::string>.
+     * @param count Number of elements to pop (required). A missing key answers nil,
+     *              delivered as an empty vector (raw() keeps the nil).
      * @return Reference to the derived class.
      * @see https://redis.io/commands/lpop
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     lpop(Func &&func, const std::string &key, long long count) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "LPOP", key, count);
+        return derived().template command<std::optional<std::vector<std::string>>>(
+            nil_as_default<std::vector<std::string>>(std::forward<Func>(func)), "LPOP", key, count);
     }
 
     /**
@@ -265,7 +265,7 @@ public:
      * @param count Number of elements to pop (required). The single-element
      *              overload (no count argument) returns std::optional<std::string>;
      *              this count overload returns std::vector<std::string>.
-     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>; empty for a missing key (nil, kept in raw())
      * @see https://redis.io/commands/rpop
      */
     auto
@@ -278,16 +278,16 @@ public:
      * @brief Pop the last element(s) of the list asynchronously.
      * @param func Callback function to handle the result.
      * @param key Key where the list is stored.
-     * @param count Number of elements to pop (required). The single-element
-     *              overload (no count argument) returns std::optional<std::string>;
-     *              this count overload returns std::vector<std::string>.
+     * @param count Number of elements to pop (required). A missing key answers nil,
+     *              delivered as an empty vector (raw() keeps the nil).
      * @return Reference to the derived class.
      * @see https://redis.io/commands/rpop
      */
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     rpop(Func &&func, const std::string &key, long long count) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "RPOP", key, count);
+        return derived().template command<std::optional<std::vector<std::string>>>(
+            nil_as_default<std::vector<std::string>>(std::forward<Func>(func)), "RPOP", key, count);
     }
 
     /**

@@ -1412,6 +1412,26 @@ fail_client(Func &&func, const char *reason) {
     std::forward<Func>(func)(Reply<Ret>{false, {}, nullptr, reason});
 }
 
+/**
+ * @brief Adapt a callback typed for `Reply<T>` to a command decoded as `std::optional<T>`, delivering
+ *        a nil reply as a value-initialised @p T (an empty vector, zero).
+ *
+ * For commands whose 3.x reply type predates the nil Redis answers for a missing key -- counted
+ * `LPOP` / `RPOP`, `MEMORY USAGE` (Huly QB-655). Decoding `std::optional<T>` makes that nil a
+ * success instead of a decode failure, and the callback keeps its `Reply<T>`; `raw()` still holds
+ * the server's nil for a caller that must tell it apart. A failure keeps its reason and raw reply.
+ *
+ * @tparam T The value type the callback receives in `Reply<T>`.
+ * @param func The command's reply callback; an lvalue is held by reference, as a command holds it.
+ */
+template <typename T, typename Func>
+[[nodiscard]] auto
+nil_as_default(Func &&func) {
+    return [f = std::tuple<Func>{std::forward<Func>(func)}](Reply<std::optional<T>> &&reply) mutable {
+        std::get<0>(f)(Reply<T>{reply.ok(), std::move(reply.result()).value_or(T{}), std::move(reply.raw()), std::move(reply.error())});
+    };
+}
+
 } // namespace qb::redis
 
 #endif // QBM_REDIS_REPLY_H

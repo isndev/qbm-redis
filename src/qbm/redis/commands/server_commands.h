@@ -810,7 +810,7 @@ public:
      *
      * @param key Key to check
      * @param samples Number of samples for sampling
-     * @return redis_awaiter yielding Reply<long long> (memory in bytes)
+     * @return redis_awaiter yielding Reply<long long>: bytes; 0 for a missing key (nil, kept in raw())
      * @see https://redis.io/commands/memory-usage
      */
     auto
@@ -827,11 +827,11 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     memory_usage(Func &&func, const std::string &key, long long samples = 0) {
         std::vector<std::string> args;
-        if (samples > 0) {
-            args.push_back("SAMPLES");
-            args.push_back(std::to_string(samples));
-        }
-        return derived().template command<long long>(std::forward<Func>(func), "MEMORY", "USAGE", key, args);
+        if (samples > 0)
+            args = {"SAMPLES", std::to_string(samples)};
+        // A missing key answers nil: zero bytes, not a decode failure (Huly QB-655).
+        return derived().template command<std::optional<long long>>(nil_as_default<long long>(std::forward<Func>(func)), "MEMORY", "USAGE", key,
+                                                                    args);
     }
 
     // =============== Role Commands ===============

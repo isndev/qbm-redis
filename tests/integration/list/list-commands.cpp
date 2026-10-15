@@ -167,6 +167,17 @@ TEST_P(ListProtocolModesTest, POP) {
         EXPECT_TRUE(empty.ok());
         EXPECT_FALSE(empty.result().has_value());
 
+        // The last element is gone, so is the key: a counted pop answers nil, which is an
+        // empty list, not a failure (Huly QB-655). raw() keeps the server's nil.
+        auto left_missing = co_await redis.lpop(key, 2);
+        EXPECT_TRUE(left_missing.ok()) << left_missing.error();
+        EXPECT_TRUE(left_missing.result().empty());
+        EXPECT_TRUE(left_missing.raw() && left_missing.raw()->is_null());
+        auto right_missing = co_await redis.rpop(key, 2);
+        EXPECT_TRUE(right_missing.ok()) << right_missing.error();
+        EXPECT_TRUE(right_missing.result().empty());
+        EXPECT_TRUE(right_missing.raw() && right_missing.raw()->is_null());
+
         completed = true;
     });
     run_coro_test_until(completed);

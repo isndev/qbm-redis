@@ -31,6 +31,12 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **A missing key's nil is a successful reply for counted `LPOP` / `RPOP` and `MEMORY USAGE` (Huly QB-655).** Redis
+  answers nil when the key does not exist -- never written, emptied by the last pop, expired -- and the
+  `std::vector<std::string>` / `long long` decoders refused it, so the normal outcome surfaced as a failed reply,
+  indistinguishable from a real error. The commands now decode `std::optional` and deliver the nil as an empty vector
+  and `0` bytes; `raw()` keeps the server's nil. With a count above zero an empty vector means the key was absent.
+  The reply types are unchanged for 3.x source compatibility (an optional result is the 4.0 shape).
 - **`ParserConfig::strict_mode` is honoured (Huly QB-633).** It was declared and read nowhere. The one-shot
   `parser::parse(data, config)` -- the entry point whose input is complete -- now fails with `PROTOCOL_ERROR` when a
   byte is left after the value; an unfinished value stays `INCOMPLETE_DATA`, and the default (`false`) keeps the

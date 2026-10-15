@@ -415,6 +415,8 @@ if (!r.ok()) {
 - **`exec` returns a vector**; an aborted transaction (watched key changed)
   surfaces as `!ok()`/nil, not an exception. For heterogeneous queued replies use
   `exec<pipeline_result>()` and read `.raw()` (entries are move-only).
+- **A missing key's nil is a value, not a failure.** Counted `lpop`/`rpop` yield an
+  empty vector and `memory_usage` yields `0` (`raw()` keeps the server's nil).
 - **Reply containers are qb-core types**, not `std::`: `smembers` →
   `qb::unordered_set<std::string>`; `hgetall`/`zscan` → `qb::unordered_map<...>`.
 - **`reset()` after disconnect** does not re-establish subscriptions; consumers

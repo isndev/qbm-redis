@@ -289,7 +289,7 @@ qb::io::async::task<void> introspect(qb::redis::tcp::client &redis) {
 | `MEMORY HELP`         | `memory_help()`                                               | `std::vector<std::string>` |
 
 `memory_usage` appends `SAMPLES n` only when `samples > 0`. The reply is the estimated size of `key` in
-bytes. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:816-834 -->
+bytes; a key that does not exist answers nil, delivered as `0` with `ok() == true` and kept in `raw()` (Huly QB-655). <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:816-834 -->
 
 ```cpp
 // <!-- src: qbm/redis/tests/integration/server/server-introspection.cpp:226-262 -->

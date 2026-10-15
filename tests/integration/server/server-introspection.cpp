@@ -394,4 +394,42 @@ TEST_P(ServerIntrospectionTest, LatencyLatestHistoryReset) {
     run_coro_test_until(completed);
 }
 
+// MEMORY USAGE of a key that does not exist -- never written, or expired -- is answered with nil:
+// zero bytes, not a failure (Huly QB-655). raw() keeps the server's nil.
+TEST_P(ServerIntrospectionTest, MemoryUsageOfAMissingKeyIsZeroBytes) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+
+        const std::string never_written = protocol_key("mem_missing");
+        auto              missing       = co_await redis.memory_usage(never_written);
+        EXPECT_TRUE(missing.ok()) << missing.error();
+        EXPECT_EQ(missing.result(), 0);
+        EXPECT_TRUE(missing.raw() && missing.raw()->is_null());
+
+        const std::string expired = protocol_key("mem_expired");
+        auto              set     = co_await redis.set(expired, "value");
+        EXPECT_TRUE(set.ok()) << set.error();
+        auto expire = co_await redis.pexpire(expired, std::chrono::milliseconds(1));
+        EXPECT_TRUE(expire.ok()) << expire.error();
+        long long remaining = 1;
+        for (int attempt = 0; attempt < 2000 && remaining > 0; ++attempt) // the key is gone once EXISTS says so
+            remaining = (co_await redis.exists(expired)).value_or(1);
+        EXPECT_EQ(remaining, 0) << "the key never expired";
+        auto sampled = co_await redis.memory_usage(expired, 5);
+        EXPECT_TRUE(sampled.ok()) << sampled.error();
+        EXPECT_EQ(sampled.result(), 0);
+        EXPECT_TRUE(sampled.raw() && sampled.raw()->is_null());
+
+        auto present_set = co_await redis.set(never_written, "value");
+        EXPECT_TRUE(present_set.ok()) << present_set.error();
+        auto present = co_await redis.memory_usage(never_written);
+        EXPECT_TRUE(present.ok()) << present.error();
+        EXPECT_GT(present.result(), 0) << "an existing key is never zero bytes";
+
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}
+
 } // namespace

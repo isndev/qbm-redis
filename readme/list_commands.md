@@ -165,7 +165,10 @@ auto r = co_await redis.rpushx("queue", "job4");
 
 `LPOP key [count]` / `RPOP key [count]` — remove and return element(s) from the head (`lpop`) or tail (`rpop`). Each
 verb has two coroutine overloads and two matching callback overloads: a **single-element** form returning
-`std::optional<std::string>`, and a **count** form returning `std::vector<std::string>`.
+`std::optional<std::string>`, and a **count** form returning `std::vector<std::string>`. A key that does not exist —
+never written, emptied by the last pop, or expired — answers nil to both: the single-element form yields `nullopt`,
+the count form an empty vector with `ok() == true` (Huly QB-655). With `count > 0` an empty vector therefore means the
+key was absent; `raw()` keeps the server's nil (an existing list popped with `count == 0` answers an empty array).
 
 ```cpp
 // Coroutine — single element
@@ -182,7 +185,7 @@ template <typename Func> Derived &lpop(Func &&, const std::string &key, long lon
 template <typename Func> Derived &rpop(Func &&, const std::string &key, long long count);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/list_commands.h:244,300,216,272,258,314,233,289 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/list_commands.h:244,300,216,272,258,314,232,288 -->
 
 ```cpp
 auto one = co_await redis.lpop("queue");
@@ -190,7 +193,7 @@ if (one.result().has_value())
     qb::io::cout() << "popped: " << *one.result() << "\n";
 
 auto many = co_await redis.rpop("queue", 3);
-// many.result() is a std::vector<std::string>
+// many.result() is a std::vector<std::string>; empty if "queue" does not exist
 ```
 
 ## Indexed access and manipulation
@@ -532,7 +535,7 @@ template <typename Func> Derived &brpoplpush(Func &&, const std::string &source,
 
 - **Pop result type depends on the overload.** `lpop(key)` / `rpop(key)` yield `Reply<std::optional<std::string>>`;
   `lpop(key, count)` / `rpop(key, count)` yield `Reply<std::vector<std::string>>`. Pick the overload by call shape, not
-  by a flag.
+  by a flag. A missing key is a success in both: `nullopt` for the first, an empty vector for the second.
 - **Blocking timeouts are protocol seconds, not `qb::duration`.** Pass `long long` seconds — or `std::chrono::seconds`
   on `blpop`/`brpop`, the only two with that overload; a `0` timeout blocks forever. The framework's connect/command
   timeouts are a separate, `qb::duration`-typed concern documented in [Connection](./connection.md).

@@ -430,6 +430,8 @@ if (!r.ok()) {
 - **`exec` returns a vector**; an aborted transaction (watched key changed)
   surfaces as `!ok()`/nil, not an exception. For heterogeneous queued replies use
   `exec<pipeline_result>()` and read `.raw()` (entries are move-only).
+- **A missing key's nil is a value, not a failure.** Counted `lpop`/`rpop` yield an
+  empty vector and `memory_usage` yields `0` (`raw()` keeps the server's nil).
 - **Reply containers are qb-core types**, not `std::`: `smembers` →
   `qb::unordered_set<std::string>`; `hgetall`/`zscan` → `qb::unordered_map<...>`.
 - **`reset()` after disconnect** does not re-establish subscriptions; consumers
@@ -712,7 +714,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 |---|---|---|---|
 | `llen` | `auto llen(const std::string& key)` | Length. `Reply<long long>` | `co_await c.llen("l");` |
 | `lpush` / `lpushx` / `rpush` / `rpushx` | `template<class...Args> auto lpush(const std::string& key, Args&&...args)` | Variadic push head/tail (`x`=only if exists). `Reply<long long>` (new length) | `co_await c.lpush("l","a","b");` |
-| `lpop` / `rpop` | `auto lpop(key, long long count); auto lpop(key)` | Count form → `vector<string>`; one-arg → `optional<string>`. | `co_await c.lpop("l");` |
+| `lpop` / `rpop` | `auto lpop(key, long long count); auto lpop(key)` | Count form → `vector<string>`, empty for a missing key (Redis nil, kept in `raw()`); one-arg → `optional<string>`. | `co_await c.lpop("l");` |
 | `blpop` / `brpop` | `auto blpop(const std::vector<std::string>& keys, long long timeout=0); auto blpop(keys, const std::chrono::seconds& timeout)` | Blocking pop; **timeout SECONDS** (0=forever). `Reply<std::optional<std::pair<std::string,std::string>>>` | `co_await c.blpop({"l"},5);` |
 | `lindex` | `auto lindex(const std::string& key, long long index)` | Element at index (-1=last). `Reply<std::optional<std::string>>` | `co_await c.lindex("l",0);` |
 | `linsert` | `auto linsert(key, InsertPosition position, const std::string& pivot, const std::string& val)` | Insert before/after pivot (`InsertPosition` BEFORE/AFTER). `Reply<long long>` | `co_await c.linsert("l",InsertPosition::BEFORE,"p","v");` |
@@ -908,7 +910,7 @@ auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
 | `flushall` / `flushdb` | `auto flushall(bool async=false); auto flushdb(bool async=false)` | FLUSHALL/FLUSHDB [ASYNC]. `Reply<status>` | `co_await c.flushdb();` |
 | `save` / `bgsave` / `bgrewriteaof` / `lastsave` | `auto save(); auto bgsave(bool schedule=false); auto bgrewriteaof(); auto lastsave()` | Persistence. `Reply<status>`; `lastsave`→`long long` (Unix ts as plain int). | `co_await c.bgsave();` |
 | `time` | `auto time()` | TIME; parses via `from_chars` → never throws out of the libev callback. `Reply<std::pair<long long,long long>>` (Unix seconds, microseconds). Callback overload yields raw `Reply<std::vector<std::string>>`. | `auto t = co_await c.time();` |
-| `memory_usage` | `auto memory_usage(const std::string& key, long long samples=0)` | MEMORY USAGE [SAMPLES n]; bytes. `Reply<long long>` | `co_await c.memory_usage("k");` |
+| `memory_usage` | `auto memory_usage(const std::string& key, long long samples=0)` | MEMORY USAGE [SAMPLES n]; bytes, `0` for a missing key (Redis nil, kept in `raw()`). `Reply<long long>` | `co_await c.memory_usage("k");` |
 | `memory_doctor` / `memory_help` / `memory_malloc_stats` / `memory_purge` / `memory_stats` | `auto memory_doctor()` (etc.) | MEMORY subcommands. `std::string` / `std::vector<std::string>` / `status` / `qb::json`. | `co_await c.memory_stats();` |
 | `slowlog_get` / `slowlog_len` / `slowlog_reset` | `auto slowlog_get(long long count=10); auto slowlog_len(); auto slowlog_reset()` | SLOWLOG family. `qb::json` / `long long` / `status`. | `co_await c.slowlog_get();` |
 | `latency_latest` / `latency_history` / `latency_reset` / `latency_doctor` / `latency_graph` / `latency_histogram` | `auto latency_latest()` (etc.) | LATENCY family. `qb::json` / `long long` (reset) / `std::string` (doctor,graph). | `co_await c.latency_latest();` |
