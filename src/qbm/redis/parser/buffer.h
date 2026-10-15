@@ -24,7 +24,9 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
+#include <qb/utility/branch_hints.h>
 
 namespace qb::redis::parser {
 
@@ -47,7 +49,8 @@ namespace qb::redis::parser {
  * deliberately keeps one sentinel slot free so a completely full buffer is
  * never mistaken for an empty one (see @ref ensure_space and @ref compact).
  *
- * The type is move-only (non-copyable, movable).
+ * The type is move-only (non-copyable, movable). Zero storage -- what a moved-from
+ * buffer holds -- is a valid empty ring that the next append grows (Huly QB-631).
  */
 class InputBuffer {
 public:
@@ -69,8 +72,23 @@ public:
 
     InputBuffer(const InputBuffer &)            = delete;
     InputBuffer &operator=(const InputBuffer &) = delete;
-    InputBuffer(InputBuffer &&)                 = default;
-    InputBuffer &operator=(InputBuffer &&)      = default;
+
+    /// Take the storage; the source is left an empty ring (cursors at zero) over no storage.
+    InputBuffer(InputBuffer &&other) noexcept
+        : _buffer(std::move(other._buffer))
+        , _read_pos(std::exchange(other._read_pos, 0))
+        , _write_pos(std::exchange(other._write_pos, 0)) {}
+
+    /// Take the storage; the source is left an empty ring whatever storage it keeps.
+    InputBuffer &
+    operator=(InputBuffer &&other) noexcept {
+        if (this != &other) {
+            _buffer    = std::move(other._buffer);
+            _read_pos  = std::exchange(other._read_pos, 0);
+            _write_pos = std::exchange(other._write_pos, 0);
+        }
+        return *this;
+    }
 
     /**
      * @brief Discard all buffered data without releasing storage.
@@ -114,11 +132,11 @@ public:
 
     /**
      * @brief Usable space for appending without growing storage.
-     * @return Free bytes excluding the ring's reserved sentinel slot.
+     * @return Free bytes excluding the ring's reserved sentinel slot; 0 without storage.
      */
     [[nodiscard]] size_t
     available() const noexcept {
-        return capacity() - size() - 1;
+        return _buffer.empty() ? 0 : capacity() - size() - 1;
     }
 
     /**
@@ -132,7 +150,9 @@ public:
         if (data.empty())
             return true;
 
-        if (data.size() > available()) {
+        // data.size() > available(), compared with the free bytes so that zero storage -- no
+        // sentinel to keep -- also grows, without a branch of its own on this path.
+        if (data.size() >= _buffer.size() - size()) {
             // Try to make room or grow
             if (!ensure_space(data.size())) {
                 return false;
@@ -201,11 +221,11 @@ public:
      */
     void
     consume(size_t bytes) noexcept {
+        // Clamp first: an empty ring -- zero storage included -- has nothing to consume, and
+        // no modulo of a zero capacity may follow.
+        bytes = std::min(bytes, size());
         if (bytes == 0)
             return;
-
-        size_t current_size = size();
-        bytes               = std::min(bytes, current_size);
 
         _read_pos = (_read_pos + bytes) % _buffer.size();
     }
@@ -341,12 +361,12 @@ public:
 private:
     /**
      * @brief Ensure at least @p needed bytes of free space, compacting or
-     *        growing storage as required.
+     *        growing storage as required -- the cold half of append(), kept out of line.
      * @param needed Number of free bytes the caller needs.
      * @return @c true if the space is now available; @c false if satisfying the
      *         request would exceed @ref MAX_CAPACITY.
      */
-    bool
+    QB_NOINLINE QB_COLD bool
     ensure_space(size_t needed) {
         size_t current_available = available();
 
@@ -365,8 +385,9 @@ private:
         // `_write_pos != _read_pos when non-empty` can be preserved by append()
         // without wrapping `_write_pos` to zero — which would otherwise make a
         // completely full buffer indistinguishable from an empty one and
-        // silently drop every subsequent byte.
-        size_t new_capacity = _buffer.size();
+        // silently drop every subsequent byte. Doubling starts from at least one byte:
+        // zero storage doubles to zero forever (Huly QB-631).
+        size_t new_capacity = std::max<size_t>(_buffer.size(), 1);
         size_t required     = size() + needed + 1;
 
         while (new_capacity < required && new_capacity < MAX_CAPACITY) {
@@ -395,7 +416,8 @@ private:
         // GCC's complaint is about which allocation is written, not about a zero-length
         // append. Naming the destination separately removes the ambiguity.
         std::vector<char> grown(new_capacity);
-        std::memcpy(grown.data(), _buffer.data(), _buffer.size());
+        if (!_buffer.empty()) // memcpy's source must not be null, even for zero bytes
+            std::memcpy(grown.data(), _buffer.data(), _buffer.size());
         _buffer.swap(grown);
         return true;
     }

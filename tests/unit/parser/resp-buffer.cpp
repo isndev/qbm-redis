@@ -34,9 +34,11 @@
  */
 
 #include <gtest/gtest.h>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <qbm/redis/parser/buffer.h>
 
@@ -312,6 +314,44 @@ TEST_F(InputBufferTest, ZeroInitialCapacityStillKeepsSentinel) {
     ASSERT_TRUE(all.has_value());
     EXPECT_EQ(*all, data);
     EXPECT_TRUE(buf.empty());
+}
+
+// The other way to reach zero storage (Huly QB-631): the source of a move. The defaulted move
+// left its cursors over storage it no longer owned -- size() reported phantom bytes, and the
+// next append wrote through a null pointer, or, once that was guarded, doubled a zero capacity
+// forever. A moved-from buffer is an empty ring: it drains nothing and grows on its next append.
+TEST_F(InputBufferTest, MovedFromBufferIsAnEmptyRingThatGrowsAgain) {
+    const std::string pending = "pending";
+    for (const bool by_assignment : {false, true}) {
+        SCOPED_TRACE(by_assignment);
+        InputBuffer source(8);
+        ASSERT_TRUE(source.append(as_span(pending)));
+        std::optional<InputBuffer> target;
+        if (by_assignment) {
+            target.emplace();
+            *target = std::move(source);
+        } else {
+            target.emplace(std::move(source));
+        }
+
+        // The moved-from state is the subject of this test.
+        EXPECT_TRUE(source.empty());
+        EXPECT_EQ(source.size(), 0u);
+        EXPECT_TRUE(source.readable_span().empty());
+        EXPECT_FALSE(source.peek().has_value());
+        source.consume(1);
+        for (const std::string data : {"x", "hello world"}) {
+            ASSERT_TRUE(source.append(as_span(data)));
+            auto drained = source.extract_bytes(data.size());
+            ASSERT_TRUE(drained.has_value());
+            EXPECT_EQ(*drained, data);
+            EXPECT_TRUE(source.empty());
+        }
+
+        auto moved = target->extract_bytes(pending.size());
+        ASSERT_TRUE(moved.has_value());
+        EXPECT_EQ(*moved, pending);
+    }
 }
 
 TEST_F(InputBufferTest, ResetKeepsCapacity) {

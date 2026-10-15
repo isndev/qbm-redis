@@ -31,6 +31,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **A moved-from `InputBuffer` is an empty ring that grows again (Huly QB-631).** The constructor already turned a
+  zero capacity into one byte, but the defaulted move left the source's cursors over storage it no longer owned:
+  `size()` reported phantom bytes, `consume()` divided by a zero capacity and the next `append()` wrote through a
+  null pointer (or, with the write guarded, doubled a zero capacity forever). The moves now reset the source's
+  cursors, and zero storage is a valid empty buffer whose next append grows from one byte.
 - **The TLS connection recipe selects a TLS transport before using `rediss://` (Huly QB-696).**
   The plaintext `tcp::client` and `tcp::ssl::client` are distinct aliases; the URI alone cannot upgrade one.
   The example keeps peer verification enabled with a private CA and identifies disabling verification as a separate choice.

@@ -261,7 +261,7 @@ code taking a member's address writes `&RespParser::parse<>` (`parser/parser.h:1
 
 - **`ViewBuffer::consume` saturates at the end.** A skip beyond the remaining bytes, including `SIZE_MAX`,
   never moves the cursor backwards; the byte count is bounded before the cursor advances.
-  <!-- src: qbm/redis/src/qbm/redis/parser/buffer.h:494-496 -->
+  <!-- src: qbm/redis/src/qbm/redis/parser/buffer.h:516-518 -->
 - **`INCOMPLETE_DATA`** is the only retryable code. On it, `parse()`/`parse_all()` consume **zero** bytes: the
   non-destructive `ViewBuffer` position is not committed, so the exact same bytes are re-parsed once more data is fed. A
   half-arrived bulk string or a simple line missing its CRLF simply waits (`src/qbm/redis/parser/parser.h:313-316`,
