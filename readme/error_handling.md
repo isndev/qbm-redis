@@ -305,6 +305,11 @@ bounds the element count of an array, set or push directly, and the map/attribut
 from it as `max_array_size / 2`, because *N* pairs are 2*N* elements: the two rows are one knob, not
 two. Lowering `max_array_size` therefore tightens all four aggregate caps together.
 
+`ParserConfig::strict_mode` (default `false`) is not a limit but the one-shot `parser::parse(data, config)`'s contract
+for complete input: set, a byte left after the first value — a second value, a stray CRLF, garbage — makes the call
+fail with `PROTOCOL_ERROR` instead of returning the first value; an unfinished value is still `INCOMPLETE_DATA`. The
+streaming `RespParser` never applies it: there the bytes after a value are the next pipelined reply (Huly QB-633).
+
 ### Server-side reply types are a separate, non-throwing surface
 
 <!-- src: qbm/redis/src/qbm/redis/server_reply.h:104-431 -->

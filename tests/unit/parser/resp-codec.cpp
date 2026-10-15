@@ -1243,6 +1243,43 @@ TEST(ParserHardening, CorruptBooleanTerminatorFaults) {
     EXPECT_TRUE(parser.has_error());
 }
 
+// ParserConfig::strict_mode is the contract of the one-shot parse(), whose input is complete
+// (Huly QB-633): exactly one value and nothing after it. Off -- the default -- the first value is
+// returned and the rest ignored, as before. The streaming RespParser never applies it: there the
+// bytes after a value are the next pipelined reply.
+TEST(ParserHardening, StrictModeRejectsBytesAfterTheOneShotValue) {
+    ParserConfig strict;
+    strict.strict_mode = true;
+
+    auto single = parse("+OK\r\n", strict);
+    ASSERT_TRUE(single.has_value());
+    EXPECT_EQ(single->as_string_view(), "OK");
+    auto incomplete = parse("$5\r\nhel", strict);
+    ASSERT_FALSE(incomplete.has_value());
+    EXPECT_EQ(incomplete.error().code(), ParseErrorCode::INCOMPLETE_DATA) << "an unfinished value is not trailing data";
+
+    for (const std::string_view wire : {"+OK\r\n+PONG\r\n", "+OK\r\nx", "+OK\r\n\r\n", "$2\r\nab\r\n:1\r\n", "+OK\r\n*2\r\n"}) {
+        SCOPED_TRACE(wire);
+        auto rejected = parse(wire, strict);
+        ASSERT_FALSE(rejected.has_value());
+        EXPECT_EQ(rejected.error().code(), ParseErrorCode::PROTOCOL_ERROR);
+
+        auto permissive = parse(wire);
+        ASSERT_TRUE(permissive.has_value()) << "strict_mode is opt-in: the default keeps the first value";
+    }
+
+    RespParser streaming(strict);
+    ASSERT_TRUE(streaming.feed("+OK\r\n+PONG\r\n:7\r\n"));
+    auto first = streaming.parse();
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first->as_string_view(), "OK");
+    auto rest = streaming.parse_all();
+    ASSERT_EQ(rest.size(), 2u);
+    EXPECT_EQ(rest[0].as_string_view(), "PONG");
+    EXPECT_EQ(rest[1].as_integer().value, 7);
+    EXPECT_FALSE(streaming.has_error());
+}
+
 // ============================================================================
 // Reply-decode through the codec (scan cursor + double strictness)
 // ============================================================================

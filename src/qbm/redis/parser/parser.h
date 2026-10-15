@@ -46,7 +46,7 @@ struct ParserConfig {
     size_t          max_nesting_depth = 64;                     ///< Max aggregate nesting depth.
     size_t          max_bulk_size     = 512 * 1024 * 1024;      ///< Max bulk payload bytes (512MB).
     size_t          max_array_size    = 1'000'000;              ///< Max aggregate element count.
-    bool            strict_mode       = false;                  ///< Reject trailing data after a parse.
+    bool            strict_mode       = false;                  ///< One-shot parse(): reject bytes after the value.
 };
 
 /**
@@ -901,7 +901,7 @@ private:
 /**
  * @brief One-shot parse of complete RESP data
  * @param data Complete RESP wire data
- * @param config Parser configuration (optional)
+ * @param config Parser configuration (optional); `strict_mode` refuses bytes after the value
  * @return Parsed Value or ParseError
  */
 template <typename Abi = ParseResult<Value>>
@@ -911,7 +911,17 @@ parse(std::string_view data, const ParserConfig &config = {}) {
     if (!parser.feed(data)) {
         return make_parse_error(ParseErrorCode::BUFFER_OVERFLOW);
     }
-    return parser.parse();
+    if (!config.strict_mode) [[likely]] {
+        return parser.parse(); // constructed in place, as the permissive default always was
+    }
+    // The input is complete here, so this is where ParserConfig::strict_mode applies (Huly
+    // QB-633): a byte left after the value is a second value or garbage. The streaming
+    // RespParser never applies it -- there the next bytes are the next pipelined reply.
+    auto result = parser.parse();
+    if (result.has_value() && !parser.unparsed_data().empty()) {
+        return make_parse_error(ParseErrorCode::PROTOCOL_ERROR, "Trailing data after the value");
+    }
+    return result;
 }
 
 } // namespace qb::redis::parser

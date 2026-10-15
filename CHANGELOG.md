@@ -31,6 +31,10 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **`ParserConfig::strict_mode` is honoured (Huly QB-633).** It was declared and read nowhere. The one-shot
+  `parser::parse(data, config)` -- the entry point whose input is complete -- now fails with `PROTOCOL_ERROR` when a
+  byte is left after the value; an unfinished value stays `INCOMPLETE_DATA`, and the default (`false`) keeps the
+  first value as before. The streaming `RespParser` never applies it: its next bytes are the next pipelined reply.
 - **A moved-from `InputBuffer` is an empty ring that grows again (Huly QB-631).** The constructor already turned a
   zero capacity into one byte, but the defaulted move left the source's cursors over storage it no longer owned:
   `size()` reported phantom bytes, `consume()` divided by a zero capacity and the next `append()` wrote through a
