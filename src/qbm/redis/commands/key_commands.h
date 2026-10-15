@@ -979,7 +979,7 @@ public:
      * Basic overload: sort key, returns vector of strings.
      * @param key Key to sort.
      * @param options Optional: BY pattern, LIMIT offset count, GET pattern..., ASC|DESC, ALPHA.
-     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>; a GET of a missing key fails it: see sortKeyGet
      * @see https://redis.io/commands/sort
      */
     auto
@@ -1032,7 +1032,7 @@ public:
      * @brief Read-only variant of SORT (coroutine awaitable).
      * @param key Key to sort.
      * @param options Optional: BY pattern, LIMIT offset count, GET pattern..., ASC|DESC, ALPHA.
-     * @return redis_awaiter yielding Reply<std::vector<std::string>>
+     * @return redis_awaiter yielding Reply<std::vector<std::string>>; a GET of a missing key fails it: see sortKeyRoGet
      * @see https://redis.io/commands/sort_ro
      */
     auto
@@ -1051,6 +1051,75 @@ public:
         std::vector<std::string> args = {key};
         args.insert(args.end(), options.begin(), options.end());
         return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SORT_RO", args);
+    }
+
+    /**
+     * @brief SORT with GET patterns, keeping the nil of a missing referenced key (coroutine awaitable).
+     *
+     * `GET pattern` replaces each sorted element with the value of the key (or hash field) the
+     * pattern names for it, `#` with the element itself. A referenced key that does not exist
+     * answers nil (Huly QB-644): here it is `std::nullopt`, distinct from an empty string. The
+     * reply holds one entry per pattern for each sorted element, in pattern order. sortKey keeps
+     * string elements: a nil there fails the reply.
+     * @param key Key to sort.
+     * @param get_patterns GET patterns, each sent as `GET <pattern>` after the options.
+     * @param options Other options, verbatim: BY pattern, LIMIT offset count, ASC|DESC, ALPHA.
+     * @return redis_awaiter yielding Reply<std::vector<std::optional<std::string>>>
+     * @see https://redis.io/commands/sort
+     */
+    auto
+    sortKeyGet(const std::string &key, const std::vector<std::string> &get_patterns, const std::vector<std::string> &options = {}) {
+        return derived().template make_coro_command<std::vector<std::optional<std::string>>>(
+            [this, key, get_patterns, options](auto &&callback) { this->sortKeyGet(std::move(callback), key, get_patterns, options); });
+    }
+
+    /**
+     * @brief Asynchronous version of sortKeyGet
+     * @see https://redis.io/commands/sort
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
+    sortKeyGet(Func &&func, const std::string &key, const std::vector<std::string> &get_patterns,
+               const std::vector<std::string> &options = {}) {
+        std::vector<std::string> args = {key};
+        args.insert(args.end(), options.begin(), options.end());
+        for (const auto &pattern : get_patterns) {
+            args.push_back("GET");
+            args.push_back(pattern);
+        }
+        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "SORT", args);
+    }
+
+    /**
+     * @brief Read-only variant of sortKeyGet: SORT_RO with GET patterns, nil kept as std::nullopt
+     *        (coroutine awaitable).
+     * @param key Key to sort.
+     * @param get_patterns GET patterns, each sent as `GET <pattern>` after the options.
+     * @param options Other options, verbatim: BY pattern, LIMIT offset count, ASC|DESC, ALPHA.
+     * @return redis_awaiter yielding Reply<std::vector<std::optional<std::string>>>
+     * @see https://redis.io/commands/sort_ro
+     */
+    auto
+    sortKeyRoGet(const std::string &key, const std::vector<std::string> &get_patterns, const std::vector<std::string> &options = {}) {
+        return derived().template make_coro_command<std::vector<std::optional<std::string>>>(
+            [this, key, get_patterns, options](auto &&callback) { this->sortKeyRoGet(std::move(callback), key, get_patterns, options); });
+    }
+
+    /**
+     * @brief Asynchronous version of sortKeyRoGet
+     * @see https://redis.io/commands/sort_ro
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
+    sortKeyRoGet(Func &&func, const std::string &key, const std::vector<std::string> &get_patterns,
+                 const std::vector<std::string> &options = {}) {
+        std::vector<std::string> args = {key};
+        args.insert(args.end(), options.begin(), options.end());
+        for (const auto &pattern : get_patterns) {
+            args.push_back("GET");
+            args.push_back(pattern);
+        }
+        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "SORT_RO", args);
     }
 
     /**

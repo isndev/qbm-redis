@@ -114,5 +114,5 @@ qredis_bench(reply-codec benchmark/parser/reply-codec.bench.cpp)
 qredis_test(unit serialization-failure unit/commands/serialization-failure.cpp EXTRA_LABELS commands)
 
 # UNIT -- each command decodes every reply Redis documents for it: nil and integer replies included
-# (Huly QB-655).
+# (Huly QB-644, QB-655).
 qredis_test(unit command-reply-types unit/commands/command-reply-types.cpp EXTRA_LABELS commands)

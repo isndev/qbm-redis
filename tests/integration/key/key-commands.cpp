@@ -682,3 +682,48 @@ TEST_P(KeyProtocolModesTest, WAIT) {
     qb::io::async::coro_scheduler().spawn(test_task());
     run_coro_test_until(completed);
 }
+
+// SORT ... GET answers nil for each element whose referenced key is missing (Huly QB-644).
+// sortKeyGet / sortKeyRoGet keep it as std::nullopt -- distinct from a referenced empty
+// string -- one entry per GET pattern per sorted element; sortKey, whose elements are strings,
+// refuses the reply instead of turning the nil into "".
+TEST_P(KeyProtocolModesTest, SORT_GET_KEEPS_THE_NIL_OF_A_MISSING_KEY) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        using Nullable           = std::vector<std::optional<std::string>>;
+        const std::string list   = protocol_key("sort_get_list");
+        const std::string prefix = protocol_key("sort_get_weight") + "_";
+        CO_IGNORE(co_await redis.rpush(list, "3", "1", "2"));
+        CO_IGNORE(co_await redis.set(prefix + "1", "one"));
+        CO_IGNORE(co_await redis.set(prefix + "3", "")); // present, empty -- "2" references nothing
+
+        auto read = co_await redis.sortKeyGet(list, {prefix + "*"});
+        EXPECT_TRUE(read.ok()) << read.error();
+        EXPECT_EQ(read.result(), (Nullable{"one", std::nullopt, ""}));
+
+        auto read_only = co_await redis.sortKeyRoGet(list, {"#", prefix + "*"}, {"DESC"});
+        EXPECT_TRUE(read_only.ok()) << read_only.error();
+        EXPECT_EQ(read_only.result(), (Nullable{"3", "", "2", std::nullopt, "1", "one"}));
+
+        auto plain = co_await redis.sortKey(list, {"GET", prefix + "*"});
+        EXPECT_FALSE(plain.ok()) << "a nil element is not an empty string";
+
+        auto members = co_await redis.sortKey(list);
+        EXPECT_TRUE(members.ok()) << members.error();
+        EXPECT_EQ(members.result(), (std::vector<std::string>{"1", "2", "3"}));
+
+        auto absent = co_await redis.sortKeyGet(protocol_key("sort_get_absent"), {prefix + "*"});
+        EXPECT_TRUE(absent.ok()) << absent.error();
+        EXPECT_TRUE(absent.result().empty());
+
+        const std::string hash = protocol_key("sort_get_hash");
+        CO_IGNORE(co_await redis.hset(hash, "f", "v"));
+        auto wrong_type = co_await redis.sortKeyGet(hash, {prefix + "*"});
+        EXPECT_FALSE(wrong_type.ok());
+        EXPECT_NE(wrong_type.error().find("WRONGTYPE"), std::string::npos) << wrong_type.error();
+
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}

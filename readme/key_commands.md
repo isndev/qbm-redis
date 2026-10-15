@@ -46,6 +46,7 @@ below are the correct way to express expiry.)
 | `std::optional<std::string>` | a possibly-absent key/value            | `dump`, `randomkey`, `objectEncoding`                                                                             |
 | `std::optional<long long>`   | a possibly-absent metadata integer     | `objectFreq`, `objectIdletime`, `objectRefcount`                                                                  |
 | `std::vector<std::string>`   | a key/value list                       | `keys`, `sortKey`, `sortKeyRo`                                                                                    |
+| `std::vector<std::optional<std::string>>` | sorted elements a `GET` may find missing | `sortKeyGet`, `sortKeyRoGet`                                                                      |
 | `qb::redis::scan<>`          | one SCAN round-trip: `{cursor, items}` | `scan`                                                                                                            |
 
 `qb::redis::Reply<T>` (`reply.h:1225`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
@@ -564,8 +565,9 @@ auto r = co_await redis.migrate("10.0.0.2", 6379, "k", /*db=*/0, /*timeout_ms=*/
 
 ## Sorting
 
-`SORT` is exposed under three names to avoid colliding with `std::sort`. `options` is a raw token list appended
-verbatim — e.g. `{"LIMIT", "0", "10", "ALPHA", "DESC"}` or `{"BY", "weight_*", "GET", "data_*"}`.
+`SORT` is exposed under its own names to avoid colliding with `std::sort`. `options` is a raw token list appended
+verbatim — e.g. `{"LIMIT", "0", "10", "ALPHA", "DESC"}` or `{"BY", "weight_*"}`. A `GET` pattern whose key may be
+missing belongs to `sortKeyGet`: Redis answers nil for that element, which only a nullable element type can hold.
 
 ### `sortKey` / `sortKeyRo`
 
@@ -580,6 +582,30 @@ auto sortKeyRo(const std::string &key, const std::vector<std::string> &options =
 ```cpp
 auto r = co_await redis.sortKey("mylist", {"ALPHA", "DESC"});
 for (auto const &e : r.result()) { /* ... */ }
+```
+
+The elements are strings. A `GET` in `options` works while every key it references exists; a missing one answers
+nil, and the whole `Reply` fails (`ok() == false`) rather than inventing an empty string.
+
+### `sortKeyGet` / `sortKeyRoGet`
+
+`SORT key [options] GET pattern [GET pattern ...]` (and its `SORT_RO` form) — each pattern is sent as `GET <pattern>`
+after the options; `#` stands for the element itself. The reply holds one entry per pattern for each sorted element,
+in pattern order, and a key the pattern references but that does not exist is `std::nullopt` — distinct from a value
+that is an empty string (Huly QB-644).
+
+```cpp
+auto sortKeyGet(const std::string &key, const std::vector<std::string> &get_patterns,
+                const std::vector<std::string> &options = {});   // -> Reply<std::vector<std::optional<std::string>>>
+auto sortKeyRoGet(const std::string &key, const std::vector<std::string> &get_patterns,
+                  const std::vector<std::string> &options = {}); // -> Reply<std::vector<std::optional<std::string>>>
+// callback overloads: Derived &sortKeyGet(Func &&, key, get_patterns, options); likewise sortKeyRoGet
+```
+
+```cpp
+// ids = [2, 1]; name_1 = "one", name_2 missing
+auto r = co_await redis.sortKeyGet("ids", {"#", "name_*"});
+// r.result() == {"1", "one", "2", std::nullopt}
 ```
 
 ### `sortKeyStore`
@@ -650,8 +676,8 @@ auto r = co_await redis.waitaof(1, 0, 1000);   // local fsync, 1s timeout (ms)
   loop when memory or error visibility matters.
 - **`del`/`exists`/`touch`/`unlink` are variadic but reply with one integer.** They return the count, not a per-key
   list. Use `exists` with a single key to get a 0/1 presence check.
-- **Renamed verbs.** Reach for `copyKey` (not `copy`) and `sortKey`/`sortKeyRo`/`sortKeyStore` (not `sort`); `move` is
-  the Redis `MOVE` command.
+- **Renamed verbs.** Reach for `copyKey` (not `copy`) and `sortKey`/`sortKeyRo`/`sortKeyStore`/`sortKeyGet`/
+  `sortKeyRoGet` (not `sort`); `move` is the Redis `MOVE` command.
 
 ## See also
 

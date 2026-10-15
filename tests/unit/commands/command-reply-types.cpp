@@ -6,7 +6,8 @@
  * documented reply -- the nil of a missing key -- a successful command reaches the caller
  * as a failed `Reply` with a decode error, the same
  * outcome as a real failure:
- *   - counted `LPOP` / `RPOP` and `MEMORY USAGE` answer nil for a missing key (Huly QB-655).
+ *   - counted `LPOP` / `RPOP` and `MEMORY USAGE` answer nil for a missing key (Huly QB-655);
+ *   - `SORT ... GET` answers nil for each element whose referenced key is missing (Huly QB-644).
  *
  * The client here is the public command mixins composed with a scripted `command<T>` seam: the
  * real mixin builds the arguments and picks the type, `put_in_pipe` serializes the frame the
@@ -93,7 +94,8 @@ struct Captured {
 } // namespace command_reply_types_test
 
 using namespace command_reply_types_test;
-using StringList = std::vector<std::string>;
+using StringList         = std::vector<std::string>;
+using NullableStringList = std::vector<std::optional<std::string>>;
 
 // ============================================================================
 // Counted LPOP / RPOP and MEMORY USAGE (Huly QB-655) -- nil for a missing key
@@ -166,4 +168,46 @@ TEST(CommandReplyTypes, MemoryUsageOfAMissingKeyIsZeroBytesNotAFailure) {
     EXPECT_EQ(failed.error(), "ERR syntax error");
     ASSERT_TRUE(failed.raw());
     EXPECT_TRUE(failed.raw()->is_error());
+}
+
+// ============================================================================
+// SORT ... GET (Huly QB-644) -- nil for an element whose referenced key is missing
+// ============================================================================
+
+TEST(CommandReplyTypes, SortGetKeepsTheNilOfAMissingReferencedKey) {
+    // SORT key GET w_*: element "1" references w_1 = "one", element "2" references a missing w_2.
+    for (const std::string_view wire : {"*2\r\n$3\r\none\r\n$-1\r\n", "*2\r\n$3\r\none\r\n_\r\n"}) {
+        SCOPED_TRACE(wire);
+        ScriptedClient client(wire);
+        auto           read = client.sortKeyGet("list", {"w_*"});
+        static_assert(std::is_same_v<decltype(read), qb::redis::Reply<NullableStringList>>);
+        ASSERT_TRUE(read.ok()) << read.error();
+        EXPECT_EQ(read.result(), (NullableStringList{"one", std::nullopt}));
+        EXPECT_EQ(client.frame, "*4\r\n$4\r\nSORT\r\n$4\r\nlist\r\n$3\r\nGET\r\n$3\r\nw_*\r\n");
+
+        Captured<NullableStringList> read_only;
+        client.sortKeyRoGet(read_only.sink(), "list", {"w_*"}, {"ALPHA"});
+        EXPECT_EQ(read_only.calls, 1);
+        ASSERT_TRUE(read_only.reply.ok()) << read_only.reply.error();
+        EXPECT_EQ(read_only.reply.result(), (NullableStringList{"one", std::nullopt}));
+        EXPECT_EQ(client.frame, "*5\r\n$7\r\nSORT_RO\r\n$4\r\nlist\r\n$5\r\nALPHA\r\n$3\r\nGET\r\n$3\r\nw_*\r\n");
+
+        // sortKey's elements are strings: a nil fails the reply, it never becomes "".
+        auto plain = client.sortKey("list", {"GET", "w_*"});
+        EXPECT_FALSE(plain.ok());
+        EXPECT_TRUE(plain.result().empty());
+    }
+
+    // Two patterns: one entry per pattern for each sorted element, in pattern order; an empty
+    // string stays an engaged empty string.
+    ScriptedClient multi("*4\r\n$1\r\n1\r\n$0\r\n\r\n$1\r\n2\r\n_\r\n");
+    auto           both = multi.sortKeyGet("list", {"#", "w_*"});
+    ASSERT_TRUE(both.ok()) << both.error();
+    EXPECT_EQ(both.result(), (NullableStringList{"1", "", "2", std::nullopt}));
+    EXPECT_EQ(multi.frame, "*6\r\n$4\r\nSORT\r\n$4\r\nlist\r\n$3\r\nGET\r\n$1\r\n#\r\n$3\r\nGET\r\n$3\r\nw_*\r\n");
+
+    ScriptedClient wrong_type("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n");
+    auto           failed = wrong_type.sortKeyGet("hash", {"w_*"});
+    EXPECT_FALSE(failed.ok());
+    EXPECT_EQ(failed.error(), "WRONGTYPE Operation against a key holding the wrong kind of value");
 }

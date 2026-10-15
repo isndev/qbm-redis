@@ -9,6 +9,12 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **`sortKeyGet` / `sortKeyRoGet` read `SORT ... GET` replies that hold a missing key (Huly QB-644).** A `GET` pattern
+  whose referenced key does not exist answers nil for that element; `sortKey`'s `std::vector<std::string>` cannot hold
+  it, so the whole reply failed with a decode error. The new pair sends one `GET <pattern>` per pattern after the
+  options and returns `Reply<std::vector<std::optional<std::string>>>` -- one entry per pattern per sorted element,
+  `std::nullopt` for a missing key, distinct from an empty string. `sortKey` and `sortKeyRo` keep their type for 3.x
+  source compatibility: their elements are strings, and a nil there still fails the reply instead of becoming `""`.
 - **`xclaim_justid` returns claimed stream IDs without entry fields (Huly QB-677).** Both coroutine and callback forms
   return `Reply<std::vector<std::string>>`, keeping the server's ID strings intact. The existing `xclaim` keeps its
   `Reply<stream_entry_list>` contract for field-bearing claims and rejects a `JUSTID` option locally before Redis can

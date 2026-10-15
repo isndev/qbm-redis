@@ -92,7 +92,8 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   `string_commands<Derived>`, …) composed into the client. You never
   instantiate them directly. Method names are lowercase Redis verbs, with
   deliberate renames to dodge std/keyword clashes: `COPY`→`copyKey`,
-  `SORT`→`sortKey`/`sortKeyStore`/`sortKeyRo`, `MOVE`→`move`.
+  `SORT`→`sortKey`/`sortKeyStore`/`sortKeyRo` (and `sortKeyGet`/`sortKeyRoGet`
+  for `GET` patterns, whose elements may be nil), `MOVE`→`move`.
 - **Pipelining is implicit.** Issue several callback-form commands without
   awaiting; each enqueues one handler, bytes go out in order, replies return
   positionally (FIFO). Drain with `await()`.
@@ -416,7 +417,9 @@ if (!r.ok()) {
   surfaces as `!ok()`/nil, not an exception. For heterogeneous queued replies use
   `exec<pipeline_result>()` and read `.raw()` (entries are move-only).
 - **A missing key's nil is a value, not a failure.** Counted `lpop`/`rpop` yield an
-  empty vector and `memory_usage` yields `0` (`raw()` keeps the server's nil).
+  empty vector and `memory_usage` yields `0` (`raw()` keeps the server's nil);
+  `sortKey` elements are strings, so a `GET` of a missing key fails the reply —
+  `sortKeyGet`/`sortKeyRoGet` keep it as `std::nullopt`.
 - **Reply containers are qb-core types**, not `std::`: `smembers` →
   `qb::unordered_set<std::string>`; `hgetall`/`zscan` → `qb::unordered_map<...>`.
 - **`reset()` after disconnect** does not re-establish subscriptions; consumers
