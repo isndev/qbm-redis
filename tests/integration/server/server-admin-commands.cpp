@@ -518,4 +518,65 @@ TEST_P(ServerAdminTest, ClientUnblockReportsWhetherABlockedClientWasUnblocked) {
     run_coro_test_until(completed);
 }
 
+// COMMAND INFO is one positional array per command name -- name, arity, flags, first key, last
+// key, step, then ACL categories (6.0), tips, key specifications and subcommands (7.0) -- and a
+// nil for a name the server does not know (Huly QB-653). command_info() names the positions,
+// keeps the native types and the nesting, and keeps the nil as null.
+TEST_P(ServerAdminTest, CommandInfoNamesThePositionalMetadata) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        const auto holds_element = [](const qb::json &array, const char *element) {
+            for (const auto &e : array)
+                if (e == element)
+                    return true;
+            return false;
+        };
+
+        auto info = co_await redis.command_info({"get", "qb-no-such-command", "config"});
+        EXPECT_TRUE(info.ok()) << info.error();
+        const qb::json &docs = info.result();
+        if (!docs.is_array() || docs.size() != 3u) {
+            ADD_FAILURE() << "one entry per requested name: " << docs.dump();
+            completed = true;
+            co_return;
+        }
+
+        const qb::json &get = docs[0];
+        EXPECT_EQ(get.value("name", ""), "get");
+        EXPECT_EQ(get.value("arity", 0), 2);
+        EXPECT_EQ(get.value("first_key", 0), 1);
+        EXPECT_EQ(get.value("last_key", 0), 1);
+        EXPECT_EQ(get.value("step", 0), 1);
+        EXPECT_TRUE(get.contains("flags") && holds_element(get["flags"], "readonly")) << get.dump();
+        if (get.contains("acl_categories")) { // Redis 6.0+
+            EXPECT_TRUE(holds_element(get["acl_categories"], "@read")) << get.dump();
+        }
+        if (get.contains("key_specifications")) { // Redis 7.0+
+            const qb::json specs        = get["key_specifications"];
+            const qb::json spec         = specs.is_array() && !specs.empty() ? specs[0] : qb::json::object();
+            const qb::json begin_search = spec.value("begin_search", qb::json::object());
+            EXPECT_EQ(begin_search.value("type", ""), "index") << get.dump();
+            EXPECT_EQ(begin_search.value("spec", qb::json::object()).value("index", 0), 1) << get.dump();
+            EXPECT_EQ(spec.value("find_keys", qb::json::object()).value("type", ""), "range") << get.dump();
+            EXPECT_TRUE(get.value("tips", qb::json()).is_array()) << get.dump();
+            EXPECT_EQ(get.value("subcommands", qb::json()), qb::json::array()) << get.dump();
+        }
+
+        EXPECT_TRUE(docs[1].is_null()) << "an unknown name is null: " << docs[1].dump();
+
+        const qb::json &config = docs[2];
+        EXPECT_EQ(config.value("name", ""), "config");
+        EXPECT_LT(config.value("arity", 0), 0) << "CONFIG takes a variable argument count";
+        if (config.contains("subcommands")) { // Redis 7.0+
+            EXPECT_FALSE(config["subcommands"].empty());
+            for (const auto &sub : config["subcommands"])
+                EXPECT_EQ(sub.value("name", "").rfind("config|", 0), 0u) << sub.dump();
+        }
+
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}
+
 } // namespace

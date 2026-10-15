@@ -691,3 +691,120 @@ TEST(ReplyJsonCommands, AttributedCommandStatsKeepsFieldsAndRaw) {
     ASSERT_NE(reply.raw(), nullptr);
     EXPECT_TRUE(std::holds_alternative<qb::redis::parser::Attribute>(*reply.raw()));
 }
+
+// ============================================================================
+// COMMAND INFO (Huly QB-653): one positional array per name, named here
+// ============================================================================
+
+namespace command_info_json_test {
+
+// command_info() over the scripted seam, fed the bytes Redis sent.
+qb::redis::Reply<qb::json>
+command_info_from(std::string_view wire, const std::vector<std::string> &names, std::string *frame = nullptr) {
+    auto parsed = qb::redis::parser::parse(wire);
+    if (!parsed.has_value()) {
+        ADD_FAILURE() << "fixture does not parse: " << parsed.error().what();
+        return {};
+    }
+    ScriptedServerCommands     server(std::move(*parsed));
+    qb::redis::Reply<qb::json> result;
+    size_t                     completions = 0;
+    server.command_info(
+        [&](qb::redis::Reply<qb::json> &&reply) {
+            ++completions;
+            result = std::move(reply);
+        },
+        names);
+    EXPECT_EQ(completions, 1u);
+    if (frame)
+        *frame = server.written();
+    return result;
+}
+
+// COMMAND INFO get qb-unknown, as Redis 8.0 sends it.
+constexpr std::string_view kGetAndUnknownResp2 =
+    "*2\r\n*10\r\n$3\r\nget\r\n:2\r\n*2\r\n+readonly\r\n+fast\r\n:1\r\n:1\r\n:1\r\n*3\r\n+@read\r\n+@string\r\n+@fast\r\n*0\r\n"
+    "*1\r\n*6\r\n$5\r\nflags\r\n*2\r\n+RO\r\n+access\r\n$12\r\nbegin_search\r\n*4\r\n$4\r\ntype\r\n$5\r\nindex\r\n$4\r\nspec\r\n"
+    "*2\r\n$5\r\nindex\r\n:1\r\n$9\r\nfind_keys\r\n*4\r\n$4\r\ntype\r\n$5\r\nrange\r\n$4\r\nspec\r\n*6\r\n$7\r\nlastkey\r\n:0\r\n"
+    "$7\r\nkeystep\r\n:1\r\n$5\r\nlimit\r\n:0\r\n*0\r\n$-1\r\n";
+constexpr std::string_view kGetAndUnknownResp3 =
+    "*2\r\n*10\r\n$3\r\nget\r\n:2\r\n~2\r\n+readonly\r\n+fast\r\n:1\r\n:1\r\n:1\r\n~3\r\n+@read\r\n+@string\r\n+@fast\r\n~0\r\n"
+    "~1\r\n%3\r\n$5\r\nflags\r\n~2\r\n+RO\r\n+access\r\n$12\r\nbegin_search\r\n%2\r\n$4\r\ntype\r\n$5\r\nindex\r\n$4\r\nspec\r\n"
+    "%1\r\n$5\r\nindex\r\n:1\r\n$9\r\nfind_keys\r\n%2\r\n$4\r\ntype\r\n$5\r\nrange\r\n$4\r\nspec\r\n%3\r\n$7\r\nlastkey\r\n:0\r\n"
+    "$7\r\nkeystep\r\n:1\r\n$5\r\nlimit\r\n:0\r\n~0\r\n_\r\n";
+
+} // namespace command_info_json_test
+
+using namespace command_info_json_test;
+
+TEST(ReplyJsonCommands, CommandInfoNamesEveryPositionInBothProtocols) {
+    const qb::json get = qb::json::parse(R"({
+        "name": "get", "arity": 2, "flags": ["readonly", "fast"], "first_key": 1, "last_key": 1, "step": 1,
+        "acl_categories": ["@read", "@string", "@fast"], "tips": [],
+        "key_specifications": [{"flags": ["RO", "access"],
+                                "begin_search": {"type": "index", "spec": {"index": 1}},
+                                "find_keys": {"type": "range", "spec": {"lastkey": 0, "keystep": 1, "limit": 0}}}],
+        "subcommands": []})");
+    for (const std::string_view wire : {kGetAndUnknownResp2, kGetAndUnknownResp3}) {
+        std::string frame;
+        auto        reply = command_info_from(wire, {"get", "qb-unknown"}, &frame);
+        ASSERT_TRUE(reply.ok()) << reply.error();
+        EXPECT_EQ(reply.result(), qb::json::array({get, nullptr})) << reply.result().dump();
+        EXPECT_EQ(frame, "*4\r\n$7\r\nCOMMAND\r\n$4\r\nINFO\r\n$3\r\nget\r\n$10\r\nqb-unknown\r\n");
+        ASSERT_NE(reply.raw(), nullptr);
+        EXPECT_TRUE(reply.raw()->is_array());
+    }
+}
+
+TEST(ReplyJsonCommands, CommandInfoSubcommandsUseTheSameNamedLayout) {
+    // CONFIG, trimmed to two of its subcommands, as Redis 8.0 sends it in RESP3 (tips are a set).
+    const std::string_view config =
+        "*1\r\n*10\r\n$6\r\nconfig\r\n:-2\r\n~0\r\n:0\r\n:0\r\n:0\r\n~1\r\n+@slow\r\n~0\r\n~0\r\n*2\r\n"
+        "*10\r\n$11\r\nconfig|help\r\n:2\r\n~2\r\n+loading\r\n+stale\r\n:0\r\n:0\r\n:0\r\n~1\r\n+@slow\r\n~0\r\n~0\r\n~0\r\n"
+        "*10\r\n$10\r\nconfig|set\r\n:-4\r\n~4\r\n+admin\r\n+noscript\r\n+loading\r\n+stale\r\n:0\r\n:0\r\n:0\r\n"
+        "~3\r\n+@admin\r\n+@slow\r\n+@dangerous\r\n~2\r\n$24\r\nrequest_policy:all_nodes\r\n$29\r\nresponse_policy:all_succeeded\r\n"
+        "~0\r\n~0\r\n";
+    auto reply = command_info_from(config, {"config"});
+    ASSERT_TRUE(reply.ok()) << reply.error();
+    ASSERT_EQ(reply.result().size(), 1u);
+    const qb::json &doc = reply.result()[0];
+    EXPECT_EQ(doc["name"], "config");
+    EXPECT_EQ(doc["arity"], -2);
+    EXPECT_EQ(doc["flags"], qb::json::array());
+    ASSERT_EQ(doc["subcommands"].size(), 2u);
+    EXPECT_EQ(doc["subcommands"][0]["name"], "config|help");
+    EXPECT_EQ(doc["subcommands"][0]["flags"], qb::json::array({"loading", "stale"}));
+    EXPECT_EQ(doc["subcommands"][1]["name"], "config|set");
+    EXPECT_EQ(doc["subcommands"][1]["arity"], -4);
+    EXPECT_EQ(doc["subcommands"][1]["tips"], qb::json::array({"request_policy:all_nodes", "response_policy:all_succeeded"}));
+    EXPECT_EQ(doc["subcommands"][1]["subcommands"], qb::json::array());
+}
+
+TEST(ReplyJsonCommands, CommandInfoKeepsOlderServersShorterEntries) {
+    // Redis 6.x: seven positions (ACL categories, no tips/specs/subcommands); 5.x and older: six.
+    auto six_zero = command_info_from(
+        "*1\r\n*7\r\n$3\r\nget\r\n:2\r\n*2\r\n+readonly\r\n+fast\r\n:1\r\n:1\r\n:1\r\n*3\r\n+@read\r\n+@string\r\n+@fast\r\n", {"get"});
+    ASSERT_TRUE(six_zero.ok()) << six_zero.error();
+    EXPECT_EQ(six_zero.result(), qb::json::parse(R"([{"name": "get", "arity": 2, "flags": ["readonly", "fast"], "first_key": 1,
+                                                       "last_key": 1, "step": 1, "acl_categories": ["@read", "@string", "@fast"]}])"));
+    auto five = command_info_from("*1\r\n*6\r\n$4\r\nping\r\n:-1\r\n*2\r\n+stale\r\n+fast\r\n:0\r\n:0\r\n:0\r\n", {"ping"});
+    ASSERT_TRUE(five.ok()) << five.error();
+    EXPECT_EQ(five.result(),
+              qb::json::parse(R"([{"name": "ping", "arity": -1, "flags": ["stale", "fast"], "first_key": 0, "last_key": 0, "step": 0}])"));
+}
+
+TEST(ReplyJsonCommands, CommandInfoMalformedOrRefusedKeepsReasonAndRaw) {
+    for (const std::string_view malformed :
+         {std::string_view{"*1\r\n:5\r\n"}, std::string_view{"*1\r\n*2\r\n$3\r\nget\r\n:2\r\n"},
+          std::string_view{"*1\r\n*6\r\n$3\r\nget\r\n$1\r\n2\r\n*0\r\n:1\r\n:1\r\n:1\r\n"}}) {
+        SCOPED_TRACE(malformed);
+        auto reply = command_info_from(malformed, {"get"});
+        EXPECT_FALSE(reply.ok());
+        EXPECT_FALSE(reply.error().empty());
+        ASSERT_NE(reply.raw(), nullptr);
+        EXPECT_TRUE(reply.raw()->is_array());
+    }
+    auto refused = command_info_from("-NOPERM User has no permissions to run the 'command|info' command\r\n", {"get"});
+    EXPECT_FALSE(refused.ok());
+    EXPECT_EQ(refused.error(), "NOPERM User has no permissions to run the 'command|info' command");
+}

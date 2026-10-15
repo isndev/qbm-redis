@@ -35,6 +35,15 @@ All notable changes to the qbm-redis module are documented here. The format is b
   yield `true` / `false` (the module's type for a 1/0 outcome, as `expire` or `sismember`). No program ever received a
   successful `Reply<status>` from this command; a callback spelled `Reply<status>&&` now fails to compile and moves
   to `Reply<bool>&&`.
+- **Source change -- `command_info()` replies `Reply<qb::json>`, was `Reply<std::vector<std::map<std::string,
+  std::string>>>` (Huly QB-653).** COMMAND INFO answers each name with a positional array of mixed types (flags,
+  key specifications and subcommands are nested aggregates); the old decoder paired neighbouring positions as
+  string keys and values, failed outright on Redis 7+ and on RESP3, and dropped the failure's reason. The reply is
+  now a JSON array with one object per requested name -- `name`, `arity`, `flags`, `first_key`, `last_key`, `step`,
+  `acl_categories`, `tips`, `key_specifications`, `subcommands` (each subcommand the same object), as far as the
+  server sends them, native types kept and key specifications objects in RESP2 and RESP3 alike -- or `null` for a
+  name the server does not know. Failures keep their reason and raw reply. The old type never carried a correct
+  entry, so only code written against it needs the new type.
 - **The maintainer approved the limited 3.3 source exception for result-function addresses (Huly QB-286).**
   Ordinary calls are unchanged; an untyped helper or parser-member address can require `<>` to select the
   caller-side template. This prevents mixing C++20/C++23 result representations and inline bodies.

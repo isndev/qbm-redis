@@ -460,15 +460,25 @@ public:
     // =============== Command Information Commands ===============
 
     /**
-     * @brief Gets information about Redis commands
+     * @brief Gets the metadata of Redis commands, one JSON object per name (coroutine awaitable)
      *
-     * @param command_names Optional list of command names to get info about
-     * @return Vector of command information
+     * COMMAND INFO answers each name with a positional array -- name, arity, flags, first key,
+     * last key, step, then ACL categories (Redis 6.0), tips, key specifications and subcommands
+     * (7.0) -- or a nil for a name the server does not know (Huly QB-653). The reply is a JSON
+     * array with one object per name, its positions named `name`, `arity`, `flags`, `first_key`,
+     * `last_key`, `step`, `acl_categories`, `tips`, `key_specifications` and `subcommands` (each
+     * subcommand the same object) and their native types kept: integers stay integers, flags and
+     * tips stay strings, a key specification is an object in RESP2 and RESP3 alike. A server that
+     * sends fewer positions yields fewer fields; positions a later server appends stay in `raw()`.
+     * An unknown name is `null`. A failure keeps its reason and the raw reply.
+     *
+     * @param command_names Command names; empty asks for every command
+     * @return redis_awaiter yielding Reply<qb::json>: an array, one object or null per name
      * @see https://redis.io/commands/command-info
      */
     auto
     command_info(const std::vector<std::string> &command_names = {}) {
-        return derived().template make_coro_command<std::vector<std::map<std::string, std::string>>>(
+        return derived().template make_coro_command<qb::json>(
             [this, command_names](auto &&callback) { this->command_info(std::move(callback), command_names); });
     }
 
@@ -476,29 +486,19 @@ public:
      * @brief Asynchronous version of command_info
      *
      * @param func Callback function to handle the result
-     * @param command_names Optional list of command names to get info about
+     * @param command_names Command names; empty asks for every command
      * @return Reference to the derived class
      * @see https://redis.io/commands/command-info
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::map<std::string, std::string>>> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     command_info(Func &&func, const std::vector<std::string> &command_names = {}) {
-        return derived().template command<std::vector<std::vector<std::string>>>(
-            [f = std::forward<Func>(func)](auto &&reply) mutable {
-                Reply<std::vector<std::map<std::string, std::string>>> r;
-                r.ok() = reply.ok();
-                if (reply.ok()) {
-                    for (const auto &cmd : reply.result()) {
-                        std::map<std::string, std::string> cmd_info;
-                        for (size_t i = 0; i < cmd.size(); i += 2) {
-                            if (i + 1 < cmd.size()) {
-                                cmd_info[cmd[i]] = cmd[i + 1];
-                            }
-                        }
-                        r.result().push_back(std::move(cmd_info));
-                    }
-                }
-                f(std::move(r));
+        // Decoded by its command-local tag, then delivered as Reply<qb::json> with ok, the
+        // decoded value, the raw reply and the reason all carried across -- the former reshape
+        // copied ok() alone and dropped the reason of a failed reply.
+        return derived().template command<reply::command_info_json_reply>(
+            [f = std::tuple<Func>{std::forward<Func>(func)}](Reply<reply::command_info_json_reply> &&reply) mutable {
+                std::get<0>(f)(Reply<qb::json>{reply.ok(), std::move(reply.result().value), std::move(reply.raw()), std::move(reply.error())});
             },
             "COMMAND", "INFO", command_names);
     }

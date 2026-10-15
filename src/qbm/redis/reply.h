@@ -1412,6 +1412,15 @@ fail_client(Func &&func, const char *reason) {
     std::forward<Func>(func)(Reply<Ret>{false, {}, nullptr, reason});
 }
 
+namespace reply {
+// The command-local decoding tag of command_info() (Huly QB-653), a sibling of role_json_reply:
+// COMMAND INFO's positional entries become named JSON objects inside TReply's decode boundary.
+struct command_info_json_reply {
+    qb::json value;
+};
+[[nodiscard]] command_info_json_reply parse(ParseTag<command_info_json_reply>, const ReplyValue &reply);
+} // namespace reply
+
 /**
  * @brief Adapt a callback typed for `Reply<T>` to a command decoded as `std::optional<T>`, delivering
  *        a nil reply as a value-initialised @p T (an empty vector, zero).

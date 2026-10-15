@@ -724,6 +724,142 @@ parse(ParseTag<command_stats_json_reply>, const ReplyValue &reply) {
     return {std::move(result)};
 }
 
+// ============================================================================
+// COMMAND INFO (Huly QB-653)
+// ============================================================================
+//
+// Each entry is a positional array -- name, arity, flags, first key, last key, step, then ACL
+// categories (Redis 6.0), tips, key specifications and subcommands (7.0) -- or a nil for a name
+// the server does not know. The positions become named fields with their native types: integers
+// stay integers, strings stay strings (a flag or a tip is never read as JSON), a RESP3 set is an
+// array, and a key specification -- a map in RESP3, the flat [key, value, ...] array in RESP2 --
+// is an object in both. Positions a later server may append are left to raw().
+
+namespace {
+
+qb::json
+info_value_json(const ReplyValue &reply) {
+    const auto &value = command_reply_value(reply);
+    if (is_nil(value))
+        return nullptr;
+    if (is_string(value) || is_status(value))
+        return std::string(value.as_string_view());
+    if (is_array(value) || is_set(value)) {
+        qb::json list = qb::json::array();
+        if (is_array(value)) {
+            for (const auto &element : value.as_array())
+                list.push_back(info_value_json(*element));
+        } else {
+            for (const auto &element : value.as_set())
+                list.push_back(info_value_json(*element));
+        }
+        return list;
+    }
+    if (is_map(value)) {
+        qb::json object = qb::json::object();
+        for (const auto &entry : value.as_map())
+            object[parse<std::string>(*entry.first)] = info_value_json(*entry.second);
+        return object;
+    }
+    return parse<qb::json>(value); // integer, double, boolean, big number
+}
+
+// A list of entries -- a RESP array, or a RESP3 set -- each decoded by `element`.
+template <typename Element>
+qb::json
+info_list_json(const ReplyValue &reply, Element &&element) {
+    const auto &value = command_reply_value(reply);
+    qb::json    list  = qb::json::array();
+    if (is_array(value)) {
+        for (const auto &item : value.as_array())
+            list.push_back(element(*item));
+    } else if (is_set(value)) {
+        for (const auto &item : value.as_set())
+            list.push_back(element(*item));
+    } else {
+        throw ReplyParseError("ARRAY or SET", value);
+    }
+    return list;
+}
+
+// A map -- RESP3 sends a map, RESP2 the flat [key, value, ...] array -- each value decoded by `field`.
+template <typename Field>
+qb::json
+info_map_json(const ReplyValue &reply, Field &&field) {
+    const auto &value  = command_reply_value(reply);
+    qb::json    object = qb::json::object();
+    if (is_map(value)) {
+        for (const auto &entry : value.as_map()) {
+            auto key    = parse<std::string>(*entry.first);
+            object[key] = field(key, *entry.second);
+        }
+    } else if (is_array(value) && value.as_array().size() % 2 == 0) {
+        const auto &flat = value.as_array();
+        for (std::size_t i = 0; i < flat.size(); i += 2) {
+            auto key    = parse<std::string>(*flat[i]);
+            object[key] = field(key, *flat[i + 1]);
+        }
+    } else {
+        throw ReplyParseError("MAP", value);
+    }
+    return object;
+}
+
+qb::json
+info_field_json(const std::string &, const ReplyValue &value) {
+    return info_value_json(value);
+}
+
+// begin_search / find_keys: {type, spec}, the spec a map of its own.
+qb::json
+key_search_json(const std::string &, const ReplyValue &value) {
+    return info_map_json(value, [](const std::string &key, const ReplyValue &field) {
+        return key == "spec" ? info_map_json(field, info_field_json) : info_value_json(field);
+    });
+}
+
+qb::json
+key_specification_json(const ReplyValue &value) {
+    return info_map_json(value, [](const std::string &key, const ReplyValue &field) {
+        return key == "begin_search" || key == "find_keys" ? key_search_json(key, field) : info_value_json(field);
+    });
+}
+
+qb::json
+command_doc_json(const ReplyValue &reply) {
+    const auto &value = command_reply_value(reply);
+    if (is_nil(value))
+        return nullptr; // a name the server does not know
+    if (!is_array(value))
+        throw ReplyParseError("ARRAY", value);
+    const auto &fields = value.as_array();
+    if (fields.size() < 6)
+        throw ProtoError("COMMAND INFO entry has fewer than 6 fields");
+    qb::json doc     = qb::json::object();
+    doc["name"]      = std::string(parse<std::string_view>(command_reply_value(*fields[0])));
+    doc["arity"]     = parse<long long>(command_reply_value(*fields[1]));
+    doc["flags"]     = info_value_json(*fields[2]);
+    doc["first_key"] = parse<long long>(command_reply_value(*fields[3]));
+    doc["last_key"]  = parse<long long>(command_reply_value(*fields[4]));
+    doc["step"]      = parse<long long>(command_reply_value(*fields[5]));
+    if (fields.size() > 6)
+        doc["acl_categories"] = info_value_json(*fields[6]);
+    if (fields.size() > 7)
+        doc["tips"] = info_value_json(*fields[7]);
+    if (fields.size() > 8)
+        doc["key_specifications"] = info_list_json(*fields[8], key_specification_json);
+    if (fields.size() > 9)
+        doc["subcommands"] = info_list_json(*fields[9], command_doc_json);
+    return doc;
+}
+
+} // namespace
+
+command_info_json_reply
+parse(ParseTag<command_info_json_reply>, const ReplyValue &reply) {
+    return {info_list_json(reply, command_doc_json)};
+}
+
 } // namespace reply
 
 } // namespace qb::redis

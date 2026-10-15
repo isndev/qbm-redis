@@ -77,7 +77,10 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
   parses its INFO section into an object of raw text values. These exceptions do not change generic JSON
   conversion. <!-- src: qbm/redis/src/qbm/redis/reply.cpp:546-585 (qb::json parse), qbm/redis/tests/integration/server/server-introspection.cpp:65-88 -->
 - **`std::vector<std::pair<std::string, std::string>>`** — `CONFIG GET` (parameter/value pairs).
-- **`std::vector<std::map<std::string, std::string>>`** — `COMMAND INFO` (one map per command).
+- **`qb::json` from `command_info()`** — `COMMAND INFO` as an array with one entry per requested name: an object whose
+  positions are named (`name`, `arity`, `flags`, `first_key`, `last_key`, `step`, then `acl_categories`, `tips`,
+  `key_specifications` and `subcommands` as far as the server sends them), native types kept, or `null` for a name the
+  server does not know (Huly QB-653).
 - **`std::pair<long long, long long>`** — `TIME` (seconds, microseconds), in the coroutine form only (see below).
 
 ### Time units: one `qb::duration`, one native boundary
@@ -252,7 +255,7 @@ qb::io::async::task<void> config(qb::redis::tcp::client &redis) {
 |-------------------------------------|--------------------------------------------------------------------------------------------------|---------------------------------------------------|
 | `COMMAND`                           | `command()`                                                                                      | `qb::json`                                        |
 | `COMMAND INFO` (via named overload) | `command(const std::vector<std::string> &command_names)`                                         | `qb::json`                                        |
-| `COMMAND INFO`                      | `command_info(const std::vector<std::string> &command_names = {})`                               | `std::vector<std::map<std::string, std::string>>` |
+| `COMMAND INFO`                      | `command_info(const std::vector<std::string> &command_names = {})`                               | `qb::json` (one object or `null` per name)        |
 | `COMMAND COUNT`                     | `command_count()`                                                                                | `long long`                                       |
 | `COMMAND GETKEYS`                   | `command_getkeys(const std::string &command, const std::vector<std::string> &args)`              | `std::vector<std::string>`                        |
 | `COMMAND GETKEYSANDFLAGS`           | `command_getkeysandflags(const std::string &command_name, const std::vector<std::string> &args)` | `qb::json`                                        |
@@ -261,7 +264,8 @@ qb::io::async::task<void> config(qb::redis::tcp::client &redis) {
 | `INFO commandstats`                | `command_stats()`                                                                                | `qb::json`                                        |
 
 See the [`COMMAND` named-overload note](#commands-named-overload-actually-issues-command-info) above: `command(names)`
-with a non-empty vector returns `COMMAND INFO` data.
+with a non-empty vector returns `COMMAND INFO` data, its entries the server's positional arrays through the generic JSON
+conversion; `command_info(names)` returns the same entries with their positions named.
 
 `command_stats()` reads `INFO commandstats` and returns a JSON object with the exact native `cmdstat_*`
 keys. Each value is the complete text after the first colon, for example
