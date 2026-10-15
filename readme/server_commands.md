@@ -143,7 +143,7 @@ awaiter yielding `Reply<T>`; the **callback** form is the `Func`-first, SFINAE-g
 | `CLIENT KILL`         | `client_kill(const std::string &addr = "", long long id = 0, const std::string &type = "", bool skipme = true)` | `long long`                  |
 | `CLIENT PAUSE`        | `client_pause(long long timeout, const std::string &mode = "ALL")`                                              | `status`                     |
 | `CLIENT UNPAUSE`      | `client_unpause()`                                                                                              | `status`                     |
-| `CLIENT UNBLOCK`      | `client_unblock(long long client_id, bool error = false)`                                                       | `status`                     |
+| `CLIENT UNBLOCK`      | `client_unblock(long long client_id, bool error = false)`                                                       | `bool`                       |
 | `CLIENT TRACKING`     | `client_tracking(bool enabled = true)`                                                                          | `status`                     |
 | `CLIENT TRACKINGINFO` | `client_tracking_info()`                                                                                        | `qb::json`                   |
 | `CLIENT CACHING`      | `client_caching(bool yes)`                                                                                      | `status`                     |
@@ -164,6 +164,10 @@ Notes:
   client-side. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:142-198 -->
 - `client_pause`'s `timeout` is **milliseconds** (native unit), not a `qb::duration`. `mode` is `"ALL"` or
   `"WRITE"`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:272-292 -->
+- `client_unblock` replies `true` when the ID named a blocked client that is now unblocked (`:1`) and `false` when it
+  named none (`:0`); a refusal is a failed reply. With `error = true` the unblocked command fails with Redis's
+  `UNBLOCKED` error instead of behaving as if its timeout had expired. (The reply type was `status`, which cannot
+  decode an integer: every call failed, Huly QB-652.)
 - `client_tracking(true)` sends `CLIENT TRACKING ON`; `false` sends `OFF`. `client_caching`, `client_no_evict`,
   `client_no_touch` map `true`/`false` to `YES`/`NO` or `ON`/`OFF`
   respectively. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:312-316, 1694-1706, 1755-1788 -->

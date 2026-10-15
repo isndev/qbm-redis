@@ -29,6 +29,12 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Changed
 
+- **Source change -- `client_unblock()` replies `Reply<bool>`, was `Reply<status>` (Huly QB-652).** `CLIENT UNBLOCK`
+  answers the integer `1` when it unblocked a blocked client and `0` when the ID names none; a status cannot decode
+  either, so every call -- whatever happened on the server -- reached its caller as a failed reply. Both forms now
+  yield `true` / `false` (the module's type for a 1/0 outcome, as `expire` or `sismember`). No program ever received a
+  successful `Reply<status>` from this command; a callback spelled `Reply<status>&&` now fails to compile and moves
+  to `Reply<bool>&&`.
 - **The maintainer approved the limited 3.3 source exception for result-function addresses (Huly QB-286).**
   Ordinary calls are unchanged; an untyped helper or parser-member address can require `<>` to select the
   caller-side template. This prevents mixing C++20/C++23 result representations and inline bodies.

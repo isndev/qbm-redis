@@ -319,13 +319,13 @@ public:
      * @brief Unblocks a client by ID (coroutine awaitable)
      *
      * @param client_id ID of client to unblock
-     * @param error Whether to unblock with an error (default: false)
-     * @return redis_awaiter yielding Reply<status>
+     * @param error Unblock with the UNBLOCKED error instead of as a timeout (default: false)
+     * @return redis_awaiter yielding Reply<bool>: true if the client was blocked (`:1`), else false (`:0`)
      * @see https://redis.io/commands/client-unblock
      */
     auto
     client_unblock(long long client_id, bool error = false) {
-        return derived().template make_coro_command<status>(
+        return derived().template make_coro_command<bool>(
             [this, client_id, error](auto &&callback) { this->client_unblock(std::move(callback), client_id, error); });
     }
 
@@ -340,13 +340,13 @@ public:
      * @see https://redis.io/commands/client-unblock
      */
     template <typename Func>
-    std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     client_unblock(Func &&func, long long client_id, bool error = false) {
         std::vector<std::string> args{"UNBLOCK", std::to_string(client_id)};
         if (error) {
             args.push_back("ERROR");
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLIENT", args);
+        return derived().template command<bool>(std::forward<Func>(func), "CLIENT", args);
     }
 
     // =============== Configuration Commands ===============

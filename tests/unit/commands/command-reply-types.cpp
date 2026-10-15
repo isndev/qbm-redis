@@ -1,11 +1,12 @@
 /**
  * @file qbm/redis/tests/unit/commands/command-reply-types.cpp
- * @brief Each command decodes every reply Redis documents for it, nil replies included.
+ * @brief Each command decodes every reply Redis documents for it, nil and integer replies included.
  *
  * A command's mixin chooses the type its reply is decoded into. When that type cannot hold a
- * documented reply -- the nil of a missing key -- a successful command reaches the caller
- * as a failed `Reply` with a decode error, the same
+ * documented reply -- the nil of a missing key, an integer where a status was assumed -- a
+ * successful command reaches the caller as a failed `Reply` with a decode error, the same
  * outcome as a real failure:
+ *   - `CLIENT UNBLOCK` answers `:1` / `:0`, decoded as a status (Huly QB-652);
  *   - counted `LPOP` / `RPOP` and `MEMORY USAGE` answer nil for a missing key (Huly QB-655);
  *   - `SORT ... GET` answers nil for each element whose referenced key is missing (Huly QB-644).
  *
@@ -96,6 +97,35 @@ struct Captured {
 using namespace command_reply_types_test;
 using StringList         = std::vector<std::string>;
 using NullableStringList = std::vector<std::optional<std::string>>;
+
+// ============================================================================
+// CLIENT UNBLOCK (Huly QB-652) -- an integer, 1 when a blocked client was unblocked
+// ============================================================================
+
+TEST(CommandReplyTypes, ClientUnblockReadsTheIntegerOutcome) {
+    const std::pair<std::string_view, bool> outcomes[] = {{":1\r\n", true}, {":0\r\n", false}};
+    for (const auto &[wire, unblocked] : outcomes) {
+        SCOPED_TRACE(wire);
+        ScriptedClient client(wire);
+        auto           awaited = client.client_unblock(42);
+        static_assert(std::is_same_v<decltype(awaited), qb::redis::Reply<bool>>);
+        ASSERT_TRUE(awaited.ok()) << awaited.error();
+        EXPECT_EQ(awaited.result(), unblocked);
+        EXPECT_EQ(client.frame, "*3\r\n$6\r\nCLIENT\r\n$7\r\nUNBLOCK\r\n$2\r\n42\r\n");
+
+        Captured<bool> callback;
+        client.client_unblock(callback.sink(), 42, true);
+        EXPECT_EQ(callback.calls, 1);
+        ASSERT_TRUE(callback.reply.ok()) << callback.reply.error();
+        EXPECT_EQ(callback.reply.result(), unblocked);
+        EXPECT_EQ(client.frame, "*4\r\n$6\r\nCLIENT\r\n$7\r\nUNBLOCK\r\n$2\r\n42\r\n$5\r\nERROR\r\n");
+    }
+
+    ScriptedClient refused("-ERR CLIENT UNBLOCK reason should be TIMEOUT or ERROR\r\n");
+    auto           error = refused.client_unblock(42);
+    EXPECT_FALSE(error.ok());
+    EXPECT_EQ(error.error(), "ERR CLIENT UNBLOCK reason should be TIMEOUT or ERROR") << "a real refusal keeps its own reason";
+}
 
 // ============================================================================
 // Counted LPOP / RPOP and MEMORY USAGE (Huly QB-655) -- nil for a missing key

@@ -451,4 +451,71 @@ TEST_P(ServerAdminTest, DebugObjectAndSleep) {
     run_coro_test_until(completed);
 }
 
+// CLIENT UNBLOCK answers :1 when it unblocked a client and :0 when the ID names no blocked client
+// (Huly QB-652). Unblocked as a timeout, the parked BLPOP returns nil; with ERROR it fails with
+// the server's UNBLOCKED reason. A second connection parks; the test unblocks it from `redis`.
+TEST_P(ServerAdminTest, ClientUnblockReportsWhetherABlockedClientWasUnblocked) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        qb::redis::tcp::client blocked{REDIS_URI_PROTOCOL};
+        if (!co_await blocked.connect()) {
+            ADD_FAILURE() << "the second connection did not connect";
+            completed = true;
+            co_return;
+        }
+        PROTOCOL_ENSURE_RESP3_CLIENT(blocked, completed);
+        auto id = co_await blocked.client_id();
+        if (!id.ok()) {
+            ADD_FAILURE() << id.error();
+            completed = true;
+            co_return;
+        }
+
+        auto idle = co_await redis.client_unblock(id.result());
+        EXPECT_TRUE(idle.ok()) << idle.error();
+        EXPECT_FALSE(idle.result()) << "a client that is not blocked is not unblocked";
+
+        const std::string key = protocol_key("unblock_list");
+        for (const bool with_error : {false, true}) {
+            SCOPED_TRACE(with_error);
+            bool                                                                 popped = false;
+            qb::redis::Reply<std::optional<std::pair<std::string, std::string>>> pop;
+            blocked.blpop(
+                [&](qb::redis::Reply<std::optional<std::pair<std::string, std::string>>> &&reply) {
+                    pop    = std::move(reply);
+                    popped = true;
+                },
+                std::vector<std::string>{key}, 0LL);
+            // Until the BLPOP reaches the server the answer is :0; once it is parked, :1.
+            bool unblocked = false;
+            for (int attempt = 0; attempt < 5000 && !unblocked; ++attempt) {
+                auto r = co_await redis.client_unblock(id.result(), with_error);
+                if (!r.ok()) {
+                    ADD_FAILURE() << r.error();
+                    break;
+                }
+                unblocked = r.result();
+            }
+            if (!unblocked) {
+                ADD_FAILURE() << "the parked BLPOP was never unblocked";
+                blocked.disconnect(); // fails the parked BLPOP instead of leaving it parked
+                break;
+            }
+            CO_IGNORE(co_await blocked.ping()); // FIFO: the BLPOP's reply precedes this one
+            EXPECT_TRUE(popped);
+            if (with_error) {
+                EXPECT_FALSE(pop.ok());
+                EXPECT_NE(pop.error().find("UNBLOCKED"), std::string::npos) << pop.error();
+            } else {
+                EXPECT_TRUE(pop.ok()) << pop.error();
+                EXPECT_FALSE(pop.result().has_value()) << "unblocked as a timeout: nil";
+            }
+        }
+
+        completed = true;
+    });
+    run_coro_test_until(completed);
+}
+
 } // namespace
