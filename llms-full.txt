@@ -540,7 +540,7 @@ Inherited connector methods: see **connector** below.
 | `setup_connection` | `bool setup_connection(qb::io::uri, typename QB_IO_::transport_io_type&&)` | Adopt a freshly-opened raw transport, switch to redis protocol, start I/O. False if already connected. | advanced |
 | `enable_auto_reconnect` / `disable_auto_reconnect` | `void enable_auto_reconnect(RetryPolicy policy={}) noexcept; void disable_auto_reconnect() noexcept` | Arm/disarm auto-reconnect (detached coroutine runs `connect_with_retry`); a throwing disconnect notification is logged before the current policy is checked. | `c.enable_auto_reconnect(pol);` |
 | `is_reconnecting` / `is_connected` | `bool is_reconnecting() const noexcept; bool is_connected() const noexcept` | Connection-state queries. | `if (c.is_connected())...` |
-| `disconnect` | `void disconnect() noexcept` | Clear connected flag and complete teardown before returning; from inside a MONITOR callback, the stream stops before the next parsed line and its terminal callback follows that line callback. | `c.disconnect();` |
+| `disconnect` | `void disconnect() noexcept` | Clear connected flag and complete teardown before returning; the sending side is shut down, so the server reads EOF and drops the client while the object lives (qb-io, Huly QB-1060). From inside a MONITOR callback, the stream stops before the next parsed line and its terminal callback follows that line callback. | `c.disconnect();` |
 
 `connect_awaiter` (`redis.h:465-468`): coroutine awaiter for async connect; default timeout **3s (qb::duration)**; `await_resume()` → `bool`.
 

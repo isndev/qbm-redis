@@ -406,3 +406,53 @@ TEST_P(ConnectionProtocolModesTest, THE_DUMP_SAYS_A_COROUTINE_WAITS_ON_A_CONNECT
     EXPECT_EQ(on_connect, "redis connect");
     EXPECT_EQ(on_command, "redis");
 }
+
+// ============================================================================
+// disconnect() ends the connection for the server too (Huly QB-1060)
+// ============================================================================
+
+// qb-io's standalone dispose() used to leave the socket untouched: after disconnect() the server
+// kept listing the client until the object was destroyed. Since QB-1060 a disconnect the client
+// asked for shuts the sending side down -- the descriptor stays until destruction or the next
+// connect -- so the server reads EOF and drops the client. `victim` lives in the coroutine frame
+// across the whole check: destroying it would close the socket on any qb. The bound is the
+// server's reaction to an EOF on an idle connection, milliseconds, with a loaded host's margin.
+TEST_P(ConnectionProtocolModesTest, DISCONNECT_ENDS_THE_CONNECTION_FOR_THE_SERVER) {
+    bool completed = false;
+    qb::io::async::coro_scheduler().spawn([this, &completed]() -> qb::io::async::task<void> {
+        PROTOCOL_ENSURE_RESP3_VAR(completed);
+        qb::redis::tcp::client victim{REDIS_URI_PROTOCOL};
+        if (!co_await victim.connect()) {
+            ADD_FAILURE() << "the second connection did not connect";
+            completed = true;
+            co_return;
+        }
+        PROTOCOL_ENSURE_RESP3_CLIENT(victim, completed);
+        auto id = co_await victim.client_id();
+        if (!id.ok()) {
+            ADD_FAILURE() << id.error();
+            completed = true;
+            co_return;
+        }
+        const std::string needle = "id=" + std::to_string(id.result()) + " ";
+        // Whether CLIENT LIST names the victim once `until` holds or 10 s have passed.
+        auto listed = [this, needle](bool until) -> qb::io::async::task<bool> {
+            const auto deadline = steady_clock::now() + 10s;
+            for (;;) {
+                auto       list = co_await redis.client_list(); // the raw CLIENT LIST text, boxed in qb::json
+                const bool named =
+                    !list.ok() || !list.result().is_string() || list.result().get<std::string>().find(needle) != std::string::npos;
+                if (named == until || steady_clock::now() >= deadline)
+                    co_return named;
+                co_await qb::io::async::sleep(20ms);
+            }
+        };
+        EXPECT_TRUE(co_await listed(true)) << "the connected client must be listed";
+
+        victim.disconnect();
+        EXPECT_FALSE(co_await listed(false)) << "the server still lists client " << id.result() << " 10 s after disconnect()";
+        EXPECT_FALSE(victim.is_connected());
+        completed = true;
+    });
+    run_coro_test_until(completed, 30s);
+}

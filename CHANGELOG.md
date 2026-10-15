@@ -52,6 +52,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **`disconnect()` ends the connection for the server too (with qb's Huly QB-1060).** qb-io's standalone
+  `dispose()` left the socket untouched, so the server kept listing the client until the object was
+  destroyed. With qb's fix the sending side is shut down at teardown and the server drops the client at
+  once; the descriptor is released at destruction or the next connect. Pinned, RESP2 and RESP3, by
+  `DISCONNECT_ENDS_THE_CONNECTION_FOR_THE_SERVER` in `tests/integration/connection/connection-commands.cpp`.
 - **A missing key's nil is a successful reply for counted `LPOP` / `RPOP` and `MEMORY USAGE` (Huly QB-655).** Redis
   answers nil when the key does not exist -- never written, emptied by the last pop, expired -- and the
   `std::vector<std::string>` / `long long` decoders refused it, so the normal outcome surfaced as a failed reply,
