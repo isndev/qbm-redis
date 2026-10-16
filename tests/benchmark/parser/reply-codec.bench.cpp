@@ -46,6 +46,10 @@
  */
 
 #include <benchmark/benchmark.h>
+#include <array>
+#include <span>
+#include <type_traits>
+#include <variant>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -59,6 +63,7 @@
 
 #include <qb/system/allocator/pipe.h>
 
+#include <qbm/redis/redis.h>
 #include <qbm/redis/reply.h> // qb::redis::reply::parse, to_redis_string, put_in_pipe
 #include <qbm/redis/types.h> // score_member, map_stream_entry_list, BoundedInterval
 
@@ -140,6 +145,13 @@ BM_ReplyParse_ScoreMemberVector(benchmark::State &state) {
             state.SkipWithError("score_member vector decoded a different count than seeded");
             return;
         }
+        for (int i = 0; i < n; ++i) {
+            const auto &item = out[static_cast<std::size_t>(i)];
+            if (item.score != static_cast<double>(i) + 0.5 || item.member != "member:" + std::to_string(i)) {
+                state.SkipWithError("score_member value or order mismatch");
+                return;
+            }
+        }
     }
 
     for (auto _ : state) {
@@ -190,6 +202,24 @@ BM_ReplyParse_MapStreamEntryList(benchmark::State &state) {
             state.SkipWithError("map_stream_entry_list decoded a different stream count than seeded");
             return;
         }
+        // Stream/field maps are unordered; entry lists retain the wire order.
+        for (int s = 0; s < streams; ++s) {
+            const auto stream = out.find("stream:" + std::to_string(s));
+            if (stream == out.end() || stream->second.size() != static_cast<std::size_t>(per)) {
+                state.SkipWithError("stream key or entry count mismatch");
+                return;
+            }
+            for (int e = 0; e < per; ++e) {
+                const auto &entry = stream->second[static_cast<std::size_t>(e)];
+                const auto  field = entry.fields.find("field");
+                const auto  seq   = entry.fields.find("seq");
+                if (entry.id.timestamp != e + 1 || entry.id.sequence != 0 || entry.fields.size() != 2 || field == entry.fields.end()
+                    || seq == entry.fields.end() || field->second != "value:" + std::to_string(e) || seq->second != std::to_string(e)) {
+                    state.SkipWithError("stream entry ID, order or field value mismatch");
+                    return;
+                }
+            }
+        }
     }
 
     for (auto _ : state) {
@@ -227,8 +257,17 @@ BM_ReplySerialize_MultiBulk(benchmark::State &state) {
         qb::allocator::pipe<char> pipe;
         for (const auto &a : args)
             qb::redis::to_redis_string(pipe, a);
-        if (pipe.size() == 0) {
-            state.SkipWithError("serialization produced an empty pipe");
+        // Build the expected wire from the fixture specification, not args or
+        // the production serializer. This benchmark emits bulk strings without
+        // an array header; put_in_pipe below covers the complete command.
+        std::string expected = "$4\r\nMSET\r\n";
+        for (int i = 0; i < n; ++i) {
+            const auto suffix = std::to_string(i);
+            expected += "$" + std::to_string(4 + suffix.size()) + "\r\nkey:" + suffix + "\r\n";
+            expected += "$" + std::to_string(6 + suffix.size()) + "\r\nvalue:" + suffix + "\r\n";
+        }
+        if (std::string_view{pipe.begin(), pipe.size()} != expected) {
+            state.SkipWithError("multi-bulk argument order or exact wire bytes mismatch");
             return;
         }
     }
@@ -253,8 +292,10 @@ BM_ReplySerialize_PutInPipe(benchmark::State &state) {
         qb::allocator::pipe<char> pipe;
         qb::redis::put_in_pipe(pipe, std::string("ZADD"), std::string("myset"), qb::redis::score_member{1.5, "alice"},
                                qb::redis::score_member{2.5, "bob"});
-        if (pipe.size() == 0) {
-            state.SkipWithError("put_in_pipe produced an empty pipe");
+        constexpr std::string_view expected = "*6\r\n$4\r\nZADD\r\n$5\r\nmyset\r\n"
+                                              "$3\r\n1.5\r\n$5\r\nalice\r\n$3\r\n2.5\r\n$3\r\nbob\r\n";
+        if (std::string_view{pipe.begin(), pipe.size()} != expected) {
+            state.SkipWithError("put_in_pipe count, order or exact wire bytes mismatch");
             return;
         }
     }
@@ -342,6 +383,15 @@ BM_ReplyParse_JsonWideMap(benchmark::State &state) {
             state.SkipWithError("json reconstruction produced an object of the wrong size");
             return;
         }
+        for (int i = 0; i < n; ++i) {
+            const auto field = j.find("field:" + std::to_string(i));
+            if (field == j.end()
+                || (i % 2 == 0 ? !field->is_string() || *field != "value:" + std::to_string(i)
+                               : field->type() != qb::json::value_t::number_integer || *field != i)) {
+                state.SkipWithError("json reconstruction key, value or type mismatch");
+                return;
+            }
+        }
     }
 
     for (auto _ : state) {
@@ -361,9 +411,11 @@ BM_ReplyParse_JsonWideMap(benchmark::State &state) {
 void
 BM_ReplyFormat_IntervalToChars(benchmark::State &state) {
     {
-        qb::redis::score_interval iv(0.1, 1234567.89012345, qb::redis::BoundType::CLOSED);
-        if (iv.lower().empty() || iv.upper().empty()) {
-            state.SkipWithError("interval bound formatting produced empty bounds");
+        qb::redis::score_interval iv(0.1, 1234567.89012345, qb::redis::BoundType::OPEN);
+        // Same OPEN mode as the measured constructor, including its 17-digit
+        // decimal rendering and exclusive-bound marker.
+        if (iv.lower() != "(0.10000000000000001" || iv.upper() != "(1234567.89012345") {
+            state.SkipWithError("interval exact bound bytes mismatch");
             return;
         }
     }
@@ -563,6 +615,149 @@ BM_TReply_SuccessDispatchBatch(benchmark::State &state) {
     treply_success_batch<true>(state);
 }
 
+// Public mixins over command-reply-types.cpp's synchronous RESP2 seam; frame buffers are reused.
+class AggregationClient
+    : public qb::redis::key_commands<AggregationClient>
+    , public qb::redis::set_commands<AggregationClient>
+    , public qb::redis::hash_commands<AggregationClient>
+    , public qb::redis::server_commands<AggregationClient> {
+public:
+    std::span<const std::string>             replies;
+    std::array<qb::allocator::pipe<char>, 3> frames;
+    std::size_t                              next{};
+    std::uint64_t                            commands{}, coro_callbacks{};
+    bool                                     failed{};
+    template <typename Ret, typename Func, typename... Args>
+    AggregationClient &
+    command(Func &&func, const std::string &name, Args &&...args) {
+        const auto index = next++;
+        ++commands;
+        if (index >= replies.size()) {
+            failed = true;
+            return *this;
+        }
+        auto &frame = frames[index];
+        frame.reset();
+        qb::redis::put_in_pipe(frame, name, std::forward<Args>(args)...);
+        auto parsed = qb::redis::parser::parse(replies[index]);
+        if (!parsed.has_value()) {
+            failed = true;
+            return *this;
+        }
+        qb::redis::TReply<Func, Ret> handler{std::forward<Func>(func)};
+        handler(std::make_unique<Value>(std::move(*parsed)));
+        return *this;
+    }
+    // Execute the TIME wrapper's operation synchronously: no coroutine frame/scheduler.
+    template <typename T, typename Operation>
+    qb::redis::Reply<T>
+    make_coro_command(Operation &&operation) {
+        qb::redis::Reply<T> result;
+        std::forward<Operation>(operation)([&](qb::redis::Reply<T> &&reply) {
+            result = std::move(reply);
+            ++coro_callbacks;
+        });
+        return result;
+    }
+};
+
+void
+BM_CommandSuccessfulAggregation(benchmark::State &state) {
+    using Strings      = std::vector<std::string>;
+    using Pairs        = std::vector<std::pair<std::string, std::string>>;
+    using Time         = std::pair<long long, long long>;
+    using Scan         = qb::redis::scan<>;
+    const auto command = state.range(0);
+    if (command < 0 || command > 4) {
+        state.SkipWithError("unknown aggregation fixture");
+        return;
+    }
+    std::vector<std::string> scripts[] = {
+        {"*2\r\n$1\r\n7\r\n*2\r\n$1\r\na\r\n$1\r\nb\r\n", "*2\r\n$1\r\n0\r\n*1\r\n$1\r\nc\r\n"},
+        {"*1\r\n$1\r\na\r\n", "*1\r\n$1\r\nb\r\n", "*1\r\n$1\r\nc\r\n"},
+        {"*4\r\n$9\r\nmaxmemory\r\n$1\r\n0\r\n$7\r\ntimeout\r\n$1\r\n5\r\n"},
+        {"*2\r\n$2\r\n42\r\n$1\r\n7\r\n"}
+    };
+    const std::vector<std::string_view> expected_frames[] = {
+        {"*4\r\n$4\r\nSCAN\r\n$1\r\n0\r\n$5\r\nMATCH\r\n$1\r\n*\r\n", "*4\r\n$4\r\nSCAN\r\n$1\r\n7\r\n$5\r\nMATCH\r\n$1\r\n*\r\n"},
+        {"*7\r\n$5\r\nSSCAN\r\n$3\r\nset\r\n$1\r\n0\r\n$5\r\nMATCH\r\n$1\r\n*\r\n$5\r\nCOUNT\r\n$3\r\n100\r\n",
+         "*7\r\n$5\r\nSSCAN\r\n$3\r\nset\r\n$1\r\n7\r\n$5\r\nMATCH\r\n$1\r\n*\r\n$5\r\nCOUNT\r\n$3\r\n100\r\n"},
+        {"*2\r\n$5\r\nHVALS\r\n$5\r\nfirst\r\n", "*2\r\n$5\r\nHVALS\r\n$6\r\nmiddle\r\n", "*2\r\n$5\r\nHVALS\r\n$4\r\nlast\r\n"},
+        {"*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$1\r\n*\r\n"},
+        {"*1\r\n$4\r\nTIME\r\n"}
+    };
+    AggregationClient client;
+    auto             &script = scripts[command <= 1 ? 0 : command - 1];
+    auto             *opaque = script.data();
+    benchmark::DoNotOptimize(opaque);
+    benchmark::ClobberMemory();
+    client.replies = script;
+    const Strings     keys{"first", "middle", "last"}, expected_values{"a", "b", "c"};
+    const Pairs       expected_pairs{{"maxmemory", "0"}, {"timeout", "5"}};
+    const std::string pattern{"*"}, key{"set"};
+    std::variant<qb::redis::Reply<Scan>, qb::redis::Reply<Strings>, qb::redis::Reply<Pairs>, qb::redis::Reply<Time>> result;
+    std::uint64_t callbacks = 0, completed = 0;
+    auto          capture = [&](auto &&reply) {
+        result = std::move(reply);
+        ++callbacks;
+    };
+    const auto run = [&] {
+        client.next = 0; // allocation-free script reset; cumulative counts are retained
+        if (command == 0)
+            client.scan(capture, pattern);
+        else if (command == 1)
+            client.sscan(capture, key, pattern);
+        else if (command == 2)
+            client.hvals(capture, keys);
+        else if (command == 3)
+            client.config_get(capture, pattern);
+        else
+            capture(client.time());
+    };
+    const auto valid = [&](std::uint64_t operations) {
+        if (operations > std::numeric_limits<std::uint64_t>::max() / script.size() || client.failed || client.next != script.size()
+            || client.commands != operations * script.size() || callbacks != operations
+            || client.coro_callbacks != (command == 4 ? operations : 0))
+            return false;
+        for (std::size_t i = 0; i < script.size(); ++i)
+            if (std::string_view{client.frames[i].begin(), client.frames[i].size()} != expected_frames[command][i])
+                return false;
+        return std::visit(
+            [&](const auto &reply) {
+                if (!reply.ok() || !reply.error().empty())
+                    return false;
+                using T = std::decay_t<decltype(reply.result())>;
+                if constexpr (std::is_same_v<T, Scan>)
+                    return command < 2 && reply.result().cursor == 0 && reply.result().items == expected_values;
+                else if constexpr (std::is_same_v<T, Strings>)
+                    return command == 2 && reply.result() == expected_values;
+                else if constexpr (std::is_same_v<T, Pairs>)
+                    return command == 3 && reply.result() == expected_pairs;
+                else
+                    return command == 4 && reply.result() == Time{42, 7};
+            },
+            result);
+    };
+    run();
+    if (!valid(1)) {
+        state.SkipWithError("command aggregation preflight value, frame or count mismatch");
+        return;
+    }
+    client.commands = client.coro_callbacks = callbacks = 0;
+    state.SetLabel("CPU command serialization / RESP parsing / aggregation; no network or coroutine");
+    for (auto _ : state) {
+        run();
+        benchmark::DoNotOptimize(result);
+        ++completed;
+    }
+    // Exact final content + cumulative counts. No claim about transient content in earlier iterations.
+    if (completed != static_cast<std::uint64_t>(state.iterations()) || !valid(completed)) {
+        state.SkipWithError("command aggregation post-loop value, frame or cumulative count mismatch");
+        return;
+    }
+    state.SetItemsProcessed(state.iterations());
+}
+
 } // namespace
 
 BENCHMARK(BM_ReplyParse_ScoreMemberVector)->Arg(100)->Arg(1000)->ArgNames({"members"})->Unit(benchmark::kMicrosecond);
@@ -576,5 +771,7 @@ BENCHMARK(BM_ReplyFormat_IntervalToChars)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_TReply_SuccessDispatch)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_TReply_TimerBoundaryEmpty)->Arg(1)->Arg(64)->Arg(128)->ArgNames({"replies"})->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_TReply_SuccessDispatchBatch)->Arg(64)->Arg(128)->ArgNames({"replies"})->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_CommandSuccessfulAggregation)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4)->ArgNames({"command"});
 
 BENCHMARK_MAIN();

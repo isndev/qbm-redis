@@ -30,8 +30,12 @@
 #include <gtest/gtest.h>
 #include <limits>
 #include <map>
+#include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <tuple>
 #include <vector>
 #include "../../shared/reply_value_builders.h"
 
@@ -1130,4 +1134,83 @@ TEST(ReplySubscription, TooShortThrows) {
     elems.push_back(mk_bulk("news"));
     Value v = make_array(std::move(elems));
     EXPECT_THROW(do_parse<qb::redis::subscription>(v), qb::redis::ProtoError);
+}
+
+// RESP3 attributes decorate values at every nesting level, independently of the
+// requested C++ type. The metadata remains owned by the original Value tree.
+namespace reply_attribute_parse_test {
+Value
+decorate(std::unique_ptr<Value> value) {
+    qb::redis::parser::Attribute attribute;
+    attribute.data.entries.emplace_back(mk_simple("ttl"), mk_int(30));
+    attribute.value = std::move(value);
+    return Value(std::move(attribute));
+}
+} // namespace reply_attribute_parse_test
+
+TEST(ReplyAttributes, ScalarsUnwrapWithoutChangingTheirValue) {
+    using reply_attribute_parse_test::decorate;
+    auto integer = decorate(mk_int(42));
+    EXPECT_EQ(do_parse<long long>(integer), 42);
+    auto floating = decorate(mk_dbl(1.5));
+    EXPECT_DOUBLE_EQ(do_parse<double>(floating), 1.5);
+    auto boolean = decorate(std::make_unique<Value>(qb::redis::parser::Boolean{true}));
+    EXPECT_TRUE(do_parse<bool>(boolean));
+}
+
+TEST(ReplyAttributes, StringsAndStatusRetainTheirStorageAndMeaning) {
+    using reply_attribute_parse_test::decorate;
+    auto text = decorate(mk_bulk("payload"));
+    EXPECT_EQ(do_parse<std::string>(text), "payload");
+    const auto view = do_parse<std::string_view>(text);
+    EXPECT_EQ(view, "payload");
+    EXPECT_EQ(view.data(), text.as_attribute().value->as_string_view().data());
+    auto status = decorate(mk_simple("OK"));
+    EXPECT_EQ(do_parse<qb::redis::status>(status).str(), "OK");
+}
+
+TEST(ReplyAttributes, DecoratedNilRemainsAnEmptyOptional) {
+    auto value = reply_attribute_parse_test::decorate(std::make_unique<Value>(Null{}));
+    EXPECT_FALSE(do_parse<std::optional<std::string>>(value).has_value());
+}
+
+TEST(ReplyAttributes, TupleElementsAndNestedContainersUnwrapIndependently) {
+    using reply_attribute_parse_test::decorate;
+    std::vector<std::unique_ptr<Value>> numbers;
+    numbers.push_back(std::make_unique<Value>(decorate(mk_int(7))));
+    numbers.push_back(mk_int(9));
+    std::vector<std::unique_ptr<Value>> elements;
+    elements.push_back(std::make_unique<Value>(decorate(mk_bulk("name"))));
+    elements.push_back(std::make_unique<Value>(decorate(std::make_unique<Value>(Null{}))));
+    elements.push_back(std::make_unique<Value>(decorate(std::make_unique<Value>(make_array(std::move(numbers))))));
+    auto value        = decorate(std::make_unique<Value>(make_array(std::move(elements))));
+    using Result      = std::tuple<std::string, std::optional<std::string>, std::vector<long long>>;
+    const auto result = do_parse<Result>(value);
+    EXPECT_EQ(std::get<0>(result), "name");
+    EXPECT_FALSE(std::get<1>(result));
+    EXPECT_EQ(std::get<2>(result), (std::vector<long long>{7, 9}));
+}
+
+TEST(ReplyAttributes, MapKeysAndValuesUnwrapIndependently) {
+    using reply_attribute_parse_test::decorate;
+    std::vector<std::pair<std::unique_ptr<Value>, std::unique_ptr<Value>>> entries;
+    entries.emplace_back(std::make_unique<Value>(decorate(mk_bulk("answer"))), std::make_unique<Value>(decorate(mk_int(42))));
+    auto       value  = decorate(std::make_unique<Value>(make_map(std::move(entries))));
+    const auto result = do_parse<std::map<std::string, long long>>(value);
+    EXPECT_EQ(result, (std::map<std::string, long long>{{"answer", 42}}));
+}
+
+TEST(ReplyAttributes, AttributeChainBeyondTheDefaultParserDepthUnwraps) {
+    auto value = mk_int(42);
+    // ParserConfig controls the wire nesting limit. Typed decoding must not
+    // impose the default limit on a tree accepted with a larger configuration.
+    for (unsigned depth = 0; depth < 128; ++depth)
+        value = std::make_unique<Value>(reply_attribute_parse_test::decorate(std::move(value)));
+    EXPECT_EQ(do_parse<long long>(*value), 42);
+}
+
+TEST(ReplyAttributes, MissingValueIsRejected) {
+    Value missing(qb::redis::parser::Attribute{});
+    EXPECT_THROW(do_parse<long long>(missing), qb::redis::ProtoError);
+    EXPECT_THROW(do_parse<std::optional<std::string>>(missing), qb::redis::ProtoError);
 }

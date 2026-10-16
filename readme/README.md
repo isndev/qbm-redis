@@ -48,7 +48,7 @@ actor on it stops with you — silently, because nothing in the framework diagno
 **Building from source:** configure the qb-dev superproject; its qb module loader registers qbm-redis. The module's
 `CMakeLists.txt` is not standalone-configurable because it needs qb's development-time CMake helpers.
 
-<!-- src: qbm/redis/README.md:432-433 -->
+<!-- src: qbm/redis/README.md:433-434 -->
 
 ```cmake
 add_subdirectory(qb)                                   # the framework first
@@ -104,7 +104,7 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
   So `expire(key, 60s)` sets 60 seconds, while `expireat` needs an absolute time point, not `60s`.
   `restore(key, dump, 60000)` uses a raw integer in milliseconds. Reply TTL values (`ttl`, `pttl`, `expiretime`,
   `pexpiretime`) are plain integers —
-  the unit lives in the method name, not a wrapped type (`key_commands.h:655,459,812,833`). Stream blocking and
+  the unit lives in the method name, not a wrapped type (`key_commands.h:657,461,814,835`). Stream blocking and
   idle-time arguments (`XREAD`/`XREADGROUP` `block`, `XCLAIM`/`XAUTOCLAIM` `min_idle_time`) are raw `long long`
   milliseconds with no chrono overload (`stream_commands.h:436,523,811,899`). Blocking-list timeouts (`BLPOP`,
   `BLMOVE`, ...) are seconds.
@@ -196,12 +196,12 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   `sscan` / `zscan` / `hscan` — and multi-key `hvals` buffer the whole result and fire the callback once; there is no
   coroutine form, so `co_await redis.scan("prefix*")` does not compile (only the cursor-taking
   `scan(cursor, pattern, count)` is awaitable), and a throwing callback is caught and logged, not propagated
-  (`key_commands.h:609-618`, `:590`, `:109-113`, `set_commands.h:107-108`, `hash_commands.h:673-684,875-882`).
+  (`key_commands.h:611-620`, `:592`, `:111-115`, `set_commands.h:109-110`, `hash_commands.h:675-686,877-884`).
 - **Empty required arguments resolve as a failed `Reply`, not a bad frame.** A required-variadic / required-collection
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
-  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:158-159`, `reply.h:1409-1413`).
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:160-161`, `reply.h:1447-1451`).
 - **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
   (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
   with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /

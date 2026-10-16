@@ -36,6 +36,17 @@
 using namespace qb::redis::test;
 
 namespace reply_wrapper_test {
+std::unique_ptr<Value>
+decorate(std::unique_ptr<Value> value, unsigned depth = 1) {
+    for (unsigned i = 0; i < depth; ++i) {
+        qb::redis::parser::Attribute attribute;
+        attribute.data.entries.emplace_back(mk_simple("ttl"), mk_int(30));
+        attribute.value = std::move(value);
+        value           = std::make_unique<Value>(std::move(attribute));
+    }
+    return value;
+}
+
 struct DecodeProbe {
     long long value{};
     unsigned  moves{};
@@ -300,4 +311,142 @@ TEST(ReplyTReply, FailRoutesReason) {
     tr.fail("timeout");
     EXPECT_FALSE(got.ok());
     EXPECT_EQ(got.error(), "timeout");
+}
+
+TEST(ReplyTReply, DecoratedSuccessKeepsOriginalRawAndDirectConstruction) {
+    auto        raw      = reply_wrapper_test::decorate(mk_int(123), 2);
+    const auto *identity = raw.get();
+    int         calls    = 0;
+    auto        callback = [&](qb::redis::Reply<reply_wrapper_test::DecodeProbe> &&reply) {
+        ++calls;
+        EXPECT_TRUE(reply.ok()) << reply.error();
+        EXPECT_EQ(reply.value().value, 123);
+        EXPECT_EQ(reply.value().moves, 0u);
+        EXPECT_EQ(reply.raw().get(), identity);
+        ASSERT_TRUE(reply.raw());
+        EXPECT_EQ(reply.raw()->as_attribute().data.entries.size(), 1u);
+        EXPECT_TRUE(std::holds_alternative<qb::redis::parser::Attribute>(*reply.raw()->as_attribute().value));
+    };
+    qb::redis::TReply<decltype(callback), reply_wrapper_test::DecodeProbe> handler(std::move(callback));
+    handler(std::move(raw));
+    EXPECT_EQ(calls, 1);
+    EXPECT_FALSE(raw);
+}
+
+TEST(ReplyTReply, DecoratedServerErrorsKeepTheirMessageAndOriginalRaw) {
+    for (bool bulk : {false, true}) {
+        SCOPED_TRACE(bulk);
+        auto        error    = bulk ? std::make_unique<Value>(qb::redis::parser::BulkError{"WRONGTYPE", "wrong kind"})
+                                    : std::make_unique<Value>(qb::redis::parser::SimpleError{"WRONGTYPE", "wrong kind"});
+        auto        raw      = reply_wrapper_test::decorate(std::move(error), 2);
+        const auto *identity = raw.get();
+        int         calls    = 0;
+        auto        callback = [&](qb::redis::Reply<long long> &&reply) {
+            ++calls;
+            EXPECT_FALSE(reply.ok());
+            EXPECT_EQ(reply.error(), "WRONGTYPE wrong kind");
+            EXPECT_EQ(reply.raw().get(), identity);
+        };
+        qb::redis::TReply<decltype(callback), long long> handler(std::move(callback));
+        handler(std::move(raw));
+        EXPECT_EQ(calls, 1);
+    }
+}
+
+TEST(ReplyTReply, DecoratedDecodeErrorsCompleteOnceWithOriginalRaw) {
+    const std::pair<long long, const char *> cases[] = {
+        {-1, "decode redis error"}, {-2, "decode standard error"}, {-3, "unknown reply-decode error"}
+    };
+    for (const auto &[value, error] : cases) {
+        auto        raw      = reply_wrapper_test::decorate(mk_int(value));
+        const auto *identity = raw.get();
+        int         calls    = 0;
+        auto        callback = [&](qb::redis::Reply<reply_wrapper_test::DecodeProbe> &&reply) {
+            ++calls;
+            EXPECT_FALSE(reply.ok());
+            EXPECT_EQ(reply.error(), error);
+            EXPECT_EQ(reply.raw().get(), identity);
+        };
+        qb::redis::TReply<decltype(callback), reply_wrapper_test::DecodeProbe> handler(std::move(callback));
+        handler(std::move(raw));
+        EXPECT_EQ(calls, 1);
+    }
+}
+
+TEST(ReplyTReply, DecoratedRepliesDoNotRetryThrowingCallbacks) {
+    const auto check = [](auto exception) {
+        for (bool error : {false, true}) {
+            auto        value    = error ? std::make_unique<Value>(qb::redis::parser::SimpleError{"ERR", "refused"}) : mk_int(123);
+            auto        raw      = reply_wrapper_test::decorate(std::move(value));
+            const auto *identity = raw.get();
+            int         calls    = 0;
+            auto        callback = [&](qb::redis::Reply<long long> &&reply) {
+                ++calls;
+                EXPECT_EQ(reply.ok(), !error);
+                if (error)
+                    EXPECT_EQ(reply.error(), "ERR refused");
+                else
+                    EXPECT_EQ(reply.result(), 123);
+                EXPECT_EQ(reply.raw().get(), identity);
+                throw exception;
+            };
+            qb::redis::TReply<decltype(callback), long long> handler(std::move(callback));
+            EXPECT_ANY_THROW(handler(std::move(raw)));
+            EXPECT_EQ(calls, 1);
+        }
+    };
+    check(std::runtime_error("callback failed"));
+    check(qb::redis::Error("callback failed"));
+    check(42);
+}
+
+TEST(ReplyTReply, MissingDecoratedValueCompletesWithFailureAndOriginalRaw) {
+    auto        raw      = reply_wrapper_test::decorate(nullptr);
+    const auto *identity = raw.get();
+    int         calls    = 0;
+    auto        callback = [&](qb::redis::Reply<long long> &&reply) {
+        ++calls;
+        EXPECT_FALSE(reply.ok());
+        EXPECT_FALSE(reply.error().empty());
+        EXPECT_EQ(reply.raw().get(), identity);
+    };
+    qb::redis::TReply<decltype(callback), long long> handler(std::move(callback));
+    handler(std::move(raw));
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(ReplyWrapper, AttributesAreAbsentWithoutDecoratedRaw) {
+    qb::redis::Reply<long long> empty;
+    EXPECT_EQ(empty.attributes(), nullptr);
+    qb::redis::Reply<long long> plain{true, 7, mk_int(7), {}};
+    EXPECT_EQ(plain.attributes(), nullptr);
+    static_assert(noexcept(std::as_const(plain).attributes()));
+    static_assert(std::is_same_v<decltype(std::as_const(plain).attributes()), const qb::redis::parser::Map *>);
+}
+
+TEST(ReplyWrapper, AttributesBorrowOnlyTheOutermostMapAndFollowRawOwnership) {
+    auto                        raw      = reply_wrapper_test::decorate(mk_int(7), 2);
+    const auto                 *metadata = &raw->as_attribute().data;
+    const auto                 *nested   = &raw->as_attribute().value->as_attribute().data;
+    qb::redis::Reply<long long> reply{true, 7, std::move(raw), {}};
+    ASSERT_EQ(reply.attributes(), metadata);
+    EXPECT_NE(reply.attributes(), nested);
+    ASSERT_EQ(reply.attributes()->size(), 1u);
+    EXPECT_EQ(reply.attributes()->entries.front().first->as_string_view(), "ttl");
+    EXPECT_EQ(reply.attributes()->entries.front().second->as_integer().value, 30);
+
+    auto moved = std::move(reply);
+    EXPECT_EQ(reply.attributes(), nullptr);
+    EXPECT_EQ(moved.attributes(), metadata);
+    auto owner = std::move(moved.raw());
+    EXPECT_EQ(moved.attributes(), nullptr);
+    EXPECT_EQ(&owner->as_attribute().data, metadata);
+}
+
+TEST(ReplyWrapper, EmptyAttributeMapIsPresentEvenOnFailure) {
+    auto                        raw      = std::make_unique<Value>(qb::redis::parser::Attribute{});
+    const auto                 *metadata = &raw->as_attribute().data;
+    qb::redis::Reply<long long> reply{false, 0, std::move(raw), "missing value"};
+    ASSERT_EQ(reply.attributes(), metadata);
+    EXPECT_TRUE(reply.attributes()->empty());
 }

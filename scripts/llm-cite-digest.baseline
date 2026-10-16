@@ -51,38 +51,40 @@ llm/qbm-redis.llm.api.md	redis.h:784-785	20f77c2202ca	await_suspend(std::corouti
 llm/qbm-redis.llm.api.md	redis.h:805-805	351bb30df879	make_redis_awaiter(Func &&operation) {
 llm/qbm-redis.llm.api.md	redis.h:831-831	4ab5c6be2991	class Redis
 llm/qbm-redis.llm.api.md	redis.h:86-87	fec8f2f5d4ae	template <typename IO_>
-llm/qbm-redis.llm.api.md	reply.h:104-104	f053ab3c6ce5	class ConnectionError : public Error {
-llm/qbm-redis.llm.api.md	reply.h:1051-1188	6f172527538f	redis_count(qb::redis::score const &) {
-llm/qbm-redis.llm.api.md	reply.h:1197-1197	1a5512b24cb3	put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
-llm/qbm-redis.llm.api.md	reply.h:120-120	7ecd93eaad38	class AuthError : public Error {
-llm/qbm-redis.llm.api.md	reply.h:1212-1215	e905742f3f34	template <typename T>
-llm/qbm-redis.llm.api.md	reply.h:1224-1225	08ef64174d03	template <typename T>
-llm/qbm-redis.llm.api.md	reply.h:1312-1312	910efe302e14	class IReply {
-llm/qbm-redis.llm.api.md	reply.h:1334-1335	4d349f3ac8e9	template <typename Func, typename T>
-llm/qbm-redis.llm.api.md	reply.h:1350-1366	f8fa08ea7092	operator()(std::unique_ptr<ReplyValue> raw) final {
-llm/qbm-redis.llm.api.md	reply.h:136-136	1f4c9e70302c	class CommandError : public Error {
-llm/qbm-redis.llm.api.md	reply.h:1372-1390	98e558340f5f	[[nodiscard]] static Reply<T>
-llm/qbm-redis.llm.api.md	reply.h:1409-1413	d2914eb92b29	template <typename Ret, typename Func>
-llm/qbm-redis.llm.api.md	reply.h:152-152	3d0bb61a8d05	class TimeoutError : public Error {
-llm/qbm-redis.llm.api.md	reply.h:168-168	71dfda1919a5	class ReplyParseError : public ProtoError {
-llm/qbm-redis.llm.api.md	reply.h:195-195	e097c35dc8d6	struct ParseTag {};
-llm/qbm-redis.llm.api.md	reply.h:202-286	7611438c6046	is_string(const ReplyValue &reply) noexcept {
-llm/qbm-redis.llm.api.md	reply.h:254-272	9a3bfd0790c5	is_array_or_push(const ReplyValue &reply) noexcept {
-llm/qbm-redis.llm.api.md	reply.h:307-308	8f2f13b0d1e9	[[nodiscard]] inline T
-llm/qbm-redis.llm.api.md	reply.h:413-413	1b2ae6a805a2	[[nodiscard]] qb::redis::message                   parse(ParseTag<qb:...
-llm/qbm-redis.llm.api.md	reply.h:49-49	f5e697d07586	using ReplyValue = parser::Value;
-llm/qbm-redis.llm.api.md	reply.h:58-58	7ddf13c124a6	enum class ReplyErrorType { ERR, MOVED, ASK };
-llm/qbm-redis.llm.api.md	reply.h:602-602	472864e3962c	parse_scan_reply(const ReplyValue &reply, Output output) {
-llm/qbm-redis.llm.api.md	reply.h:64-64	8eb7bb1bf680	class Error : public std::exception {
-llm/qbm-redis.llm.api.md	reply.h:672-672	00035867105e	[[nodiscard]] std::string type_to_string(const parser::Value &value);
-llm/qbm-redis.llm.api.md	reply.h:679-679	52e3fe26a3ea	to_status(const ReplyValue &reply) {
-llm/qbm-redis.llm.api.md	reply.h:691-691	7da5abd61f5b	parse_set_reply(const ReplyValue &reply) {
-llm/qbm-redis.llm.api.md	reply.h:718-765	2b4e4b6e1de0	redis_count(const char (&)[N]) noexcept {
-llm/qbm-redis.llm.api.md	reply.h:780-780	5a2e88e33883	constexpr std::size_t REDIS_MAX_STRING_SIZE = 512 * 1024 * 1024; // 5...
-llm/qbm-redis.llm.api.md	reply.h:782-782	942df14650e3	class SecurityError : public Error {
-llm/qbm-redis.llm.api.md	reply.h:789-789	700a3550088e	is_valid_redis_string_size(const std::string &s) {
-llm/qbm-redis.llm.api.md	reply.h:799-1046	c137ddf46832	to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
-llm/qbm-redis.llm.api.md	reply.h:88-88	8fb3eba7b399	class ProtoError : public Error {
+llm/qbm-redis.llm.api.md	reply.cpp:31-40	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
+llm/qbm-redis.llm.api.md	reply.h:105-105	f053ab3c6ce5	class ConnectionError : public Error {
+llm/qbm-redis.llm.api.md	reply.h:1060-1197	6f172527538f	redis_count(qb::redis::score const &) {
+llm/qbm-redis.llm.api.md	reply.h:1206-1206	1a5512b24cb3	put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
+llm/qbm-redis.llm.api.md	reply.h:121-121	7ecd93eaad38	class AuthError : public Error {
+llm/qbm-redis.llm.api.md	reply.h:1221-1224	e905742f3f34	template <typename T>
+llm/qbm-redis.llm.api.md	reply.h:1233-1234	08ef64174d03	template <typename T>
+llm/qbm-redis.llm.api.md	reply.h:1328-1328	910efe302e14	class IReply {
+llm/qbm-redis.llm.api.md	reply.h:1350-1351	4d349f3ac8e9	template <typename Func, typename T>
+llm/qbm-redis.llm.api.md	reply.h:1366-1388	2d688626b716	operator()(std::unique_ptr<ReplyValue> raw) final {
+llm/qbm-redis.llm.api.md	reply.h:137-137	1f4c9e70302c	class CommandError : public Error {
+llm/qbm-redis.llm.api.md	reply.h:1391-1396	03a196c4580b	QB_NOINLINE void
+llm/qbm-redis.llm.api.md	reply.h:1400-1429	a28994ad228f	template <bool Attributed = false>
+llm/qbm-redis.llm.api.md	reply.h:1447-1451	d2914eb92b29	template <typename Ret, typename Func>
+llm/qbm-redis.llm.api.md	reply.h:153-153	3d0bb61a8d05	class TimeoutError : public Error {
+llm/qbm-redis.llm.api.md	reply.h:169-169	71dfda1919a5	class ReplyParseError : public ProtoError {
+llm/qbm-redis.llm.api.md	reply.h:196-196	e097c35dc8d6	struct ParseTag {};
+llm/qbm-redis.llm.api.md	reply.h:203-287	7611438c6046	is_string(const ReplyValue &reply) noexcept {
+llm/qbm-redis.llm.api.md	reply.h:255-273	9a3bfd0790c5	is_array_or_push(const ReplyValue &reply) noexcept {
+llm/qbm-redis.llm.api.md	reply.h:312-319	fe1822048820	template <typename T>
+llm/qbm-redis.llm.api.md	reply.h:422-422	1b2ae6a805a2	[[nodiscard]] qb::redis::message                   parse(ParseTag<qb:...
+llm/qbm-redis.llm.api.md	reply.h:50-50	f5e697d07586	using ReplyValue = parser::Value;
+llm/qbm-redis.llm.api.md	reply.h:59-59	7ddf13c124a6	enum class ReplyErrorType { ERR, MOVED, ASK };
+llm/qbm-redis.llm.api.md	reply.h:611-611	472864e3962c	parse_scan_reply(const ReplyValue &reply, Output output) {
+llm/qbm-redis.llm.api.md	reply.h:65-65	8eb7bb1bf680	class Error : public std::exception {
+llm/qbm-redis.llm.api.md	reply.h:681-681	00035867105e	[[nodiscard]] std::string type_to_string(const parser::Value &value);
+llm/qbm-redis.llm.api.md	reply.h:688-688	52e3fe26a3ea	to_status(const ReplyValue &reply) {
+llm/qbm-redis.llm.api.md	reply.h:700-700	7da5abd61f5b	parse_set_reply(const ReplyValue &reply) {
+llm/qbm-redis.llm.api.md	reply.h:727-774	2b4e4b6e1de0	redis_count(const char (&)[N]) noexcept {
+llm/qbm-redis.llm.api.md	reply.h:789-789	5a2e88e33883	constexpr std::size_t REDIS_MAX_STRING_SIZE = 512 * 1024 * 1024; // 5...
+llm/qbm-redis.llm.api.md	reply.h:791-791	942df14650e3	class SecurityError : public Error {
+llm/qbm-redis.llm.api.md	reply.h:798-798	700a3550088e	is_valid_redis_string_size(const std::string &s) {
+llm/qbm-redis.llm.api.md	reply.h:808-1055	c137ddf46832	to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
+llm/qbm-redis.llm.api.md	reply.h:89-89	8fb3eba7b399	class ProtoError : public Error {
 llm/qbm-redis.llm.api.md	scripting_commands.h:36-36	ad1c3b4f6a52	class scripting_commands {
 llm/qbm-redis.llm.api.md	server_commands.h:43-43	6b7e173c7bf2	class server_commands {
 llm/qbm-redis.llm.api.md	server_reply.h:104-104	85cf63923001	class ValueExtractor {
@@ -126,9 +128,12 @@ llm/qbm-redis.llm.api.md	subscription_commands.h:41-41	a1757770a5f5	class subscr
 llm/qbm-redis.llm.api.md	transaction_commands.h:38-38	d12ba69a350e	class transaction_commands {
 llm/qbm-redis.llm.md	hash_commands.h:131-182	f656c86197cb	start() {
 llm/qbm-redis.llm.md	hash_commands.h:49-62	f57257594da9	contains_borrowed_scan_view() {
-llm/qbm-redis.llm.md	hash_commands.h:673-682	df0349de74fb	template <typename Func, typename Out = qb::unordered_map<std::string...
+llm/qbm-redis.llm.md	hash_commands.h:675-684	df0349de74fb	template <typename Func, typename Out = qb::unordered_map<std::string...
 llm/qbm-redis.llm.md	hash_commands.h:88-101	23fd81169bc6	finish() {
 llm/qbm-redis.llm.md	server_reply.h:357-389	bb231bafc716	class AsyncResult {
 llm/qbm-redis.llm.md	server_reply.h:435-450	a4739270dd02	class AsyncResult<void> {
-llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1350-1366	f8fa08ea7092	operator()(std::unique_ptr<ReplyValue> raw) final {
-llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1372-1390	98e558340f5f	[[nodiscard]] static Reply<T>
+llm/qbm-redis.llm.md	src/qbm/redis/reply.cpp:31-40	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
+llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1292-1306	081505bfa2bb	[[nodiscard]] reply_ptr &
+llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1366-1388	2d688626b716	operator()(std::unique_ptr<ReplyValue> raw) final {
+llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1391-1396	03a196c4580b	QB_NOINLINE void
+llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1400-1429	a28994ad228f	template <bool Attributed = false>

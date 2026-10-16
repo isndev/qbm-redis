@@ -203,14 +203,10 @@ jobs:
       # Registration floors need only the configure step, so a suite that vanished from
       # registration fails here rather than being silently absent from the totals later.
       #
-      # UNLIKE qbm-http, NOTHING HERE IS HOST-VARYING, and that is a measurement rather than an
-      # assumption: qbm-redis registers 42 (13 unit + 2 system + 27 integration) on a
-      # maintainer's macOS box and 42 on ubuntu-latest. qbm-http's four http3 tests must be
-      # derived from a capability because ubuntu-latest has no ngtcp2 OpenSSL crypto helper;
-      # this module has no such gate, so the floor is the constant. If one is ever added --
-      # anything wrapped in an if(QB_HAS_*) or a find_package() result -- this step must start
-      # reading the decision out of the configure log the way qbm-http's does, because a
-      # constant would then be red on a host that is merely different, not broken.
+      # The historical floor is a minimum, not the current suite size. SSL tests follow
+      # QB_HAS_SSL, and the Unix-socket transport test is POSIX-only. This Linux lane
+      # supplies both capabilities; the private Unix Redis wrapper below must execute
+      # that test, never turn an unavailable fixture into a successful empty run.
       #
       # The integration tier is floored SEPARATELY because it is the part a missing daemon
       # silently guts, and it is the reason this lane runs a real Redis at all.
@@ -308,7 +304,8 @@ jobs:
 
       - name: Run the qbm-redis suite
         run: |
-          ctest --test-dir build -L 'module:qbm-redis' \
+          python3 module/tests/shared/run-with-unix-redis.py --docker-image redis:7-alpine -- \
+            ctest --test-dir build -L 'module:qbm-redis' \
                 --output-on-failure \
                 --output-junit "${RUNNER_TEMP}/results.xml"
 

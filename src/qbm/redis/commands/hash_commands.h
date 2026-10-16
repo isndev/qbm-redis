@@ -246,6 +246,8 @@ private:
         void
         handle_reply(Reply<std::vector<std::string>> &&reply) {
             _reply.ok() &= reply.ok();
+            if (!reply.ok() && _reply.error().empty())
+                _reply.error() = std::move(reply.error());
             std::move(reply.result().begin(), reply.result().end(), std::back_inserter(_reply.result()));
 
             if (--_pending == 0) {

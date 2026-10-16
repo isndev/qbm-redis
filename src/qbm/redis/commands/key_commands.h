@@ -98,6 +98,8 @@ private:
         void
         operator()(qb::redis::Reply<qb::redis::scan<>> &&reply) {
             _reply.ok() = reply.ok();
+            if (!reply.ok())
+                _reply.error() = std::move(reply.error());
             std::move(reply.result().items.begin(), reply.result().items.end(), std::back_inserter(_reply.result().items));
             if (reply.ok() && reply.result().cursor) {
                 _cursor   = reply.result().cursor;

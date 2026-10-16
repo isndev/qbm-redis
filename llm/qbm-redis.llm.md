@@ -88,6 +88,11 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   `qb::redis::status` (OK strings), `long long`, `double`, `bool`,
   `std::optional<std::string>`, `std::vector<...>`, qb-core containers
   (`qb::unordered_map`, `qb::unordered_set`), `qb::json`, domain structs.
+  RESP3 attributes are unwrapped for typed values and nested generic container elements;
+  decorated errors keep the server message. `raw()` owns the complete original value,
+  and `attributes()` borrows its outermost `const parser::Map *` (null when absent).
+  Metadata blocks are not merged; moving or releasing `raw()` transfers their lifetime
+  (`src/qbm/redis/reply.h:1292-1306`).
 - **Command groups are CRTP mixins** (`key_commands<Derived>`,
   `string_commands<Derived>`, …) composed into the client. You never
   instantiate them directly. Method names are lowercase Redis verbs, with
@@ -120,7 +125,7 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   `Reply` that owns their raw data. Custom parse-result types carry their own ownership
   responsibility. Terminal page errors survive aggregation; ordinary page setup or merge
   exceptions fail the automatic scan once. Completion callback exceptions are logged and
-  cannot trigger a second completion (`hash_commands.h:49-62`, `:88-101`, `:131-182`, `:673-682`).
+  cannot trigger a second completion (`hash_commands.h:49-62`, `:88-101`, `:131-182`, `:675-684`).
 - **`AsyncResult<std::string>` stores string success values.** Construct an error explicitly
   with `AsyncResult<T>::from_error(std::string)` (also on `void`); an empty message still
   means failure. Other supported payload types retain their existing constructors
@@ -218,7 +223,8 @@ redis.get([](qb::redis::Reply<std::optional<std::string>>&& r) {
 ```
 
 `Reply<T>`: `ok()`, `result()`/`value()`, `value_or(default)`, `error()`
-(a `std::string`, empty when ok), `raw()` (owning `parser::Value`).
+(a `std::string`, empty when ok), `raw()` (owning `parser::Value`), `attributes()`
+(borrowed outermost RESP3 metadata map, null when absent).
 
 ### Key TTLs — the seconds/milliseconds boundary
 
@@ -365,10 +371,15 @@ if (!r.ok()) {
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,
   `on(disconnected)`) is caught and logged, never terminating the process.
-- `TReply` constructs the successful `Reply<T>` directly from `parse<T>(*raw)` before
-  invoking the callback. Decoder exceptions become failed replies with the original raw
-  value; the callback runs outside those catches, so its exception cannot cause a second
-  completion. _(src/qbm/redis/reply.h:1350-1366,1372-1390)_
+- `TReply` constructs the successful `Reply<T>` directly from its decoded value before
+  invoking the callback. Ordinary replies use `decode<false>`; attributed replies go through
+  the private out-of-line `dispatch_attributed` member, which invokes `func(decode<true>(raw))`.
+  The attributed decoder unwraps before classifying the inner server error. Both decoder
+  instantiations retain the original raw owner on failure and use public `parse<T>`, preserving
+  customizations. The callback runs after decoding returns, outside its catches, whether invoked
+  by the operator or the cold member; a callback exception cannot cause a second completion.
+  Attribute traversal is iterative, with no new depth limit beyond the configured wire parser.
+  _(src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1429; src/qbm/redis/reply.cpp:31-40)_
 
 ---
 
@@ -383,6 +394,10 @@ if (!r.ok()) {
   and fire once; **no coroutine form**, and a throwing callback is caught/logged,
   not propagated. Use the explicit-cursor `scan(cursor,...)` overloads to bound
   memory on large keyspaces.
+  Automatic SCAN/SSCAN stop on a failed page and retain its error plus accumulated items;
+  multi-key HVALS keeps the first explicit error and all successful sibling values. Those
+  aggregates have no single raw reply. CONFIG GET and coroutine TIME transform one reply
+  and preserve both its `error()` and `raw()`.
 - **Empty required args → a failed `Reply`, not a bad frame.** A required-variadic
   or required-collection command with nothing to act on (`del`/`exists`/`touch`/
   `unlink` with no keys, `lpush`/`rpush`, `sadd`/`srem`, `sdiffstore`/`*store`,

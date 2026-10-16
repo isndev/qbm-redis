@@ -224,14 +224,15 @@ sequenceDiagram
 | `result()` / `value()`            | The decoded value of type `T`.                                                                                 |
 | `value_or(default)`               | Returns the value, or `default` when `!ok()` — and for `std::optional<T>` results, when the optional is empty. |
 | `error()`                         | The error string when `!ok()` (Redis error text, `"command timed out"`, `"disconnected"`, or `"String too large"`). |
-| `raw()`                           | The owning `parser::Value`, needed for move-only payloads such as `pipeline_result`.                           |
+| `raw()`                           | The owning original `parser::Value`, needed for payloads such as `pipeline_result`.                            |
+| `attributes()`                    | Borrowed outermost RESP3 metadata map (`const parser::Map *`), or null; its lifetime follows the raw owner.     |
 
 Redis-side command errors do **not** throw; they surface as `ok() == false` with `error()` set, and so do a reply that
 does not decode into `T` and a lost connection (`"disconnected"`). So does a usage fault: an argument longer than 512 MiB
 throws `SecurityError` while the command is serialized, and the client turns it into that command's failed `Reply`
 (`"String too large"`), leaving no handler queued and no partial frame in the outbound pipe (Huly QB-255; until 3.3 the
 throw reached the caller and left both behind).
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1225-1300 (Reply), 1331-1369 (every outcome becomes a Reply), 768 (the limit), 799 (the throw); qbm/redis/src/qbm/redis/redis.h:445-461 (caught where the command is serialized, the pipe rolled back) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1234-1316 (Reply), 1361-1362,1366-1388,1391-1396,1400-1429 (failure dispatch and decoding), 789 (the limit), 813-833 (the throw); qbm/redis/src/qbm/redis/redis.h:445-461 (caught where the command is serialized, the pipe rolled back) -->
 
 ### Driving the loop
 
@@ -298,7 +299,7 @@ int main() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:527 (connect), string_commands.h:155/528, key_commands.h:136, qb/src/qb/io/async/coroutine/utils.h:285 (run_sync) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:527 (connect), string_commands.h:155/528, key_commands.h:138, qb/src/qb/io/async/coroutine/utils.h:285 (run_sync) -->
 
 Inside a coroutine you `co_await` directly. Pub/sub uses a dedicated consumer plus a separate client to publish, because
 the publishing command lives only on the full client:
@@ -520,7 +521,7 @@ arguments keep native units by design** and are exposed through `std::chrono`-un
 > unit lives in the method name. Do not push these onto `qb::duration`. (The retired tokens `qb::Timestamp`,
 `qb::Duration`, `qb::TimePoint`, `to_timestamp(`, and `to_time_point(` were removed from the framework and must not
 > appear in your code.)
-<!-- src: key_commands.h:237/393/282/438, string_commands.h:498/676 -->
+<!-- src: key_commands.h:239/393/282/438, string_commands.h:498/676 -->
 
 ---
 

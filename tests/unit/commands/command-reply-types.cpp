@@ -40,10 +40,20 @@ namespace command_reply_types_test {
 class ScriptedClient
     : public qb::redis::key_commands<ScriptedClient>
     , public qb::redis::list_commands<ScriptedClient>
+    , public qb::redis::hash_commands<ScriptedClient>
+    , public qb::redis::set_commands<ScriptedClient>
     , public qb::redis::server_commands<ScriptedClient> {
 public:
+    using Responses = std::vector<std::optional<std::string_view>>;
+
     explicit ScriptedClient(std::string_view reply_wire)
-        : _reply_wire(reply_wire) {}
+        : _reply_wires{reply_wire}
+        , _repeat_reply(true) {}
+
+    // nullopt models the dispatcher's disconnect path. Consume before invoking
+    // the handler so a synchronous scan continuation receives the next page.
+    explicit ScriptedClient(Responses replies)
+        : _reply_wires(std::move(replies)) {}
 
     template <typename Ret, typename Func, typename... Args>
     ScriptedClient &
@@ -51,13 +61,24 @@ public:
         qb::allocator::pipe<char> out;
         qb::redis::put_in_pipe(out, name, std::forward<Args>(args)...);
         frame.assign(out.begin(), out.size());
-        auto parsed = qb::redis::parser::parse(_reply_wire);
-        if (!parsed.has_value()) {
-            ADD_FAILURE() << "scripted reply does not parse: " << parsed.error().what();
+        frames.push_back(frame);
+        const auto index = _repeat_reply ? 0 : _next_reply++;
+        if (index >= _reply_wires.size()) {
+            ADD_FAILURE() << "command exceeded its scripted replies";
             return *this;
         }
+        qb::redis::reply_ptr raw;
+        if (const auto &wire = _reply_wires[index]; wire) {
+            auto parsed = qb::redis::parser::parse(*wire);
+            if (!parsed.has_value()) {
+                ADD_FAILURE() << "scripted reply does not parse: " << parsed.error().what();
+                return *this;
+            }
+            raw = std::make_unique<qb::redis::ReplyValue>(std::move(*parsed));
+        }
+        last_raw = raw.get();
         qb::redis::TReply<Func, Ret> handler{std::forward<Func>(func)};
-        handler(std::make_unique<qb::redis::ReplyValue>(std::move(*parsed)));
+        handler(std::move(raw));
         ++completed;
         return *this;
     }
@@ -71,11 +92,15 @@ public:
         return result;
     }
 
-    std::string frame; ///< the last command, as it would go on the wire
-    int         completed{0};
+    std::string                  frame; ///< the last command, as it would go on the wire
+    int                          completed{0};
+    std::vector<std::string>     frames;
+    const qb::redis::ReplyValue *last_raw{};
 
 private:
-    std::string_view _reply_wire;
+    Responses   _reply_wires;
+    std::size_t _next_reply{};
+    bool        _repeat_reply{false};
 };
 
 /// The callback form's reply, captured once.
@@ -240,4 +265,162 @@ TEST(CommandReplyTypes, SortGetKeepsTheNilOfAMissingReferencedKey) {
     auto           failed = wrong_type.sortKeyGet("hash", {"w_*"});
     EXPECT_FALSE(failed.ok());
     EXPECT_EQ(failed.error(), "WRONGTYPE Operation against a key holding the wrong kind of value");
+}
+
+// Aggregators keep the first failure and every successfully received item. A
+// collection of replies has no single raw value; one-reply adapters retain it.
+TEST(CommandReplyFailures, AutomaticScansKeepFirstAndLastPageErrorsAndPartialItems) {
+    for (bool set_scan : {false, true}) {
+        for (bool last_page : {false, true}) {
+            const std::pair<std::optional<std::string_view>, std::string_view> failures[] = {
+                {"-WRONGTYPE wrong kind\r\n", "WRONGTYPE wrong kind"}, {std::nullopt, "disconnected"}
+            };
+            for (const auto &[wire, reason] : failures) {
+                SCOPED_TRACE(set_scan ? "SSCAN" : "SCAN");
+                SCOPED_TRACE(last_page ? "last page" : "first page");
+                SCOPED_TRACE(reason);
+                ScriptedClient::Responses responses;
+                if (last_page)
+                    responses.push_back("*2\r\n$1\r\n7\r\n*1\r\n$4\r\nkept\r\n");
+                responses.push_back(wire);
+                ScriptedClient              client(std::move(responses));
+                Captured<qb::redis::scan<>> result;
+                if (set_scan)
+                    client.sscan(result.sink(), "set", "*");
+                else
+                    client.scan(result.sink(), "*");
+                EXPECT_EQ(result.calls, 1);
+                EXPECT_FALSE(result.reply.ok());
+                EXPECT_EQ(result.reply.error(), reason);
+                EXPECT_EQ(result.reply.result().items, last_page ? StringList{"kept"} : StringList{});
+                EXPECT_FALSE(result.reply.raw());
+                EXPECT_EQ(client.completed, last_page ? 2 : 1);
+                EXPECT_EQ(client.frames.size(), last_page ? 2u : 1u);
+            }
+        }
+    }
+}
+
+TEST(CommandReplyFailures, AutomaticScansKeepEverySuccessfulPageWithoutInventingRaw) {
+    for (bool set_scan : {false, true}) {
+        ScriptedClient client(ScriptedClient::Responses{"*2\r\n$1\r\n7\r\n*1\r\n$4\r\nkept\r\n", "*2\r\n$1\r\n0\r\n*1\r\n$4\r\nlast\r\n"});
+        Captured<qb::redis::scan<>> result;
+        if (set_scan)
+            client.sscan(result.sink(), "set", "*");
+        else
+            client.scan(result.sink(), "*");
+        EXPECT_EQ(result.calls, 1);
+        EXPECT_TRUE(result.reply.ok()) << result.reply.error();
+        EXPECT_TRUE(result.reply.error().empty());
+        EXPECT_EQ(result.reply.result().items, (StringList{"kept", "last"}));
+        EXPECT_FALSE(result.reply.raw());
+        EXPECT_EQ(client.completed, 2);
+    }
+}
+
+TEST(CommandReplyFailures, MultiHvalsKeepsFirstObservedFailureAndSuccessfulValues) {
+    const ScriptedClient::Responses scenarios[] = {
+        {"-WRONGTYPE wrong kind\r\n", "*1\r\n$4\r\nkept\r\n", "-ERR later failure\r\n"},
+        {"*1\r\n$4\r\nkept\r\n", "*0\r\n", "-WRONGTYPE wrong kind\r\n"},
+        {std::nullopt, "*1\r\n$4\r\nkept\r\n", "-ERR later failure\r\n"}
+    };
+    for (const auto &responses : scenarios) {
+        ScriptedClient       client(responses);
+        Captured<StringList> result;
+        client.hvals(result.sink(), StringList{"first", "second", "last"});
+        EXPECT_EQ(result.calls, 1);
+        EXPECT_FALSE(result.reply.ok());
+        EXPECT_EQ(result.reply.error(), responses.front() ? "WRONGTYPE wrong kind" : "disconnected");
+        EXPECT_EQ(result.reply.result(), (StringList{"kept"}));
+        EXPECT_FALSE(result.reply.raw());
+        EXPECT_EQ(client.completed, 3);
+    }
+}
+
+TEST(CommandReplyFailures, MultiHvalsSuccessfulAndEmptyInputsCompleteOnceWithoutRaw) {
+    for (bool empty : {false, true}) {
+        ScriptedClient       client(ScriptedClient::Responses{"*1\r\n$4\r\nkept\r\n", "*1\r\n$4\r\nlast\r\n"});
+        Captured<StringList> result;
+        client.hvals(result.sink(), empty ? StringList{} : StringList{"first", "last"});
+        EXPECT_EQ(result.calls, 1);
+        EXPECT_TRUE(result.reply.ok()) << result.reply.error();
+        EXPECT_TRUE(result.reply.error().empty());
+        EXPECT_EQ(result.reply.result(), empty ? StringList{} : (StringList{"kept", "last"}));
+        EXPECT_FALSE(result.reply.raw());
+        EXPECT_EQ(client.completed, empty ? 0 : 2);
+    }
+}
+
+TEST(CommandReplyFailures, ConfigGetAndTimeKeepSourceErrorsAndRaw) {
+    const std::pair<std::optional<std::string_view>, std::string_view> failures[] = {
+        {"-NOPERM command refused\r\n", "NOPERM command refused"}, {std::nullopt, "disconnected"}
+    };
+    for (const auto &[wire, reason] : failures) {
+        SCOPED_TRACE(reason);
+        ScriptedClient config_client(ScriptedClient::Responses{wire});
+        auto           config = config_client.config_get("maxmemory");
+        EXPECT_FALSE(config.ok());
+        EXPECT_EQ(config.error(), reason);
+        EXPECT_EQ(config.raw().get(), config_client.last_raw);
+        EXPECT_TRUE(config.result().empty());
+        EXPECT_EQ(config_client.completed, 1);
+
+        ScriptedClient time_client(ScriptedClient::Responses{wire});
+        auto           time = time_client.time();
+        EXPECT_FALSE(time.ok());
+        EXPECT_EQ(time.error(), reason);
+        EXPECT_EQ(time.raw().get(), time_client.last_raw);
+        EXPECT_EQ(time_client.completed, 1);
+    }
+}
+
+TEST(CommandReplyFailures, ConfigGetAndTimeKeepSuccessfulSourceRaw) {
+    for (std::string_view wire : {"*2\r\n$9\r\nmaxmemory\r\n$1\r\n0\r\n", "%1\r\n$9\r\nmaxmemory\r\n$1\r\n0\r\n"}) {
+        ScriptedClient                                             client(wire);
+        Captured<std::vector<std::pair<std::string, std::string>>> result;
+        client.config_get(result.sink(), "maxmemory");
+        EXPECT_EQ(result.calls, 1);
+        ASSERT_TRUE(result.reply.ok()) << result.reply.error();
+        EXPECT_EQ(result.reply.result(), (std::vector<std::pair<std::string, std::string>>{{"maxmemory", "0"}}));
+        EXPECT_EQ(result.reply.raw().get(), client.last_raw);
+    }
+    ScriptedClient client("*2\r\n$2\r\n42\r\n$1\r\n7\r\n");
+    auto           time = client.time();
+    ASSERT_TRUE(time.ok()) << time.error();
+    EXPECT_EQ(time.result(), (std::pair<long long, long long>{42, 7}));
+    EXPECT_EQ(time.raw().get(), client.last_raw);
+}
+
+TEST(CommandReplyFailures, ConfigGetAndTimeKeepDecodeFailureDetails) {
+    ScriptedClient       source(":42\r\n");
+    Captured<StringList> expected;
+    source.command<StringList>(expected.sink(), "TIME");
+    ASSERT_FALSE(expected.reply.ok());
+    ASSERT_FALSE(expected.reply.error().empty());
+
+    ScriptedClient config_client(":42\r\n");
+    auto           config = config_client.config_get("maxmemory");
+    EXPECT_FALSE(config.ok());
+    EXPECT_EQ(config.error(), expected.reply.error());
+    EXPECT_EQ(config.raw().get(), config_client.last_raw);
+
+    ScriptedClient time_client(":42\r\n");
+    auto           time = time_client.time();
+    EXPECT_FALSE(time.ok());
+    EXPECT_EQ(time.error(), expected.reply.error());
+    EXPECT_EQ(time.raw().get(), time_client.last_raw);
+
+    // These decode as string arrays successfully; the TIME adapter itself must
+    // fail the numeric conversion while keeping that original source reply.
+    for (std::string_view wire : {"*2\r\n$4\r\noops\r\n$1\r\n0\r\n", "*2\r\n$1\r\n1\r\n$4\r\noops\r\n"}) {
+        SCOPED_TRACE(wire);
+        ScriptedClient malformed(wire);
+        auto           result = malformed.time();
+        EXPECT_FALSE(result.ok());
+        EXPECT_EQ(result.error(), "Malformed TIME reply");
+        ASSERT_TRUE(result.raw());
+        EXPECT_EQ(result.raw().get(), malformed.last_raw);
+        EXPECT_EQ(malformed.completed, 1);
+        EXPECT_EQ(malformed.frames.size(), 1u);
+    }
 }

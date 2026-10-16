@@ -9,6 +9,10 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **RESP3 metadata is available through `Reply<T>::attributes()` (Huly QB-136).** It returns a borrowed
+  `const parser::Map *` to the outermost attribute block, or null when absent. The map lives with `raw()`;
+  nested metadata blocks remain separate. The accessor adds no reply state or metadata copy.
+
 - **`sortKeyGet` / `sortKeyRoGet` read `SORT ... GET` replies that hold a missing key (Huly QB-644).** A `GET` pattern
   whose referenced key does not exist answers nil for that element; `sortKey`'s `std::vector<std::string>` cannot hold
   it, so the whole reply failed with a decode error. The new pair sends one `GET <pattern>` per pattern after the
@@ -51,6 +55,18 @@ All notable changes to the qbm-redis module are documented here. The format is b
   syntax without losing ABI correctness or ordinary-path performance.
 
 ### Fixed
+
+- **Typed replies accept RESP3 attributes at every generic decode level (Huly QB-136).** Decorated scalars,
+  strings, optional values and container elements decode their underlying value; decorated errors preserve the
+  server's message. `raw()` retains the complete original reply, and callbacks still complete once even if they
+  throw. Attribute traversal is iterative and introduces no fixed limit beyond the configured wire parser.
+  Attributed reply dispatch is isolated in a private out-of-line member. Both decoder instantiations retain
+  public parse customizations and direct result construction, with each callback invoked after decoding returns
+  and outside the catch boundary.
+- **SCAN, SSCAN and multi-key HVALS retain their failure reason (Huly QB-645).** Automatic scans keep the
+  failed page's error alongside accumulated items; HVALS retains the first explicit error and successful sibling
+  values. Aggregates keep `raw()` empty. CONFIG GET and the coroutine TIME adapter preserve the error and raw
+  value of their single source response on both success and failure.
 
 - **`disconnect()` ends the connection for the server too (with qb's Huly QB-1060).** qb-io's standalone
   `dispose()` left the socket untouched, so the server kept listing the client until the object was

@@ -109,6 +109,23 @@ transport behavior:
 The URI carries only the endpoint. Credentials and database selection are **not** taken from the URI; issue `auth(...)`
 and `select(...)` explicitly after connecting (see below).
 
+The POSIX system test `qbm-redis-test-system-unix-socket-connection` covers RESP2/RESP3 PING,
+binary SET/GET values and failure on a missing socket. `REDIS_UNIX_SOCKET` must name an absolute
+socket path: an unset variable skips the test, while an explicitly configured but unavailable
+socket fails. The Linux module and superproject suites provide an owned Redis instance and require
+zero skipped tests. Windows excludes this POSIX transport test.
+
+To run it against a disposable local Redis without touching a system service, from this module:
+
+```sh
+python3 tests/shared/run-with-unix-redis.py --redis-server "$(command -v redis-server)" -- \
+  ctest --test-dir /path/to/build -R '^qbm-redis-test-system-unix-socket-connection$' --output-on-failure
+```
+
+The launcher binds no TCP port, verifies PING/PONG, supplies the socket path only to its child,
+and stops its own server on success, failure or interruption. An existing dedicated instance can
+instead be selected by setting `REDIS_UNIX_SOCKET` before running CTest directly.
+
 ### `connect()` is an awaiter, not a blocking call
 
 `connect()` returns a `connect_awaiter`. It does nothing until you `co_await` it (or hand it to a runner). There are

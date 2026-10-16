@@ -401,7 +401,7 @@ qb::io::async::task<void> watch_keys(qb::redis::tcp::client &client, qb::redis::
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:403 (config_set), qbm/redis/src/qbm/redis/commands/subscription_commands.h:207 (psubscribe) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:402 (config_set), qbm/redis/src/qbm/redis/commands/subscription_commands.h:207 (psubscribe) -->
 
 A pattern match reaches `on_message` with `pattern` set — `pmessage` adds no field — so both consumers keep the pattern
 that matched. Three things to know before relying on it:

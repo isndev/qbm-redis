@@ -140,7 +140,7 @@ if (resp2.ok() && resp2.result().is_object())
     qb::io::cout() << resp2.result()["proto"].get<int>() << std::endl;     // 2
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.cpp:590-624; qbm/redis/tests/unit/reply/reply-json-decode.cpp:254-270 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.cpp:602-636; qbm/redis/tests/unit/reply/reply-json-decode.cpp:254-270 -->
 
 ### `auth` — authentication
 
@@ -160,7 +160,7 @@ auth(Func &&func, const std::string &user, const std::string &password);
 
 Two argument shapes: one string is the legacy `requirepass` form (authenticates as the `default` user); two strings are
 the ACL `user` + `password` form. A rejected credential resolves with `ok() == false` and the server message (
-`WRONGPASS`, `NOPERM`) in `error()`. A `qb::redis::AuthError` class is declared (`reply.h:120`) but nothing in the
+`WRONGPASS`, `NOPERM`) in `error()`. A `qb::redis::AuthError` class is declared (`reply.h:121`) but nothing in the
 module ever constructs or throws it — a rejected `auth` reaches you only as `reply.error()` text, so do not write a
 `catch` clause for it. Credentials are **not** stored
 on the client, so auto-reconnect does not re-authenticate — re-issue `auth(...)` yourself after a reconnect (

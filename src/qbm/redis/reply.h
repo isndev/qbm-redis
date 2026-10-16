@@ -34,6 +34,7 @@
 #include <qb/json.h>
 #include <qb/system/allocator/pipe.h>
 #include <qb/system/container/unordered_map.h>
+#include <qb/utility/branch_hints.h>
 #include <qb/utility/type_traits.h>
 
 // Include types first (which includes parser)
@@ -292,6 +293,11 @@ is_status(const ReplyValue &reply) noexcept {
 // Main parse function template
 // ============================================================================
 
+// Cold path for attribute-decorated replies. A missing value stays an Attribute
+// so the target parser retains its existing malformed-value policy (JSON null,
+// a type error for non-JSON). Wire nesting limits belong to ParserConfig.
+[[nodiscard]] const ReplyValue &unwrap_attributes(const ReplyValue &reply) noexcept;
+
 /**
  * @brief Parses a reply value into the requested C++ type @p T.
  *
@@ -306,7 +312,10 @@ is_status(const ReplyValue &reply) noexcept {
 template <typename T>
 [[nodiscard]] inline T
 parse(const ReplyValue &reply) {
-    return parse(ParseTag<T>{}, reply);
+    const ReplyValue *value = &reply;
+    if (reply.is_attribute()) [[unlikely]]
+        value = &unwrap_attributes(reply);
+    return parse(ParseTag<T>{}, *value);
 }
 
 // ============================================================================
@@ -1289,6 +1298,13 @@ struct Reply {
         return _raw;
     }
 
+    /// Borrow the outermost RESP3 metadata map, or nullptr when absent.
+    /// The map belongs to raw(); nested attribute blocks are not merged.
+    [[nodiscard]] const parser::Map *
+    attributes() const noexcept {
+        return _raw && _raw->is_attribute() ? &_raw->as_attribute().data : nullptr;
+    }
+
     [[nodiscard]] std::string &
     error() noexcept {
         return _error;
@@ -1353,6 +1369,11 @@ public:
             return;
         }
 
+        if (raw->is_attribute()) [[unlikely]] {
+            dispatch_attributed(raw);
+            return;
+        }
+
         if (raw->is_error()) {
             // Copy the error message before moving raw, since get_error_message()
             // returns a string_view into raw's internal storage.
@@ -1367,12 +1388,29 @@ public:
     }
 
 private:
+    QB_NOINLINE void
+    dispatch_attributed(reply_ptr &raw) {
+        // Keep attributed dispatch and its reply lifetime on the cold path.
+        // The stored callback is still invoked outside the decoder's catches.
+        func(decode<true>(raw));
+    }
+
     // Return a prvalue so decoding constructs the callback's Reply directly,
     // without moving T through an intermediate optional and destroying it.
+    template <bool Attributed = false>
     [[nodiscard]] static Reply<T>
     decode(reply_ptr &raw) {
         try {
-            return Reply<T>{true, parse<T>(*raw), std::move(raw), {}};
+            if constexpr (Attributed) {
+                const auto &value = reply::unwrap_attributes(*raw);
+                if (value.is_error()) {
+                    std::string message{value.get_error_message()};
+                    return Reply<T>{false, {}, std::move(raw), std::move(message)};
+                }
+                return Reply<T>{true, parse<T>(value), std::move(raw), {}};
+            } else {
+                return Reply<T>{true, parse<T>(*raw), std::move(raw), {}};
+            }
         } catch (const Error &e) {
             // Catch all qb::redis::Error subclasses (ProtoError, CommandError, etc.)
             // e.what() is valid only for the lifetime of e, so copy it now.

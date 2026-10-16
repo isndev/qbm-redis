@@ -377,8 +377,7 @@ public:
     config_get(Func &&func, const std::string &parameter) {
         return derived().template command<std::vector<std::string>>(
             [f = std::forward<Func>(func)](auto &&reply) mutable {
-                Reply<std::vector<std::pair<std::string, std::string>>> r;
-                r.ok() = reply.ok();
+                Reply<std::vector<std::pair<std::string, std::string>>> r{reply.ok(), {}, std::move(reply.raw()), std::move(reply.error())};
                 if (reply.ok()) {
                     for (size_t i = 0; i < reply.result().size(); i += 2) {
                         if (i + 1 < reply.result().size()) {
@@ -1293,8 +1292,7 @@ public:
     time() {
         return derived().template make_coro_command<std::pair<long long, long long>>([this](auto &&callback) {
             this->time([cb = std::move(callback)](Reply<std::vector<std::string>> &&raw) mutable {
-                Reply<std::pair<long long, long long>> r;
-                r.ok() = raw.ok();
+                Reply<std::pair<long long, long long>> r{raw.ok(), {}, std::move(raw.raw()), std::move(raw.error())};
                 if (raw.ok() && raw.result().size() >= 2) {
                     // Use from_chars, not stoll: a malformed/proxied TIME
                     // reply must not throw out of the reply handler (which

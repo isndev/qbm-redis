@@ -27,6 +27,18 @@ ReplyParseError::_err_info(const std::string &type, const ReplyValue &reply) {
 
 namespace reply {
 
+const ReplyValue &
+unwrap_attributes(const ReplyValue &reply) noexcept {
+    const auto *value = &reply;
+    while (value->is_attribute()) {
+        const auto &attribute = value->as_attribute();
+        if (!attribute.value)
+            break;
+        value = attribute.value.get();
+    }
+    return *value;
+}
+
 // ============================================================================
 // Type to string conversion
 // ============================================================================

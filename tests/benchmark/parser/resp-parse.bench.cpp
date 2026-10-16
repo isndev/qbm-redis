@@ -49,7 +49,10 @@
 #include <benchmark/benchmark.h>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <qbm/redis/parser.h> // qb::redis::parser::{parse, RespParser, Value, ...}
@@ -213,15 +216,79 @@ select_one_shot_corpus(std::int64_t which) {
     }
 }
 
+// Check every decoded leaf and its RESP type against independent literals.
+// No expected Value is obtained by calling the parser under measurement.
+bool
+is_bulk(const Value &value, std::string_view expected) {
+    return value.is_bulk_string() && value.as_bulk_string().view() == expected;
+}
+
+bool
+bulk_sequence_matches(const std::vector<std::unique_ptr<Value>> &values, std::initializer_list<std::string_view> expected) {
+    if (values.size() != expected.size())
+        return false;
+    std::size_t i = 0;
+    for (auto text : expected) {
+        if (!values[i] || !is_bulk(*values[i], text))
+            return false;
+        ++i;
+    }
+    return true;
+}
+
+bool
+one_shot_matches(const Value &value, std::int64_t corpus) {
+    switch (corpus) {
+        case kSimpleString:
+            return value.is_simple_string() && value.as_string_view() == "OK";
+        case kInteger:
+            return value.is_integer() && value.as_integer().value == 1234567890;
+        case kBulkSmall:
+        case kBulk1MB:
+        case kBulk10MB: {
+            const std::size_t size = corpus == kBulkSmall ? 11u : corpus == kBulk1MB ? 1024u * 1024 : 10u * 1024 * 1024;
+            if (!value.is_bulk_string())
+                return false;
+            const auto text = value.as_bulk_string().view();
+            return text.size() == size && text.find_first_not_of('x') == std::string_view::npos;
+        }
+        case kArray:
+            return value.is_array() && bulk_sequence_matches(value.as_array().elements, {"foo", "bar", "baz"});
+        case kMap: {
+            if (!value.is_map() || value.as_map().size() != 2)
+                return false;
+            const auto &entries = value.as_map().entries;
+            return entries[0].first && entries[0].second && entries[1].first && entries[1].second && is_bulk(*entries[0].first, "key")
+                   && is_bulk(*entries[0].second, "value") && is_bulk(*entries[1].first, "id") && entries[1].second->is_integer()
+                   && entries[1].second->as_integer().value == 42;
+        }
+        case kSet:
+            return value.is_set() && bulk_sequence_matches(value.as_set().elements, {"a", "b", "c"});
+        case kPush:
+            return value.is_push() && bulk_sequence_matches(value.as_push().elements, {"message", "channel", "hello"});
+        case kDeeplyNested: {
+            const Value *leaf = &value;
+            for (int depth = 0; depth < 50; ++depth) {
+                if (!leaf->is_array() || leaf->as_array().size() != 1 || !leaf->as_array()[0])
+                    return false;
+                leaf = leaf->as_array()[0];
+            }
+            return leaf->is_integer() && leaf->as_integer().value == 1;
+        }
+        default:
+            return false;
+    }
+}
+
 void
 BM_RespParse_OneShot(benchmark::State &state) {
     const std::string &frame = select_one_shot_corpus(state.range(0));
 
-    // Out-of-loop correctness gate: the frame must decode to a complete value.
+    // Out-of-loop gate: exact RESP type, contents and aggregate order.
     {
         auto check = parse(frame, resp3_config());
-        if (!check.has_value()) {
-            state.SkipWithError("one-shot parse failed for selected corpus");
+        if (!check.has_value() || !one_shot_matches(*check, state.range(0))) {
+            state.SkipWithError("one-shot RESP type, value or order mismatch");
             return;
         }
     }
@@ -247,10 +314,18 @@ BM_RespParse_WideArray(benchmark::State &state) {
     {
         RespParser parser(resp3_config());
         parser.feed(frame);
-        auto v = parser.parse();
-        if (!v.has_value() || !v->is_array() || v->as_array().size() != 1000u) {
-            state.SkipWithError("wide-array did not decode to a 1000-element array");
+        auto values = parser.parse_all();
+        if (parser.has_error() || !parser.unparsed_data().empty() || values.size() != 1 || !values[0].is_array()
+            || values[0].as_array().size() != 1000u) {
+            state.SkipWithError("wide-array parse_all count, type or consumption mismatch");
             return;
+        }
+        const auto &array = values[0].as_array();
+        for (std::size_t i = 0; i < array.size(); ++i) {
+            if (!array[i] || !array[i]->is_integer() || array[i]->as_integer().value != static_cast<std::int64_t>(i)) {
+                state.SkipWithError("wide-array element type, value or order mismatch");
+                return;
+            }
         }
     }
 
@@ -276,9 +351,16 @@ BM_RespParse_SmallBatch(benchmark::State &state) {
         RespParser parser(resp3_config());
         parser.feed(frame);
         auto values = parser.parse_all();
-        if (values.size() != static_cast<std::size_t>(count)) {
+        if (parser.has_error() || !parser.unparsed_data().empty() || values.size() != static_cast<std::size_t>(count)) {
             state.SkipWithError("small-batch decoded a different frame count than fed");
             return;
+        }
+        for (int i = 0; i < count; ++i) {
+            const auto &value = values[static_cast<std::size_t>(i)];
+            if (!value.is_integer() || value.as_integer().value != i) {
+                state.SkipWithError("small-batch element type, value or order mismatch");
+                return;
+            }
         }
     }
 
@@ -304,11 +386,15 @@ BM_RespParse_ParserReuse(benchmark::State &state) {
 
     {
         RespParser parser(resp3_config());
-        parser.feed(frame);
-        auto v = parser.parse();
-        if (!v.has_value() || !v->is_integer()) {
-            state.SkipWithError("parser-reuse frame did not decode to an integer");
-            return;
+        for (int reuse = 0; reuse < 2; ++reuse) {
+            parser.feed(frame);
+            auto v = parser.parse();
+            if (!v.has_value() || !v->is_integer() || v->as_integer().value != 1234567890 || parser.has_error()
+                || !parser.unparsed_data().empty()) {
+                state.SkipWithError("parser-reuse integer value or consumption mismatch");
+                return;
+            }
+            parser.compact();
         }
     }
 

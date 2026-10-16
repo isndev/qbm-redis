@@ -77,6 +77,16 @@ qredis_test(system co-consumer-lifecycle system/connection/co-consumer-lifecycle
 qredis_test(system reconnect-disconnected-callback system/connection/reconnect-disconnected-callback.cpp EXTRA_LABELS coroutine)
 qredis_test(system monitor-stream system/connection/monitor-stream.cpp)
 
+# AF_UNIX is a POSIX transport contract. REDIS_UNIX_SOCKET names a private live daemon;
+# an absent variable skips locally, but both Linux CI suites provide and verify it.
+qb_register_module_test(
+        MODULE_NAME redis TIER system TEST_NAME unix-socket-connection
+        SOURCES system/connection/unix-socket-connection.cpp
+        LABELS module:qbm-redis tier:system unix-socket coroutine
+        REQUIRES live
+        RESOURCE_LOCK qb_redis_integration
+        WINDOWS_EXCLUDE)
+
 # INTEGRATION — live redis:6379 (REQUIRES live, RESOURCE_LOCK)
 qredis_itest(connection-commands integration/connection/connection-commands.cpp)
 qredis_itest(pipeline integration/connection/pipeline.cpp)

@@ -62,7 +62,7 @@ see [Pipelining and `await()`](./pipeline_and_await.md).
 
 A numeric `qb::json` or `json_value` passed to a generic command emits its number as one decimal bulk string, not a
 JSON document. Floating values use the same round-trip formatting as a direct `double` argument; `1e-7` stays nonzero
-for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:991-992`, `reply.h:1018-1029`).
+for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:1000-1001`, `reply.h:1027-1038`).
 Numeric `qb::json` integers preserve their signed or unsigned decimal value through the full 64-bit domain.
 A value above `INT64_MAX` remains a positive unsigned decimal argument; it is not cast to a signed value first.
 
@@ -89,7 +89,7 @@ resumes your coroutine when the reply lands (`redis.h:1352-1356`, `redis.h:783-7
 
 ### The reply type: `qb::redis::Reply<T>`
 
-Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1218`), where `T` is the **expected successful result type**
+Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1227`), where `T` is the **expected successful result type**
 for that command — fixed per command, never chosen by you for the wrapped methods. Examples:
 
 | Command                 | Result type `T`                           |
@@ -104,7 +104,7 @@ for that command — fixed per command, never chosen by you for the wrapped meth
 | `SCAN`                  | `qb::redis::scan<Out>`                    |
 
 `Reply<T>` carries four things: a success flag, the parsed result, the raw owning `parser::Value`, and an owned error
-string (`reply.h:1218`). Its surface:
+string (`reply.h:1227`). Its surface:
 
 - `reply.ok()` / `if (reply)` — `true` when the command was sent, a reply arrived, and it was **not** a Redis error.
 - `reply.result()` / `reply.value()` — the decoded `T` (aliases; `value()` is preferred in new code).
@@ -113,6 +113,8 @@ string (`reply.h:1218`). Its surface:
 - `reply.error()` — the owned error message (empty on success). Never a dangling view.
 - `reply.raw()` — the original `parser::Value`, needed for move-only payloads such as `pipeline_result` whose
   sub-replies are only reachable through the owning array.
+- `reply.attributes()` — a borrowed `const parser::Map *` to the outermost RESP3 metadata, or null when absent;
+  nested metadata blocks remain separate, and the pointer lives with the raw owner.
 
 ```cpp
 #include <qbm/redis/redis.h>
@@ -128,7 +130,7 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1218-1293 (Reply<T>) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1227-1309 (Reply<T>) -->
 
 #### `qb::redis::status` — the "OK" reply
 
@@ -140,23 +142,26 @@ fail at the protocol level, and `reply.value().ok()` confirms the server replied
 ### How replies are decoded
 
 Decoding lives in `reply.h` and runs inside the reply handler (`TReply<Func, T>`), which takes ownership of the parsed
-RESP node and produces the `Reply<T>` (`reply.h:1335`). The handler distinguishes three cases:
+RESP node and produces the `Reply<T>` (`reply.h:1351`). The handler distinguishes three cases:
 
 1. **Disconnect / failure** — a null reply yields `Reply{ ok = false, error = "disconnected" }` (or the explicit
    `fail()` reason, e.g. `"command timed out"`).
 2. **Redis error reply** — a `-ERR …` frame yields `Reply{ ok = false }` with the server message copied into `error()`.
    **No exception is thrown** for Redis-level errors; you check `ok()`.
-3. **Success** — the RESP node is decoded by `parse<T>(*raw)` and wrapped as `Reply{ ok = true, result = … }`. If the
-   *parse itself* fails, the handler catches `qb::redis::Error` subclasses and converts them to `ok = false` rather than
-   letting them escape into the libev callback.
+3. **Typed decoding** — `decode<false>` handles ordinary values; the private out-of-line `dispatch_attributed`
+   member invokes `func(decode<true>(raw))` for attributed values. The attributed decoder unwraps before classifying
+   the inner error and decoding the value. Both decoder instantiations retain the complete original `raw()` and
+   return a `Reply<T>` prvalue. The application callback runs after decoding returns, outside its catches, so a
+   throwing callback does not receive a second reply.
 
-`parse<T>` dispatches through `ParseTag<T>`: `parse<T>(reply)` forwards to an overload selected by the tag type, so each
+`parse<T>` selects the original or unwrapped value, including on nested generic container elements, then uses
+one `ParseTag<T>` dispatch site to select the overload, so each
 target type supplies its own decoder (`reply.h`). The parsers handle both wire shapes transparently — key/value data may
 arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the map/pair parsers normalize both.
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1350-1366,1372-1390 (the TReply call operator and decoder) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1429 (the TReply operator, cold dispatch member and decoder template), 312-319 (generic dispatch) -->
 
 ### Coroutine vs callback
 
@@ -236,9 +241,9 @@ units by design** — `EXPIRE` is seconds, `PEXPIRE` is milliseconds — and the
 
 ```cpp
 #include <chrono>
-// key_commands.h:236-239 — EXPIRE takes seconds
+// key_commands.h:238-241 — EXPIRE takes seconds
 co_await redis.expire("k", std::chrono::seconds{60});
-// key_commands.h:392-395 — PEXPIRE takes milliseconds
+// key_commands.h:394-397 — PEXPIRE takes milliseconds
 co_await redis.pexpire("k", std::chrono::milliseconds{1500});
 // raw integer overloads also exist, in the command's native unit
 co_await redis.expire("k", 60);          // seconds
@@ -251,7 +256,7 @@ as value types, not durations. The framework `qb::duration` type *is* used elsew
 command timeouts and the `RetryPolicy` delays (`redis.h:224-231`) — but those are transport-level deadlines, not Redis
 command arguments. See [Connection](./connection.md).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:213-249,369-405 (expire/pexpire native-unit overloads) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:215-251,371-407 (expire/pexpire native-unit overloads) -->
 
 ## Command groups
 
