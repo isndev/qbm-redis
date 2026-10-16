@@ -2,13 +2,15 @@
 """Run a test command with one owned Redis Unix socket, then stop that server.
 
 Linux CI uses the same Redis image as its TCP service. Native POSIX validation can
-pass --redis-server instead. No default port, system service or existing data is used.
+pass --redis-server instead (a path, or a command on PATH). No default port, system
+service or existing data is used.
 """
 
 import argparse
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -21,13 +23,22 @@ import uuid
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--redis-server", type=Path)
+    source.add_argument("--redis-server")
     source.add_argument("--docker-image")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("a test command after -- is required")
+    redis_server = None
+    if args.redis_server is not None:
+        # Keep the name the caller gave: Debian ships redis-server as a symlink to a
+        # multi-call binary that picks its mode from argv[0], so resolving the link
+        # would start redis-check-rdb instead of the server.
+        found = shutil.which(args.redis_server)
+        if found is None:
+            parser.error(f"--redis-server {args.redis_server}: no such executable")
+        redis_server = os.path.abspath(found)
     if args.docker_image and not sys.platform.startswith("linux"):
         parser.error("Docker Unix socket sharing requires a native Linux host")
 
@@ -76,7 +87,7 @@ def main():
                     container = output
                 else:
                     server = subprocess.Popen(
-                        [str(args.redis_server.resolve()), *options, "--unixsocket", str(path),
+                        [redis_server, *options, "--unixsocket", str(path),
                          "--dir", directory], stdout=server_log, stderr=subprocess.STDOUT)
 
                 deadline = time.monotonic() + 20
