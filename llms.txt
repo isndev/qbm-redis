@@ -21,12 +21,16 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    commands fail with "command timed out". Blocking commands (`BLPOP`, `BRPOP`, `BLMOVE`,
    `BLMPOP`, `BRPOPLPUSH`, `BZPOPMIN`, `BZPOPMAX`, `BZMPOP`, `WAIT`, `WAITAOF`, `XREAD`,
    `XREADGROUP`) suspend that deadline while in flight.
-4. **Auto-reconnect replays nothing.** On a disconnect every pending reply fails and predicted
-   subscription state clears; re-subscribe and re-issue yourself. `reset()` does not
-   re-establish subscriptions either: on a consumer its successful reply clears the predicted
-   sets before resuming, and new Pub/Sub commands fail locally while RESET is pending. A
-   throwing `on_disconnected` callback is logged and contained; reconnect still follows the
-   policy as it stands after that callback, so disabling it there takes effect.
+4. **A session is a handshake you configure, and only a peer's loss is recovered.**
+   `with_resp3()`, `with_auth(user, pw)`, `with_select(db)` and `set_handshake(hook)` run on
+   every connection, the first one included, before any command you submitted; `connect()`
+   resolves and `is_connected()` is true once they did. Commands submitted while not ready are
+   held; a refused handshake (WRONGPASS, NOPERM) is terminal. An armed
+   `enable_auto_reconnect(policy)` recovers a peer's loss; an explicit `disconnect()` is
+   terminal (`state()` `down`, `down_reason()` `user`). In-flight commands fail once, held ones
+   when the client goes down or at the command timeout: nothing waits for ever. A consumer's
+   subscriptions are not replayed: subscribe again. On a consumer a successful `reset()`
+   clears the predicted subscriptions, and Pub/Sub commands fail locally while it is pending.
 5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
    `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
    resolve with `ok() == false` and a reason in `error()`. **There is no silent no-op left** —

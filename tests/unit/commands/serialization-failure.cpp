@@ -11,9 +11,15 @@
  * when that fails, and the callback receives a failed `Reply` with the reason.
  *
  * An argument type whose `to_redis_string` throws -- found by ADL, as any user type would be --
- * reaches exactly that path without a 512 MiB allocation. No server, no loop: what the client queued
- * and wrote is read back directly. The consumer serializes through the same connector helper; its
- * command paths take only strings, so it is not driven here (that would take a 512 MiB argument).
+ * reaches exactly that path without a 512 MiB allocation. No server, no loop. Since the reconnect
+ * contract (Huly QB-126a) a client writes nothing until it is ready, so the cases drive a client that
+ * is CONNECTING -- its connect is started, and no loop pass runs it -- whose commands are held: the
+ * serialization happens there too, all or nothing, and what was held is counted. The bytes a ready
+ * client puts on the wire are read by the server end of a loopback connection in
+ * `system/connection/reconnect-carries-nothing.cpp`. The command frames below are read off the command
+ * groups themselves, through a capture that serializes what a client would write. The consumer
+ * serializes through the same connector helper; its command paths take only strings, so it is not
+ * driven here (that would take a 512 MiB argument).
  *
  * @author qb - C++ Actor Framework
  * @copyright Copyright (c) 2011-2026 qb - isndev (cpp.actor)
@@ -48,12 +54,45 @@ written(qb::allocator::pipe<char> const &out) {
     return {out.begin(), out.size()};
 }
 
+/// A client whose connect was started and never run: it is `connecting`, so what it is given is held.
+struct ConnectingClient {
+    qb::redis::tcp::client client{qb::io::uri{"tcp://127.0.0.1:1"}};
+    ConnectingClient() {
+        client.connect([](bool) {}, client.uri());
+        EXPECT_EQ(client.state(), qb::io::connection_state::connecting);
+    }
+};
+
+/// The frame a client would write for a command group's call, without a client: the call's verb and
+/// arguments serialized by the client's own `put_in_pipe`.
+struct FrameCapture : qb::redis::server_commands<FrameCapture> {
+    qb::allocator::pipe<char> out;
+    std::size_t               queued = 0;
+
+    using qb::redis::server_commands<FrameCapture>::command;
+
+    template <typename Ret, typename Func, typename... Args>
+    FrameCapture &
+    command(Func &&, std::string const &name, Args &&...args) {
+        qb::redis::put_in_pipe(out, name, std::forward<Args>(args)...);
+        ++queued;
+        return *this;
+    }
+
+    template <typename T, typename Func>
+    [[nodiscard]] auto
+    make_coro_command(Func &&operation) {
+        return qb::redis::detail::make_redis_awaiter<T>(std::forward<Func>(operation));
+    }
+};
+
 } // namespace serialization_failure_test
 
 using namespace serialization_failure_test;
 
 TEST(RedisSerializationFailure, ACommandThatCannotBeSerializedLeavesNoHandlerAndNoBytes) {
-    qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+    ConnectingClient connecting;
+    auto            &client = connecting.client;
 
     bool                                fired = false;
     qb::redis::Reply<qb::redis::status> failed;
@@ -68,16 +107,17 @@ TEST(RedisSerializationFailure, ACommandThatCannotBeSerializedLeavesNoHandlerAnd
     EXPECT_FALSE(failed.ok());
     EXPECT_EQ(failed.error(), "String too large");
     EXPECT_EQ(client.pending_reply_count(), 0u) << "no handler may wait for a reply that will never come";
-    EXPECT_EQ(written(client.out()), "") << "no partial frame may stay in out()";
+    EXPECT_EQ(written(client.out()), "") << "nothing may reach out() while the client is not ready";
 
-    // The next command is the only thing on the wire, whole.
+    // The next command is held, whole: the wire case is reconnect-carries-nothing's.
     client.command<qb::redis::status>([](qb::redis::Reply<qb::redis::status> &&) {}, "SET", "key", "v");
     EXPECT_EQ(client.pending_reply_count(), 1u);
-    EXPECT_EQ(written(client.out()), "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$1\r\nv\r\n");
+    EXPECT_EQ(written(client.out()), "");
 }
 
 TEST(RedisSerializationFailure, ACommandBehindQueuedOnesRollsBackOnlyItsOwnBytes) {
-    qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+    ConnectingClient connecting;
+    auto            &client = connecting.client;
     client.command<qb::redis::status>([](qb::redis::Reply<qb::redis::status> &&) {}, "SET", "a", "1");
     const std::string before = written(client.out());
 
@@ -96,27 +136,27 @@ TEST(RedisCommandFrames, ClientKillEncodesBothSkipmeValues) {
         SCOPED_TRACE(skipme);
         const std::string suffix = skipme ? "$6\r\nSKIPME\r\n$3\r\nyes\r\n" : "$6\r\nSKIPME\r\n$2\r\nno\r\n";
         {
-            qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+            FrameCapture client;
             client.client_kill(noop, "", 37, "", skipme);
-            EXPECT_EQ(written(client.out()), "*6\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n$2\r\nID\r\n$2\r\n37\r\n" + suffix);
-            EXPECT_EQ(client.pending_reply_count(), 1u);
+            EXPECT_EQ(written(client.out), "*6\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n$2\r\nID\r\n$2\r\n37\r\n" + suffix);
+            EXPECT_EQ(client.queued, 1u);
         }
         {
-            qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+            FrameCapture client;
             client.client_kill(noop, "127.0.0.1:45678", 0, "", skipme);
-            EXPECT_EQ(written(client.out()), "*6\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n$4\r\nADDR\r\n$15\r\n127.0.0.1:45678\r\n" + suffix);
+            EXPECT_EQ(written(client.out), "*6\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n$4\r\nADDR\r\n$15\r\n127.0.0.1:45678\r\n" + suffix);
         }
         {
-            qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+            FrameCapture client;
             client.client_kill(noop, "", 0, "", skipme);
-            EXPECT_EQ(written(client.out()), "*4\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n" + suffix);
+            EXPECT_EQ(written(client.out), "*4\r\n$6\r\nCLIENT\r\n$4\r\nKILL\r\n" + suffix);
         }
     }
 }
 
 TEST(RedisCommandFrames, CommandStatsUsesNativeInfoSection) {
-    qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
+    FrameCapture client;
     client.command_stats([](qb::redis::Reply<qb::json> &&) {});
-    EXPECT_EQ(written(client.out()), "*2\r\n$4\r\nINFO\r\n$12\r\ncommandstats\r\n");
-    EXPECT_EQ(client.pending_reply_count(), 1u);
+    EXPECT_EQ(written(client.out), "*2\r\n$4\r\nINFO\r\n$12\r\ncommandstats\r\n");
+    EXPECT_EQ(client.queued, 1u);
 }

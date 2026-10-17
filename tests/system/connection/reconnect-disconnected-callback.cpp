@@ -55,9 +55,11 @@ exercise_disconnect(int throw_kind, bool disable_policy) {
     qb::io::tcp::socket first;
     ASSERT_EQ(listener.accept(first), qb::io::SocketStatus::Done);
 
-    int disconnect_calls = 0;
-    consumer.on_disconnected([&](qb::io::async::event::disconnected &&) {
+    int                 disconnect_calls = 0;
+    qb::io::down_reason cause            = qb::io::down_reason::user;
+    consumer.on_disconnected([&](qb::io::down_reason why) {
         ++disconnect_calls;
+        cause = why;
         if (disable_policy)
             consumer.disable_auto_reconnect();
         if (throw_kind == 1)
@@ -79,6 +81,7 @@ exercise_disconnect(int throw_kind, bool disable_policy) {
     first.disconnect();
 
     ASSERT_TRUE(run_until([&] { return disconnect_calls == 1; })) << "peer closure did not notify the consumer";
+    EXPECT_EQ(cause, qb::io::down_reason::peer) << "a peer closure is the peer's cause";
     EXPECT_EQ(pending_calls, 1) << "the in-flight subscription has one terminal callback";
     EXPECT_EQ(consumer.pending_reply_count(), 0u);
     if (disable_policy) {
@@ -86,6 +89,8 @@ exercise_disconnect(int throw_kind, bool disable_policy) {
             qb::io::async::run(EVRUN_NOWAIT);
         EXPECT_FALSE(consumer.is_reconnecting()) << "callback disabled policy before reconnect decision";
         EXPECT_FALSE(consumer.is_connected());
+        EXPECT_EQ(consumer.state(), qb::io::connection_state::down);
+        EXPECT_EQ(consumer.down_reason(), qb::io::down_reason::peer);
         return;
     }
 

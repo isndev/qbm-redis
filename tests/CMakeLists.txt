@@ -134,3 +134,7 @@ qredis_test(unit serialization-failure unit/commands/serialization-failure.cpp E
 # UNIT -- each command decodes every reply Redis documents for it: nil and integer replies included
 # (Huly QB-644, QB-652, QB-655).
 qredis_test(unit command-reply-types unit/commands/command-reply-types.cpp EXTRA_LABELS commands)
+
+# SYSTEM -- the client's side of the reconnect contract (Huly QB-126a): the handshake gate, held work,
+# terminal disconnect, refusals, the state machine and its notifications. A loopback peer, no daemon.
+qredis_test(system reconnect-contract system/connection/reconnect-contract.cpp EXTRA_LABELS coroutine)

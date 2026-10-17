@@ -37,12 +37,16 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    commands fail with "command timed out". Blocking commands (`BLPOP`, `BRPOP`, `BLMOVE`,
    `BLMPOP`, `BRPOPLPUSH`, `BZPOPMIN`, `BZPOPMAX`, `BZMPOP`, `WAIT`, `WAITAOF`, `XREAD`,
    `XREADGROUP`) suspend that deadline while in flight.
-4. **Auto-reconnect replays nothing.** On a disconnect every pending reply fails and predicted
-   subscription state clears; re-subscribe and re-issue yourself. `reset()` does not
-   re-establish subscriptions either: on a consumer its successful reply clears the predicted
-   sets before resuming, and new Pub/Sub commands fail locally while RESET is pending. A
-   throwing `on_disconnected` callback is logged and contained; reconnect still follows the
-   policy as it stands after that callback, so disabling it there takes effect.
+4. **A session is a handshake you configure, and only a peer's loss is recovered.**
+   `with_resp3()`, `with_auth(user, pw)`, `with_select(db)` and `set_handshake(hook)` run on
+   every connection, the first one included, before any command you submitted; `connect()`
+   resolves and `is_connected()` is true once they did. Commands submitted while not ready are
+   held; a refused handshake (WRONGPASS, NOPERM) is terminal. An armed
+   `enable_auto_reconnect(policy)` recovers a peer's loss; an explicit `disconnect()` is
+   terminal (`state()` `down`, `down_reason()` `user`). In-flight commands fail once, held ones
+   when the client goes down or at the command timeout: nothing waits for ever. A consumer's
+   subscriptions are not replayed: subscribe again. On a consumer a successful `reset()`
+   clears the predicted subscriptions, and Pub/Sub commands fail locally while it is pending.
 5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
    `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
    resolve with `ok() == false` and a reason in `error()`. **There is no silent no-op left** —
@@ -117,7 +121,8 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   keep their original `error()` and `raw()`; generic `info()` still returns a
   JSON string. `client_kill(..., skipme)` always emits `SKIPME yes` or `no`.
 - **RetryPolicy** (qb-io's `qb::io::reconnect_policy`, shared with qbm-http) drives
-  connect-with-retry and auto-reconnect (exponential backoff). A reconnect does **not** replay in-flight commands or subscriptions.
+  connect-with-retry and auto-reconnect (exponential backoff). A reconnect replays the
+  configured handshake, never an in-flight command nor a consumer's subscriptions.
 - **HSCAN preserves `Out` across pages.** The cursor coroutine and automatic callback
   forms use the selected container (default `qb::unordered_map<std::string,std::string>`).
   Automatic scans require owning output: nested standard containers/wrappers of
@@ -323,7 +328,9 @@ redis.await();                              // drains pending callbacks (non-blo
 call only from the thread that drives this client's I/O. A coroutine body may call
 them (since 3.3, Huly QB-253), but no coroutine resumes until it yields — the
 `set_command_timeout()` watcher included, so there they return on the replies or a
-disconnect only. (`RedisPipeline::flush()` is unrelated to Redis `FLUSHDB`/`FLUSHALL`.)
+disconnect only -- and never on a command HELD while the client is not ready: the
+connection, its handshake and the reconnection run are coroutines too. In a coroutine,
+`co_await` the command. (`RedisPipeline::flush()` is unrelated to Redis `FLUSHDB`/`FLUSHALL`.)
 
 ### Generic escape hatch
 
@@ -359,15 +366,22 @@ if (!r.ok()) {
 - `set_command_timeout` is a **connection-health watchdog, not a per-command
   deadline**: on deadline it **drops the whole connection** (FIFO cannot fail one
   mid-queue command). Pending commands fail with "command timed out";
-  auto-reconnect resumes if enabled.
+  auto-reconnect resumes if enabled -- the watchdog's drop is recoverable. It is also
+  how long a HELD command waits for the client to be ready.
 - **Blocking commands** (`BLPOP`/`BRPOP`/`BLMOVE`/`BLMPOP`/`BRPOPLPUSH`/
   `BZPOPMIN`/`BZPOPMAX`/`BZMPOP`/`WAIT`/`WAITAOF`/`XREAD`/`XREADGROUP`) **suspend
   the command deadline** while in flight; their server-side timeout governs.
-- **Auto-reconnect replays nothing**: on disconnect all pending replies fail and
-  predicted subscription state clears. Re-subscribe and re-issue yourself. The
-  unsent bytes of the failed commands are dropped with them; a command a failing
-  callback re-issues leaves with the next connection. `disconnect()` has failed
-  them all by the time it returns.
+- **The reconnect contract** (`<qb/io/reconnect.h>`): `state()` walks `idle`,
+  `connecting`, `handshaking`, `ready`, `reconnecting`, `down`. A loss fails every
+  in-flight reply once, with `"disconnected"`; the unsent bytes go with them. Work
+  submitted while `connecting` / `handshaking` / `reconnecting` is HELD and leaves
+  after the handshake; at `down` it fails with the reason (`"disconnected"`,
+  `"reconnection attempts exhausted"`, `"handshake refused: …"`), on an idle or down
+  client on the next loop pass. `disconnect()` has failed what was in flight by the
+  time it returns, and it is terminal -- from a failure callback the loss runs, too (a
+  `connect()` there owns the client). `on_connected` / `on_disconnected(reason)`
+  strictly alternate; `on_disconnected` runs after the in-flight work failed and
+  before the reconnection decision, so disarming the policy there prevents the run.
 - RESP3 `PUSH` frames must not pop a command handler; the plain client discards
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,

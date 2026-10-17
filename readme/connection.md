@@ -55,7 +55,7 @@ qb::io::async::task<void> example() {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:106-117 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:108-119 -->
 
 > The client is **not thread-safe.** Use one client from a single I/O thread / strand (one concurrent accessor). The
 > reply queue and outbound pipe are unsynchronized.
@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2002-2028 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3126-3152 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -132,24 +132,27 @@ instead be selected by setting `REDIS_UNIX_SOCKET` before running CTest directly
 four coroutine overloads and two callback overloads:
 
 ```cpp
-// Coroutine form — qbm/redis/src/qbm/redis/redis.h:478-495
+// Coroutine form — qbm/redis/src/qbm/redis/redis.h:1066-1085
 connect_awaiter connect();                                   // use the stored URI, 3s default timeout
 connect_awaiter connect(qb::io::uri uri);                    // set + use this URI
 connect_awaiter connect(qb::duration timeout);              // stored URI, custom timeout
 connect_awaiter connect(qb::io::uri uri, qb::duration timeout);
 
-// Callback form — qbm/redis/src/qbm/redis/redis.h:558-588
+// Callback form — qbm/redis/src/qbm/redis/redis.h:1124-1145
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3));
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::duration timeout = std::chrono::seconds(3));
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:417-495,558-588 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1017-1085,1124-1145 -->
 
-The default connect timeout is **3 seconds** (`qb::duration`). The awaiter resolves to `true` only when the socket
-opened *and* `setup_connection` adopted the transport; a failed handshake or an elapsed timeout resolves to `false`.
-There is no exception on a failed connect — check the boolean.
+The default connect timeout is **3 seconds** (`qb::duration`), and it bounds the connection's handshake too. The
+awaiter resolves to `true` only once that handshake ran -- the client is **ready**, which is what `is_connected()`
+reports; a failed transport, a refused or timed-out handshake, or a `disconnect()` meanwhile resolves to `false`, and a
+`connect()` while a connection, a handshake or a reconnection run is already in progress resolves `false` at once.
+There is no exception on a failed connect — check the boolean. Commands submitted before it resolves are not lost:
+they are **held**, and leave after the handshake (below).
 
 ### Time units: everything on this page is `qb::duration`
 
@@ -168,23 +171,30 @@ Note the boundary: this is distinct from Redis *command arguments* that carry ti
 takes milliseconds, exposed through native-unit `std::chrono` overloads on the command APIs; those are intentionally *
 *not** `qb::duration`. See [commands_overview.md](./commands_overview.md). Reply TTL values come back as plain integers.
 
-The connection lifecycle, including how `RetryPolicy` drives auto-reconnect:
+The connection lifecycle -- the states `state()` reports, qb-io's `qb::io::connection_state` -- including how
+`RetryPolicy` drives the reconnection run:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Connecting: connect()
-    Connecting --> Connected: handshake ok
-    Connecting --> Backoff: failure
-    Connected --> Reconnecting: link drops
-    Reconnecting --> Connected: retry succeeds
-    Reconnecting --> Backoff: retry fails
-    Backoff --> Reconnecting: wait RetryPolicy delay<br/>(100 ms, ×2 … capped 30 s, jittered)
-    Connected --> [*]: disconnect()
-    note right of Reconnecting
-        in-flight commands and active
-        subscriptions are NOT replayed
+    [*] --> idle
+    idle --> connecting: connect()
+    connecting --> handshaking: transport up
+    handshaking --> ready: handshake ran
+    handshaking --> down: refused (WRONGPASS, NOPERM, hook false)
+    handshaking --> connecting: link lost, transient refusal, deadline
+    connecting --> down: attempts spent
+    ready --> reconnecting: peer's loss, policy armed
+    ready --> down: disconnect(), or a loss with no policy
+    reconnecting --> handshaking: next attempt, after the RetryPolicy delay
+    reconnecting --> down: retries exhausted
+    down --> connecting: connect()
+    note right of reconnecting
+        work submitted now is HELD
+        in-flight work was failed, never replayed
     end note
 ```
+
+<!-- src: qb/src/qb/io/reconnect.h:63-80 -->
 
 ---
 
@@ -266,42 +276,55 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:558-588 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1124-1145 -->
 
 `set_uri(uri)` updates the stored endpoint without connecting; a later argument-less `connect()` uses it. `uri()`
-returns the current endpoint. `is_connected()` reports the live socket state.
+returns the current endpoint. `is_connected()` is `true` while the client is ready -- connected and its handshake run
+(`state() == qb::io::connection_state::ready`).
 
 ---
 
-## Authentication
+## The handshake: authentication, database, protocol
 
-Authentication is a command, not a connect parameter. Issue `auth(...)` as the first command after `connect()` resolves,
-before any data command. Both ACL (`user` + `password`) and legacy (`password`-only, the `default` user) forms exist:
+What a session needs -- credentials, a database, RESP3, anything else the server must know first -- is **configured**
+on the client, not sent after `connect()`: the client runs it as the **handshake** of every connection, the first one
+included and every reconnection after it, before any command you submitted leaves. Configure it before `connect()`:
 
 ```cpp
-if (!co_await redis.connect())
+qb::redis::tcp::client redis{qb::io::uri{"tcp://localhost:6379"}};
+redis.with_resp3()                       // HELLO 3 -- which then also carries the credentials
+     .with_auth("app_user", "s3cr3t")    // ACL user (Redis 6+); with_auth("s3cr3t") for the default user
+     .with_select(2);                    // SELECT 2, after authentication
+redis.set_handshake([](qb::redis::tcp::client::handshake_client &hs) -> qb::io::async::task<bool> {
+    auto named = co_await hs.command<std::string>("CLIENT", "SETNAME", "billing-worker");
+    co_return named.ok();                // false refuses the connection
+});
+if (!co_await redis.connect())           // true once all of the above ran
     co_return;
-
-// ACL user (Redis 6+)
-auto a = co_await redis.auth("app_user", "s3cr3t");
-if (!a)                                       // Reply<status> is contextually bool
-    co_return;                                // WRONGPASS / NOPERM rejected
-
-// Legacy requirepass form:
-// co_await redis.auth("s3cr3t");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:78-126 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:739-806 (the handshake, in order: HELLO 3 or AUTH, SELECT, the hook, the replay), 1259-1293 (set_handshake, with_auth, with_select, with_resp3) -->
 
-`auth(...)` yields `Reply<status>`. A rejected credential resolves with `ok() == false` and the server message in
-`error()` (for example `WRONGPASS`); it does **not** throw and does **not** close the connection — you decide whether to
-disconnect. The dedicated error type is `qb::redis::AuthError` (see [error_handling.md](./error_handling.md)).
+The order is fixed: HELLO 3 (with `AUTH user password` when credentials are set) or AUTH alone, then SELECT, then the
+hook. The hook writes through the `handshake_client&` it is given, never
+through the client: the client **holds** every command until it is ready, so a command the hook sent through it would
+wait for the end of the hook that sent it, and a handle that wrote whenever asked would let another coroutine slip a
+command past the gate while the hook is suspended. A copy of the handle kept past the hook writes nothing: its commands
+fail with `"handshake over"`.
 
-Because credentials are not stored on the client, **auto-reconnect does not re-authenticate.** If you arm
-auto-reconnect (below) on an authenticated server, wire the re-auth into your own post-reconnect flow.
+**A refused handshake is terminal and visible.** An error reply -- `WRONGPASS`, `NOPERM`, a database out of range -- or
+the hook returning `false` (or throwing) leaves the client `down` with `down_reason() ==
+qb::io::down_reason::handshake_refused`; no reconnection run retries it, since retrying cannot heal it and could lock
+an ACL user out. Held commands fail with `"handshake refused: <the server's text>"`. What a retry CAN heal is one more
+attempt: a `LOADING`, `BUSY`, `TRYAGAIN` or `MASTERDOWN` reply, a link lost during the handshake, a handshake past the
+attempt's connect timeout.
 
-`select(index)` and `swapdb(a, b)` choose / swap logical databases the same way — each is a command returning
-`Reply<status>`, issued after connect, and likewise not replayed across a reconnect.
+`auth(...)`, `select(index)` and `swapdb(a, b)` are still commands you may send yourself, each yielding
+`Reply<status>`; a rejected credential then resolves with `ok() == false` and the server message in `error()` (for
+example `WRONGPASS`), without closing the connection. But what you send by hand belongs to one connection only: after a
+reconnection the server sees a fresh RESP2 session on database 0, unauthenticated, unless the handshake carries it.
+Credentials are stored on the client only through `with_auth()`. The dedicated error type is `qb::redis::AuthError`
+(see [error_handling.md](./error_handling.md)).
 
 ---
 
@@ -323,7 +346,7 @@ if (!co_await redis.connect())
 #endif
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:599-626 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1156-1183 -->
 
 `set_verify_peer(bool)` toggles TLS chain + hostname verification; it **defaults to `true`** and must be set before
 `connect()`. `verify_peer()` reads the current setting. For a **private CA**, call `set_ssl_root_cert(path)` (a PEM
@@ -357,7 +380,7 @@ struct reconnect_policy {                    // qb/io/reconnect.h
 };
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:227; qb/src/qb/io/reconnect.h:218-228 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:229; qb/src/qb/io/reconnect.h:218-228 -->
 
 Every field has a fluent setter that returns `*this`, so you build a policy inline. **All three time fields
 are `qb::duration`,** and the `on_retry` callback receives the next delay as a `qb::duration`:
@@ -377,7 +400,7 @@ auto policy = qb::redis::RetryPolicy{}
     });
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:309-323 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:311-325 -->
 
 The backoff is exponential: the delay starts at `initial_delay`, multiplies by `multiplier` after each failed attempt,
 and is capped at `max_delay`. With `jitter` on, each delay is randomized by ±25% to avoid thundering herds. The math
@@ -404,13 +427,15 @@ bool connected = co_await client.connect_with_retry(
 // co_await client.connect_with_retry(qb::io::uri{"tcp://..."}, policy);
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:274-338 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:276-340 -->
 
-### `enable_auto_reconnect` — re-dial on drop
+### `enable_auto_reconnect` — re-dial on a peer's loss
 
-`enable_auto_reconnect(policy)` arms a policy that fires automatically the next time the connection is lost. On
-disconnect, the connector spawns a **detached** coroutine running `connect_with_retry(policy)`;
-`disable_auto_reconnect()` disarms it.
+`enable_auto_reconnect(policy)` arms a **reconnection run** for the next time the connection is lost the way a client
+recovers from: the peer closed or reset it, sent a frame the parser refused, or stopped answering (the command
+watchdog's own drop). The connector then runs the policy's attempts -- each a transport connect and the handshake -- on a
+**detached** coroutine of the same loop; `disable_auto_reconnect()` disarms the next one. **An explicit `disconnect()`
+never starts a run**, policy or not: it is terminal, as on the qbm-http clients.
 
 ```cpp
 qb::redis::tcp::client client{qb::io::uri{"tcp://localhost:6379"}};
@@ -422,28 +447,30 @@ client.enable_auto_reconnect(qb::redis::RetryPolicy{}
     .with_connect_timeout(2s)
     .with_jitter(false));
 
-// Some time later the link drops (server restart, network blip)…
-// is_reconnecting() is true while the detached retry loop runs;
-// is_connected() returns true again once a retry succeeds.
+// Some time later the server restarts or drops the client…
+// is_reconnecting() is true while the run lasts; on_connected() fires and is_connected()
+// is true again once an attempt's handshake ran. A command submitted meanwhile is held.
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:167-214 -->
+<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:196-217 -->
 
-`is_reconnecting()` is `true` for the lifetime of the retry loop; `is_connected()` flips back to `true` when an attempt
-lands. The retry runs on the same I/O loop — there is no extra thread.
+`is_reconnecting()` is `true` for the lifetime of the run; `is_connected()` flips back to `true` when an attempt's
+handshake ran. A run that spends its `max_attempts` leaves the client `down` with `retries_exhausted`. The run uses the
+same I/O loop — there is no extra thread.
 
-For a callback consumer, `on_disconnected` runs after pending replies fail and before the connector decides whether to
-start that retry loop. If it throws, the connector logs the error and still checks the current policy. A callback that
-calls `disable_auto_reconnect()` therefore prevents the retry even if it later throws.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:317-341 (disconnect order, exception containment, reconnect decision), :1703-1725 (consumer pending-reply drain before notification) -->
+`state()` and `down_reason()` say where the client stands at any moment, and three hooks report the transitions, each
+empty until set and read only on those transitions: `on_connected()` each time the client becomes ready,
+`on_disconnected(qb::io::down_reason)` once for every ready connection lost -- with its cause, `user`, `peer` or
+`protocol`; the two strictly alternate -- and `on_down(qb::io::down_reason)` when the client reaches `down`.
+`on_disconnected` runs after the work in flight failed and before the connector decides whether to start the run: if it
+throws, the connector logs the error and still checks the current policy, so a hook that calls
+`disable_auto_reconnect()` prevents the run even if it later throws.
+<!-- src: qbm/redis/src/qbm/redis/redis.h:573-634 (link-loss order, exception containment, reconnect decision), :2715-2734 (consumer pending-reply drain before notification) -->
 
-> **Auto-reconnect re-dials, it does not restore session state.** A reconnected socket is a *fresh* connection. It
-> defaults to RESP2 (call `hello(3)` again if you need RESP3), it is unauthenticated (re-issue `auth(...)`), it is back
-> on
-> database 0 (re-issue `select(...)`), and any prior subscriptions are gone (re-`subscribe(...)`). In-flight commands
-> are
-**not** replayed — they were already failed at disconnect (next section). Treat reconnection as a re-handshake you must
-> complete yourself.
+> **Auto-reconnect replays the handshake, never a request.** Every reconnection runs the configured handshake --
+> RESP3, credentials, database, the hook -- before anything else, so nothing has to be redone by hand. In-flight
+> commands are **not** replayed: they were failed at the loss (next section). A consumer's subscriptions are not
+> replayed either: subscribe again.
 
 ---
 
@@ -451,7 +478,7 @@ calls `disable_auto_reconnect()` therefore prevents the retry even if it later t
 
 The client pipelines: it sends a command's bytes and queues its reply handler in FIFO order. When the connection drops —
 a peer close, an explicit `disconnect()`, or a tripped command deadline — every queued handler is **failed immediately
-**, in order, before any reconnect begins:
+**, in order, before any reconnection begins:
 
 - The pending-reply queue is swapped out and drained. Each handler is invoked with the disconnect signal (a null reply),
   surfacing as `Reply{ ok = false, error = "disconnected" }`. A `co_await`-ing caller therefore *resumes* on disconnect
@@ -469,24 +496,32 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1097-1132 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1798-1832 -->
 
-The queue is swapped *before* the drain loop so that a failing handler may legitimately re-issue a command (for example
-to kick off a reconnect-and-retry) without that brand-new command being failed by the same loop.
+The queue is swapped *before* the drain loop so that a failing handler may legitimately re-issue a command without
+that brand-new command being failed by the same loop. Where it goes then depends on the state the client is in:
+
+- **`connecting`, `handshaking`, `reconnecting` -- held.** The command is serialized apart and waits; once the client
+  is ready it leaves, in submission order, after the handshake. It fails once with the reason if the client goes
+  `down` instead (`"disconnected"`, `"reconnection attempts exhausted"`, `"handshake refused: …"`), or with
+  `"command timed out"` once it waited `set_command_timeout()`.
+- **`idle` or `down` -- failed.** Nothing will send it: it fails on the next loop pass with `"not connected"` or the
+  down reason -- never inside the call, so a failure handler that submits again cannot recurse.
 
 The bytes of the commands that never left go with their handlers: the connector empties its input and output buffers
 *before* the drain, so a command serialized but not yet flushed cannot lead the next connection — its reply would be
-handed to whichever command is then first in line, and the FIFO would stay off by one — while a command a failing
-handler re-issues lands in a clean buffer and leaves with the next connection, in order.
+handed to whichever command is then first in line, and the FIFO would stay off by one. Nothing reaches a new connection
+before its handshake.
 
 ### `disconnect()`, `quit()`, and destruction
 
-- **`disconnect()`** clears the connected flag and completes the teardown before it returns -- on the spot, without
-  running the loop, so nothing else runs under the caller -- so every queued handler has been failed when
+- **`disconnect()`** is terminal: the client is `down` with `down_reason::user`, and no reconnection run starts
+  whatever the policy -- only a new `connect()` leaves `down`. It completes the teardown before it returns -- on the
+  spot, without running the loop, so nothing else runs under the caller -- so every queued handler has been failed when
   `disconnect()` comes back, and a `connect()` issued right after cannot overtake it. A coroutine awaiting one of
   those commands resumes at the loop's next pass, as every completion does. Called from inside a reply handler, the
-  teardown runs as soon as that handler returns. If auto-reconnect is armed, calling `disconnect()` is what triggers
-  the reconnect loop.
+  teardown runs as soon as that handler returns. Called while connecting, handshaking or reconnecting, it abandons the
+  attempt and fails what was held.
 - **`quit()`** is the Redis `QUIT` command (a coroutine yielding `Reply<status>`): it asks the server to close the
   connection cleanly after replying.
 - **Destruction** is RAII — when the client object is destroyed the connection is torn down. The connector holds a
@@ -499,7 +534,9 @@ handler re-issues lands in a clean buffer and leaves with the next connection, i
 
 `set_command_timeout(qb::duration)` arms an opt-in **connection-health watchdog** — disabled by default (
 `qb::duration::zero()`). If no reply arrives within the window for a non-blocking in-flight command, the client drops
-the whole connection; pending commands then fail with `"command timed out"`, and auto-reconnect resumes if armed.
+the whole connection; pending commands then fail with `"command timed out"`, and auto-reconnect resumes if armed: the
+watchdog's drop is the client's own decision, a recoverable loss, not a `disconnect()`. The same timeout bounds how long
+a command HELD while the client is not ready waits: past it, it fails with `"command timed out"`.
 
 ```cpp
 redis.set_command_timeout(500ms);   // arm
@@ -507,7 +544,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1265-1291 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2126-2156 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,
@@ -522,8 +559,10 @@ a legitimately parked command.
   leaves you disconnected with no error. There is no blocking `bool connect()`.
 - **No exception on failed connect or rejected auth.** `connect()` resolves to `false`; `auth()` resolves with
   `ok() == false`. Always check the boolean / `Reply` before issuing further commands.
-- **Reconnect is a fresh socket.** After auto-reconnect you must re-`hello(3)`, re-`auth`, re-`select`, and re-
-  `subscribe`. None of these carry over, and credentials are never stored on the client.
+- **Configure the session, do not send it.** `hello(3)`, `auth` and `select` sent by hand are lost at the next
+  reconnection; `with_resp3()`, `with_auth()`, `with_select()` and `set_handshake()` are replayed on every connection.
+  Credentials are stored only through `with_auth()`. Subscriptions are not replayed: re-`subscribe`.
+- **`disconnect()` is terminal.** It never starts a reconnection run; `connect()` again.
 - **In-flight commands are dropped, not replayed.** On disconnect, every queued command fails with `"disconnected"` (or
   `"command timed out"`). A `co_await` resumes with a failed reply rather than hanging, but the work is gone — re-issue
   idempotent commands yourself.

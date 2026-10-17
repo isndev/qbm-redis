@@ -31,6 +31,8 @@
 #ifndef QBM_REDIS_H
 #define QBM_REDIS_H
 
+#include <cstdint>
+#include <cstring>
 #include <deque>
 #include <exception>
 #include <memory>
@@ -238,10 +240,43 @@ namespace detail {
 using namespace qb::io;
 
 /**
- * @class connector
- * @brief Base TCP connector for Redis clients and consumers
+ * @class HandshakeClient
+ * @brief The handshake hook's write handle: the client's command surface, writing on the link of ONE handshake.
  *
- * Handles connection lifecycle, auto-reconnect, and protocol switching.
+ * `set_handshake()` hands the hook a `handshake_client&`, never the client itself: while the client is
+ * not ready, the client HOLDS every command (the hook's own would wait for the end of the hook that sent
+ * them), and a handle that wrote whenever any coroutine asked would let other coroutines slip commands
+ * past the gate while the hook is suspended. The handle writes straight to the wire only while the
+ * handshake it was made for runs on its link; before or after that -- a leaked copy, an awaiter kept past
+ * the hook -- every command through it fails with "handshake over". Defined after the clients, one
+ * specialization each: the plain client's carries its whole command surface, a consumer's the connection
+ * and subscription commands.
+ * @tparam Owner the client or consumer class whose connector made it
+ */
+template <typename Owner>
+class HandshakeClient;
+
+/// The write path every `HandshakeClient` shares (see it below).
+template <typename Owner, typename Self>
+class handshake_writer;
+
+/**
+ * @class connector
+ * @brief Base TCP connector for Redis clients and consumers: the reconnect contract (`qb/io/reconnect.h`).
+ *
+ * One state machine for the client and both consumers -- `idle`, `connecting`, `handshaking`, `ready`,
+ * `reconnecting`, `down` (`qb::io::connection_state`):
+ * - every connection, the first one included, runs the handshake before any user byte: HELLO 3 and AUTH
+ *   (`with_resp3()`, `with_auth()`), SELECT (`with_select()`), the user's hook (`set_handshake()`), then
+ *   the derived class's session replay (a consumer's subscriptions). Work submitted meanwhile is HELD by
+ *   the derived class and leaves, in order, once the client is `ready`;
+ * - a lost ready connection is recoverable only when a reconnection run is armed (`enable_auto_reconnect`);
+ *   an explicit `disconnect()` never is: it is terminal, `down` with `down_reason::user`;
+ * - a handshake the server refuses is terminal (`handshake_refused`); a transport failure during it, a
+ *   transient server error (LOADING, BUSY, TRYAGAIN, MASTERDOWN) or an attempt past its deadline is only
+ *   one more attempt;
+ * - `down` fails held work once, with the reason; only an explicit `connect()` leaves it.
+ *
  * @tparam QB_IO_ I/O transport type (e.g. qb::io::transport::tcp)
  * @tparam Derived CRTP derived class (Redis or RedisConsumer)
  */
@@ -250,6 +285,9 @@ class connector : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, 
     friend struct has_method_on<connector<QB_IO_, Derived>, void, qb::io::async::event::disconnected>;
     friend class qb::io::async::io<connector<QB_IO_, Derived>>;
     friend class qb::protocol::redis<connector<QB_IO_, Derived>>;
+    friend class HandshakeClient<Derived>;
+    template <typename, typename>
+    friend class handshake_writer;
 
     constexpr Derived &
     derived() {
@@ -258,17 +296,78 @@ class connector : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, 
 
 public:
     using redis_protocol = qb::protocol::redis<connector<QB_IO_, Derived>>;
+    /// The handshake hook's write handle (see `set_handshake()`).
+    using handshake_client = HandshakeClient<Derived>;
+    /// The handshake hook: `true` lets the connection become ready, `false` refuses it for good.
+    using handshake_hook = std::function<qb::io::async::task<bool>(handshake_client &)>;
 
 private:
+    /// How establish_() runs its attempts.
+    enum class run_mode : std::uint8_t {
+        single,   ///< a plain connect(): one attempt, and its failure is the link's cause
+        run,      ///< connect_with_retry(): the policy's attempts, spent = retries_exhausted
+        recovery, ///< the reconnection run of a lost ready connection: `reconnecting` between attempts
+    };
+
+    /// How one connection attempt -- the transport, then the handshake -- ended.
+    enum class attempt_outcome : std::uint8_t {
+        ready,            ///< the client is ready on the new link
+        transport_failed, ///< no link, a lost link, a transient refusal or a deadline: another attempt may follow
+        refused,          ///< the server or the hook refused the handshake: terminal
+        cancelled,        ///< superseded (disconnect(), a new connect(), destruction): the new owner decides
+    };
+
+    /// Where a connect() reports: its awaiter's coroutine, or its callback.
+    struct connect_completion {
+        std::coroutine_handle<>   waiter;
+        std::function<void(bool)> callback;
+        bool                      ok = false;
+
+        void
+        settle(bool value) {
+            ok = value;
+            if (waiter) {
+                auto h = std::exchange(waiter, {});
+                ::qb::io::async::coro_scheduler().schedule_resume(h);
+            } else if (callback) {
+                auto cb = std::move(callback);
+                cb(value);
+            }
+        }
+    };
+
     qb::io::uri                _uri;
     std::optional<RetryPolicy> _reconnect_policy;
-    bool                       _is_reconnecting = false;
-    bool                       _connected_flag  = false;
-    bool                       _verify_peer     = true; /**< Verify server TLS cert for rediss:// (stcp transport). */
-    std::string                _ssl_root_cert; /**< rediss://: private CA (PEM file/dir) added to the trust store. Empty = system store. */
-    std::string                _ssl_cert;      /**< rediss://: client certificate (PEM) for mutual TLS. Empty = none. */
-    std::string                _ssl_key;       /**< rediss://: client private key (PEM) for mutual TLS. Pairs with _ssl_cert. */
-    std::shared_ptr<bool>      _alive{std::make_shared<bool>(true)};
+    qb::io::connection_state   _state         = qb::io::connection_state::idle;
+    qb::io::down_reason        _down_reason   = qb::io::down_reason::user;
+    qb::io::down_reason        _loss_cause    = qb::io::down_reason::peer; ///< why the last link went away
+    bool                       _link_open     = false;                     ///< a link is installed and its teardown has not begun
+    bool                       _cause_set     = false;                     ///< the client named _loss_cause before it dropped the link
+    bool                       _session_ready = false;                     ///< the installed link reached ready: its loss fires on_disconnected
+    bool                       _recovering    = false;                     ///< a reconnection run is in progress (is_reconnecting())
+    bool                       _ever_ready    = false;                     ///< a connection reached ready once: a later one follows a gap
+    bool                       _verify_peer   = true;                      /**< Verify server TLS cert for rediss:// (stcp transport). */
+    /// Bumped by disconnect(), by every connect() that starts a lifecycle and by every terminal transition:
+    /// the run, the attempt and the handshake that captured an older value were superseded and step aside.
+    std::uint64_t _epoch           = 0;
+    std::uint64_t _user_down_epoch = 0; ///< the epoch disconnect() left a ready link in: its teardown settles that down
+    std::uint64_t _live_handshake  = 0; ///< the id of the handshake writing on the link (0: none)
+    std::uint64_t _handshake_seq   = 0;
+    std::string   _refusal;       ///< what refused the last handshake, for down_reason::handshake_refused's message
+    std::string   _ssl_root_cert; /**< rediss://: private CA (PEM file/dir) added to the trust store. Empty = system store. */
+    std::string   _ssl_cert;      /**< rediss://: client certificate (PEM) for mutual TLS. Empty = none. */
+    std::string   _ssl_key;       /**< rediss://: client private key (PEM) for mutual TLS. Pairs with _ssl_cert. */
+    // The handshake every connection runs, in this order: HELLO 3 and/or AUTH, SELECT, the hook, the replay.
+    bool                       _hs_resp3 = false;
+    std::optional<std::string> _hs_user;
+    std::optional<std::string> _hs_password;
+    std::optional<long long>   _hs_db;
+    handshake_hook             _hs_hook;
+    // Observability hooks: empty until set, read only on the cold transitions.
+    std::function<void()>                    _on_connected;
+    std::function<void(qb::io::down_reason)> _on_disconnected;
+    std::function<void(qb::io::down_reason)> _on_down;
+    std::shared_ptr<bool>                    _alive{std::make_shared<bool>(true)};
 
     /**
      * @brief Build the transport socket for a new connection.
@@ -296,16 +395,166 @@ private:
         return sock;
     }
 
+    /**
+     * @brief Awaits one transport connect -- TCP, and the TLS handshake of a secure transport -- and hands the
+     *        socket back, open or not. The socket is the frame's: a frame destroyed first closes it.
+     */
+    struct transport_awaiter {
+        connector                                        &_client;
+        qb::duration                                      _timeout;
+        std::optional<typename QB_IO_::transport_io_type> _sock;
+        std::coroutine_handle<>                           _handle;
+        std::shared_ptr<bool>                             _valid{std::make_shared<bool>(true)};
+
+        transport_awaiter(connector &client, qb::duration timeout)
+            : _client(client)
+            , _timeout(timeout) {}
+        transport_awaiter(transport_awaiter const &)            = delete;
+        transport_awaiter &operator=(transport_awaiter const &) = delete;
+        ~transport_awaiter() {
+            *_valid = false;
+        }
+
+        bool
+        await_ready() const noexcept {
+            return false;
+        }
+
+        void
+        await_suspend(std::coroutine_handle<> h) {
+            qb::io::async::track_suspension(h, "redis connect");
+            _handle    = h;
+            auto valid = _valid;
+            ::qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
+                _client.make_connect_socket_(), _client._uri,
+                [this, valid](auto &&raw_io) {
+                    if (!*valid)
+                        return; // the frame is gone; the socket closes with raw_io
+                    _sock.emplace(std::forward<decltype(raw_io)>(raw_io));
+                    ::qb::io::async::coro_scheduler().schedule_resume(_handle);
+                },
+                _timeout);
+        }
+
+        typename QB_IO_::transport_io_type
+        await_resume() {
+            return _sock ? std::move(*_sock) : typename QB_IO_::transport_io_type{};
+        }
+    };
+
+    /// The cause a transport loss the client did not ask for maps to.
+    [[nodiscard]] static qb::io::down_reason
+    cause_of_(int reason) noexcept {
+        using qb::io::async::event::disconnect_reason;
+        switch (static_cast<disconnect_reason>(reason)) {
+            case disconnect_reason::protocol_error:
+            case disconnect_reason::message_too_large:
+            case disconnect_reason::buffer_overflow:
+                return qb::io::down_reason::protocol;
+            default:
+                return qb::io::down_reason::peer;
+        }
+    }
+
+    /// A server error the handshake may retry: the server is starting, busy or failing over, not refusing.
+    [[nodiscard]] static bool
+    is_transient_error_(std::string_view error) noexcept {
+        for (std::string_view code : {"LOADING", "BUSY", "TRYAGAIN", "MASTERDOWN"}) {
+            if (error.size() >= code.size() && error.substr(0, code.size()) == code
+                && (error.size() == code.size() || error[code.size()] == ' '))
+                return true;
+        }
+        return false;
+    }
+
+    /// Install an opened socket as the client's link and start reading: the handshake comes next.
     void
-    start_async() {
-        // Not the io base's reset_for_reconnect(): out() may already hold what a failing callback
-        // re-issued during the disconnect, with its handler queued -- the dead connection's bytes
-        // were dropped in on(disconnected), before those callbacks ran (Huly QB-202).
+    install_link_(typename QB_IO_::transport_io_type &&raw_io) {
+        this->transport() = std::move(raw_io);
         this->clear_protocols(); // idempotent: drops any prior protocol, resets to the NoProtocol sentinel
         this->reset_io_state();
+        // Nothing of an earlier link leaves on this one: work submitted while the client was not ready was
+        // held apart (the derived class's held queue), never written here (Huly QB-202).
+        this->in().reset();
+        this->out().reset();
         this->template switch_protocol<redis_protocol>(*this);
         this->start();
-        _connected_flag = true;
+        _link_open     = true;
+        _cause_set     = false;
+        _session_ready = false;
+        _state         = qb::io::connection_state::handshaking;
+    }
+
+    /// Tear the link down now, naming the cause; on(disconnected) runs before this returns, or right after the
+    /// reply handler that called it.
+    void
+    drop_link_(qb::io::down_reason cause) noexcept {
+        if (!_link_open)
+            return;
+        _loss_cause = cause;
+        _cause_set  = true;
+        _link_open  = false;
+        qb::io::async::io<connector<QB_IO_, Derived>>::disconnect_now();
+    }
+
+    template <typename Fn, typename... Args>
+    static void
+    notify_(Fn &hook, char const *what, Args... args) noexcept {
+        if (!hook)
+            return;
+        try {
+            hook(args...);
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] " << what << " hook error: " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] " << what << " hook threw a non-std exception");
+        }
+    }
+
+    /// The handshake succeeded: release what was held, then tell the user.
+    void
+    enter_ready_() {
+        _state           = qb::io::connection_state::ready;
+        _session_ready   = true;
+        _recovering      = false;
+        _ever_ready      = true;
+        _live_handshake  = 0;
+        const auto epoch = _epoch;
+        derived().on_ready_(); // held work leaves in order; a consumer queues its gap marker first
+        if (epoch != _epoch || _state != qb::io::connection_state::ready)
+            return; // a marker or a release callback disconnected
+        notify_(_on_connected, "on_connected");
+    }
+
+    /// The message held work fails with when the client goes down for `reason`.
+    [[nodiscard]] std::string
+    down_text_(qb::io::down_reason reason) const {
+        switch (reason) {
+            case qb::io::down_reason::retries_exhausted:
+                return "reconnection attempts exhausted";
+            case qb::io::down_reason::handshake_refused:
+                return "handshake refused: " + _refusal;
+            default:
+                return "disconnected";
+        }
+    }
+
+    /// Terminal: fail what was held, end a consumer's stream, tell the user. Supersedes the current owner.
+    void
+    enter_down_(qb::io::down_reason reason) {
+        _state           = qb::io::connection_state::down;
+        _down_reason     = reason;
+        _recovering      = false;
+        const auto epoch = ++_epoch;
+        settle_down_(reason, epoch);
+    }
+
+    void
+    settle_down_(qb::io::down_reason reason, std::uint64_t epoch) {
+        derived().on_down_(down_text_(reason)); // held work fails once; a consumer's stream drains then ends
+        if (epoch != _epoch)
+            return; // a failure callback connected again: the client did not stay down
+        notify_(_on_down, "on_down", reason);
     }
 
     void
@@ -313,48 +562,87 @@ private:
         derived().on(std::move(msg));
     }
 
+    /**
+     * @brief The link is gone: whatever was in flight on it fails, and the client decides what follows.
+     * @details A handshake's link only fails the handshake's commands: the attempt that installed it decides.
+     *          A ready link's loss fires on_disconnected with its cause, AFTER the in-flight work failed and
+     *          BEFORE the reconnection decision -- a hook that disarms the policy prevents the run (QB-663);
+     *          then a run starts when the cause is not `user` and a policy is armed, else the client is down.
+     */
     void
     on(qb::io::async::event::disconnected &&ev) {
-        _connected_flag = false;
+        const bool was_ready = _session_ready;
+        _session_ready       = false;
+        _link_open           = false;
+        _live_handshake      = 0;
+        if (!_cause_set)
+            _loss_cause = cause_of_(ev.reason);
+        _cause_set       = false;
+        const auto cause = _loss_cause;
         // The dead connection's bytes go now, where its commands are failed (Huly QB-202): a command
-        // serialized but never flushed would otherwise lead the next connection, and its reply be
-        // handed to whichever command is then first in line -- the reply FIFO off by one, for good.
-        // Dropped BEFORE derived().on(): what a failing callback re-issues lands in a clean out() and
-        // leaves with the next connection, its handler queued in the same order.
+        // serialized but never flushed would otherwise lead the next connection.
         this->in().reset();
         this->out().reset();
-        QB_LOG_WARN("[qbm][redis] disconnected");
-        // A consumer's user on_disconnected callback can throw. Keep the exception inside the
-        // teardown so the reconnect decision below still observes any policy change it made.
+        QB_LOG_WARN("[qbm][redis] disconnected (" << qb::io::down_reason_name(cause) << ")");
+        // A ready link's loss leaves `ready` BEFORE what was in flight fails: a failure callback that submits
+        // again must find the client holding (a run will follow) or down (none will), never ready on a link
+        // that is gone -- its bytes would be written to a dead pipe and its handler queued for no reply.
+        if (was_ready && cause != qb::io::down_reason::user) {
+            if (_reconnect_policy) {
+                _state      = qb::io::connection_state::reconnecting;
+                _recovering = true;
+            } else {
+                _state       = qb::io::connection_state::down;
+                _down_reason = cause;
+            }
+        }
+        // Read before anything user code runs: a failure callback below, or the on_disconnected hook, that calls
+        // disconnect() or connect() owns the client from then on, and this loss decides nothing after it.
+        const auto epoch = _epoch;
         try {
-            derived().on(std::forward<qb::io::async::event::disconnected>(ev));
+            derived().on_link_lost_(was_ready);
         } catch (const std::exception &ex) {
             QB_LOG_WARN("[qbm][redis] disconnected handler error: " << ex.what());
         } catch (...) {
             QB_LOG_WARN("[qbm][redis] disconnected handler threw a non-std exception");
         }
-
-        if (_reconnect_policy && !_is_reconnecting) {
-            _is_reconnecting = true;
-            qb::io::async::coro_scheduler().spawn(_reconnect_task(*_reconnect_policy, _alive));
+        if (!was_ready)
+            return;
+        if (cause == qb::io::down_reason::user) {
+            // disconnect() is already down: what remains is to say so, in order -- unless a connect() since
+            // then started another lifecycle, whose held work is not this down's to fail.
+            const bool current = _epoch == _user_down_epoch;
+            notify_(_on_disconnected, "on_disconnected", cause);
+            if (current && _epoch == _user_down_epoch)
+                settle_down_(cause, _epoch);
+            return;
         }
+        // The state the client is heading for -- set above, readable from the hook; the hook may still change
+        // the policy. The hook fires whatever a failure callback did: it reports this link's loss, and
+        // on_connected / on_disconnected strictly alternate.
+        notify_(_on_disconnected, "on_disconnected", cause);
+        if (epoch != _epoch)
+            return; // a failure callback or the hook disconnected or connected: that call owns the state now
+        if (!_reconnect_policy) {
+            enter_down_(cause);
+            return;
+        }
+        _state      = qb::io::connection_state::reconnecting;
+        _recovering = true;
+        auto policy = *_reconnect_policy;
+        ::qb::io::async::coro_scheduler().spawn(run_(std::move(policy), _alive, _epoch));
     }
 
+    /// The reconnection run: the policy's attempts, until ready, refused, spent or superseded.
     qb::io::async::task<void>
-    _reconnect_task(RetryPolicy policy, std::shared_ptr<bool> alive) {
-        // A task first runs at the scheduler's next drain, not at spawn(): disconnect() completes the
-        // teardown synchronously, so the client may already be gone by then (Huly QB-202).
-        if (!*alive)
+    run_(RetryPolicy policy, std::shared_ptr<bool> alive, std::uint64_t epoch) {
+        // A task first runs at the scheduler's next drain, not at spawn(): the client may be gone by then.
+        if (!*alive || epoch != _epoch)
             co_return;
         QB_LOG_INFO("[qbm][redis] auto-reconnect starting...");
-
-        const bool ok = co_await connect_with_retry(policy);
-
+        const bool ok = co_await establish_(std::move(policy), run_mode::recovery, alive, epoch);
         if (!*alive)
             co_return;
-
-        _is_reconnecting = false;
-
         if (ok) {
             QB_LOG_INFO("[qbm][redis] auto-reconnect succeeded");
         } else {
@@ -362,10 +650,220 @@ private:
         }
     }
 
+    [[nodiscard]] static qb::duration
+    attempt_timeout_(RetryPolicy const &policy) noexcept {
+        return policy.connect_timeout > qb::duration::zero() ? policy.connect_timeout : qb::duration{std::chrono::seconds(3)};
+    }
+
+    /**
+     * @brief The one engine behind every connect form and the reconnection run: attempts until the client is
+     *        ready, the handshake is refused, the policy is spent, or the lifecycle is superseded.
+     * @param policy The attempts and their backoff (one attempt for a plain connect()).
+     * @param mode A plain connect() (its failure is the link's cause), an explicit run (connect_with_retry),
+     *             or the reconnection run (state `reconnecting` between attempts).
+     */
+    qb::io::async::task<bool>
+    establish_(RetryPolicy policy, run_mode mode, std::shared_ptr<bool> alive, std::uint64_t epoch) {
+        static thread_local std::mt19937 rng_{std::random_device{}()};
+        const auto         between = mode == run_mode::recovery ? qb::io::connection_state::reconnecting : qb::io::connection_state::connecting;
+        const qb::duration limit   = attempt_timeout_(policy);
+        int                attempt = 0;
+        while (policy.allows_attempt(attempt)) {
+            if (!*alive || epoch != _epoch)
+                co_return false;
+            ++attempt;
+            _state             = between;
+            const auto outcome = co_await attempt_(limit, alive, epoch);
+            if (!*alive || epoch != _epoch || outcome == attempt_outcome::cancelled)
+                co_return false; // disconnect(), a new connect() or destruction owns the state now
+            if (outcome == attempt_outcome::ready)
+                co_return true;
+            if (outcome == attempt_outcome::refused) {
+                enter_down_(qb::io::down_reason::handshake_refused);
+                co_return false;
+            }
+            _state = between; // the attempt's link is gone: the run waits, or ends
+            if (!policy.allows_attempt(attempt))
+                break;
+            const qb::duration wait = policy.next_delay(attempt, &rng_);
+            notify_(policy.on_retry, "on_retry", attempt, wait);
+            if (!*alive || epoch != _epoch)
+                co_return false; // on_retry disconnected
+            co_await qb::io::async::sleep(wait);
+        }
+        if (!*alive || epoch != _epoch)
+            co_return false;
+        enter_down_(mode == run_mode::single ? _loss_cause : qb::io::down_reason::retries_exhausted);
+        co_return false;
+    }
+
+    /// One attempt: the transport, then the handshake on the new link.
+    qb::io::async::task<attempt_outcome>
+    attempt_(qb::duration limit, std::shared_ptr<bool> alive, std::uint64_t epoch) {
+        auto sock = co_await transport_awaiter{*this, limit};
+        if (!*alive || epoch != _epoch)
+            co_return attempt_outcome::cancelled; // the socket closes with this frame
+        if (!sock.is_open()) {
+            _loss_cause = qb::io::down_reason::peer;
+            co_return attempt_outcome::transport_failed;
+        }
+        install_link_(std::move(sock));
+        co_return co_await handshake_(limit, alive, epoch);
+    }
+
+    /// Whether the handshake has anything to do beyond the transport.
+    [[nodiscard]] bool
+    handshake_has_steps_() {
+        return _hs_resp3 || _hs_password || _hs_db || _hs_hook || derived().has_session_to_replay_();
+    }
+
+    /// The handshake's deadline: an attempt that is still handshaking when it falls is a transport failure.
+    qb::io::async::task<void>
+    handshake_deadline_(std::uint64_t id, qb::duration limit, std::shared_ptr<bool> alive) {
+        if (!*alive)
+            co_return;
+        co_await qb::io::async::sleep(limit);
+        if (!*alive || _live_handshake != id)
+            co_return;
+        QB_LOG_WARN("[qbm][redis] handshake did not complete within " << qb::detail::to_ev_seconds(limit) << "s; dropping the link");
+        drop_link_(qb::io::down_reason::peer);
+    }
+
+    /**
+     * @brief The handshake on a fresh link: the protocol's, the user's hook, the derived class's replay.
+     * @details Each step writes through a `handshake_client` that only this handshake can use. A reply that
+     *          comes back as a server error refuses the handshake for good -- unless it is a transient one
+     *          (LOADING, BUSY, TRYAGAIN, MASTERDOWN), which drops the link and lets the run try again. A link
+     *          lost on the way, or past `limit`, is a transport failure whatever the step said.
+     */
+    qb::io::async::task<attempt_outcome>
+    handshake_(qb::duration limit, std::shared_ptr<bool> alive, std::uint64_t epoch) {
+        const std::uint64_t id = ++_handshake_seq;
+        _live_handshake        = id;
+        if (!handshake_has_steps_()) {
+            enter_ready_();
+            co_return attempt_outcome::ready;
+        }
+        ::qb::io::async::coro_scheduler().spawn(handshake_deadline_(id, limit, alive));
+        handshake_client hs{derived(), alive, id};
+        // Judges one step: nullopt when the handshake may go on, else how this attempt ends.
+        auto judge = [&](bool ok, bool had_reply, std::string const &error) -> std::optional<attempt_outcome> {
+            if (!*alive || epoch != _epoch)
+                return attempt_outcome::cancelled;
+            if (_live_handshake != id || !_link_open)
+                return attempt_outcome::transport_failed; // the link went away under the step
+            if (ok)
+                return std::nullopt;
+            if (had_reply && is_transient_error_(error)) {
+                drop_link_(qb::io::down_reason::peer);
+                return attempt_outcome::transport_failed;
+            }
+            _refusal        = error.empty() ? std::string{"refused"} : error;
+            _live_handshake = 0;
+            return attempt_outcome::refused;
+        };
+        if (_hs_resp3) {
+            // HELLO 3 carries the credentials when there are some: one round trip, and the server answers
+            // in RESP3 from the reply on.
+            auto r = _hs_password ? co_await hs.template command<qb::json>("HELLO", "3", "AUTH", _hs_user.value_or("default"), *_hs_password)
+                                  : co_await hs.template command<qb::json>("HELLO", "3");
+            if (auto end = judge(r.ok(), r.raw() != nullptr, r.error()))
+                co_return finish_attempt_(*end);
+        } else if (_hs_password) {
+            auto r = _hs_user ? co_await hs.auth(*_hs_user, *_hs_password) : co_await hs.auth(*_hs_password);
+            if (auto end = judge(r.ok(), r.raw() != nullptr, r.error()))
+                co_return finish_attempt_(*end);
+        }
+        if (_hs_db) {
+            auto r = co_await hs.select(*_hs_db);
+            if (auto end = judge(r.ok(), r.raw() != nullptr, r.error()))
+                co_return finish_attempt_(*end);
+        }
+        if (_hs_hook) {
+            // A copy: the hook may be replaced while it runs, and the closure it calls must outlive it.
+            auto        hook    = _hs_hook;
+            bool        verdict = false;
+            std::string why;
+            try {
+                verdict = co_await hook(hs);
+            } catch (const std::exception &ex) {
+                why = ex.what();
+            } catch (...) {
+                why = "the handshake hook threw";
+            }
+            if (auto end = judge(verdict, false, why.empty() ? std::string{"the handshake hook refused the connection"} : why))
+                co_return finish_attempt_(*end);
+        }
+        if (derived().has_session_to_replay_()) {
+            const std::optional<std::string> error = co_await derived().replay_session_(hs);
+            if (auto end = judge(!error, error.has_value(), error.value_or(std::string{})))
+                co_return finish_attempt_(*end);
+        }
+        if (auto end = judge(true, false, {}))
+            co_return finish_attempt_(*end);
+        enter_ready_();
+        co_return attempt_outcome::ready;
+    }
+
+    /// An attempt that ends before ready leaves no handshake live and, if it refused, no link either.
+    attempt_outcome
+    finish_attempt_(attempt_outcome outcome) {
+        if (outcome == attempt_outcome::cancelled)
+            return outcome;
+        _live_handshake = 0;
+        if (outcome == attempt_outcome::refused)
+            drop_link_(qb::io::down_reason::peer);
+        return outcome;
+    }
+
+    /// Start a lifecycle from idle or down, or say why not.
+    [[nodiscard]] bool
+    begin_lifecycle_() {
+        if (_state != qb::io::connection_state::idle && _state != qb::io::connection_state::down)
+            return false; // a connection, a handshake or a run is in progress: it owns the state
+        ++_epoch;
+        _refusal.clear();
+        _state = qb::io::connection_state::connecting;
+        derived().on_lifecycle_start_();
+        return true;
+    }
+
+    qb::io::async::task<void>
+    connect_flow_(RetryPolicy policy, std::shared_ptr<connect_completion> done, std::shared_ptr<bool> alive, std::uint64_t epoch) {
+        const bool ok = co_await establish_(std::move(policy), run_mode::single, alive, epoch);
+        done->settle(ok && *alive);
+    }
+
+    /// Start one connect() attempt for `done`; false when the client was busy (nothing started).
+    bool
+    begin_connect_(qb::duration timeout, std::shared_ptr<connect_completion> done) {
+        if (!begin_lifecycle_())
+            return false;
+        auto policy = RetryPolicy{}.with_max_attempts(1).with_connect_timeout(timeout);
+        ::qb::io::async::coro_scheduler().spawn(connect_flow_(std::move(policy), std::move(done), _alive, _epoch));
+        return true;
+    }
+
 protected:
     connector() = default;
     ~connector() {
         *_alive = false;
+    }
+
+    // The derived class's part of the lifecycle. A derived class that needs one declares its own, which hides
+    // the default; the connector calls them through derived().
+    /// A connect() leaves idle or down: the session of a new lifecycle begins.
+    void
+    on_lifecycle_start_() {}
+    /// Whether the handshake has a session to replay (a consumer's subscriptions).
+    [[nodiscard]] bool
+    has_session_to_replay_() const noexcept {
+        return false;
+    }
+    /// Replay the session through the handshake's handle: nullopt once done, else the server's refusal.
+    qb::io::async::task<std::optional<std::string>>
+    replay_session_(handshake_client &) {
+        co_return std::nullopt;
     }
 
     explicit connector(qb::io::uri uri)
@@ -383,105 +881,196 @@ protected:
         return _alive;
     }
 
+    /// Whether frames of the installed link are still dispatched (false once its teardown began).
+    [[nodiscard]] bool
+    link_open_() const noexcept {
+        return _link_open;
+    }
+
+    /// Whether work flows: the derived classes hold or fail what is submitted otherwise.
+    [[nodiscard]] bool
+    ready_() const noexcept {
+        return _state == qb::io::connection_state::ready;
+    }
+
+    /// Whether work submitted now waits for ready (a connection, a handshake or a run is in progress).
+    [[nodiscard]] bool
+    holding_() const noexcept {
+        return _state == qb::io::connection_state::connecting || _state == qb::io::connection_state::handshaking
+               || _state == qb::io::connection_state::reconnecting;
+    }
+
+    /// The failure of work submitted while the client cannot send it: idle, or down for its reason.
+    [[nodiscard]] std::string
+    refusal_text_() const {
+        return _state == qb::io::connection_state::idle ? std::string{"not connected"} : down_text_(_down_reason);
+    }
+
+    /// Whether a connection reached ready before: the next one follows a gap in a consumer's stream.
+    [[nodiscard]] bool
+    ever_ready_() const noexcept {
+        return _ever_ready;
+    }
+
+    /// Whether the handshake `id` is the one writing on the link now.
+    [[nodiscard]] bool
+    handshake_live_(std::uint64_t id) const noexcept {
+        return id != 0 && _live_handshake == id && _link_open;
+    }
+
+    /// Drop the link as the client's own decision (the command watchdog): recoverable, cause `peer`.
+    void
+    drop_unresponsive_link_() noexcept {
+        drop_link_(qb::io::down_reason::peer);
+    }
+
     /**
-     * @brief Serialize one command into `out()`: all of it, or nothing.
+     * @brief Fail a handler on the next loop pass, never inside the call that submitted it.
+     * @details Work submitted while the client is idle or down cannot wait for anything: it fails at once,
+     *          but from the loop -- a failure callback that submits again would otherwise recurse without
+     *          bound. A client destroyed meanwhile discards the handler uninvoked, as it does its pending
+     *          replies.
+     */
+    void
+    fail_soon_(std::unique_ptr<IReply> handler, std::string reason) {
+        ++_failing_soon;
+        std::shared_ptr<IReply> shared{std::move(handler)};
+        qb::io::async::defer([alive = _alive, shared, reason = std::move(reason), this]() {
+            if (!*alive)
+                return;
+            --_failing_soon;
+            try {
+                shared->fail(reason);
+            } catch (const std::exception &ex) {
+                QB_LOG_WARN("[qbm][redis] callback error: " << ex.what());
+            } catch (...) {
+                QB_LOG_WARN("[qbm][redis] callback threw a non-std exception");
+            }
+        });
+    }
+
+    /// Failures fail_soon_() scheduled and the loop has not run yet (await() drains them too).
+    std::size_t _failing_soon = 0;
+
+    /**
+     * @brief Serialize one command into `pipe`: all of it, or nothing.
      * @details `put_in_pipe()` writes the RESP array header, then each argument, and an argument that
      *          cannot be written throws -- one over `REDIS_MAX_STRING_SIZE` throws `SecurityError` -- with
-     *          the header and the arguments before it already in `out()`. That partial frame used to stay:
+     *          the header and the arguments before it already in `pipe`. That partial frame used to stay:
      *          the next command went out behind it, and the server's replies no longer matched the reply
-     *          FIFO (Huly QB-255). Here `out()` is put back as it was, and the reason returned for the
-     *          caller to fail the command with. Writing to `out()` sends nothing, so a handler queued after
+     *          FIFO (Huly QB-255). Here `pipe` is put back as it was, and the reason returned for the
+     *          caller to fail the command with. Writing to a pipe sends nothing, so a handler queued after
      *          this call still precedes any reply.
-     * @return Why the command could not be serialized; empty when it was, the watcher then armed to send it.
+     * @return Why the command could not be serialized; empty when it was.
      */
+    template <typename... Args>
+    [[nodiscard]] static std::optional<std::string>
+    serialize_into_(qb::allocator::pipe<char> &pipe, Args &&...args) {
+        const std::size_t before = pipe.size();
+        try {
+            put_in_pipe(pipe, std::forward<Args>(args)...);
+        } catch (std::exception const &e) {
+            pipe.free_back(pipe.size() - before);
+            return std::string{e.what()};
+        } catch (...) {
+            pipe.free_back(pipe.size() - before);
+            return std::string{"the command could not be serialized"};
+        }
+        return std::nullopt;
+    }
+
+    /// serialize_into_(out()), then arm the writer: the command leaves with the next write.
     template <typename... Args>
     [[nodiscard]] std::optional<std::string>
     try_put_command(Args &&...args) {
-        auto             &out    = this->out();
-        const std::size_t before = out.size();
-        try {
-            put_in_pipe(out, std::forward<Args>(args)...);
-        } catch (std::exception const &e) {
-            out.free_back(out.size() - before);
-            return std::string{e.what()};
-        } catch (...) {
-            out.free_back(out.size() - before);
-            return std::string{"the command could not be serialized"};
-        }
+        if (auto error = serialize_into_(this->out(), std::forward<Args>(args)...))
+            return error;
         this->ready_to_write();
         return std::nullopt;
+    }
+
+    /// Move the first `bytes` of `held` (a held command, serialized when it was submitted) onto the link.
+    void
+    put_held_bytes_(qb::allocator::pipe<char> &held, std::size_t bytes) {
+        if (bytes == 0)
+            return;
+        std::memcpy(this->out().allocate_back(bytes), held.begin(), bytes);
+        held.free_front(bytes);
+    }
+
+    /// Arm the writer: what was put on the link leaves with the next write.
+    void
+    arm_write_() {
+        this->ready_to_write();
+    }
+
+    /// Whether `now` past `since` is past the command timeout `limit` (held work's deadline).
+    [[nodiscard]] static qb::duration
+    held_wait_(qb::mono_time since, qb::duration limit) noexcept {
+        const auto due = since + std::chrono::duration_cast<qb::mono_time::duration>(limit);
+        const auto now = qb::mono_now();
+        return due > now ? std::chrono::duration_cast<qb::duration>(due - now) : qb::duration::zero();
     }
 
 public:
     /**
      * @struct connect_awaiter
-     * @brief Coroutine awaiter for async connection (co_await connect())
+     * @brief Coroutine awaiter for async connection (`co_await connect()`): `true` once the client is ready.
+     * @details Resolves when the connection's handshake is done -- `true`, the client `ready` -- or when the
+     *          attempt failed, was refused, or was superseded by `disconnect()` -- `false`, the client `down`
+     *          (or owned by the call that superseded it). Resolves `false` at once when a connection, a
+     *          handshake or a reconnection run is already in progress. Neither copyable nor movable: an
+     *          awaiter's completion is its own, and a copy would settle the original's (QB-1000).
      */
     struct connect_awaiter {
-        connector              &_client;
-        qb::duration            _timeout;
-        bool                    _connected = false;
-        std::coroutine_handle<> _handle;
-        bool                    _ready = false;
-        std::shared_ptr<bool>   _valid{std::make_shared<bool>(true)};
+        connector                          &_client;
+        qb::duration                        _timeout;
+        std::shared_ptr<connect_completion> _done;
 
         explicit connect_awaiter(connector &client, qb::duration timeout = std::chrono::seconds(3))
             : _client(client)
             , _timeout(timeout) {}
+        connect_awaiter(connect_awaiter const &)            = delete;
+        connect_awaiter(connect_awaiter &&)                 = delete;
+        connect_awaiter &operator=(connect_awaiter const &) = delete;
+        connect_awaiter &operator=(connect_awaiter &&)      = delete;
 
         ~connect_awaiter() {
-            if (_valid)
-                *_valid = false;
+            if (_done)
+                _done->waiter = {}; // a frame destroyed while connecting is never resumed
         }
 
         bool
         await_ready() const noexcept {
-            return _ready;
+            return false;
         }
 
-        void
+        bool
         await_suspend(std::coroutine_handle<> h) {
             qb::io::async::track_suspension(h, "redis connect");
-            _handle    = h;
-            auto valid = _valid;
-            // Capture the CLIENT's liveness too, not just the awaiter's. The
-            // auto-reconnect task runs detached: it owns this awaiter on its coroutine
-            // frame, so the connector can be destroyed while this connect is in flight
-            // with the awaiter still alive (_valid stays true). Touching _client then
-            // would be a use-after-free. If the client is gone we skip setup_connection
-            // and still resume — connect_with_retry's own `!*alive` check then makes the
-            // detached task exit cleanly instead of leaking.
-            auto client_alive = _client.connector_alive();
-            ::qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
-                _client.make_connect_socket_(), _client._uri,
-                [this, valid, client_alive](auto &&raw_io) {
-                    if (!*valid)
-                        return;
-                    if (*client_alive && raw_io.is_open()) {
-                        _connected = _client.setup_connection(_client._uri, std::move(raw_io));
-                    }
-                    _ready = true;
-                    if (_handle) {
-                        ::qb::io::async::coro_scheduler().schedule_resume(_handle);
-                    }
-                },
-                _timeout);
+            _done         = std::make_shared<connect_completion>();
+            _done->waiter = h;
+            if (_client.begin_connect_(_timeout, _done))
+                return true;
+            _done->waiter = {};
+            return false; // busy: resolves false at once
         }
 
         bool
         await_resume() const noexcept {
-            return _connected;
+            return _done && _done->ok;
         }
     };
 
-    /** @brief Start async connection (co_awaitable) */
+    /** @brief Connect, then run the handshake (co_awaitable): `true` once the client is ready. */
     connect_awaiter
     connect() {
         return connect_awaiter{*this};
     }
     connect_awaiter
     connect(qb::io::uri uri) {
-        _uri = std::move(uri);
+        if (_state == qb::io::connection_state::idle || _state == qb::io::connection_state::down)
+            _uri = std::move(uri);
         return connect_awaiter{*this};
     }
     connect_awaiter
@@ -490,7 +1079,8 @@ public:
     }
     connect_awaiter
     connect(qb::io::uri uri, qb::duration timeout) {
-        _uri = std::move(uri);
+        if (_state == qb::io::connection_state::idle || _state == qb::io::connection_state::down)
+            _uri = std::move(uri);
         return connect_awaiter{*this, timeout};
     }
 
@@ -500,85 +1090,52 @@ public:
     }
 
     /**
-     * @brief Coroutine connect with exponential-backoff retry.
+     * @brief Connect with exponential-backoff retry: the policy's attempts, each a transport connect and a
+     *        handshake, until the client is ready.
      *
-     * Repeatedly attempts to connect to the current URI until success or the
-     * policy's attempt budget is exhausted, sleeping `RetryPolicy`-controlled
-     * (optionally jittered) delays between attempts. Liveness-safe: if the client
-     * is destroyed while suspended, the task exits cleanly without touching `*this`.
+     * Attempt 1 is immediate; between attempts the run sleeps the policy's `next_delay()` (jittered), and
+     * calls `on_retry(attempt, next_delay)` first. A handshake the server refuses ends the run at once,
+     * `down` with `handshake_refused`; a spent policy ends it `down` with `retries_exhausted`. Resolves
+     * `false` at once when a connection, a handshake or a run is already in progress. Liveness-safe: if the
+     * client is destroyed while suspended, the task exits cleanly without touching `*this`.
      *
      * @param policy Retry/backoff configuration (defaults: unlimited attempts).
-     * @return A task yielding `true` on a successful connection, `false` otherwise.
+     * @return A task yielding `true` once the client is ready, `false` otherwise.
      */
     qb::io::async::task<bool>
     connect_with_retry(RetryPolicy policy = RetryPolicy{}) {
-        static thread_local std::mt19937 rng_{std::random_device{}()};
-
-        // Capture the liveness flag by value BEFORE any suspension: when this
-        // runs from the auto-reconnect task, the client may be destroyed while
-        // we sleep between attempts. After each co_await we must re-check it
-        // before touching *this again (the next connect_awaiter{*this}).
-        auto alive = _alive;
-
-        // The wait between attempts is the shared policy's own arithmetic (qb::io::reconnect_policy::
-        // next_delay): the same run the qbm-http clients follow.
-        const qb::duration attempt_timeout = policy.connect_timeout > qb::duration::zero() ? policy.connect_timeout : std::chrono::seconds(3);
-        int                attempt         = 0;
-
-        while (policy.allows_attempt(attempt)) {
-            ++attempt;
-
-            if (co_await connect_awaiter{*this, attempt_timeout})
-                co_return true;
-            if (!*alive)
-                co_return false; // *this may have been destroyed
-
-            if (!policy.allows_attempt(attempt))
-                break;
-
-            const qb::duration sleep_delay = policy.next_delay(attempt, &rng_);
-            if (policy.on_retry) {
-                policy.on_retry(attempt, sleep_delay);
-            }
-
-            co_await qb::io::async::sleep(sleep_delay);
-            if (!*alive)
-                co_return false; // destroyed during the backoff sleep
-        }
-
-        co_return false;
+        if (!begin_lifecycle_())
+            co_return false;
+        co_return co_await establish_(std::move(policy), run_mode::run, _alive, _epoch);
     }
 
     qb::io::async::task<bool>
     connect_with_retry(qb::io::uri uri, RetryPolicy policy = RetryPolicy{}) {
-        _uri = std::move(uri);
+        if (_state == qb::io::connection_state::idle || _state == qb::io::connection_state::down)
+            _uri = std::move(uri);
         co_return co_await connect_with_retry(std::move(policy));
     }
 
+    /**
+     * @brief Callback connect: `func(true)` once the client is ready, `func(false)` when the attempt failed,
+     *        was refused or superseded -- always from the loop, never inside this call.
+     * @details A client destroyed meanwhile never calls `func` (the completion is the client's).
+     */
     template <std::invocable<bool> Func>
     void
     connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3)) {
-        // qb::io::async::tcp::connect self-holds this completion lambda in a shared_ptr<connector>
-        // that lives until the connect resolves or its deadline (default 3s) fires — a LATER
-        // event-loop turn. The lambda captures the client by raw `this`, so a client destroyed while
-        // the connect is in flight would have the deferred completion dereference freed memory
-        // (setup_connection writes _connected_flag/_uri/this->transport() and starts the watchers).
-        // Capture the client liveness token — ~connector sets *_alive=false — and no-op if it died,
-        // exactly like the coroutine connect_awaiter above (that path was hardened in 8eb0e48; this
-        // sibling overload was missed).
-        auto alive = connector_alive();
-        qb::io::async::tcp::connect<typename QB_IO_::transport_io_type>(
-            make_connect_socket_(), uri,
-            [this, alive, uri, func = std::forward<Func>(func)](auto &&raw_io) {
-                if (!*alive)
-                    return;
-                if (raw_io.is_open()) {
-                    func(this->setup_connection(uri, std::forward<decltype(raw_io)>(raw_io)));
-                } else {
-                    func(false);
-                }
-            },
-            timeout);
+        if (_state == qb::io::connection_state::idle || _state == qb::io::connection_state::down)
+            _uri = std::move(uri);
+        auto done      = std::make_shared<connect_completion>();
+        auto alive     = connector_alive();
+        auto callable  = std::make_shared<std::decay_t<Func>>(std::forward<Func>(func));
+        done->callback = [alive, callable](bool ok) {
+            if (*alive)
+                (*callable)(ok);
+        };
+        if (!begin_connect_(timeout, done)) {
+            qb::io::async::defer([done]() { done->settle(false); });
+        }
     }
 
     template <std::invocable<bool> Func>
@@ -627,64 +1184,185 @@ public:
     }
 
     /**
-     * @brief Adopt an already-opened transport socket and start the protocol.
+     * @brief Adopt an already-opened transport socket, then run the handshake on it.
      *
-     * Installs the RESP protocol and begins async I/O on `raw_io`. No-ops (returns
-     * `false`) if a connection is already active, guarding against double setup.
+     * Installs the RESP protocol, begins async I/O on `raw_io` and starts the handshake: the client is
+     * `ready` once it succeeds, `down` if it is refused or the link drops first. Refuses (returns `false`)
+     * while a connection, a handshake or a run is in progress.
      *
      * @param uri    URI associated with this connection (stored).
      * @param raw_io An opened transport socket to take ownership of.
-     * @return `true` if the connection was set up, `false` if already connected.
+     * @return `true` if the socket was adopted, `false` if the client was busy.
      */
     bool
     setup_connection(qb::io::uri uri, typename QB_IO_::transport_io_type &&raw_io) {
-        if (_connected_flag)
+        if (!begin_lifecycle_())
             return false;
-        _uri              = std::move(uri);
-        this->transport() = std::move(raw_io);
-        start_async();
+        _uri = std::move(uri);
+        install_link_(std::move(raw_io));
+        ::qb::io::async::coro_scheduler().spawn(adopted_flow_(_alive, _epoch));
         return true;
     }
 
     /**
-     * @brief Enable automatic reconnection on unexpected disconnect.
-     * @param policy Retry/backoff policy used by the detached reconnect task.
+     * @brief Arm the reconnection run for a lost ready connection.
+     * @details A loss -- the peer closed or reset the link, a frame the parser refused, the command
+     *          watchdog -- starts a run of the policy's attempts, each one handshaken; an explicit
+     *          `disconnect()` never does. Read when the loss happens: enabling it later arms the next loss.
+     * @param policy Retry/backoff policy of the run.
      */
     void
     enable_auto_reconnect(RetryPolicy policy = RetryPolicy{}) noexcept {
         _reconnect_policy = std::move(policy);
     }
 
-    /** @brief Disable automatic reconnection (in-flight reconnects still finish). */
+    /** @brief Disarm the reconnection run for the next loss (a run in progress still finishes). */
     void
     disable_auto_reconnect() noexcept {
         _reconnect_policy.reset();
     }
 
+    /** @brief Whether a reconnection run is in progress: from the loss until it is ready or down. */
     [[nodiscard]] bool
     is_reconnecting() const noexcept {
-        return _is_reconnecting;
+        return _recovering;
     }
+
+    /** @brief Whether the client is ready: the handshake ran on the current connection. */
     [[nodiscard]] bool
     is_connected() const noexcept {
-        return _connected_flag;
+        return _state == qb::io::connection_state::ready;
+    }
+
+    /** @brief Where the client stands (`qb::io::connection_state`). */
+    [[nodiscard]] qb::io::connection_state
+    state() const noexcept {
+        return _state;
+    }
+
+    /** @brief Why the client is down; meaningful in `connection_state::down`. */
+    [[nodiscard]] qb::io::down_reason
+    down_reason() const noexcept {
+        return _down_reason;
     }
 
     /**
-     * @brief Disconnect, and complete the teardown before returning.
-     * @details The io base defers dispose() -- and with it on(event::disconnected&&), which fails every
-     *          pending command -- to the watcher's next dispatch. A connect() completing ahead of it
-     *          (libev invokes pending watchers LIFO) restarted the watcher, which clears the event
-     *          disconnect() fed: on(disconnected) never ran, the commands in flight were never failed,
-     *          and the next connection's replies were handed to them (Huly QB-202). The io base's
-     *          disconnect_now() runs the teardown on the spot, without a loop pass -- so a disconnect()
-     *          from a coroutine resumes nothing under it. Called from a reply handler, the teardown runs
-     *          as soon as that handler returns, still before any connect() can complete.
+     * @brief Install the user's handshake hook: it runs on every connection, the first one included, after
+     *        the protocol's handshake (`with_resp3()`, `with_auth()`, `with_select()`) and before any held
+     *        work leaves.
+     * @details The hook writes through the `handshake_client&` it is given, never through the client, and
+     *          returns `true` to let the connection become ready. `false`, or a throw, refuses it: the
+     *          client goes `down` with `handshake_refused` and no run retries it. Its commands still fail
+     *          as a lost link does when the link drops under it, and that is one more attempt. Set it before
+     *          `connect()`; an empty function removes it.
+     */
+    auto &
+    set_handshake(handshake_hook hook) {
+        _hs_hook = std::move(hook);
+        return derived().self_();
+    }
+
+    /** @brief Authenticate every connection with the `default` user's password (AUTH, or HELLO 3 AUTH). */
+    auto &
+    with_auth(std::string password) {
+        _hs_user.reset();
+        _hs_password = std::move(password);
+        return derived().self_();
+    }
+
+    /** @brief Authenticate every connection as an ACL user (AUTH user password, or HELLO 3 AUTH). */
+    auto &
+    with_auth(std::string user, std::string password) {
+        _hs_user     = std::move(user);
+        _hs_password = std::move(password);
+        return derived().self_();
+    }
+
+    /** @brief SELECT database `index` on every connection, after authentication. */
+    auto &
+    with_select(long long index) {
+        _hs_db = index;
+        return derived().self_();
+    }
+
+    /** @brief Speak RESP3 on every connection (HELLO 3, which then also carries the credentials); `false` keeps RESP2. */
+    auto &
+    with_resp3(bool enabled = true) {
+        _hs_resp3 = enabled;
+        return derived().self_();
+    }
+
+    /** @brief Called each time the client becomes ready: the first connection, and after every reconnection. */
+    auto &
+    on_connected(std::function<void()> hook) {
+        _on_connected = std::move(hook);
+        return derived().self_();
+    }
+
+    /**
+     * @brief Called once for every ready connection lost, with its cause (`user`, `peer`, `protocol`).
+     * @details After the work in flight on it failed, before the reconnection decision: `state()` reads
+     *          `reconnecting` or `down` as the policy stands, and a hook that disarms the policy prevents
+     *          the run. `on_connected` and `on_disconnected` strictly alternate.
+     */
+    auto &
+    on_disconnected(std::function<void(qb::io::down_reason)> hook) {
+        _on_disconnected = std::move(hook);
+        return derived().self_();
+    }
+
+    /** @brief Called each time the client reaches `down`, with the reason, after the held work failed. */
+    auto &
+    on_down(std::function<void(qb::io::down_reason)> hook) {
+        _on_down = std::move(hook);
+        return derived().self_();
+    }
+
+    /**
+     * @brief Disconnect for good, and complete the teardown before returning.
+     * @details Terminal: `down` with `down_reason::user`, whatever the reconnection policy -- an explicit
+     *          disconnect starts no run (the qbm-http clients' rule). What was in flight fails with
+     *          "disconnected"; a connection, a handshake or a run in progress is abandoned and what it held
+     *          fails too. The io base's `disconnect_now()` runs the teardown on the spot, without a loop pass
+     *          (Huly QB-202) -- called from a reply handler, as soon as that handler returns. Only a new
+     *          `connect()` leaves `down`.
      */
     void
     disconnect() noexcept {
-        _connected_flag = false;
-        qb::io::async::io<connector<QB_IO_, Derived>>::disconnect_now();
+        switch (_state) {
+            case qb::io::connection_state::idle:
+            case qb::io::connection_state::down:
+                return;
+            case qb::io::connection_state::ready:
+                _state           = qb::io::connection_state::down;
+                _down_reason     = qb::io::down_reason::user;
+                _user_down_epoch = ++_epoch;
+                drop_link_(qb::io::down_reason::user); // on(disconnected) says so, then settles down
+                return;
+            default:
+                ++_epoch; // the attempt or the run in progress steps aside at its next step
+                drop_link_(qb::io::down_reason::user);
+                try {
+                    enter_down_(qb::io::down_reason::user);
+                } catch (...) {
+                    QB_LOG_WARN("[qbm][redis] disconnect: a failure callback threw");
+                }
+                return;
+        }
+    }
+
+private:
+    qb::io::async::task<void>
+    adopted_flow_(std::shared_ptr<bool> alive, std::uint64_t epoch) {
+        if (!*alive || epoch != _epoch)
+            co_return;
+        const auto outcome = co_await handshake_(qb::duration{std::chrono::seconds(3)}, alive, epoch);
+        if (!*alive || epoch != _epoch)
+            co_return;
+        if (outcome == attempt_outcome::refused)
+            enter_down_(qb::io::down_reason::handshake_refused);
+        else if (outcome == attempt_outcome::transport_failed)
+            enter_down_(_loss_cause);
     }
 };
 
@@ -791,6 +1469,8 @@ class Redis
     , public module_commands<Redis<QB_IO_>>
     , public function_commands<Redis<QB_IO_>> {
     friend class connector<QB_IO_, Redis<QB_IO_>>;
+    template <typename, typename>
+    friend class handshake_writer;
 
 public:
     using redis_protocol = typename connector<QB_IO_, Redis<QB_IO_>>::redis_protocol;
@@ -814,6 +1494,26 @@ private:
     };
 
     std::queue<PendingReply> _replies;
+
+    /**
+     * @struct HeldReply
+     * @brief A command submitted while the client was not ready: serialized, waiting for the handshake.
+     * @details Its bytes sit in `_held_out`, in submission order, and leave -- after the handshake's -- once
+     *          the client is ready; its handler then joins `_replies`. It fails once, with the reason, when
+     *          the client goes down, or with "command timed out" once it waited `set_command_timeout()`.
+     */
+    struct HeldReply {
+        std::unique_ptr<IReply>     handler;
+        bool                        blocking;
+        typename PendingReply::Kind kind;
+        std::size_t                 bytes; ///< its serialized length at the front of what `_held_out` holds for it
+        qb::mono_time               since; ///< when it was submitted (the held deadline counts from here)
+    };
+
+    std::deque<HeldReply>     _held;
+    qb::allocator::pipe<char> _held_out;
+    std::size_t               _held_gen{0};       ///< bumped to retire a held-deadline watcher
+    bool                      _held_armed{false}; ///< a held-deadline watcher is live
 
     struct MonitorSession {
         explicit MonitorSession(std::unique_ptr<IReply> callback)
@@ -1009,7 +1709,7 @@ private:
         QB_LOG_WARN("[qbm][redis] command timeout (" << qb::detail::to_ev_seconds(_command_timeout)
                                                      << "s) exceeded with no reply; dropping connection");
         _deadline_tripped = true;
-        this->disconnect();
+        this->drop_unresponsive_link_(); // the client's own decision: recoverable, cause `peer`
     }
 
     void
@@ -1025,8 +1725,8 @@ private:
         // disconnect_now() can defer teardown until this read dispatch returns.
         // Drop any remaining frames from that socket without consuming a queued
         // RESET/QUIT handler; the disconnect event will fail it exactly once.
-        if (qb__unlikely(_monitor || !this->is_connected())) {
-            if (!this->is_connected())
+        if (qb__unlikely(_monitor || !this->link_open_())) {
+            if (!this->link_open_())
                 return;
             if (_monitor->admitted) {
                 if (!_replies.empty() && _replies.front().kind != PendingReply::Kind::command
@@ -1094,9 +1794,9 @@ private:
         }
     }
 
+    /// The link is gone (the connector's on(disconnected)): what was in flight on it fails once.
     void
-    on(qb::io::async::event::disconnected &&) { // handler-access: connector (a friend) calls it
-        QB_LOG_WARN("[qbm][redis] disconnected by remote");
+    on_link_lost_(bool /*was_ready*/) {
         _inflight_blocking = 0;
         cancel_deadline();
         // If the command deadline tripped, report it as a timeout rather than a
@@ -1129,6 +1829,140 @@ private:
             }
         }
         transaction_commands<Redis<QB_IO_>>::reset_transaction_state();
+    }
+
+    /// Ready: the held work leaves, in submission order, behind the handshake's.
+    void
+    on_ready_() {
+        if (_held.empty())
+            return;
+        ++_held_gen;
+        _held_armed = false;
+        while (!_held.empty()) {
+            auto entry = std::move(_held.front());
+            _held.pop_front();
+            this->put_held_bytes_(_held_out, entry.bytes);
+            if (entry.blocking)
+                ++_inflight_blocking;
+            _replies.push(PendingReply{std::move(entry.handler), entry.blocking, entry.kind});
+        }
+        _held_out.reset();
+        this->arm_write_();
+        arm_deadline();
+    }
+
+    /// Fail one held entry: a held MONITOR ends its session, every other entry its handler.
+    void
+    fail_held_entry_(HeldReply &entry, const std::string &reason) {
+        if (entry.kind == PendingReply::Kind::monitor_admission) {
+            if (auto session = std::move(_monitor))
+                end_monitor(session, reason);
+            return;
+        }
+        try {
+            entry.handler->fail(reason);
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] callback error: " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] callback threw a non-std exception");
+        }
+    }
+
+    /// Down: what was held fails once, with the reason. A failure callback that submits again finds the
+    /// client down and is failed on the next loop pass.
+    void
+    on_down_(const std::string &reason) {
+        ++_held_gen;
+        _held_armed = false;
+        auto held   = std::move(_held);
+        _held.clear();
+        _held_out.reset();
+        for (auto &entry : held)
+            fail_held_entry_(entry, reason);
+    }
+
+    /// Arm the held-deadline watcher if a held command can time out and none is live.
+    void
+    arm_held_deadline_() {
+        if (_held_armed || _held.empty() || _command_timeout <= qb::duration::zero())
+            return;
+        _held_armed = true;
+        qb::io::async::coro_scheduler().spawn(held_watch_(++_held_gen, this->connector_alive()));
+    }
+
+    /**
+     * @brief Detached watcher: held commands fail with "command timed out" once they waited the command
+     *        timeout, oldest first, while the client is not ready.
+     */
+    qb::io::async::task<void>
+    held_watch_(std::size_t gen, std::shared_ptr<bool> alive) {
+        for (;;) {
+            if (!*alive || gen != _held_gen)
+                co_return; // destroyed, released or failed meanwhile
+            if (_held.empty() || _command_timeout <= qb::duration::zero()) {
+                _held_armed = false;
+                co_return;
+            }
+            const qb::duration wait = this->held_wait_(_held.front().since, _command_timeout);
+            if (wait > qb::duration::zero()) {
+                co_await qb::io::async::sleep(wait);
+                continue;
+            }
+            auto entry = std::move(_held.front());
+            _held.pop_front();
+            _held_out.free_front(entry.bytes);
+            fail_held_entry_(entry, "command timed out");
+        }
+    }
+
+    /**
+     * @brief A command submitted while the client is not ready: held when a connection, a handshake or a
+     *        run is in progress, failed on the next loop pass when the client is idle or down.
+     */
+    template <typename... Args>
+    QB_NOINLINE void
+    submit_unready_(std::unique_ptr<IReply> handler, typename PendingReply::Kind kind, std::string const &name, Args &&...args) {
+        if (!this->holding_()) {
+            this->fail_soon_(std::move(handler), this->refusal_text_());
+            return;
+        }
+        const std::size_t before = _held_out.size();
+        if (auto error = this->serialize_into_(_held_out, name, std::forward<Args>(args)...)) {
+            handler->fail(*error); // nothing held, nothing written (Huly QB-255)
+            return;
+        }
+        _held.push_back(HeldReply{std::move(handler), is_blocking_command(name), kind, _held_out.size() - before, qb::mono_now()});
+        if (_monitor)
+            _monitor->stopping = true;
+        arm_held_deadline_();
+    }
+
+    /**
+     * @brief The handshake's write path: straight to the link, the gate passed by construction.
+     * @details Called by the handshake hook's `handshake_client` only while its handshake is live.
+     */
+    template <typename Ret, typename Func, typename... Args>
+    void
+    direct_command_(Func &&func, std::string const &name, Args &&...args) {
+        auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        if (command_is(name, "MONITOR")) {
+            handler->fail("MONITOR cannot run in the handshake");
+            return;
+        }
+        if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
+            handler->fail(*error);
+            return;
+        }
+        const bool blocking = is_blocking_command(name);
+        _replies.push(PendingReply{std::move(handler), blocking, PendingReply::Kind::command});
+        if (blocking)
+            ++_inflight_blocking;
+        arm_deadline();
+    }
+
+    Redis &
+    self_() noexcept {
+        return *this;
     }
 
 public:
@@ -1170,13 +2004,18 @@ public:
             handler->fail("MONITOR owns this connection; only RESET or QUIT may end it");
             return *this;
         }
+        const auto kind =
+            _monitor ? (resetting ? PendingReply::Kind::monitor_reset : PendingReply::Kind::monitor_quit) : PendingReply::Kind::command;
+        if (!this->ready_()) [[unlikely]] {
+            // Not ready: held behind the handshake, or failed when nothing would ever send it (R2, R4).
+            submit_unready_(std::move(handler), kind, name, std::forward<Args>(args)...);
+            return *this;
+        }
         if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
             handler->fail(*error); // the client is consistent again: a callback may issue its next command
             return *this;
         }
         const bool blocking = is_blocking_command(name);
-        const auto kind =
-            _monitor ? (resetting ? PendingReply::Kind::monitor_reset : PendingReply::Kind::monitor_quit) : PendingReply::Kind::command;
         _replies.push(PendingReply{std::move(handler), blocking, kind});
         if (_monitor)
             _monitor->stopping = true;
@@ -1201,6 +2040,21 @@ public:
         auto handler = std::make_unique<TReply<Func, std::string>>(std::forward<Func>(func));
         if (_monitor) {
             handler->fail("MONITOR already active");
+            return *this;
+        }
+        if (!this->ready_()) [[unlikely]] {
+            if (!this->holding_()) {
+                this->fail_soon_(std::move(handler), this->refusal_text_());
+                return *this;
+            }
+            const std::size_t before = _held_out.size();
+            if (auto error = this->serialize_into_(_held_out, "MONITOR")) {
+                handler->fail(*error);
+                return *this;
+            }
+            _monitor = std::make_shared<MonitorSession>(std::move(handler));
+            _held.push_back(HeldReply{nullptr, false, PendingReply::Kind::monitor_admission, _held_out.size() - before, qb::mono_now()});
+            arm_held_deadline_();
             return *this;
         }
         if (auto error = this->try_put_command("MONITOR")) {
@@ -1234,10 +2088,12 @@ public:
     /**
      * @brief Drain all pending command replies on the current event loop.
      *
-     * Runs @c qb::io::async::listener::current.run(EVRUN_NOWAIT) until the internal
-     * reply queue is empty. This does **not** block the thread in the kernel; each
-     * iteration is a non-blocking poll. The **caller** still runs synchronously until
-     * every enqueued callback has been invoked (success, Redis error, or disconnect).
+     * Runs @c qb::io::async::listener::current.run(EVRUN_NOWAIT) until no command
+     * waits for its reply: none sent and unanswered, none held while the client is not
+     * ready, no failure still due from the loop. This does **not** block the thread in
+     * the kernel; each iteration is a non-blocking poll. The **caller** still runs
+     * synchronously until every enqueued callback has been invoked (success, Redis
+     * error, or failure: the link lost, the client down, the command timeout).
      *
      * @warning Call from the same thread / loop that drives Redis I/O. Do not
      *          confuse with coroutine @c co_await — this is explicit draining for
@@ -1247,19 +2103,24 @@ public:
      *          coroutine body may call it. There the coroutines a pass makes ready wait
      *          for that body to yield (qb-io, Huly QB-253) -- the command deadline's
      *          watcher among them: from a coroutine, @c await() returns on the replies
-     *          or a disconnect, never on @c set_command_timeout().
+     *          or a disconnect, never on @c set_command_timeout(). Nor does a command
+     *          held there ever leave: the connection, its handshake and the reconnection
+     *          run are coroutines too -- from a coroutine, @c co_await the command.
      */
     Redis &
     await() {
-        while (!_replies.empty())
+        while (!_replies.empty() || !_held.empty() || this->_failing_soon != 0)
             qb::io::async::listener::current.run(EVRUN_NOWAIT);
         return *this;
     }
 
-    /** @brief Number of commands sent awaiting a Redis reply (for pipeline debugging). */
+    /**
+     * @brief Number of commands awaiting their reply (for pipeline debugging): those sent on the link, and
+     *        those held while the client is not ready.
+     */
     [[nodiscard]] std::size_t
     pending_reply_count() const noexcept {
-        return _replies.size();
+        return _replies.size() + _held.size();
     }
 
     /**
@@ -1278,10 +2139,14 @@ public:
     void
     set_command_timeout(qb::duration timeout) noexcept {
         _command_timeout = timeout > qb::duration::zero() ? timeout : qb::duration::zero();
-        if (_command_timeout <= qb::duration::zero())
+        if (_command_timeout <= qb::duration::zero()) {
             cancel_deadline();
-        else
+        } else {
             arm_deadline();
+            ++_held_gen; // a held command's deadline counts from its submission, against the new timeout
+            _held_armed = false;
+            arm_held_deadline_();
+        }
     }
 
     /** @brief Current command deadline (`qb::duration::zero()` = disabled). */
@@ -1399,6 +2264,9 @@ class RedisConsumer
     friend class connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>;
     friend class connection_commands<Derived>;
     friend class subscription_commands<Derived>;
+    template <typename, typename>
+    friend class handshake_writer;
+    friend class HandshakeClient<RedisConsumer<QB_IO_, Derived>>;
 
     constexpr Derived &
     derived() {
@@ -1445,6 +2313,26 @@ private:
 
     std::queue<PendingReply> _replies;
 
+    /**
+     * @struct HeldCommand
+     * @brief A command submitted while the consumer was not ready, waiting for the handshake.
+     * @details A plain command is serialized at once (`bytes` at the front of `_held_out`); a
+     *          (P)(UN)SUBSCRIBE keeps its arguments and is serialized when it leaves, because its
+     *          confirmation count is predicted against the subscriptions of the connection it reaches.
+     *          It waits until the consumer is ready, or fails once when the consumer goes down.
+     */
+    struct HeldCommand {
+        std::unique_ptr<IReply>  handler;
+        std::size_t              bytes      = 0;
+        const char              *pubsub     = nullptr; ///< the verb of a held (P)(UN)SUBSCRIBE, else null
+        bool                     is_unsub   = false;
+        bool                     is_pattern = false;
+        std::vector<std::string> names;
+    };
+
+    std::deque<HeldCommand>   _held;
+    qb::allocator::pipe<char> _held_out;
+
     /// Predicted active subscriptions, advanced synchronously at send time so the
     /// expected confirmation count of "unsubscribe-all" (UNSUBSCRIBE/PUNSUBSCRIBE
     /// with no argument) is exact even when pipelined behind pending subscribes.
@@ -1457,12 +2345,47 @@ private:
     Derived &
     command(Func &&func, std::string const &name, Args &&...args) {
         auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        if (!this->ready_()) [[unlikely]] {
+            hold_command_(std::move(handler), name, std::forward<Args>(args)...);
+            return derived();
+        }
         if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
             handler->fail(*error); // nothing queued, nothing written (Huly QB-255)
             return derived();
         }
         _replies.push(PendingReply{std::move(handler), 1});
         return derived();
+    }
+
+    /// The handshake's write path for a plain command: straight to the link.
+    template <typename Ret, typename Func, typename... Args>
+    void
+    direct_command_(Func &&func, std::string const &name, Args &&...args) {
+        auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
+            handler->fail(*error);
+            return;
+        }
+        _replies.push(PendingReply{std::move(handler), 1});
+    }
+
+    /// A plain command submitted while not ready: held, or failed on the next loop pass when idle or down.
+    template <typename... Args>
+    QB_NOINLINE void
+    hold_command_(std::unique_ptr<IReply> handler, std::string const &name, Args &&...args) {
+        if (!this->holding_()) {
+            this->fail_soon_(std::move(handler), this->refusal_text_());
+            return;
+        }
+        const std::size_t before = _held_out.size();
+        if (auto error = this->serialize_into_(_held_out, name, std::forward<Args>(args)...)) {
+            handler->fail(*error);
+            return;
+        }
+        HeldCommand entry;
+        entry.handler = std::move(handler);
+        entry.bytes   = _held_out.size() - before;
+        _held.push_back(std::move(entry));
     }
 
     // RESET is a reply-ordered barrier for Pub/Sub state. Do not infer its
@@ -1547,15 +2470,103 @@ private:
             handler->fail("RESET pending; await its reply before Pub/Sub commands");
             return derived();
         }
+        if (!this->ready_()) [[unlikely]] {
+            hold_pubsub_(std::move(handler), cmd, is_unsub, is_pattern, names);
+            return derived();
+        }
+        put_pubsub_(std::move(handler), cmd, is_unsub, is_pattern, names);
+        return derived();
+    }
+
+    /// Serialize a (P)(UN)SUBSCRIBE on the link and predict its confirmations.
+    void
+    put_pubsub_(std::unique_ptr<IReply> handler, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
         // Serialized first, the prediction advanced only for a command that will reach the server (Huly QB-255).
         if (auto error = names.empty() ? this->try_put_command(cmd) : this->try_put_command(cmd, names)) {
             handler->fail(*error);
-            return derived();
+            return;
         }
         const int expected = predict_confirmations(is_unsub, is_pattern, names);
         _replies.push(PendingReply{std::move(handler), expected, /*is_subscription=*/true});
+    }
+
+    /// The handshake's write path for a (P)(UN)SUBSCRIBE: straight to the link.
+    template <typename Func>
+    void
+    direct_pubsub_command_(Func &&func, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
+        put_pubsub_(std::make_unique<TReply<Func, qb::redis::subscription>>(std::forward<Func>(func)), cmd, is_unsub, is_pattern, names);
+    }
+
+    /// A (P)(UN)SUBSCRIBE submitted while not ready: held with its arguments, or failed soon when idle or down.
+    QB_NOINLINE void
+    hold_pubsub_(std::unique_ptr<IReply> handler, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
+        if (!this->holding_()) {
+            this->fail_soon_(std::move(handler), this->refusal_text_());
+            return;
+        }
+        HeldCommand entry;
+        entry.handler    = std::move(handler);
+        entry.pubsub     = cmd;
+        entry.is_unsub   = is_unsub;
+        entry.is_pattern = is_pattern;
+        entry.names      = names;
+        _held.push_back(std::move(entry));
+    }
+
+    /// Ready: the held work leaves in submission order; a held (P)(UN)SUBSCRIBE is predicted now.
+    void
+    on_ready_() {
+        if (!_held.empty()) {
+            while (!_held.empty()) {
+                auto entry = std::move(_held.front());
+                _held.pop_front();
+                if (entry.pubsub) {
+                    put_pubsub_(std::move(entry.handler), entry.pubsub, entry.is_unsub, entry.is_pattern, entry.names);
+                } else {
+                    this->put_held_bytes_(_held_out, entry.bytes);
+                    _replies.push(PendingReply{std::move(entry.handler), 1});
+                }
+            }
+            _held_out.reset();
+            this->arm_write_();
+        }
+        derived().consumer_ready_();
+    }
+
+    static void
+    fail_held_entry_(HeldCommand &entry, const std::string &reason) {
+        try {
+            entry.handler->fail(reason);
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] consumer callback error: " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] consumer callback threw a non-std exception");
+        }
+    }
+
+    /// Down: what was held fails once, with the reason.
+    void
+    on_down_(const std::string &reason) {
+        auto held = std::move(_held);
+        _held.clear();
+        _held_out.reset();
+        for (auto &entry : held)
+            fail_held_entry_(entry, reason);
+        derived().consumer_down_();
+    }
+
+    Derived &
+    self_() noexcept {
         return derived();
     }
+
+    // The consumer's part of each transition; RedisCallbackConsumer and RedisCoroConsumer hide the ones they need.
+    void
+    consumer_ready_() {}
+    void
+    consumer_down_() {}
+    void
+    consumer_link_lost_(bool /*was_ready*/) {}
 
     template <typename Ret, typename... Args>
     Reply<Ret>
@@ -1699,13 +2710,13 @@ private:
         }
     }
 
+    /// The link is gone (the connector's on(disconnected)): what was in flight on it fails once.
     void
-    on(qb::io::async::event::disconnected &&e) { // handler-access: connector (a friend) calls it
-        QB_LOG_WARN("[qbm][redis] consumer disconnected");
-        // Predicted subscription state is meaningless across a reconnect.
+    on_link_lost_(bool was_ready) {
+        // Predicted subscription state is meaningless across a reconnect. A RESET in flight clears
+        // _reset_pending through its own completion, failed below; a held one keeps it set.
         _pred_channels.clear();
         _pred_patterns.clear();
-        _reset_pending = false;
         while (!_replies.empty()) {
             auto handler = std::move(_replies.front().handler);
             _replies.pop();
@@ -1719,8 +2730,7 @@ private:
                 QB_LOG_WARN("[qbm][redis] consumer callback threw a non-std exception");
             }
         }
-        if constexpr (has_method_on<Derived, void, qb::io::async::event::disconnected>::value)
-            derived().on(std::forward<qb::io::async::event::disconnected>(e));
+        derived().consumer_link_lost_(was_ready);
     }
 
     void
@@ -1737,15 +2747,15 @@ public:
 
     Derived &
     await() {
-        while (!_replies.empty())
+        while (!_replies.empty() || !_held.empty() || this->_failing_soon != 0)
             qb::io::async::listener::current.run(EVRUN_NOWAIT);
         return derived();
     }
 
-    /** @brief Number of subscription/command replies still awaited (debugging). */
+    /** @brief Number of subscription/command replies still awaited, sent or held (debugging). */
     [[nodiscard]] std::size_t
     pending_reply_count() const noexcept {
-        return _replies.size();
+        return _replies.size() + _held.size();
     }
 
     template <typename T, typename Func>
@@ -1768,12 +2778,11 @@ public:
 template <typename QB_IO_>
 class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>> {
     friend struct has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::redis::error>;
-    friend struct has_method_on<RedisCallbackConsumer<QB_IO_>, void, qb::io::async::event::disconnected>;
     friend RedisConsumer<QB_IO_, RedisCallbackConsumer<QB_IO_>>;
 
     using cb_msg_t  = std::function<void(qb::redis::message &&)>;
     using cb_err_t  = std::function<void(qb::redis::error &&)>;
-    using cb_disc_t = std::function<void(qb::io::async::event::disconnected &&)>;
+    using cb_disc_t = std::function<void(qb::io::down_reason)>;
 
     // Sinks default to a no-op and are NEVER left empty (the ctor and setters below fall back to the
     // no-op), so dispatch is an UNCONDITIONAL call — no per-event `if (cb)` branch. This matters for
@@ -1785,8 +2794,6 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
     cb_msg_t _on_message = [](qb::redis::message &&) {
     };
     cb_err_t _on_error = [](qb::redis::error &&) {
-    };
-    cb_disc_t _on_disconnected = [](qb::io::async::event::disconnected &&) {
     };
 
     // Exception safety of the user callable is handled UPSTREAM: RedisConsumer::on wraps the
@@ -1803,11 +2810,6 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
         _on_error(std::move(error));
     }
 
-    void
-    on(qb::io::async::event::disconnected &&ev) {
-        _on_disconnected(std::move(ev));
-    }
-
 public:
     explicit RedisCallbackConsumer(qb::io::uri uri = {}, cb_msg_t &&on_message = cb_msg_t{}, cb_err_t &&on_error = cb_err_t{},
                                    cb_disc_t &&on_disconnected = cb_disc_t{})
@@ -1819,7 +2821,7 @@ public:
         if (on_error)
             _on_error = std::move(on_error);
         if (on_disconnected)
-            _on_disconnected = std::move(on_disconnected);
+            this->on_disconnected(std::move(on_disconnected)); // the connector's: once per ready connection lost
     }
 
     RedisCallbackConsumer &
@@ -1831,12 +2833,6 @@ public:
     RedisCallbackConsumer &
     on_error(cb_err_t &&cb) {
         _on_error = cb ? std::move(cb) : cb_err_t{[](qb::redis::error &&) {}};
-        return *this;
-    }
-
-    RedisCallbackConsumer &
-    on_disconnected(cb_disc_t &&cb) {
-        _on_disconnected = cb ? std::move(cb) : cb_disc_t{[](qb::io::async::event::disconnected &&) {}};
         return *this;
     }
 };
@@ -1875,9 +2871,6 @@ public:
 template <typename QB_IO_>
 class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>> {
     friend RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>>;
-    // RedisConsumer routes the disconnect here through has_method_on, which sees this private
-    // handler only through this friend -- befriending RedisConsumer is not enough (Huly QB-252).
-    friend struct has_method_on<RedisCoroConsumer<QB_IO_>, void, qb::io::async::event::disconnected>;
 
     /// Default buffered capacity for co_await receive() (tune for burst tolerance).
     static constexpr size_t DEFAULT_MSG_CAPACITY = 8192;
@@ -1938,9 +2931,8 @@ class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>
     }
 
     void
-    on(qb::io::async::event::disconnected &&) {
+    consumer_link_lost_(bool /*was_ready*/) {
         _msg_channel->close(); // receive() drains what is buffered, then yields std::nullopt
-        // Base already cleared _replies and invoked us; no need to re-enter
     }
 
 public:
@@ -1987,6 +2979,138 @@ public:
     ~RedisCoroConsumer() {
         _msg_channel->close();
     }
+};
+
+// ============================================================================
+// Handshake write handle
+// ============================================================================
+
+/**
+ * @class handshake_writer
+ * @brief What every `HandshakeClient` shares: the write path of one handshake, and nothing past it.
+ * @details A command written while the handshake it was made for runs on its link goes straight to the wire,
+ *          ahead of everything the client holds; any other time -- before, after, through a copy that
+ *          outlived the hook -- it fails with "handshake over" and writes nothing. Copyable: a copy is the
+ *          same handle.
+ * @tparam Owner the client or consumer class whose connector made it
+ * @tparam Self  the HandshakeClient specialization (CRTP, for the command mixins)
+ */
+template <typename Owner, typename Self>
+class handshake_writer {
+protected:
+    Owner                *_owner;
+    std::shared_ptr<bool> _alive;
+    std::uint64_t         _id;
+
+    constexpr Self &
+    self() {
+        return static_cast<Self &>(*this);
+    }
+
+public:
+    handshake_writer(Owner &owner, std::shared_ptr<bool> alive, std::uint64_t id) noexcept
+        : _owner(&owner)
+        , _alive(std::move(alive))
+        , _id(id) {}
+
+    /** @brief Whether a command written now reaches the handshake's link. */
+    [[nodiscard]] bool
+    live() const noexcept {
+        return *_alive && _owner->handshake_live_(_id);
+    }
+
+    /** @brief Send a raw command on the handshake's link (callback API); "handshake over" once it ended. */
+    template <typename Ret, typename Func, typename... Args>
+    requires std::invocable<Func, Reply<Ret> &&>
+    Self &
+    command(Func &&func, std::string const &name, Args &&...args) {
+        if (!live()) {
+            TReply<Func, Ret>{std::forward<Func>(func)}.fail("handshake over");
+            return self();
+        }
+        _owner->template direct_command_<Ret>(std::forward<Func>(func), name, std::forward<Args>(args)...);
+        return self();
+    }
+
+    /** @brief Send a raw command on the handshake's link and await its reply (co_await API). */
+    template <typename Ret, typename... Args>
+    auto
+    command(std::string const &name, Args &&...args) {
+        return make_redis_awaiter<Ret>([this, name, args_tuple = std::make_tuple(std::forward<Args>(args)...)](auto &&callback) mutable {
+            std::apply([this, &callback,
+                        &name](auto &&...a) { this->template command<Ret>(std::move(callback), name, std::forward<decltype(a)>(a)...); },
+                       std::move(args_tuple));
+        });
+    }
+
+    template <typename T, typename Func>
+    [[nodiscard]] auto
+    make_coro_command(Func &&operation) {
+        return make_redis_awaiter<T>(std::forward<Func>(operation));
+    }
+};
+
+/**
+ * @brief The plain client's handshake handle: its whole command surface, on the handshake's link.
+ */
+template <typename QB_IO_>
+class HandshakeClient<Redis<QB_IO_>>
+    : public handshake_writer<Redis<QB_IO_>, HandshakeClient<Redis<QB_IO_>>>
+    , public connection_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public server_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public key_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public string_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public list_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public hash_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public set_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public sorted_set_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public hyperloglog_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public geo_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public scripting_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public publish_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public stream_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public bitmap_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public transaction_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public cluster_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public acl_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public module_commands<HandshakeClient<Redis<QB_IO_>>>
+    , public function_commands<HandshakeClient<Redis<QB_IO_>>> {
+    using writer = handshake_writer<Redis<QB_IO_>, HandshakeClient<Redis<QB_IO_>>>;
+
+public:
+    using writer::command;
+    using writer::writer;
+    using publish_commands<HandshakeClient<Redis<QB_IO_>>>::publish;
+    using server_commands<HandshakeClient<Redis<QB_IO_>>>::command;
+};
+
+/**
+ * @brief A consumer's handshake handle: the connection and subscription commands, on the handshake's link.
+ */
+template <typename QB_IO_, typename Derived>
+class HandshakeClient<RedisConsumer<QB_IO_, Derived>>
+    : public handshake_writer<RedisConsumer<QB_IO_, Derived>, HandshakeClient<RedisConsumer<QB_IO_, Derived>>>
+    , public connection_commands<HandshakeClient<RedisConsumer<QB_IO_, Derived>>>
+    , public subscription_commands<HandshakeClient<RedisConsumer<QB_IO_, Derived>>> {
+    using writer = handshake_writer<RedisConsumer<QB_IO_, Derived>, HandshakeClient<RedisConsumer<QB_IO_, Derived>>>;
+    friend class subscription_commands<HandshakeClient<RedisConsumer<QB_IO_, Derived>>>;
+
+    /// subscription_commands' entry point: a (P)(UN)SUBSCRIBE on the handshake's link.
+    template <typename Func>
+    requires std::invocable<Func, Reply<qb::redis::subscription> &&>
+    HandshakeClient &
+    pubsub_command(Func &&func, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
+        if (!this->live()) {
+            TReply<Func, qb::redis::subscription>{std::forward<Func>(func)}.fail("handshake over");
+            return *this;
+        }
+        this->_owner->direct_pubsub_command_(std::forward<Func>(func), cmd, is_unsub, is_pattern, names);
+        return *this;
+    }
+
+public:
+    using writer::command;
+    using writer::writer;
 };
 
 } // namespace detail

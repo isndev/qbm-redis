@@ -29,7 +29,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <optional>
 #include <string>
+#include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include "../../shared/redis_integration_fixture.h"
@@ -455,4 +457,104 @@ TEST_P(ConnectionProtocolModesTest, DISCONNECT_ENDS_THE_CONNECTION_FOR_THE_SERVE
         completed = true;
     });
     run_coro_test_until(completed, 30s);
+}
+
+// ============================================================================
+// The handshake against a live server (Huly QB-126a): ACL credentials, a database and RESP3 replayed on
+// every connection; a refusal is terminal and visible. The ACL user is created on the server under test
+// and deleted after, so the cases need nothing but a Redis 6+ the suite already uses.
+// ============================================================================
+
+namespace {
+
+/// One ACL user for the handshake cases, created on the server under test and deleted with the object.
+struct AclUser {
+    std::string name     = "qbm-redis-hs-" + std::to_string(qb::redis::test::detail::process_id_for_keys());
+    std::string password = "hs-s3cret";
+    bool        ok       = false;
+
+    explicit AclUser(std::vector<std::string> const &rules) {
+        qb::redis::tcp::client admin{qb::io::uri{redis_test_uri()}};
+        if (!qb::io::async::run_sync(admin.connect()))
+            return;
+        (void) qb::io::async::run_sync(admin.command<long long>("ACL", "DELUSER", name));
+        auto r =
+            qb::io::async::run_sync(admin.command<qb::redis::status>("ACL", "SETUSER", name, "reset", "on", ">" + password, "~*", "&*", rules));
+        ok = r.ok();
+    }
+    ~AclUser() {
+        qb::redis::tcp::client admin{qb::io::uri{redis_test_uri()}};
+        if (qb::io::async::run_sync(admin.connect()))
+            (void) qb::io::async::run_sync(admin.command<long long>("ACL", "DELUSER", name));
+    }
+};
+
+} // namespace
+
+TEST_P(ConnectionProtocolModesTest, HANDSHAKE_REPLAYS_ACL_USER_DATABASE_AND_PROTOCOL_ON_EVERY_CONNECTION) {
+    AclUser user{{"+@all"}};
+    ASSERT_TRUE(user.ok) << "ACL SETUSER failed on the server under test";
+    const bool             resp3 = GetParam() == ProtocolMode::RESP3;
+    qb::redis::tcp::client client{REDIS_URI_PROTOCOL};
+    client.with_resp3(resp3).with_auth(user.name, user.password).with_select(3);
+    int connected = 0;
+    client.on_connected([&connected] { ++connected; });
+    ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
+
+    auto check = [&](char const *when) {
+        auto who = qb::io::async::run_sync(client.command<std::string>("ACL", "WHOAMI"));
+        EXPECT_TRUE(who.ok()) << when << ": " << who.error();
+        EXPECT_EQ(who.result(), user.name) << when;
+        auto info = qb::io::async::run_sync(client.command<std::string>("CLIENT", "INFO"));
+        EXPECT_TRUE(info.ok()) << when << ": " << info.error();
+        EXPECT_NE(info.result().find(" db=3 "), std::string::npos) << when << ": " << info.result();
+        EXPECT_NE(info.result().find(resp3 ? " resp=3" : " resp=2"), std::string::npos) << when << ": " << info.result();
+    };
+    check("first connection");
+
+    client.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(20ms).with_jitter(false));
+    const auto id = qb::io::async::run_sync(client.client_id());
+    ASSERT_TRUE(id.ok()) << id.error();
+    {
+        qb::redis::tcp::client admin{REDIS_URI_PROTOCOL};
+        ASSERT_TRUE(qb::io::async::run_sync(admin.connect()));
+        ASSERT_EQ(qb::io::async::run_sync(admin.client_kill("", id.result())).result(), 1);
+    }
+    const auto deadline = steady_clock::now() + 5s; // a watchdog, never the expected path
+    while (connected < 2 && steady_clock::now() < deadline)
+        qb::io::async::run(EVRUN_NOWAIT);
+    ASSERT_EQ(connected, 2) << "the armed run did not bring the connection back";
+    check("after a reconnect"); // nothing redone by hand: the handshake replayed all three
+    client.disconnect();
+}
+
+TEST_P(ConnectionProtocolModesTest, HANDSHAKE_WRONGPASS_IS_TERMINAL) {
+    AclUser user{{"+@all"}};
+    ASSERT_TRUE(user.ok);
+    qb::redis::tcp::client client{REDIS_URI_PROTOCOL};
+    client.with_resp3(GetParam() == ProtocolMode::RESP3).with_auth(user.name, "not-the-password");
+    client.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(1ms).with_jitter(false));
+    std::optional<qb::io::down_reason> down;
+    client.on_down([&down](qb::io::down_reason r) { down = r; });
+
+    EXPECT_FALSE(qb::io::async::run_sync(client.connect()));
+    ASSERT_TRUE(down.has_value());
+    EXPECT_EQ(*down, qb::io::down_reason::handshake_refused);
+    EXPECT_EQ(client.state(), qb::io::connection_state::down);
+    auto after = qb::io::async::run_sync(client.ping());
+    EXPECT_FALSE(after.ok());
+    EXPECT_EQ(after.error().rfind("handshake refused: WRONGPASS", 0), 0u) << after.error();
+}
+
+TEST_P(ConnectionProtocolModesTest, HANDSHAKE_NOPERM_IS_TERMINAL) {
+    AclUser user{{"+@all", "-select"}};
+    ASSERT_TRUE(user.ok);
+    qb::redis::tcp::client client{REDIS_URI_PROTOCOL};
+    client.with_resp3(GetParam() == ProtocolMode::RESP3).with_auth(user.name, user.password).with_select(1);
+
+    EXPECT_FALSE(qb::io::async::run_sync(client.connect()));
+    EXPECT_EQ(client.state(), qb::io::connection_state::down);
+    EXPECT_EQ(client.down_reason(), qb::io::down_reason::handshake_refused);
+    auto after = qb::io::async::run_sync(client.ping());
+    EXPECT_EQ(after.error().rfind("handshake refused: NOPERM", 0), 0u) << after.error();
 }

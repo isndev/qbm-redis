@@ -34,12 +34,12 @@
 // ---------------------------------------
 // The UAF is only reachable when the connect SUCCEEDS (raw_io is open) while the
 // client is dead — a failed/timed-out connect never touches _client. A redis
-// client `connect()` is purely TCP-level (it calls setup_connection on a
-// completed handshake; no server reply is needed for connect() to return true),
-// so we point BOTH the initial connect AND the reconnect at a local listening
-// socket that is bound + listen()'d but never accept()s. The kernel completes
-// the 3-way handshake from its backlog, so each connect succeeds and the
-// completion lambda reaches setup_connection — with NO redis daemon involved.
+// client with no handshake configured is ready as soon as its transport is (no
+// server reply is needed for connect() to return true), so we point BOTH the
+// initial connect AND the reconnect at a local listening socket that is bound +
+// listen()'d; the test accepts only the first connection, to drop it. The kernel
+// completes the 3-way handshake from its backlog, so each connect succeeds and the
+// completion reaches the client — with NO redis daemon involved.
 //
 // We destroy the client after the reconnect starts but before the connect
 // completes, then pump so the lambda fires against the freed client. With the
@@ -82,7 +82,7 @@ run_until(Pred &&pred, std::chrono::milliseconds timeout = 2000ms) {
     return true;
 }
 
-// Open a loopback TCP listener on an ephemeral port that we never accept() on.
+// Open a loopback TCP listener on an ephemeral port (accepted from only to drop a connection).
 // Returns the fd (caller closes) and writes the chosen port to `port`.
 socket_type
 open_loopback_listener(int &port) {
@@ -113,17 +113,19 @@ TEST(ReconnectLifetime, DestroyDuringInflightReconnectNoUAF) {
 
     const auto uri = qb::io::uri{"tcp://127.0.0.1:" + std::to_string(port)};
 
-    // Initial connect goes to the same accept-less loopback listener: the TCP
-    // handshake completes, so connect() succeeds with NO redis daemon.
+    // Initial connect goes to the loopback listener: the TCP handshake completes
+    // from the backlog, so connect() succeeds with NO redis daemon.
     auto client = std::make_unique<qb::redis::tcp::client>(uri);
     ASSERT_TRUE(qb::io::async::run_sync(client->connect())) << "loopback listener should complete the TCP handshake";
 
-    // Enable auto-reconnect (same loopback target) and force a disconnect so a
-    // reconnect is spawned. A 2s connect timeout leaves a comfortable window in
-    // which the connect is in flight.
+    // Enable auto-reconnect (same loopback target) and drop the connection from the server side so a
+    // reconnect is spawned: an explicit disconnect() is terminal and starts no run (Huly QB-126a). A 2s
+    // connect timeout leaves a comfortable window in which the connect is in flight.
     client->enable_auto_reconnect(
         qb::redis::RetryPolicy{}.with_max_attempts(3).with_initial_delay(50ms).with_connect_timeout(2s).with_jitter(false));
-    client->disconnect();
+    const socket_type sfd = ::accept(lfd, nullptr, nullptr); // the server end of the first connection
+    ASSERT_NE(sfd, qb::io::inet::invalid_socket);
+    QB_CLOSESOCKET(sfd); // the peer drops
 
     // Reconnect started: the connect to the listener is registered and in flight
     // (its completion lambda runs on a later loop iteration, not this one).

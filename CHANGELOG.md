@@ -9,6 +9,22 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **The connector's side of the reconnect contract (Huly QB-126a, QB-1090; `qb/io/reconnect.h`).** Every client and
+  consumer reports where it stands and why it went down in qb-io's vocabulary: `state()` (`idle`, `connecting`,
+  `handshaking`, `ready`, `reconnecting`, `down`), `down_reason()` (`user`, `peer`, `protocol`, `retries_exhausted`,
+  `handshake_refused`), and three hooks, empty until set and read only on those transitions -- `on_connected()` each
+  time the client becomes ready, `on_disconnected(down_reason)` once for every ready connection lost (the two strictly
+  alternate), `on_down(down_reason)` when it reaches `down`. The handshake a connection needs is configured once and
+  run on EVERY connection, the first one included, before any held command: `with_resp3()` (HELLO 3, which then also
+  carries the credentials), `with_auth(password)` / `with_auth(user, password)`, `with_select(db)`, and
+  `set_handshake(hook)`, a `task<bool>(handshake_client &)` whose handle writes on the link only while that handshake
+  runs (a leaked copy fails with `"handshake over"`), so no other coroutine can slip a command past the gate. A refusal
+  -- an error reply, or the hook returning `false` -- is terminal (`handshake_refused`); LOADING, BUSY, TRYAGAIN and
+  MASTERDOWN, a link lost during the handshake, or a handshake past the attempt's connect timeout are one more attempt.
+  Pinned by `system/connection/reconnect-contract.cpp` (a loopback peer that reads every command off the wire) and the
+  live `HANDSHAKE_*` cases of `integration/connection/connection-commands.cpp` (an ACL user created on the server under
+  test: WRONGPASS and NOPERM refuse, the user, database and protocol are replayed after a `CLIENT KILL`).
+
 - **A daemon-free client round-trip instrument (Huly QB-248).** `qbm-redis-bench-client-roundtrip`
   measures complete callback GET batches over persistent loopback connections, including the event loop and
   in-process peer. The peer reads and verifies commands before answering; every batch checks reply identity,
@@ -38,6 +54,40 @@ All notable changes to the qbm-redis module are documented here. The format is b
   module from the superproject, refuses an awaiter without it.
 
 ### Changed
+
+- **Behaviour change -- an explicit `disconnect()` is terminal, and only a peer's loss is recovered (Huly QB-126a,
+  QB-1090).** With a `RetryPolicy` armed, `disconnect()` used to start the reconnection run too -- the opposite of the
+  qbm-http clients. It now leaves the client `down` with `down_reason::user`, whatever the policy; a run starts only for
+  a loss the client did not ask for: the peer closed or reset the link, a frame the parser refused, or the command
+  watchdog's own drop. A program that called `disconnect()` to force a reconnection calls `connect()` again. What a
+  failure callback run by a loss decides stands: a `disconnect()` there is terminal too, and a `connect()` there owns
+  the client -- the loss neither starts a run nor takes the client down behind it.
+- **Behaviour change -- `connect()` resolves, and `is_connected()` is true, only once the handshake ran (Huly
+  QB-126a).** `_connected_flag` used to be set as soon as the transport was up, before anything the session needed.
+  `connect()`, `connect_with_retry()` and the callback form now resolve when the configured handshake succeeded (`true`)
+  or the attempt failed, was refused or superseded (`false`); a connect while a connection, a handshake or a run is in
+  progress resolves `false` at once. `setup_connection()` adopts the socket and runs the handshake on it.
+- **Behaviour change -- work is held while the client is not ready, and nothing waits for ever (Huly QB-126a).** A
+  command submitted during a disconnect used to be written at once and leave first on the next connection, ahead of any
+  `auth()` the program sent after reconnecting (`-NOAUTH` on a protected server); with no run armed, or after the run
+  gave up, it never completed. Now a command submitted while `connecting`, `handshaking` or `reconnecting` is HELD and
+  leaves, in submission order, after the handshake; it fails once with the reason when the client goes `down`
+  (`"disconnected"`, `"reconnection attempts exhausted"`, `"handshake refused: <server text>"`), or with
+  `"command timed out"` once it waited `set_command_timeout()`. A command submitted while the client is `idle` or
+  already `down` fails on the next loop pass (`"not connected"` or the down reason) -- never inside the call, so a
+  failure callback that submits again cannot recurse. In-flight work still fails once with `"disconnected"` (or
+  `"command timed out"` from the watchdog) and is never replayed. `await()` and `pending_reply_count()` count held
+  commands too; from inside a coroutine, `co_await` the command instead of calling `await()`, since the connection, its
+  handshake and the reconnection run are coroutines that wait for that body to yield.
+- **Source change -- `cb_consumer::on_disconnected` takes `std::function<void(qb::io::down_reason)>` (Huly
+  QB-126a).** It was `void(qb::io::async::event::disconnected &&)`, called on every transport loss; it is now the
+  connector's hook, shared by the client and both consumers, called once per ready connection lost with its cause
+  (`user`, `peer` or `protocol`), after the work in flight failed and before the reconnection decision -- disarming the
+  policy there still prevents the run (QB-663). The constructor's fourth argument changed with it.
+- **`qb::redis::...::connect_awaiter` is neither copyable nor movable (Huly QB-1000, the redis part).** A copy shared
+  its completion flag with the original, and destroying the copy cancelled the original's connect. Every use returns it
+  as a prvalue or awaits it where it was named; `system/connection/reconnect-contract.cpp` holds the property with a
+  `static_assert`.
 
 - **`qb::redis::RetryPolicy` is qb-io's `qb::io::reconnect_policy` (Huly QB-126).** One reconnection policy for
   qbm-redis, qbm-pgsql and the qbm-http clients (`qb/io/reconnect.h`); every field and builder keeps its name, and

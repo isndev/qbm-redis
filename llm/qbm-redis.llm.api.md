@@ -43,7 +43,7 @@ The Redis command argument units (EXPIRE seconds vs PEXPIRE milliseconds) are a 
 ## Client, transport, retry
 
 ### `qb::redis::detail::Redis<QB_IO_>` — the client
-`redis.h:772` · `class template`. Full client inheriting `connector` + all `*_commands` mixins. Callback + coroutine command APIs, callback pipelining, `await()` drain, opt-in command-deadline watchdog. **Not thread-safe** (single I/O thread/strand).
+`redis.h:1450` · `class template`. Full client inheriting `connector` + all `*_commands` mixins. Callback + coroutine command APIs, callback pipelining, `await()` drain, opt-in command-deadline watchdog. **Not thread-safe** (single I/O thread/strand).
 
 ```cpp
 Redis<QB_IO_>();
@@ -63,27 +63,33 @@ explicit Redis<QB_IO_>(qb::io::uri uri);
 Inherited connector methods: see **connector** below.
 
 ### `qb::redis::detail::connector<QB_IO_,Derived>` — connection base
-`redis.h:248-271` · `class template` : `qb::io::async::tcp::client<...>`. Owns uri, `RetryPolicy`, connection-state flags, TLS verify-peer flag, liveness token. Handles connect, auto-reconnect, protocol switching.
+`redis.h:283-370` · `class template` : `qb::io::async::tcp::client<...>`. Owns uri, `RetryPolicy`, the connection state (`state()`, `down_reason()`), the handshake configuration, the observability hooks, TLS settings, liveness token. Handles connect, the handshake, auto-reconnect, protocol switching.
 
 | Method | Signature | Purpose / reply | Usage |
 |---|---|---|---|
-| `connect` (coro) | `connect_awaiter connect(); connect_awaiter connect(qb::io::uri); connect_awaiter connect(qb::duration timeout); connect_awaiter connect(qb::io::uri, qb::duration timeout)` | co_awaitable connect; `await_resume()` returns `bool`. **timeout is qb::duration** (default 3s). | `bool ok = co_await c.connect(uri, 3s);` |
-| `connect` (callback) | `template<std::invocable<bool> Func> void connect(Func&&, qb::io::uri, qb::duration timeout=3s); void connect(Func&&, qb::duration timeout=3s)` | Callback connect; invokes `func(bool connected)`. **qb::duration** (default 3s). | `c.connect([](bool ok){...}, uri);` |
-| `connect_with_retry` | `qb::io::async::task<bool> connect_with_retry(RetryPolicy policy={}); qb::io::async::task<bool> connect_with_retry(qb::io::uri, RetryPolicy policy={})` | Coroutine retrying connect per `RetryPolicy` (exp. backoff + jitter); re-checks liveness after each suspension. | `bool ok = co_await c.connect_with_retry(pol);` |
+| `connect` (coro) | `connect_awaiter connect(); connect_awaiter connect(qb::io::uri); connect_awaiter connect(qb::duration timeout); connect_awaiter connect(qb::io::uri, qb::duration timeout)` | co_awaitable connect then handshake; `await_resume()` returns `bool`: `true` once the client is ready. `false` at once while a connection, a handshake or a run is in progress. **timeout is qb::duration** (default 3s), and bounds the handshake too. | `bool ok = co_await c.connect(uri, 3s);` |
+| `connect` (callback) | `template<std::invocable<bool> Func> void connect(Func&&, qb::io::uri, qb::duration timeout=3s); void connect(Func&&, qb::duration timeout=3s)` | Callback connect; invokes `func(bool ready)` from the loop, never inside the call. **qb::duration** (default 3s). | `c.connect([](bool ok){...}, uri);` |
+| `connect_with_retry` | `qb::io::async::task<bool> connect_with_retry(RetryPolicy policy={}); qb::io::async::task<bool> connect_with_retry(qb::io::uri, RetryPolicy policy={})` | The policy's attempts, each a transport connect and a handshake; a refused handshake ends it (`handshake_refused`), a spent policy too (`retries_exhausted`). | `bool ok = co_await c.connect_with_retry(pol);` |
 | `set_uri` | `void set_uri(qb::io::uri) noexcept` | Set endpoint URI for subsequent connects. | `c.set_uri(uri);` |
 | `uri` | `qb::io::uri const& uri() const noexcept` | Current endpoint URI. | `auto& u = c.uri();` |
 | `set_verify_peer` / `verify_peer` | `void set_verify_peer(bool) noexcept; bool verify_peer() const noexcept` | TLS server cert + hostname verification for `rediss://` (stcp). Default true; set before `connect()`. | `c.set_verify_peer(false);` |
 | `set_ssl_root_cert` | `void set_ssl_root_cert(std::string ca_file_or_dir)` | `rediss://`: trust a private CA (PEM file/dir) IN ADDITION to the system store, so `verify_peer(true)` validates an internal cert. Set before `connect()`. | `c.set_ssl_root_cert("ca.pem");` |
 | `set_ssl_client_certificate` | `void set_ssl_client_certificate(std::string cert, std::string key)` | `rediss://`: present a client certificate + key (PEM) for mutual TLS (both required). Set before `connect()`. | `c.set_ssl_client_certificate("cl.pem","cl.key");` |
-| `setup_connection` | `bool setup_connection(qb::io::uri, typename QB_IO_::transport_io_type&&)` | Adopt a freshly-opened raw transport, switch to redis protocol, start I/O. False if already connected. | advanced |
-| `enable_auto_reconnect` / `disable_auto_reconnect` | `void enable_auto_reconnect(RetryPolicy policy={}) noexcept; void disable_auto_reconnect() noexcept` | Arm/disarm auto-reconnect (detached coroutine runs `connect_with_retry`); a throwing disconnect notification is logged before the current policy is checked. | `c.enable_auto_reconnect(pol);` |
-| `is_reconnecting` / `is_connected` | `bool is_reconnecting() const noexcept; bool is_connected() const noexcept` | Connection-state queries. | `if (c.is_connected())...` |
-| `disconnect` | `void disconnect() noexcept` | Clear connected flag and complete teardown before returning; the sending side is shut down, so the server reads EOF and drops the client while the object lives (qb-io, Huly QB-1060). From inside a MONITOR callback, the stream stops before the next parsed line and its terminal callback follows that line callback. | `c.disconnect();` |
+| `setup_connection` | `bool setup_connection(qb::io::uri, typename QB_IO_::transport_io_type&&)` | Adopt a freshly-opened raw transport, switch to redis protocol, start I/O and run the handshake on it. False while a connection, a handshake or a run is in progress. | advanced |
+| `enable_auto_reconnect` / `disable_auto_reconnect` | `void enable_auto_reconnect(RetryPolicy policy={}) noexcept; void disable_auto_reconnect() noexcept` | Arm/disarm the reconnection run of a peer's loss (closed or reset link, a parser refusal, the command watchdog); an explicit `disconnect()` never starts one. A throwing `on_disconnected` is logged before the current policy is checked. | `c.enable_auto_reconnect(pol);` |
+| `is_reconnecting` / `is_connected` | `bool is_reconnecting() const noexcept; bool is_connected() const noexcept` | A reconnection run in progress / the client is ready (the handshake ran). | `if (c.is_connected())...` |
+| `state` / `down_reason` | `qb::io::connection_state state() const noexcept; qb::io::down_reason down_reason() const noexcept` | `idle`, `connecting`, `handshaking`, `ready`, `reconnecting`, `down`; why it is down (`user`, `peer`, `protocol`, `retries_exhausted`, `handshake_refused`). | `if (c.state() == qb::io::connection_state::down)...` |
+| `on_connected` / `on_disconnected` / `on_down` | `auto& on_connected(std::function<void()>); auto& on_disconnected(std::function<void(qb::io::down_reason)>); auto& on_down(std::function<void(qb::io::down_reason)>)` | Each time ready; once per ready connection lost, with its cause, before the reconnection decision (the two alternate); each time down, after held work failed. Chainable. | `c.on_connected([]{...});` |
+| `set_handshake` | `auto& set_handshake(std::function<qb::io::async::task<bool>(handshake_client&)>)` | The user's step of every connection's handshake, after the protocol's; `false` or a throw refuses (terminal). Writes only through its `handshake_client&`. | `c.set_handshake([](auto &hs) -> task<bool> {...});` |
+| `with_auth` / `with_select` / `with_resp3` | `auto& with_auth(std::string pw); auto& with_auth(std::string user, std::string pw); auto& with_select(long long db); auto& with_resp3(bool = true)` | The protocol's handshake of every connection: HELLO 3 (carrying the credentials) or AUTH, then SELECT. | `c.with_resp3().with_auth("u","p");` |
+| `disconnect` | `void disconnect() noexcept` | Terminal: `down`, `down_reason::user`, no run whatever the policy. Fails what was in flight and what was held, completing the teardown before returning; the sending side is shut down, so the server reads EOF and drops the client while the object lives (qb-io, Huly QB-1060). From inside a MONITOR callback, the stream stops before the next parsed line and its terminal callback follows that line callback. | `c.disconnect();` |
 
-`connect_awaiter` (`redis.h:417-420`): coroutine awaiter for async connect; default timeout **3s (qb::duration)**; `await_resume()` → `bool`.
+`connect_awaiter` (`redis.h:1017-1063`): coroutine awaiter for async connect; default timeout **3s (qb::duration)**; `await_resume()` → `bool`, `true` once the client is ready. Neither copyable nor movable (Huly QB-1000): a prvalue to `co_await`, or a named one awaited where it was named.
+
+`handshake_client` (`redis.h:300`): the hook's write handle -- the client's command surface (a consumer's: the connection and subscription commands) writing on the link only while that handshake runs; any other time a command through it fails with `"handshake over"`. Copyable; `live()` says whether it still writes.
 
 ### `qb::redis::RetryPolicy`
-`redis.h:227` · `using RetryPolicy = qb::io::reconnect_policy;` — qb-io's shared reconnection backoff (`<qb/io/reconnect.h>`, `qb/src/qb/io/reconnect.h:218`), the same type as `qb::http::RetryPolicy`. **All time fields are `qb::duration`.**
+`redis.h:229` · `using RetryPolicy = qb::io::reconnect_policy;` — qb-io's shared reconnection backoff (`<qb/io/reconnect.h>`, `qb/src/qb/io/reconnect.h:218`), the same type as `qb::http::RetryPolicy`. **All time fields are `qb::duration`.**
 
 ```cpp
 struct qb::io::reconnect_policy {
@@ -103,7 +109,7 @@ auto pol = RetryPolicy{}.with_max_attempts(5).with_initial_delay(200ms).with_max
 ```
 
 ### Transport aliases — `qb::redis::tcp`
-`redis.h:2006` · `struct`. Plaintext-TCP aliases the build always provides:
+`redis.h:3130` · `struct`. Plaintext-TCP aliases the build always provides:
 
 ```cpp
 qb::redis::tcp::client       // detail::Redis<qb::io::transport::tcp>
@@ -112,17 +118,17 @@ qb::redis::tcp::cb_consumer  // detail::RedisCallbackConsumer<...>
 qb::redis::tcp::co_consumer  // detail::RedisCoroConsumer<...>
 template<class D> tcp::consumer = detail::RedisConsumer<..., D>;
 ```
-`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:2018`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
+`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:3142`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
 
-`qb::redis::database<QB_IO_>` (`redis.h:2000`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
-`qb::redis::no_check` (`redis.h:2031`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
+`qb::redis::database<QB_IO_>` (`redis.h:3124`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
+`qb::redis::no_check` (`redis.h:3155`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
 
 ### Pipelining & consumers
-- `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:1339`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
-- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:1395`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`.
-- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:1769`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing. Ctor: `uri` + optional callbacks.
-- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:1876`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
-  - `receive()` (`redis.h:1983`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives. `nullopt` once the consumer is disconnected and what it had received is read; after a reconnect it serves the new connection (unread messages first; re-subscribe).
+- `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:2204`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
+- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:2260`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`.
+- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:2779`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook. Ctor: `uri` + optional callbacks.
+- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:2872`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
+  - `receive()` (`redis.h:2975`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives. `nullopt` once the consumer is disconnected and what it had received is read; after a reconnect it serves the new connection (unread messages first; re-subscribe).
 
 ```cpp
 auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
@@ -626,8 +632,8 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:65`; `what()` vali
 
 ## Protocol & parser (advanced)
 
-- `qb::protocol::redis<IO_>` (`redis.h:87-88`) · `class template : qb::io::async::AProtocol<IO_>` — native RESP2/RESP3 protocol attached to a qb-io session (CRTP). RESP3, `max_nesting_depth=64`, `max_bulk_size=512MiB`, `max_array_size=1,000,000`. `message{std::unique_ptr<parser::Value> reply}` (`redis.h:102-104`) — one parsed reply (ownership moved into `on(message)`).
-- `qb::redis::redis_awaiter<T,Operation>` (`redis.h:704`) — coroutine awaiter yielding `Reply<T>`; guards resume with a `shared_ptr<bool>` so a reply arriving after the awaiter is destroyed no-ops. Its `await_suspend` records `"redis"` in the coroutine scheduler's suspension dump (`redis.h:725-726`). `make_redis_awaiter<T>(Func&&)` (`redis.h:746`) builds one from a callback op.
+- `qb::protocol::redis<IO_>` (`redis.h:89-90`) · `class template : qb::io::async::AProtocol<IO_>` — native RESP2/RESP3 protocol attached to a qb-io session (CRTP). RESP3, `max_nesting_depth=64`, `max_bulk_size=512MiB`, `max_array_size=1,000,000`. `message{std::unique_ptr<parser::Value> reply}` (`redis.h:104-106`) — one parsed reply (ownership moved into `on(message)`).
+- `qb::redis::redis_awaiter<T,Operation>` (`redis.h:1382`) — coroutine awaiter yielding `Reply<T>`; guards resume with a `shared_ptr<bool>` so a reply arriving after the awaiter is destroyed no-ops. Its `await_suspend` records `"redis"` in the coroutine scheduler's suspension dump (`redis.h:1403-1404`). `make_redis_awaiter<T>(Func&&)` (`redis.h:1424`) builds one from a callback op.
 - `qb::redis::parser` namespace (`src/qbm/redis/parser/types.h`): `Value : ValueBase` (`src/qbm/redis/parser/types.h:455`) — variant of all 15 RESP node types (`Null/SimpleString/SimpleError/Integer/BulkString/Array/Boolean/Double/BigNumber/BulkError/VerbatimString/Map/Attribute/Set/Push`) with `is_*`/`as_*`/`to_*` helpers; `ProtocolVersion{RESP2=2,RESP3=3}` (`parser/types.h:43`); `ParseErrorCode` (`parser/types.h:50`) / `ParseError` (`parser/types.h:66`) / `ParseResult<T> = expected<T,ParseError>` (`parser/types.h:119`); `type_id::*` first-byte prefix constants (`parser/types.h:138`); `is_valid_type_prefix` / `is_resp3_type` / `is_aggregate_type`.
 - `ParserConfig::strict_mode` (default `false`) applies to the one-shot `parser::parse()` only, whose input is complete: a byte left after the first value is a `PROTOCOL_ERROR`. The streaming `RespParser` never applies it — there the next bytes are the next pipelined reply.
 - `RespParser::parse()` (`parser/parser.h:191`), `parse_all()` (`parser/parser.h:216`), `has_complete_value()` (`parser/parser.h:260`) and one-shot `parser::parse()` (`parser/parser.h:909`) are caller-side templates with default ABI discriminator: direct calls retain their spelling, while taking an address requires `<>` (for example, `&RespParser::parse<>`). All internal `ParseResult<Value>` helpers are likewise discriminated so mixed C++20/C++23 translation units cannot fold one mode's body into the other.

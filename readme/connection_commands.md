@@ -38,7 +38,7 @@ qb::io::async::task<void> example(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:106-117 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:108-119 -->
 
 This command group carries **no time arguments** — none of its parameters are durations, so the seconds-vs-milliseconds
 boundary documented for key-expiry commands does not apply here. Connect and command *deadlines* (which are
@@ -87,7 +87,7 @@ if (r.ok() && r.result().ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-232 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:208-234 -->
 
 ---
 
@@ -162,9 +162,9 @@ Two argument shapes: one string is the legacy `requirepass` form (authenticates 
 the ACL `user` + `password` form. A rejected credential resolves with `ok() == false` and the server message (
 `WRONGPASS`, `NOPERM`) in `error()`. A `qb::redis::AuthError` class is declared (`reply.h:121`) but nothing in the
 module ever constructs or throws it — a rejected `auth` reaches you only as `reply.error()` text, so do not write a
-`catch` clause for it. Credentials are **not** stored
-on the client, so auto-reconnect does not re-authenticate — re-issue `auth(...)` yourself after a reconnect (
-see [connection.md](./connection.md)).
+`catch` clause for it. An `auth(...)` sent this way holds for one connection only: to authenticate every
+connection, reconnections included, configure it -- `with_auth(user, password)` -- and the client runs it as part of the
+handshake, before anything else (see [connection.md](./connection.md)).
 
 ```cpp
 auto a = co_await redis.auth("app_user", "s3cr3t");   // ACL form
@@ -175,7 +175,7 @@ if (!a)
 // co_await redis.auth("s3cr3t");
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:52-62 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:54-64 -->
 
 ### `echo` — round-trip check
 
@@ -197,7 +197,7 @@ if (r.ok())
     assert(r.result() == "hello");
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:92-104 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:94-106 -->
 
 ### `ping` — liveness probe
 
@@ -226,7 +226,7 @@ if (r.ok())
     assert(r.result() == "PONG");
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:106-117 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:108-119 -->
 
 Callback form:
 
@@ -273,16 +273,16 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 select(Func &&func, long long index);
 ```
 
-Selects the connection's active logical database by zero-based `index`. The selection is per-connection state and is *
-*not** restored across a reconnect — a fresh socket is back on database 0, so re-issue `select(...)` after
-auto-reconnect.
+Selects the connection's active logical database by zero-based `index`. The selection is per-connection state: a
+fresh socket is back on database 0, so a `select(...)` sent by hand is lost at the next reconnection. Configure it --
+`with_select(index)` -- and every connection's handshake selects it.
 
 ```cpp
 auto r = co_await redis.select(1);
 assert(r.ok() && r.result().ok());
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:206-232 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:208-234 -->
 
 ### `swapdb` — swap two databases
 
@@ -304,7 +304,7 @@ auto r = co_await redis.swapdb(0, 1);
 assert(r.ok() && r.result().ok());
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:234-267 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:236-269 -->
 
 ### `reset` — reset connection state
 
@@ -330,7 +330,7 @@ if (reply.ok()) {
 }
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:187-204 -->
+<!-- src: qbm/redis/tests/integration/connection/connection-commands.cpp:189-206 -->
 
 On a Pub/Sub consumer, `RESET` is a **reply-ordered state barrier**. A successful reply clears the client's
 predicted channel and pattern subscriptions before the callback or coroutine resumes; an error leaves the old
@@ -339,12 +339,12 @@ instead of guessing how many confirmations the server will send. Await `reset()`
 After success, an unsubscribe-all from the empty state resolves on Redis's single empty-state confirmation; re-authenticate
 if the server requires it, and call `hello(3)` again to regain RESP3. The connection itself remains open. The live
 RESP2/RESP3 tests cover channels, patterns, a pipelined command after the barrier and a command rejected during it.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1468-1502,1544-1557; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2391-2425,2467-2478; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
 
 
 
 > Three unrelated APIs share the name `reset`/`reset_*` in this module — the protocol parser's `redis<IO_>::reset()` (
-`redis.h:203`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:273`), and this user-facing
+`redis.h:205`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:273`), and this user-facing
 `RESET` command. This page documents only the last one.
 
 ---
@@ -378,7 +378,7 @@ qb::io::async::task<void> handshake(qb::redis::tcp::client &redis) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h; qbm/redis/tests/integration/connection/connection-commands.cpp:166-183 (HELLO+PING, composed) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h; qbm/redis/tests/integration/connection/connection-commands.cpp:168-185 (HELLO+PING, composed) -->
 
 ### Callback chaining
 
@@ -407,9 +407,9 @@ redis.connect([&redis](bool connected) {
   the literal `"OK"`, also check `reply.result().ok()`.
 - **`hello` returns `qb::json`, not a string.** Its RESP2 flat-map and RESP3 map both become objects with current
   server replies. Check `info.is_object()` and `contains(...)` before indexing; other commands can retain array shape.
-- **Authentication is a command, not a connect parameter.** The URI carries no credentials, and the client never stores
-  them. After auto-reconnect you must re-`auth`, re-`hello(3)`, re-`select`, and re-`subscribe` — none of this
-  connection state survives a reconnect.
+- **Configure the session; do not send it.** The URI carries no credentials. `auth`, `hello(3)` and `select` sent by
+  hand hold for one connection; `with_auth()`, `with_resp3()` and `with_select()` (and `set_handshake()`) are replayed by
+  the handshake of every connection. A consumer's subscriptions are not replayed: re-`subscribe`.
 - **`quit` closes the link; `reset` does not.** `RESET` clears connection state and leaves the socket open for reuse;
   `QUIT` asks the server to hang up. Do not keep issuing commands after `quit()`.
 - **No time arguments here.** This group takes only `int` / `long long` / `std::string`. The `qb::duration` vs

@@ -47,6 +47,7 @@
 #include <algorithm>
 #include <chrono>
 #include <gtest/gtest.h>
+#include <optional>
 #include <string>
 #include <vector>
 #include <qb/io/async.h>
@@ -155,6 +156,33 @@ server_busy_loop_script() {
     return busy_loop_script(calibrated_stall_iterations());
 }
 
+/// CLIENT KILL from another connection: a loss the client did not ask for -- the peer's, which an armed
+/// reconnection run recovers from -- unlike its own disconnect(), which is terminal (Huly QB-126a).
+qb::io::async::task<bool>
+kill_from_outside(long long id) {
+    qb::redis::tcp::client executioner{qb::io::uri{redis_test_uri()}};
+    if (!co_await executioner.connect())
+        co_return false;
+    auto killed = co_await executioner.client_kill("", id);
+    co_return killed.ok() && killed.result() == 1;
+}
+
+/// The connection's protocol as the server reports it: HELLO with no version changes nothing.
+long long
+reported_proto(qb::redis::tcp::client &client) {
+    auto r = qb::io::async::run_sync(client.command<qb::json>("HELLO"));
+    if (!r.ok())
+        return -1;
+    const auto &j = r.result();
+    if (j.is_object() && j.contains("proto"))
+        return j["proto"].get<long long>();
+    if (j.is_array())
+        for (std::size_t i = 0; i + 1 < j.size(); i += 2)
+            if (j[i].is_string() && j[i].get<std::string>() == "proto")
+                return j[i + 1].get<long long>();
+    return -1;
+}
+
 class ReconnectProtocolModesTest : public ProtocolModesTestBase {};
 
 } // namespace
@@ -162,77 +190,44 @@ class ReconnectProtocolModesTest : public ProtocolModesTestBase {};
 INSTANTIATE_PROTOCOL_MODES(ReconnectProtocolModesTest);
 
 // ============================================================================
-// 1. Auto-reconnect succeeds after a manual disconnect.
+// 1. A connection the server kills is recovered by the armed run, and the handshake -- RESP3 here --
+//    is replayed on the new connection by itself: no poll, no hello(3) by hand (Huly QB-126a).
 // ============================================================================
-TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_AFTER_MANUAL_DISCONNECT) {
+TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_AFTER_THE_SERVER_KILLS_THE_CONNECTION) {
     qb::redis::tcp::client client{qb::io::uri{redis_test_uri()}};
-
-    bool initially_connected = false;
-    auto setup               = [&client, &initially_connected]() -> qb::io::async::task<void> {
-        bool connected = co_await client.connect();
-        if (connected && GetParam() == ProtocolMode::RESP3) {
-            auto h    = co_await client.hello(3);
-            connected = h.ok();
-        }
-        initially_connected = connected; // set LAST: the whole setup has finished when the test sees it
-    };
-    qb::io::async::coro_scheduler().spawn(setup());
-    ASSERT_TRUE(run_until([&] { return initially_connected; }));
-    ASSERT_TRUE(client.is_connected());
+    const long long        proto = GetParam() == ProtocolMode::RESP3 ? 3 : 2;
+    client.with_resp3(proto == 3);
+    int connected = 0;
+    client.on_connected([&connected] { ++connected; });
+    ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
+    ASSERT_EQ(connected, 1);
+    EXPECT_EQ(reported_proto(client), proto);
 
     client.enable_auto_reconnect(
         qb::redis::RetryPolicy{}.with_initial_delay(50ms).with_max_delay(200ms).with_connect_timeout(2s).with_jitter(false));
+    const auto id = qb::io::async::run_sync(client.client_id());
+    ASSERT_TRUE(id.ok()) << id.error();
+    ASSERT_TRUE(qb::io::async::run_sync(kill_from_outside(id.result())));
 
-    client.disconnect();
-    EXPECT_FALSE(client.is_connected());
-
-    ASSERT_TRUE(run_until([&] { return client.is_reconnecting(); }, 1000ms));
-    ASSERT_TRUE(run_until([&] { return !client.is_reconnecting(); }, 5000ms));
+    ASSERT_TRUE(run_until([&] { return connected == 2; }, 5000ms)) << "the armed run did not bring the connection back";
     EXPECT_TRUE(client.is_connected());
-
-    if (GetParam() == ProtocolMode::RESP3) {
-        bool hello_done = false;
-        bool hello_ok   = false;
-        qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
-            auto h     = co_await client.hello(3);
-            hello_ok   = h.ok();
-            hello_done = true;
-        });
-        ASSERT_TRUE(run_until([&] { return hello_done; }, 2000ms)) << "HELLO 3 after reconnect did not complete";
-        ASSERT_TRUE(hello_ok) << "HELLO 3 failed after reconnect";
-    }
-
-    bool ping_ok   = false;
-    bool ping_done = false;
-    qb::io::async::coro_scheduler().spawn([&]() -> qb::io::async::task<void> {
-        auto r    = co_await client.ping();
-        ping_ok   = r.ok();
-        ping_done = true;
-    });
-    ASSERT_TRUE(run_until([&] { return ping_done; }, 2000ms));
-    EXPECT_TRUE(ping_ok);
+    EXPECT_EQ(reported_proto(client), proto) << "the handshake must replay the protocol on the new connection";
+    auto ping = qb::io::async::run_sync(client.ping());
+    EXPECT_TRUE(ping.ok()) << ping.error();
 }
 
 // ============================================================================
-// 2. Auto-reconnect exhausts attempts on an unreachable host.
-//    Observer fires once per failed attempt except the last → exactly 2 for 2 attempts.
+// 2. Auto-reconnect exhausts attempts on an unreachable host: the client is down, retries_exhausted.
+//    Observer fires once per failed attempt except the last → exactly 2 for 3 attempts.
 // ============================================================================
 TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_EXHAUSTS_ATTEMPTS) {
     qb::redis::tcp::client client{qb::io::uri{redis_test_uri()}};
+    client.with_resp3(GetParam() == ProtocolMode::RESP3);
+    ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
 
-    bool initially_connected = false;
-    auto setup               = [&client, &initially_connected]() -> qb::io::async::task<void> {
-        bool connected = co_await client.connect();
-        if (connected && GetParam() == ProtocolMode::RESP3) {
-            auto h    = co_await client.hello(3);
-            connected = h.ok();
-        }
-        initially_connected = connected; // set LAST: the whole setup has finished when the test sees it
-    };
-    qb::io::async::coro_scheduler().spawn(setup());
-    ASSERT_TRUE(run_until([&] { return initially_connected; }));
-
-    int retry_count = 0;
+    int                                retry_count = 0;
+    std::optional<qb::io::down_reason> down;
+    client.on_down([&down](qb::io::down_reason r) { down = r; });
     client.enable_auto_reconnect(qb::redis::RetryPolicy{}
                                      .with_max_attempts(3)
                                      .with_initial_delay(50ms)
@@ -241,52 +236,52 @@ TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_EXHAUSTS_ATTEMPTS) {
                                      .with_jitter(false)
                                      .with_on_retry([&](int /*attempt*/, qb::duration /*wait*/) { ++retry_count; }));
 
-    // Point the client at an unreachable host so every reconnect attempt fails fast.
+    // Point the client at an unreachable host so every reconnect attempt fails fast, then lose the
+    // connection the way a run recovers from.
+    const auto id = qb::io::async::run_sync(client.client_id());
+    ASSERT_TRUE(id.ok()) << id.error();
     client.set_uri(qb::io::uri{"tcp://localhost:19999"});
-    client.disconnect();
+    ASSERT_TRUE(qb::io::async::run_sync(kill_from_outside(id.result())));
 
-    // disconnect() defers teardown to the io watcher's own callback, so _is_reconnecting is
-    // NOT set synchronously — on(disconnected) flips it true on a later loop turn. We must
-    // therefore first pump until reconnection has STARTED; otherwise `!is_reconnecting()`
-    // is trivially true the instant after disconnect() and the wait below returns before a
-    // single attempt runs (on_retry would never fire → retry_count stuck at 0).
-    ASSERT_TRUE(run_until([&] { return client.is_reconnecting(); }, 1000ms)) << "auto-reconnect never started";
-    // Then wait until reconnection has finished (all attempts exhausted).
-    ASSERT_TRUE(run_until([&] { return !client.is_reconnecting(); }, 5000ms));
+    ASSERT_TRUE(run_until([&] { return down.has_value(); }, 10000ms)) << "the run never ended";
+    EXPECT_EQ(*down, qb::io::down_reason::retries_exhausted);
+    EXPECT_EQ(client.state(), qb::io::connection_state::down);
     EXPECT_FALSE(client.is_connected());
+    EXPECT_FALSE(client.is_reconnecting());
     // on_retry fires once after each failed attempt except the last: 3 attempts → exactly 2.
     EXPECT_EQ(retry_count, 2);
 }
 
 // ============================================================================
-// 3. disable_auto_reconnect → no reconnect after disconnect.
+// 3. No run without a policy, and none after an explicit disconnect() even with one (R1).
 // ============================================================================
 TEST_P(ReconnectProtocolModesTest, AUTO_RECONNECT_CAN_BE_DISABLED) {
     qb::redis::tcp::client client{qb::io::uri{redis_test_uri()}};
-
-    bool initially_connected = false;
-    auto setup               = [&client, &initially_connected]() -> qb::io::async::task<void> {
-        bool connected = co_await client.connect();
-        if (connected && GetParam() == ProtocolMode::RESP3) {
-            auto h    = co_await client.hello(3);
-            connected = h.ok();
-        }
-        initially_connected = connected; // set LAST: the whole setup has finished when the test sees it
-    };
-    qb::io::async::coro_scheduler().spawn(setup());
-    ASSERT_TRUE(run_until([&] { return initially_connected; }));
+    ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
 
     client.enable_auto_reconnect();
     client.disable_auto_reconnect();
-    client.disconnect();
+    const auto id = qb::io::async::run_sync(client.client_id());
+    ASSERT_TRUE(id.ok()) << id.error();
+    ASSERT_TRUE(qb::io::async::run_sync(kill_from_outside(id.result())));
 
-    // Brief pump: no reconnect should ever start. (Bounded, not a guarantee-by-sleep —
-    // is_reconnecting must remain false the whole window.)
-    bool started = false;
-    (void) run_until([&] { return (started = client.is_reconnecting()); }, 300ms);
-    EXPECT_FALSE(started);
-    EXPECT_FALSE(client.is_connected());
+    ASSERT_TRUE(run_until([&] { return client.state() == qb::io::connection_state::down; }, 3000ms));
+    EXPECT_EQ(client.down_reason(), qb::io::down_reason::peer);
     EXPECT_FALSE(client.is_reconnecting());
+}
+
+TEST_P(ReconnectProtocolModesTest, EXPLICIT_DISCONNECT_IS_TERMINAL_WITH_A_POLICY_ARMED) {
+    qb::redis::tcp::client client{qb::io::uri{redis_test_uri()}};
+    ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
+    client.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(1ms).with_jitter(false));
+
+    client.disconnect();
+    EXPECT_EQ(client.state(), qb::io::connection_state::down);
+    EXPECT_EQ(client.down_reason(), qb::io::down_reason::user);
+    // Bounded, not a guarantee-by-sleep: no run may start the whole window.
+    bool started = false;
+    (void) run_until([&] { return (started = client.is_reconnecting() || client.is_connected()); }, 300ms);
+    EXPECT_FALSE(started) << "an explicit disconnect() must start no run";
 }
 
 // ============================================================================
@@ -331,33 +326,23 @@ TEST_P(ReconnectProtocolModesTest, COMMANDS_FAIL_GRACEFULLY_ON_DISCONNECT) {
 }
 
 // ============================================================================
-// 6. Reconnect on the shared fixture client, then PING works.
+// 6. Reconnect on the shared fixture client, then PING works: a killed connection comes back with its
+//    handshake, and a command submitted meanwhile waits for it instead of failing.
 // ============================================================================
 TEST_P(ReconnectProtocolModesTest, RECONNECT_THEN_PING) {
-    bool done = false;
-    qb::io::async::coro_scheduler().spawn([this, &done]() -> qb::io::async::task<void> {
-        PROTOCOL_ENSURE_RESP3();
-        redis.enable_auto_reconnect(
-            qb::redis::RetryPolicy{}.with_initial_delay(50ms).with_max_delay(200ms).with_connect_timeout(2s).with_jitter(false));
-        redis.disconnect();
-        for (int i = 0; i < 100 && (redis.is_reconnecting() || !redis.is_connected()); ++i) {
-            co_await qb::io::async::sleep(50ms);
-        }
-        if (!redis.is_connected()) {
-            ADD_FAILURE() << "Reconnect did not complete";
-            done = true;
-            co_return;
-        }
-        if (GetParam() == ProtocolMode::RESP3) {
-            auto h = co_await redis.hello(3);
-            EXPECT_TRUE(h.ok()) << h.error();
-        }
-        auto r = co_await redis.ping();
-        EXPECT_TRUE(r.ok()) << r.error();
-        EXPECT_EQ(r.result(), "PONG");
-        done = true;
-    });
-    run_coro_test_until(done);
+    redis.with_resp3(GetParam() == ProtocolMode::RESP3); // the next handshake applies it
+    redis.enable_auto_reconnect(
+        qb::redis::RetryPolicy{}.with_initial_delay(50ms).with_max_delay(200ms).with_connect_timeout(2s).with_jitter(false));
+    const auto id = qb::io::async::run_sync(redis.client_id());
+    ASSERT_TRUE(id.ok()) << id.error();
+    ASSERT_TRUE(qb::io::async::run_sync(kill_from_outside(id.result())));
+    ASSERT_TRUE(run_until([&] { return redis.is_reconnecting() || !redis.is_connected(); }, 2000ms)) << "the client never saw the kill";
+
+    // Submitted while the run is in progress: held, then sent once the client is ready again.
+    auto r = qb::io::async::run_sync(redis.ping());
+    EXPECT_TRUE(r.ok()) << r.error();
+    EXPECT_EQ(r.result(), "PONG");
+    EXPECT_TRUE(redis.is_connected());
 }
 
 // ============================================================================

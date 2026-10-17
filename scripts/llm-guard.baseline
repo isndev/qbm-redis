@@ -20,26 +20,24 @@
 llm/qbm-redis.llm.api.md	symbol:qb_load_modules	qb's own CMake function, defined in qb/cmake/qbFunctions.cmake (and re-exported by qb/cmake/qbConfig.cmake).
 llm/qbm-redis.llm.md	symbol:init	`qb::io::async::init()` — qb-io's per-thread loop initialiser, qb/src/qb/io/async/listener.h:1534. The sentence names it as the thing to call once from synchronous code.
 llm/qbm-redis.llm.md	symbol:run_sync	`qb::io::async::run_sync(...)` — qb-io's synchronous pump, qb/src/qb/io/async/coroutine/utils.h:285. Named in the same sentence, for the same reason.
-llm/qbm-redis.llm.api.md	symbol:with_max_attempts	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
 llm/qbm-redis.llm.api.md	symbol:with_initial_delay	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
 llm/qbm-redis.llm.api.md	symbol:with_max_delay	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
 llm/qbm-redis.llm.api.md	symbol:with_multiplier	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
 llm/qbm-redis.llm.api.md	symbol:with_jitter	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
-llm/qbm-redis.llm.api.md	symbol:with_connect_timeout	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
 llm/qbm-redis.llm.api.md	symbol:with_on_retry	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
 
 # The one below is the content rule inferring a citation's subject from the nearest
 # backticked word where that word is not the subject.  The citation is correct.
 #
-# It used to be three.  The other two — `redis.h:242-242` for the connector class and
+# It used to be three.  The other two — the `redis.h` entry on line 242 for the connector class and
 # `types.h:336-336` for `struct score` — are gone because the citations they excused were
 # WIDENED to hold their own subject rather than baselined around it: the connector heading now
-# cites `redis.h:246-269`, the class declaration through the state members the sentence lists
-# (`_uri` :261, `std::optional<RetryPolicy> _reconnect_policy` :262, the two connection-state
-# flags :263-264, `_verify_peer` :265, the `_alive` liveness token :269), and the score row now
+# cites the class template through the state members the sentence lists (`_uri`,
+# `std::optional<RetryPolicy> _reconnect_policy`, the connection state, `_verify_peer`, the `_alive`
+# liveness token -- read the current span in llm/qbm-redis.llm.api.md), and the score row now
 # cites `types.h:337-354`, `struct score` (337-346) through `struct score_member` (349-354).
 # Note what the deleted rationales asserted: "`struct score` is types.h:336" and "`score_member`
 # is :348".  Both were one line low when they were written — 337 and 349 — so the prose that
 # justified the exception was itself mis-citing the header.  Nothing gates that prose; read it
 # against the source before trusting it, and re-derive it whenever an entry moves.
-llm/qbm-redis.llm.api.md	redis.h:772-772	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:772. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.
+llm/qbm-redis.llm.api.md	redis.h:1450-1450	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:1450. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.

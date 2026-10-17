@@ -30,10 +30,13 @@
  *     the teardown to the watcher's next dispatch, where a connect() completing first could
  *     cancel it (libev runs pending watchers last-in, first-out): the commands in flight were
  *     then never failed and received the next connection's replies;
- *   - the next connection carries only what was queued after the disconnect. A command
- *     serialized but never flushed used to go out first on it, and its reply was handed to
- *     whichever command was then first in line -- the FIFO off by one for good;
- *   - a command a failing callback re-issues (the documented retry shape) does leave with the
+ *   - the next connection carries nothing of the one that dropped. A command serialized but never
+ *     flushed used to go out first on it, and its reply was handed to whichever command was then
+ *     first in line -- the FIFO off by one for good. Since the reconnect contract (Huly QB-126a) an
+ *     explicit disconnect() is terminal: what a failing callback re-issues after it fails too, and
+ *     the next connect() carries nothing at all;
+ *   - over a loss the client recovers from -- the peer drops, a reconnection run is armed -- a
+ *     command a failing callback re-issues (the documented retry shape) is HELD, leaves with the
  *     next connection, and receives ITS reply.
  */
 
@@ -111,6 +114,23 @@ const std::string kEchoFresh = "*2\r\n$4\r\nECHO\r\n$5\r\nfresh\r\n";
 
 } // namespace
 
+namespace reconnect_carries_nothing_test {
+
+// One argument that cannot be serialized: it throws what the size guard throws (Huly QB-255).
+struct Unserializable {};
+
+inline std::size_t
+redis_count(Unserializable const &) noexcept {
+    return 1;
+}
+
+inline bool
+to_redis_string(qb::allocator::pipe<char> &, Unserializable const &) {
+    throw qb::redis::SecurityError("String too large");
+}
+
+} // namespace reconnect_carries_nothing_test
+
 TEST(RedisReconnectCarriesNothing, DisconnectHasFailedTheQueuedCommandsWhenItReturns) {
     qb::io::async::init();
     LoopbackServer         server;
@@ -137,20 +157,54 @@ TEST(RedisReconnectCarriesNothing, DisconnectHasFailedTheQueuedCommandsWhenItRet
     EXPECT_FALSE(client.is_connected());
 }
 
-TEST(RedisReconnectCarriesNothing, TheNextConnectionCarriesOnlyWhatWasQueuedAfterTheDisconnect) {
+TEST(RedisReconnectCarriesNothing, AfterAnExplicitDisconnectTheNextConnectionCarriesNothing) {
     qb::io::async::init();
     LoopbackServer         server;
     qb::redis::tcp::client client{qb::io::uri{server.uri()}};
     ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
     auto first = server.accept_one();
 
-    int         fresh_calls = 0;
-    std::string fresh_reply;
+    int         reissued_calls = 0;
+    std::string reissued_error;
     // ECHO stale is serialized but never flushed -- no loop pass runs before the disconnect. Its
     // failing callback re-issues a command: the documented retry shape.
     client.command<std::string>(
         [&](qb::redis::Reply<std::string> &&r) {
             EXPECT_FALSE(r.ok()) << "the command that never left must be failed, not answered";
+            client.command<std::string>(
+                [&](qb::redis::Reply<std::string> &&r2) {
+                    ++reissued_calls;
+                    reissued_error = r2.error();
+                },
+                "ECHO", "fresh");
+        },
+        "ECHO", "stale");
+    client.disconnect();
+    EXPECT_EQ(client.state(), qb::io::connection_state::down);
+    // disconnect() is terminal: the re-issued command waits for no connection, it fails from the loop.
+    ASSERT_TRUE(run_until([&] { return reissued_calls == 1; })) << "a command issued after disconnect() must not wait";
+    EXPECT_EQ(reissued_error, "disconnected");
+    EXPECT_EQ(client.pending_reply_count(), 0u);
+
+    ASSERT_TRUE(qb::io::async::run_sync(client.connect())) << "the same client reconnects";
+    auto              second = server.accept_one();
+    const std::string got    = read_while_pumping(second, 1);
+    EXPECT_TRUE(got.empty()) << "the next connection must carry nothing of the one that dropped, got: " << got;
+}
+
+TEST(RedisReconnectCarriesNothing, ACommandAFailingCallbackReissuesLeavesWithTheRecoveredConnection) {
+    qb::io::async::init();
+    LoopbackServer         server;
+    qb::redis::tcp::client client{qb::io::uri{server.uri()}};
+    client.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(1ms).with_jitter(false));
+    ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
+    auto first = server.accept_one();
+
+    int         fresh_calls = 0;
+    std::string fresh_reply;
+    client.command<std::string>(
+        [&](qb::redis::Reply<std::string> &&r) {
+            EXPECT_FALSE(r.ok()) << "the command in flight on the dropped link fails";
             client.command<std::string>(
                 [&](qb::redis::Reply<std::string> &&r2) {
                     ++fresh_calls;
@@ -160,19 +214,61 @@ TEST(RedisReconnectCarriesNothing, TheNextConnectionCarriesOnlyWhatWasQueuedAfte
                 "ECHO", "fresh");
         },
         "ECHO", "stale");
-    client.disconnect();
-    ASSERT_EQ(client.pending_reply_count(), 1u) << "only the re-issued command may be waiting";
+    const std::string kEchoStale = "*2\r\n$4\r\nECHO\r\n$5\r\nstale\r\n";
+    ASSERT_EQ(read_while_pumping(first, kEchoStale.size()), kEchoStale);
+    server.listener.set_nonblocking(true); // the second accept is polled while the client's loop runs
+    first.disconnect();                    // the peer drops: a loss the armed run recovers from
 
-    ASSERT_TRUE(qb::io::async::run_sync(client.connect())) << "the same client reconnects";
-    auto second = server.accept_one();
+    ASSERT_TRUE(run_until([&] { return client.is_reconnecting() || client.is_connected(); }));
+    EXPECT_EQ(client.pending_reply_count(), 1u) << "only the re-issued command may be waiting, held";
+    qb::io::tcp::socket second;
+    bool                accepted = false; // run_until re-evaluates its predicate: accept once, then remember it
+    ASSERT_TRUE(run_until([&] { return accepted || (accepted = server.listener.accept(second) == qb::io::SocketStatus::Done); }));
+    second.set_nonblocking(true);
 
     // Exactly the re-issued command, and nothing of the connection that dropped.
     const std::string got = read_while_pumping(second, kEchoFresh.size());
-    EXPECT_EQ(got, kEchoFresh) << "the next connection must carry only what was queued after the disconnect";
+    EXPECT_EQ(got, kEchoFresh) << "the next connection must carry only what was held after the loss";
 
     // And its reply reaches it -- not a command that was failed.
     const std::string reply = "$5\r\nfresh\r\n";
     ASSERT_EQ(second.write(reply.data(), reply.size()), static_cast<int>(reply.size()));
     ASSERT_TRUE(run_until([&] { return fresh_calls == 1; })) << "the re-issued command never got its reply";
     EXPECT_EQ(fresh_reply, "fresh");
+}
+
+// Huly QB-255 on the wire: a command that cannot be serialized leaves no partial frame behind, whether the
+// client is ready (it writes to the link) or connecting (it holds) -- the next connection carries exactly
+// the command that followed it.
+TEST(RedisReconnectCarriesNothing, AnUnserializableCommandLeavesNoPartialFrameOnTheWire) {
+    qb::io::async::init();
+    LoopbackServer         server;
+    qb::redis::tcp::client client{qb::io::uri{server.uri()}};
+
+    bool        held_failed = false;
+    std::string held_error;
+    client.connect([](bool) {}, client.uri()); // connecting: what follows is held
+    client.command<qb::redis::status>(
+        [&](qb::redis::Reply<qb::redis::status> &&r) {
+            held_failed = !r.ok();
+            held_error  = r.error();
+        },
+        "SET", "held", reconnect_carries_nothing_test::Unserializable{});
+    EXPECT_TRUE(held_failed) << "the failure arrives before command() returns";
+    EXPECT_EQ(held_error, "String too large");
+    client.command<qb::redis::status>([](qb::redis::Reply<qb::redis::status> &&) {}, "SET", "k", "1");
+    ASSERT_TRUE(run_until([&] { return client.is_connected(); }));
+    auto              peer     = server.accept_one();
+    const std::string kHeldSet = "*3\r\n$3\r\nSET\r\n$1\r\nk\r\n$1\r\n1\r\n";
+    EXPECT_EQ(read_while_pumping(peer, kHeldSet.size()), kHeldSet) << "only the whole held command may cross";
+
+    bool ready_failed = false;
+    client.command<qb::redis::status>([&](qb::redis::Reply<qb::redis::status> &&r) { ready_failed = !r.ok(); }, "SET", "ready",
+                                      reconnect_carries_nothing_test::Unserializable{});
+    EXPECT_TRUE(ready_failed);
+    EXPECT_EQ(std::string(client.out().begin(), client.out().size()), "") << "no partial frame may stay in out()";
+    client.command<qb::redis::status>([](qb::redis::Reply<qb::redis::status> &&) {}, "SET", "k", "2");
+    const std::string kReadySet = "*3\r\n$3\r\nSET\r\n$1\r\nk\r\n$1\r\n2\r\n";
+    EXPECT_EQ(std::string(client.out().begin(), client.out().size()), kReadySet);
+    EXPECT_EQ(read_while_pumping(peer, kReadySet.size()), kReadySet);
 }

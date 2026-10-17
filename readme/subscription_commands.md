@@ -176,8 +176,8 @@ consumer
     .on_error([](qb::redis::error &&err) {
         qb::io::cerr() << "redis error: " << err.what << std::endl;   // `what` is a field
     })
-    .on_disconnected([](qb::io::async::event::disconnected &&) {
-        qb::io::cerr() << "consumer disconnected" << std::endl;
+    .on_disconnected([](qb::io::down_reason why) {   // user, peer or protocol
+        qb::io::cerr() << "consumer disconnected: " << qb::io::down_reason_name(why) << std::endl;
     });
 
 qb::io::async::task<void> run(qb::redis::tcp::cb_consumer &consumer) {
@@ -198,7 +198,7 @@ The callback signatures are fixed by the consumer:
 |-----------------------|----------------------------------------------|
 | `on_message(cb)`      | `void(qb::redis::message&&)`                 |
 | `on_error(cb)`        | `void(qb::redis::error&&)`                   |
-| `on_disconnected(cb)` | `void(qb::io::async::event::disconnected&&)` |
+| `on_disconnected(cb)` | `void(qb::io::down_reason)` -- the connector's hook, once per ready connection lost |
 
 There is no `on_pmessage`, `on_subscribe`, or `on_unsubscribe`. Pattern matches reach `on_message` (with `pattern` set);
 subscribe and unsubscribe confirmations are the `Reply<qb::redis::subscription>` returned by the command itself.
@@ -280,7 +280,7 @@ remain active.
 After a successful connection-level `RESET`, the consumer's predicted channel and pattern sets are empty too;
 `unsubscribe("")` or `punsubscribe("")` therefore waits for one empty-state confirmation. Pub/Sub calls made before
 `RESET` answers fail locally; await it first. See [Connection commands](./connection_commands.md#reset--reset-connection-state).
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1468-1502,1513-1529,1544-1557 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2391-2425,2436-2452,2467-2478 -->
 
 - **Coroutine, single/all:** `auto unsubscribe(const std::string &channel = "")`
 - **Coroutine, multiple:** `auto unsubscribe(const std::vector<std::string> &channels)`

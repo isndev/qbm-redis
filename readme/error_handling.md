@@ -113,9 +113,9 @@ preserve that source response's error and raw value.
 
 ### Coroutine and callback paths return the same `Reply<T>`
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:737-739 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1415-1417 -->
 
-The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:737-739`). The callback overload invokes your
+The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:1415-1417`). The callback overload invokes your
 handler with `Reply<T>&&`. The check is identical on both paths:
 
 ```cpp
@@ -210,7 +210,7 @@ The exception hierarchy (all in `reply.h`, all deriving from `qb::redis::Error :
 | `ProtoError`                                   | `parse<double>` (`reply.h:355-379`), `parse_scan_reply` (`reply.h:609-633`), container parsers | reply shape is wrong (e.g. "not a double reply", odd-length flat array)                                                                                                                                    |
 | `ReplyParseError` (: `ProtoError`)             | the typed `parse()` overloads (`reply.h:328,350,472,…`)                                    | reply type does not match the expected type; the message names both                                                                                                                                        |
 | `CommandError`                                 | the JSON parsers, `parse<json_value>` / `parse<qb::json>` (`reply.cpp:483,561`)            | a JSON command's reply was a server error                                                                                                                                                                  |
-| `SecurityError`                                | `to_redis_string` (`reply.h:820,830`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB); caught where the command is serialized (`redis.h:397-413`), so the command fails with `"String too large"` and nothing reaches your call site (Huly QB-255) |
+| `SecurityError`                                | `to_redis_string` (`reply.h:820,830`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB); caught where the command is serialized (`redis.h:966-990`), so the command fails with `"String too large"` and nothing reaches your call site (Huly QB-255) |
 | `ConnectionError`, `AuthError`, `TimeoutError` | nothing (declared, currently unthrown)                                                     | reserved lifecycle types; connect/auth/deadline failures reach you as `reply.error()` strings (`"disconnected"`, `"command timed out"`), never as these exceptions — do not write `catch` clauses for them |
 
 Because the dispatcher catches `const Error&` — and, as a backstop, any other `std::exception` (e.g. a `std::bad_alloc`
@@ -245,27 +245,27 @@ The practical consequence: a reply that is *almost* a number is treated as corru
 
 ### Containment 1 — the `noexcept` `onMessage` boundary
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:173-200 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:175-202 -->
 
 The protocol's `onMessage(std::size_t)` runs under the libev C callback and is declared `noexcept final` (
-`redis.h:174`). An exception escaping it would call `std::terminate`. The framework provides defense in depth:
+`redis.h:176`). An exception escaping it would call `std::terminate`. The framework provides defense in depth:
 
 1. Each pending reply is dispatched to the owning IO handler inside a `try { … } catch (...) { … }`. The per-handler
    path already catches `std::exception` gracefully; this outer `catch (...)` is a backstop for anything it misses — for
    example, a user callback that throws a non-`std` type. A single bad reply or a throwing callback is logged and
-   dropped; the remaining pending replies still dispatch (`redis.h:191-195`).
+   dropped; the remaining pending replies still dispatch (`redis.h:193-197`).
 2. The command-reply dispatch in the client (`on(message&&)`) wraps the handler call in
    `try { … } catch (const std::exception&) { … }` for the same reason — it also runs under the libev read dispatch (
-   `redis.h:1090-1094`).
+   `redis.h:1790-1794`).
 3. The disconnect drain (`on(disconnected&&)`) catches both `const std::exception&` and `...`, because a failing
-   callback may legitimately re-issue a command and that nested call could throw (`redis.h:1106-1129`).
+   callback may legitimately re-issue a command and that nested call could throw (`redis.h:1806-1829`).
 
 The contract for *your* callbacks: a throw will not crash the process, but it will cause that reply to be dropped with
 only a log line. Handle your own errors inside the callback; do not rely on the backstop as control flow.
 
 ### Containment 2 — the sticky parser fault on a corrupt terminator
 
-<!-- src: qbm/redis/src/qbm/redis/parser/parser.h:130-246,330-342; qbm/redis/src/qbm/redis/redis.h:129-200 -->
+<!-- src: qbm/redis/src/qbm/redis/parser/parser.h:130-246,330-342; qbm/redis/src/qbm/redis/redis.h:131-202 -->
 
 The streaming `RespParser` separates two failure modes precisely, because conflating them stalls the connection:
 
@@ -294,12 +294,14 @@ corrupt input like `%-7\r\n` faults rather than being swallowed as a valid reply
 
 The protocol layer acts on the fault. After `parse_all()`, `getMessageSize()` checks `_parser.has_error()`; if set, it
 calls `not_ok()`, clears the pending queue, and returns `0`, which tears the connection down instead of looping forever
-on a byte the parser cannot advance past (`redis.h:159-163`). A feed failure (buffer overflow) takes the same
-`not_ok()` + reset path (`redis.h:136-142`).
+on a byte the parser cannot advance past (`redis.h:161-165`). A feed failure (buffer overflow) takes the same
+`not_ok()` + reset path (`redis.h:138-144`).
 
 When the connection is torn down, `on(disconnected&&)` fails every pending command. Auto-reconnect (if enabled)
-re-establishes the socket, but does **not** replay in-flight commands or re-issue subscriptions — those callers already
-saw `Reply{ok=false}`, and your application must re-send (see [connection.md](./connection.md)).
+re-establishes the connection and its handshake, but does **not** replay in-flight commands or re-issue subscriptions —
+those callers already saw `Reply{ok=false}`, and your application must re-send (see [connection.md](./connection.md)).
+A command submitted while the client reconnects is held, not failed; one submitted to a client that is `down` fails
+with the reason (`"disconnected"`, `"reconnection attempts exhausted"`, `"handshake refused: …"`).
 
 ### Resource limits that produce a fault
 
@@ -389,7 +391,7 @@ if (!r)
 
 ### A command timeout surfaces as a failed reply
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:944-949 (is_blocking_command), :1097-1132 (disconnect drain), :1278-1291 (set_command_timeout/getter) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1644-1649 (is_blocking_command), :1798-1832 (link-loss drain), :2139-2156 (set_command_timeout/getter) -->
 
 `command_timeout` defaults to `qb::duration::zero()` (disabled). It is a connection-health watchdog, not a per-command
 timer: when the deadline trips, the client drops the whole connection and fails **every** pending reply with
@@ -424,13 +426,14 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   `reply.ok() && !reply.result().has_value()` means it succeeded with a nil (absent key). `value_or(fallback)` collapses
   both to `fallback` — use it only when you do not need to tell them apart.
 - **A throwing callback is contained, not handled.** The `noexcept` boundary logs and drops the offending reply (
-  `redis.h:191-195`); it is a process-safety backstop, not error handling. Catch your own exceptions inside the
+  `redis.h:193-197`); it is a process-safety backstop, not error handling. Catch your own exceptions inside the
   callback.
 - **Auto-reconnect does not replay work.** On disconnect, every pending command is failed with `Reply{ok=false}`;
-  subscriptions and in-flight commands are not re-issued. Re-send after you observe the failure (`redis.h:1097-1132`).
+  subscriptions and in-flight commands are not re-issued -- only the configured handshake is. Re-send after you observe
+  the failure (`redis.h:1798-1832`).
 - **A faulted parser is dead until reset.** A corrupt frame faults the parser sticky and drops the connection; you
   cannot keep feeding the same socket. Reconnect (or rely on auto-reconnect) to get a fresh parser (
-  `src/qbm/redis/parser/parser.h:153-154`, `redis.h:202-207`).
+  `src/qbm/redis/parser/parser.h:153-154`, `redis.h:204-209`).
 - **`reply.error()` is the per-command message; `qb::redis::error` is a different thing.** Command failures hand you a
   `std::string` through `reply.error()` — compare and log it as text. `qb::redis::error` (`src/qbm/redis/types.h:599-602`) is the pub/sub
   consumer's error event struct (`.what` message + `.raw` reply), routed to a consumer `on_error` callback, not to a
