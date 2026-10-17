@@ -333,7 +333,7 @@ in lockstep with the qb framework; see the qb CHANGELOG for what makes that rele
   `cmake_minimum_required(VERSION 3.24)` and a guard that names the constraint and points at the
   superproject root and the `package` preset.
 
-- **`qbm/redis/redis.h:1631` broke any `-Werror` consumer**: `RedisCoroConsumer::on(disconnected &&e)`
+- **[`redis.h` L1631](https://github.com/isndev/qbm-redis/blob/cf80b8948ef7eb1aabc941a83bc32e90fbb3788e/src/qbm/redis/redis.h#L1631) broke any `-Werror` consumer**: `RedisCoroConsumer::on(disconnected &&e)`
   never used `e`, so a consumer building with `-Wall -Wextra -Werror` failed on
   `unused parameter 'e' [-Wunused-parameter]`. Nothing here saw it because CMake puts `-isystem` on an
   IMPORTED target, which silences every `-W*` inside the module's headers — for the one configuration
@@ -355,7 +355,7 @@ in lockstep with the qb framework; see the qb CHANGELOG for what makes that rele
   answers with an *integer count of connections killed* in every form this wrapper can send: called
   with no arguments it sends `SKIPME yes`, so the filter form — which is the integer-replying one —
   is the only form reachable. Typing it as `status` mis-decoded that reply. The coroutine overload
-  changed at `src/qbm/redis/commands/server_commands.h:163`
+  changed at [`server_commands.h` L162](https://github.com/isndev/qbm-redis/blob/72f58e74a219354270c3c7e632c48eb5e3050419/src/qbm/redis/commands/server_commands.h#L162)
   (`make_coro_command<status>` → `make_coro_command<long long>`) and the callback overload's SFINAE
   guard moved with it, so **an existing caller does not get a converted value — it gets no matching
   function, a hard compile error.** Migrate by changing the awaited/handled type:
