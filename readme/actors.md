@@ -161,13 +161,13 @@ useful thing on this page.
 `co_await redis.get(...)`, `set`, `publish`, `eval`, `xadd` — every one of the 200-plus command methods returns a
 `redis_awaiter`. It registers no `on_cancel` hook and consults no token, so `cancel()` — and therefore `kill()` —
 neither wakes nor unwinds a coroutine parked on one.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1422-1438 (await_ready false; await_suspend stores the handle and launches the operation — no token, no hook) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1456-1472 (await_ready false; await_suspend stores the handle and launches the operation — no token, no hook) -->
 
 It is a callback bridge and nothing more: `await_ready()` returns `false`, the handle is stored, the command is issued
 with a completion lambda, and resumption goes through `coro_scheduler().schedule_resume`. What it *does* carry is a
 `shared_ptr<bool> valid_` cleared in its destructor, so a reply that lands after the awaiter is gone is a silent no-op
 rather than a use-after-free.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1417-1420 (destructor clears valid_), :1432-1434 (the completion checks it first) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1451-1454 (destructor clears valid_), :1466-1468 (the completion checks it first) -->
 
 So a parked command ends in exactly four ways:
 
@@ -180,17 +180,17 @@ So a parked command ends in exactly four ways:
 
 The second row is the one to build on. It is not incidental: `on(disconnected)` swaps the reply queue out *before*
 draining it, precisely so a failing handler that re-issues a command does not get failed by the same drain loop.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1959-1985 (swap before drain, then fail each pending handler) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1994-2020 (swap before drain, then fail each pending handler) -->
 
 ### Pub/sub: `receive()` ends on close
 
 The coroutine consumer is the exception worth knowing. `receive()` does **not** return a `redis_awaiter`; it awaits a
 `qb::io::async::channel<message>` that the consumer fills from its RESP push frames.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3432-3435 (receive() → co_await _msg_channel->recv()) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3488-3491 (receive() → co_await _msg_channel->recv()) -->
 
 A channel `recv()` is still not cancellation-aware — `cancel()` does nothing to it — but it *is* woken by
 `close()`, and the consumer closes the channel in two places: when the consumer goes down, and in its own destructor.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3361-3363 (consumer_down_ → _msg_channel->close()), :3437-3439 (destructor closes it) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3417-3419 (consumer_down_ → _msg_channel->close()), :3493-3495 (destructor closes it) -->
 
 That makes `receive()` yield `std::nullopt` after buffered messages drain. If the actor can be reaped before a
 scheduled receiver resumes, keep the consumer in the coroutine frame and check actor-scope cancellation before
@@ -206,7 +206,7 @@ using actor state or forwarding a message.
 > `std::nullopt`, and `down_reason()` says why. A loss an armed run recovers from leaves the loop parked:
 > the confirmed subscriptions are replayed and one gap marker (`msg->is_gap()`) precedes the new
 > connection's first message.
-> <!-- src: qbm/redis/src/qbm/redis/redis.h:1355-1377 (disconnect()), :2843 (going down ends the stream), :3361-3363 (consumer_down_), :3373-3380 (the next lifecycle's queue) -->
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:1389-1411 (disconnect()), :2899 (going down ends the stream), :3417-3419 (consumer_down_), :3429-3436 (the next lifecycle's queue) -->
 > In the ordinary actor handler below, `disconnect()` closes the channel before it returns.
 > If called from this consumer's own message callback, teardown waits until that callback
 > returns; no nested loop pass runs. The parked loop resumes on a later scheduler pass.
@@ -306,7 +306,7 @@ and it is the better one for a stuck peer — when no reply arrives inside the w
 command, the client **drops the connection** and fails every pending reply with `"command timed out"`, which resumes
 every parked coroutine at once. Dropping the whole connection is not a blunt instrument here but the only correct one:
 a FIFO stream cannot fail one mid-queue command without desynchronising every later reply.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1857-1863 (on_command_deadline → drop_unresponsive_link_, deliberately not resolving awaiters here) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1892-1898 (on_command_deadline → drop_unresponsive_link_, deliberately not resolving awaiters here) -->
 
 Blocking commands (`BLPOP`, `BRPOP`, `WAIT`, `XREAD`, …) suspend the deadline while in flight, so their own server-side
 timeout governs instead. Give those a real timeout argument; `command_timeout` will not bound them.
@@ -332,7 +332,7 @@ void on(TouchSession const &ev) {
 a kernel block, but a spin *on the `VirtualCore` thread* that does not return until every pending reply has landed. For the duration this core dispatches no actor events, ticks no `ICallback` and reaps nothing, and there is
 no diagnostic: the guard those calls carry only fires inside the coroutine scheduler's ready-drain, which an actor
 handler is not running under.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2285-2290 (await: spin the loop until no reply is awaited, sent or held) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2326-2331 (await: spin the loop until no reply is awaited, sent or held) -->
 
 Inside an actor, that call has no job to do anyway — the loop pass already drains the queue.
 See [pipeline_and_await.md](./pipeline_and_await.md) for what `await()` is for, which is a thread you own.
@@ -349,7 +349,7 @@ the reconnection run directly on the current thread's scheduler. Two consequence
 - **It stops when the client object is destroyed, not when the actor is killed.** The task captures the connector's
   `shared_ptr<bool> alive`, which `~connector` clears, and checks it after every suspension.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:642 (the loss of a ready link spawns the run), :646-660 (run_ checks alive before its first touch of the client and after the await) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:676 (the loss of a ready link spawns the run), :680-694 (run_ checks alive before its first touch of the client and after the await) -->
 
 The retry runs on the same loop as everything else — there is no extra thread — and it sleeps between attempts rather
 than spinning. Combined with the fail-queued behaviour above, the shape you get is: a drop fails every parked

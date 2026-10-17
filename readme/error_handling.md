@@ -113,9 +113,9 @@ preserve that source response's error and raw value.
 
 ### Coroutine and callback paths return the same `Reply<T>`
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1440-1442 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1474-1476 -->
 
-The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:1440-1442`). The callback overload invokes your
+The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:1474-1476`). The callback overload invokes your
 handler with `Reply<T>&&`. The check is identical on both paths:
 
 ```cpp
@@ -210,7 +210,7 @@ The exception hierarchy (all in `reply.h`, all deriving from `qb::redis::Error :
 | `ProtoError`                                   | `parse<double>` (`reply.h:355-379`), `parse_scan_reply` (`reply.h:609-633`), container parsers | reply shape is wrong (e.g. "not a double reply", odd-length flat array)                                                                                                                                    |
 | `ReplyParseError` (: `ProtoError`)             | the typed `parse()` overloads (`reply.h:328,350,472,…`)                                    | reply type does not match the expected type; the message names both                                                                                                                                        |
 | `CommandError`                                 | the JSON parsers, `parse<json_value>` / `parse<qb::json>` (`reply.cpp:483,561`)            | a JSON command's reply was a server error                                                                                                                                                                  |
-| `SecurityError`                                | `to_redis_string` (`reply.h:820,830`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB); caught where the command is serialized (`redis.h:981-1005`), so the command fails with `"String too large"` and nothing reaches your call site (Huly QB-255) |
+| `SecurityError`                                | `to_redis_string` (`reply.h:820,830`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB); caught where the command is serialized (`redis.h:1015-1039`), so the command fails with `"String too large"` and nothing reaches your call site (Huly QB-255) |
 | `ConnectionError`, `AuthError`, `TimeoutError` | nothing (declared, currently unthrown)                                                     | reserved lifecycle types; connect/auth/deadline failures reach you as `reply.error()` strings (`"disconnected"`, `"command timed out"`), never as these exceptions — do not write `catch` clauses for them |
 
 Because the dispatcher catches `const Error&` — and, as a backstop, any other `std::exception` (e.g. a `std::bad_alloc`
@@ -256,9 +256,9 @@ The protocol's `onMessage(std::size_t)` runs under the libev C callback and is d
    dropped; the remaining pending replies still dispatch (`redis.h:195-199`).
 2. The command-reply dispatch in the client (`on(message&&)`) wraps the handler call in
    `try { … } catch (const std::exception&) { … }` for the same reason — it also runs under the libev read dispatch (
-   `redis.h:1943-1947`).
+   `redis.h:1978-1982`).
 3. The disconnect drain (`on(disconnected&&)`) catches both `const std::exception&` and `...`, because a failing
-   callback may legitimately re-issue a command and that nested call could throw (`redis.h:1959-1984`).
+   callback may legitimately re-issue a command and that nested call could throw (`redis.h:1994-2019`).
 
 The contract for *your* callbacks: a throw will not crash the process, but it will cause that reply to be dropped with
 only a log line. Handle your own errors inside the callback; do not rely on the backstop as control flow.
@@ -392,7 +392,7 @@ if (!r)
 
 ### A command timeout surfaces as a failed reply
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1796-1799 (is_blocking_command), :1951-1987 (link-loss drain), :2314-2331 (set_command_timeout/getter) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1831-1834 (is_blocking_command), :1986-2022 (link-loss drain), :2355-2372 (set_command_timeout/getter) -->
 
 `command_timeout` defaults to `qb::duration::zero()` (disabled). It is a connection-health watchdog, not a per-command
 timer: when the deadline trips, the client drops the whole connection and fails **every** pending reply with
@@ -431,7 +431,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   callback.
 - **Auto-reconnect does not replay work.** On disconnect, every pending command is failed with `Reply{ok=false}`;
   in-flight commands are not re-issued -- only the configured handshake is, with a consumer's confirmed
-  subscriptions. Re-send after you observe the failure (`redis.h:1951-1987`).
+  subscriptions. Re-send after you observe the failure (`redis.h:1986-2022`).
 - **A faulted parser is dead until reset.** A corrupt frame faults the parser sticky and drops the connection; you
   cannot keep feeding the same socket. Reconnect (or rely on auto-reconnect) to get a fresh parser (
   `src/qbm/redis/parser/parser.h:153-154`, `redis.h:206-211`).
@@ -441,6 +441,41 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   command `Reply<T>`. The exception classes (`Error`, `ProtoError`, …) live only at the internal parse seam.
 - **Cluster redirects are not automatic.** `MOVED`/`ASK` arrive as `Reply{ok=false}` with the redirect in `error()`;
   this client does not follow them for you.
+
+---
+
+## Retrying a command: `retrying()`
+
+A failed `Reply` is a value, not an exception, so `qb::io::async::with_retry` -- which retries on an exception -- never
+retries a Redis command. The client has its own: `redis.retrying(qb::redis::command_retry{...})` returns a view of the
+client, with its whole command surface but the transaction commands (Huly QB-133). A command sent through it is
+retried when two things hold:
+
+- **the command is safe to send twice**: its verb is read-only (`qb::redis::command_traits_of(verb).read_only`), or an
+  idempotent write and `idempotent_writes` is on -- a replay leaves the same state, though its reply may differ (a
+  `DEL` that already deleted answers 0);
+- **another attempt can help**: it failed with no answer (`"disconnected"`, `"command timed out"`) while the client can
+  still carry it -- ready, or reconnecting, in which case the retry is held behind the handshake -- or the server
+  answered `LOADING`, `BUSY`, `TRYAGAIN` or `MASTERDOWN`.
+
+**Never retried:** non-idempotent writes (INCR and DECR families, APPEND, list pushes, pops and moves, SPOP, XADD, a relative EXPIRE, PUBLISH, EVAL, FCALL, ...), SET with NX, XX or GET, ZADD with INCR, blocking commands, anything inside MULTI, and anything on a client that is down or idle. The attempts and the waits between them are `command_retry::backoff`'s
+(three attempts by default, the first included). The callback or the awaiter sees ONE outcome: the last, unchanged.
+Every re-issue counts in `stats().retries`.
+
+```cpp
+auto r = co_await redis.retrying().get("session:42");           // read-only: retried by default
+qb::redis::command_retry writes;
+writes.idempotent_writes = true;
+writes.backoff           = qb::io::reconnect_policy{}.with_max_attempts(5).with_initial_delay(20ms);
+co_await redis.retrying(writes).set("session:42", "v");          // opted in: SET without NX/XX/GET
+co_await redis.retrying(writes).incr("visits");                  // never retried: passes through
+```
+
+The view is a pointer to the client, its liveness token and the policy: make it where it is used, and never keep it
+past the client (a debug build asserts it). A retry still waiting when the client is destroyed is dropped, never
+called -- as the client's own pending replies are.
+
+<!-- src: qbm/redis/src/qbm/redis/redis.h:247-257 (command_retry), :2434-2437 (retrying), :3634-3707 (what is retried), :3719-3883 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
 
 ---
 

@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1478 (public inheritance), qbm/redis/src/qbm/redis/redis.h:3589 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1512 (public inheritance), qbm/redis/src/qbm/redis/redis.h:3900 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -122,7 +122,7 @@ empty error string. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h
 `QUIT` ends monitoring, or when the connection drops. While the stream is active, other commands fail locally; the
 `RESET`/`QUIT` reply goes to its own callback. If you disconnect from a line callback while either is pending, its
 callback fails with `"disconnected"`; later frames from that read batch are discarded. Reconnect does not restart
-monitoring. <!-- src: qbm/redis/src/qbm/redis/redis.h:2196-2244,1878-1929,1963-1978,2158-2191,2391-2402 -->
+monitoring. <!-- src: qbm/redis/src/qbm/redis/redis.h:2237-2285,1913-1964,1998-2013,2199-2232,2447-2458 -->
 
 ### `COMMAND`'s named overload actually issues `COMMAND INFO`
 
@@ -218,7 +218,7 @@ redis.client_id([](qb::redis::Reply<long long> &&r) {
 `MONITOR` (callback-only, streaming):
 
 ```cpp
-// <!-- src: qbm/redis/src/qbm/redis/redis.h:2196-2244 -->
+// <!-- src: qbm/redis/src/qbm/redis/redis.h:2237-2285 -->
 // The callback receives +OK, each command line, and one terminal failure.
 redis.monitor([](qb::redis::Reply<std::string> &&line) {
     if (line.ok())

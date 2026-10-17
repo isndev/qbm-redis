@@ -9,6 +9,18 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **Per-command retry: `redis.retrying(qb::redis::command_retry{...})` (Huly QB-133).** A view of the client -- its
+  whole command surface but the transaction commands, coroutine and callback -- whose commands are retried when they
+  are safe to send twice (a read-only verb, or an idempotent write with `idempotent_writes` on) and another attempt
+  can help (no answer while the client is ready or reconnecting -- the retry is then held behind the handshake -- or
+  LOADING / BUSY / TRYAGAIN / MASTERDOWN). **Never retried:** non-idempotent writes, SET with NX, XX or GET, ZADD with
+  INCR, blocking commands, anything inside MULTI, anything on a client that is down or idle. Attempts and waits come
+  from `command_retry::backoff`, a `qb::io::reconnect_policy` (3 attempts, 50 ms then 100 ms by default); the callback
+  or awaiter sees one outcome, the last, unchanged -- `qb::io::async::with_retry` was not used: it retries on an
+  exception, throws `retry_exhausted` when spent and loses the last `Reply`. Each re-issue counts in the new
+  `stats().retries`. The command table's `idempotent` flag now describes a verb's plain form (ZADD is), the view
+  refusing the options that break it. Pinned by `system/connection/command-retry.cpp`.
+
 - **Sharded pub/sub: `ssubscribe`, `sunsubscribe`, `spublish` (Huly QB-127; Redis 7+).** A consumer subscribes to shard
   channels and receives their `smessage` frames as `qb::redis::message`s, through `on_message` or `receive()`; a client
   publishes with `spublish`. The (P|S)(UN)SUBSCRIBE commands share one counting path, keyed by

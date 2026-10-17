@@ -147,3 +147,6 @@ qredis_test(unit command-traits unit/stats/command-traits.cpp)
 
 # INTEGRATION -- sharded pub/sub against the server under test: SSUBSCRIBE, SPUBLISH, SUNSUBSCRIBE (Huly QB-127).
 qredis_itest(pubsub-sharded integration/pubsub/pubsub-sharded.cpp)
+
+# SYSTEM -- the retrying view: what is retried, when, how often, and what never is (Huly QB-133).
+qredis_test(system command-retry system/connection/command-retry.cpp EXTRA_LABELS coroutine)

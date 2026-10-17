@@ -114,8 +114,10 @@ command_family_name(command_family const family) noexcept {
 /**
  * @brief What the client knows of a verb: its family and how it may be handled.
  * @details One table, looked up once per command -- the lookup the command watchdog already needed for
- *          `blocking`. `read_only` and `idempotent` describe the verb in every form it takes: a verb with an
- *          option that writes (`SORT ... STORE`) or that accumulates (`ZADD ... INCR`) is neither.
+ *          `blocking`. `read_only` holds for the verb in every form it takes: a verb with an option that writes
+ *          (`SORT ... STORE`) is not read-only. `idempotent` describes the verb's plain form: a retrying view
+ *          (`command_retry`, Huly QB-133) also refuses the options that break it -- SET with NX, XX or GET, ZADD
+ *          with INCR.
  */
 struct command_traits {
     command_family family     = command_family::other;
@@ -335,7 +337,7 @@ inline constexpr std::array<command_row, 228> command_table{{
     {"XREADGROUP", {command_family::stream, true, false, false}},
     {"XREVRANGE", {command_family::stream, false, true, false}},
     {"XTRIM", {command_family::stream, false, false, false}},
-    {"ZADD", {command_family::sorted_set, false, false, false}},
+    {"ZADD", {command_family::sorted_set, false, false, true}},
     {"ZCARD", {command_family::sorted_set, false, true, false}},
     {"ZCOUNT", {command_family::sorted_set, false, true, false}},
     {"ZDIFF", {command_family::sorted_set, false, true, false}},
@@ -500,6 +502,7 @@ struct stats {
     std::uint64_t                               failed   = 0; ///< of `errors`, those the server never answered
     std::uint64_t                               held     = 0; ///< commands that waited for the client to be ready
     std::array<std::uint64_t, command_families> by_family{};  ///< `commands`, by family (`command_family`)
+    std::uint64_t                               retries = 0;  ///< commands a retrying view re-issued after a retryable failure (`retrying()`)
     std::uint64_t reconnects        = 0; ///< ready connections reached after a lost one (`disconnect()` ends the session: none)
     std::uint64_t gaps              = 0; ///< gap markers a consumer put in its stream: after a reconnection, or an overflow
     std::uint64_t messages_received = 0; ///< pub/sub messages a consumer received

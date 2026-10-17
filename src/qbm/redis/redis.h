@@ -230,6 +230,32 @@ namespace qb::redis {
  */
 using RetryPolicy = qb::io::reconnect_policy;
 
+/**
+ * @brief What a retrying view retries, and how (`redis.retrying(...)`, Huly QB-133).
+ * @details A command sent through the view is retried only when it is safe and could help:
+ *          - its verb is read-only (`command_traits_of(verb).read_only`), or an idempotent write and
+ *            `idempotent_writes` is on -- never a non-idempotent write (INCR, APPEND, a list push or pop,
+ *            XADD, EXPIRE, PUBLISH, EVAL, ...), never SET with NX, XX or GET, never ZADD with INCR, never a
+ *            blocking command, never anything inside MULTI;
+ *          - it failed without an answer ("disconnected", "command timed out") while the client can still
+ *            carry it -- reconnecting, or ready -- or the server answered LOADING, BUSY, TRYAGAIN or
+ *            MASTERDOWN. A terminal outcome is never retried: the client down (a run spent, a refused
+ *            handshake, `disconnect()`), or idle.
+ *          The attempts and the waits between them are `backoff`'s (the first attempt included); the last
+ *          outcome reaches the callback or the awaiter unchanged, once.
+ */
+struct command_retry {
+    /// The attempts (the first included) and the waits between them: 3 attempts, 50 ms then 100 ms.
+    qb::io::reconnect_policy backoff = qb::io::reconnect_policy{}
+                                           .with_max_attempts(3)
+                                           .with_initial_delay(std::chrono::milliseconds{50})
+                                           .with_max_delay(std::chrono::seconds{1});
+    /// Retry the idempotent writes too (SET without NX/XX/GET, DEL, UNLINK, HSET, SADD, SREM, ZADD without
+    /// INCR, EXPIREAT, PEXPIREAT, PERSIST, ...): off by default -- a replay leaves the same state, but its reply
+    /// may differ from the first attempt's (a DEL that already deleted answers 0).
+    bool idempotent_writes = false;
+};
+
 // ============================================================================
 // Connector base class
 // ============================================================================
@@ -257,6 +283,14 @@ using namespace qb::io;
  */
 template <typename Owner>
 class HandshakeClient;
+
+/**
+ * @class RetryingClient
+ * @brief A view of a client whose eligible commands are retried (`redis.retrying(...)`, Huly QB-133).
+ * @tparam Client the client class (`Redis<QB_IO_>`); defined after it.
+ */
+template <typename Client>
+class RetryingClient;
 
 /// The write path every `HandshakeClient` shares (see it below).
 template <typename Owner, typename Self>
@@ -1494,6 +1528,7 @@ class Redis
     , public module_commands<Redis<QB_IO_>>
     , public function_commands<Redis<QB_IO_>> {
     friend class connector<QB_IO_, Redis<QB_IO_>>;
+    friend class RetryingClient<Redis<QB_IO_>>;
     template <typename, typename>
     friend class handshake_writer;
 
@@ -2129,6 +2164,12 @@ private:
         return *this;
     }
 
+    /// A retrying view re-issued a command (stats().retries).
+    void
+    count_retry_() noexcept {
+        ++this->stats_mut_().retries;
+    }
+
 public:
     Redis() = default;
     explicit Redis(qb::io::uri uri)
@@ -2378,6 +2419,21 @@ public:
     on_command_complete(std::function<void(command_info const &)> hook) {
         _on_command_complete = std::move(hook);
         return *this;
+    }
+
+    /**
+     * @brief A view of this client whose eligible commands are retried (Huly QB-133): the whole command
+     *        surface (MULTI and the transaction commands excepted), coroutine and callback forms.
+     * @details `co_await redis.retrying().get("k")`. What is retried, when, and how often: `command_retry`.
+     *          An ineligible command passes through unchanged. Each command's callback or awaiter sees one
+     *          outcome, the last; every re-issue counts in `stats().retries`, every attempt in
+     *          `stats().commands`. Cheap to make (a pointer, a liveness token, the policy): make one where it
+     *          is used. It must not outlive the client -- checked in debug; a command through a view whose
+     *          client is gone fails, and a retry pending when the client goes is dropped, never called.
+     */
+    [[nodiscard]] RetryingClient<Redis<QB_IO_>>
+    retrying(qb::redis::command_retry retry = {}) {
+        return RetryingClient<Redis<QB_IO_>>{*this, this->connector_alive(), std::move(retry)};
     }
 
     template <typename T, typename Func>
@@ -3569,6 +3625,261 @@ class HandshakeClient<RedisConsumer<QB_IO_, Derived>>
 public:
     using writer::command;
     using writer::writer;
+};
+
+// ============================================================================
+// Retrying view (Huly QB-133)
+// ============================================================================
+
+namespace retry_detail {
+
+/// The arguments of a serialized command, its verb excluded: the RESP array `put_in_pipe` wrote, read back.
+[[nodiscard]] inline bool
+read_command_frame(std::string_view frame, std::vector<std::string> &parts) {
+    auto line = [&frame](std::size_t &pos, char tag) -> std::optional<long long> {
+        if (pos >= frame.size() || frame[pos] != tag)
+            return std::nullopt;
+        const auto end = frame.find("\r\n", pos);
+        if (end == std::string_view::npos)
+            return std::nullopt;
+        long long n = 0;
+        for (std::size_t i = pos + 1; i < end; ++i) {
+            if (frame[i] < '0' || frame[i] > '9')
+                return std::nullopt;
+            n = n * 10 + (frame[i] - '0');
+        }
+        pos = end + 2;
+        return n;
+    };
+    std::size_t pos   = 0;
+    const auto  count = line(pos, '*');
+    if (!count || *count < 1)
+        return false;
+    for (long long i = 0; i < *count; ++i) {
+        const auto len = line(pos, '$');
+        if (!len || pos + static_cast<std::size_t>(*len) + 2 > frame.size())
+            return false;
+        if (i > 0) // the verb is the view's own `name`
+            parts.emplace_back(frame.substr(pos, static_cast<std::size_t>(*len)));
+        pos += static_cast<std::size_t>(*len) + 2;
+    }
+    return pos == frame.size();
+}
+
+[[nodiscard]] inline bool
+equals_folded(std::string_view a, std::string_view b) noexcept {
+    if (a.size() != b.size())
+        return false;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        const auto ca = (a[i] >= 'a' && a[i] <= 'z') ? static_cast<char>(a[i] - 'a' + 'A') : a[i];
+        if (ca != b[i])
+            return false;
+    }
+    return true;
+}
+
+/**
+ * @brief Whether an idempotent write stays one with these arguments: SET with NX, XX or GET does not (its reply
+ *        would depend on the first attempt), nor ZADD with INCR (it accumulates).
+ */
+[[nodiscard]] inline bool
+idempotent_form(std::string_view verb, std::vector<std::string> const &parts) noexcept {
+    if (equals_folded(verb, "SET")) {
+        for (std::size_t i = 2; i < parts.size(); ++i) // after the key and the value
+            if (equals_folded(parts[i], "NX") || equals_folded(parts[i], "XX") || equals_folded(parts[i], "GET"))
+                return false;
+        return true;
+    }
+    if (equals_folded(verb, "ZADD")) {
+        for (std::size_t i = 1; i < parts.size(); ++i) // a member spelled INCR counts too: the view errs on no retry
+            if (equals_folded(parts[i], "INCR"))
+                return false;
+        return true;
+    }
+    return true;
+}
+
+/// A server error worth another attempt: the first word of LOADING, BUSY, TRYAGAIN or MASTERDOWN.
+[[nodiscard]] inline bool
+transient_server_error(std::string_view error) noexcept {
+    const auto word = error.substr(0, error.find(' '));
+    return word == "LOADING" || word == "BUSY" || word == "TRYAGAIN" || word == "MASTERDOWN";
+}
+
+} // namespace retry_detail
+
+/**
+ * @brief The plain client's retrying view: its command surface, each eligible command retried
+ *        (`Redis::retrying()`, `qb::redis::command_retry`).
+ * @details The transaction commands are left out: MULTI through a view would leave the client unaware of the
+ *          transaction it then runs. A command the view retries is serialized once, when it is submitted, and
+ *          every attempt sends the same arguments; an ineligible one passes through to the client unchanged.
+ */
+template <typename QB_IO_>
+class RetryingClient<Redis<QB_IO_>>
+    : public connection_commands<RetryingClient<Redis<QB_IO_>>>
+    , public server_commands<RetryingClient<Redis<QB_IO_>>>
+    , public key_commands<RetryingClient<Redis<QB_IO_>>>
+    , public string_commands<RetryingClient<Redis<QB_IO_>>>
+    , public list_commands<RetryingClient<Redis<QB_IO_>>>
+    , public hash_commands<RetryingClient<Redis<QB_IO_>>>
+    , public set_commands<RetryingClient<Redis<QB_IO_>>>
+    , public sorted_set_commands<RetryingClient<Redis<QB_IO_>>>
+    , public hyperloglog_commands<RetryingClient<Redis<QB_IO_>>>
+    , public geo_commands<RetryingClient<Redis<QB_IO_>>>
+    , public scripting_commands<RetryingClient<Redis<QB_IO_>>>
+    , public publish_commands<RetryingClient<Redis<QB_IO_>>>
+    , public stream_commands<RetryingClient<Redis<QB_IO_>>>
+    , public bitmap_commands<RetryingClient<Redis<QB_IO_>>>
+    , public cluster_commands<RetryingClient<Redis<QB_IO_>>>
+    , public acl_commands<RetryingClient<Redis<QB_IO_>>>
+    , public module_commands<RetryingClient<Redis<QB_IO_>>>
+    , public function_commands<RetryingClient<Redis<QB_IO_>>> {
+    using Client = Redis<QB_IO_>;
+
+    Client                  *_client;
+    std::shared_ptr<bool>    _alive; ///< the client's liveness token: a pending retry never touches a client gone
+    qb::redis::command_retry _retry;
+
+    /// One command being retried: the arguments it was serialized with, the attempts made, its callback.
+    template <typename Ret, typename Func>
+    struct attempt_state : std::enable_shared_from_this<attempt_state<Ret, Func>> {
+        Client                  *client;
+        std::shared_ptr<bool>    alive;
+        qb::redis::command_retry retry;
+        std::string              name;
+        std::vector<std::string> parts;
+        Func                     callback;
+        int                      attempts = 0;
+
+        attempt_state(Client *c, std::shared_ptr<bool> a, qb::redis::command_retry r, std::string n, std::vector<std::string> p, Func f)
+            : client(c)
+            , alive(std::move(a))
+            , retry(std::move(r))
+            , name(std::move(n))
+            , parts(std::move(p))
+            , callback(std::move(f)) {}
+
+        void
+        issue() {
+            ++attempts;
+            auto self = this->shared_from_this();
+            client->template command<Ret>([self](Reply<Ret> &&reply) { self->settle(std::move(reply)); }, name, parts);
+        }
+
+        /// Whether `reply`'s failure is worth another attempt: no answer while the client can still carry the
+        /// command, or a transient server error. A terminal client (down, idle) never is.
+        [[nodiscard]] bool
+        retryable(Reply<Ret> const &reply) const {
+            const auto state = client->state();
+            if (state == qb::io::connection_state::down || state == qb::io::connection_state::idle)
+                return false;
+            if (reply.raw() == nullptr)
+                return reply.error() == "disconnected" || reply.error() == "command timed out";
+            return retry_detail::transient_server_error(reply.error());
+        }
+
+        void
+        settle(Reply<Ret> &&reply) {
+            if (reply.ok() || !retry.backoff.allows_attempt(attempts) || !retryable(reply)) {
+                callback(std::move(reply)); // the last outcome, once
+                return;
+            }
+            static thread_local std::mt19937 rng{std::random_device{}()};
+            const qb::duration               wait = retry.backoff.next_delay(attempts, &rng);
+            client->count_retry_();
+            if (retry.backoff.on_retry) {
+                try {
+                    retry.backoff.on_retry(attempts, wait);
+                } catch (...) {
+                    QB_LOG_WARN("[qbm][redis] command_retry on_retry threw");
+                }
+            }
+            auto again = [self = this->shared_from_this()] {
+                if (*self->alive) // the client is gone: the retry is dropped, never called
+                    self->issue();
+            };
+            if (wait > qb::duration::zero())
+                qb::io::async::callback(std::move(again), wait);
+            else
+                qb::io::async::defer(std::move(again)); // never inside the failing callback
+        }
+    };
+
+    /// Whether `name` may be retried, and its arguments then (serialized once); false passes it through.
+    template <typename... Args>
+    [[nodiscard]] bool
+    eligible_(std::string const &name, std::vector<std::string> &parts, Args const &...args) const {
+        const auto traits = command_traits_of(name);
+        if (traits.blocking || _client->is_in_multi())
+            return false;
+        if (!traits.read_only && !(traits.idempotent && _retry.idempotent_writes))
+            return false;
+        qb::allocator::pipe<char> frame;
+        try {
+            put_in_pipe(frame, name, args...);
+        } catch (...) {
+            return false; // the client refuses it the same way, and says why
+        }
+        if (!retry_detail::read_command_frame(std::string_view{frame.begin(), frame.size()}, parts))
+            return false;
+        return traits.read_only || retry_detail::idempotent_form(name, parts);
+    }
+
+public:
+    RetryingClient(Client &client, std::shared_ptr<bool> alive, qb::redis::command_retry retry)
+        : _client(&client)
+        , _alive(std::move(alive))
+        , _retry(std::move(retry)) {}
+
+    using publish_commands<RetryingClient<Redis<QB_IO_>>>::publish;
+    using server_commands<RetryingClient<Redis<QB_IO_>>>::command;
+
+    /** @brief The policy this view retries with. */
+    [[nodiscard]] qb::redis::command_retry const &
+    policy() const noexcept {
+        return _retry;
+    }
+
+    /**
+     * @brief Send a raw command through the view (callback API): retried when eligible, else passed through.
+     * @details @p func is called once, with the last outcome.
+     */
+    template <typename Ret, typename Func, typename... Args>
+    requires std::invocable<Func, Reply<Ret> &&>
+    RetryingClient &
+    command(Func &&func, std::string const &name, Args &&...args) {
+        assert(*_alive && "a retrying view must not outlive its client");
+        if (!*_alive) [[unlikely]] {
+            TReply<Func, Ret>{std::forward<Func>(func)}.fail("the client is gone");
+            return *this;
+        }
+        std::vector<std::string> parts;
+        if (!eligible_(name, parts, args...)) {
+            _client->template command<Ret>(std::forward<Func>(func), name, std::forward<Args>(args)...);
+            return *this;
+        }
+        using State = attempt_state<Ret, std::decay_t<Func>>;
+        std::make_shared<State>(_client, _alive, _retry, name, std::move(parts), std::decay_t<Func>(std::forward<Func>(func)))->issue();
+        return *this;
+    }
+
+    /** @brief Send a raw command through the view and await its last outcome (co_await API). */
+    template <typename Ret, typename... Args>
+    auto
+    command(std::string const &name, Args &&...args) {
+        return make_coro_command<Ret>([this, name, args_tuple = std::make_tuple(std::forward<Args>(args)...)](auto &&callback) mutable {
+            std::apply(
+                [this, &callback, &name](auto &&...a) { this->command<Ret>(std::move(callback), name, std::forward<decltype(a)>(a)...); },
+                std::move(args_tuple));
+        });
+    }
+
+    template <typename T, typename Func>
+    [[nodiscard]] auto
+    make_coro_command(Func &&operation) {
+        return make_redis_awaiter<T>(std::forward<Func>(operation));
+    }
 };
 
 } // namespace detail

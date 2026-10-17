@@ -390,6 +390,13 @@ if (!r.ok()) {
   `sunsubscribe(ch)`, `client.spublish(ch, msg)`; an `smessage` is delivered as a
   `message`. On a cluster the client follows no redirect: talk to the node that owns
   the channel's slot, and keep the channels of one call in one slot.
+- **Per-command retry** (Huly QB-133): `co_await redis.retrying().get(k)` -- a view whose
+  read-only commands (and, with `command_retry{.idempotent_writes = true}`, idempotent
+  writes) are retried on a lost link the run recovers or on LOADING / BUSY / TRYAGAIN /
+  MASTERDOWN, within `command_retry::backoff`; one outcome, the last. Never retried:
+  non-idempotent writes, SET NX/XX/GET, ZADD INCR, blocking commands, anything inside
+  MULTI, a client that is down. Never wrap commands in `qb::io::async::with_retry`: a
+  `Reply` failure is a value, not an exception, so it never retries.
 - **Observability** (`<qbm/redis/stats.h>`, Huly QB-134): `stats()` is a snapshot of
   monotonic counts -- a client's `commands` / `errors` / `failed` / `held` / `by_family`,
   `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.

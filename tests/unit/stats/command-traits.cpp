@@ -27,7 +27,8 @@
  * or out of order: each fails here. The scan refuses to pass vacuously.
  *
  * It also pins what the flags say for the verbs whose classification matters (the command watchdog's blocking
- * set, read-only and idempotent writes for QB-133), the letter-case fallback, and the latency histogram.
+ * set, read-only and idempotent writes for QB-133 -- `idempotent` is the verb's plain form, the retrying view
+ * refuses the options that break it), the letter-case fallback, and the latency histogram.
  */
 
 #include <gtest/gtest.h>
@@ -163,14 +164,14 @@ TEST(RedisCommandTraits, TheBlockingSetIsTheWatchdogsOne) {
         EXPECT_EQ(row.traits.blocking, blocking.count(std::string{row.verb}) == 1) << row.verb;
 }
 
-TEST(RedisCommandTraits, ReadOnlyAndIdempotentMeanItInEveryForm) {
+TEST(RedisCommandTraits, ReadOnlyHoldsInEveryFormIdempotentInThePlainOne) {
     EXPECT_TRUE(command_traits_of("GET").read_only);
     EXPECT_TRUE(command_traits_of("SORT_RO").read_only);
     EXPECT_FALSE(command_traits_of("SORT").read_only) << "SORT ... STORE writes";
     EXPECT_FALSE(command_traits_of("GEOSEARCHSTORE").read_only);
     EXPECT_TRUE(command_traits_of("DEL").idempotent);
     EXPECT_TRUE(command_traits_of("SET").idempotent);
-    EXPECT_FALSE(command_traits_of("ZADD").idempotent) << "ZADD ... INCR accumulates";
+    EXPECT_TRUE(command_traits_of("ZADD").idempotent) << "the plain form: the retrying view refuses ZADD ... INCR";
     EXPECT_FALSE(command_traits_of("INCR").idempotent);
     EXPECT_FALSE(command_traits_of("LPUSH").idempotent);
     for (auto const &row : qb::redis::detail::command_table)
