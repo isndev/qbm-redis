@@ -126,9 +126,14 @@ public:
         auto              sub  = _sub;          // copied into the frame
         const qb::ActorId self = id();
         spawn([sub, self](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-            // Ends when the channel closes — i.e. on disconnect or destruction.
-            while (auto msg = co_await sub->receive())
+            // Ends when the consumer goes down (disconnect(), a loss nothing recovers) or is destroyed. The loop
+            // owns copies only; a message committed before a kill() can still arrive after the actor is reaped,
+            // so check the actor's scope before using ctx.
+            while (auto msg = co_await sub->receive()) {
+                if (ctx.cancelled())
+                    break;
                 ctx.push_to<Broadcast>(self, msg->payload);
+            }
         });
         co_return true;
     }

@@ -373,6 +373,8 @@ TEST_F(CoConsumerLifecycle, AFullQueueLeavesOneMarkerCarryingTheCount) {
     ASSERT_EQ(gaps.size(), 1u);
     EXPECT_EQ(gaps[0].lost, 3u);
     consumer.disconnect();
+    // The receive loop writes into `d` when it ends: wait for it, or it resumes after `d` is gone.
+    ASSERT_TRUE(run_until([&] { return d.ended; }));
 }
 
 TEST_F(CoConsumerLifecycle, WithoutARunALostPeerEndsTheStreamWithItsReason) {

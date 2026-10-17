@@ -226,7 +226,7 @@ qb::io::async::task<void> consume() {
     while (auto msg = co_await consumer.receive()) {
         qb::io::cout() << "[" << msg->channel << "] " << msg->payload << std::endl;
     }
-    // receive() returned nullopt: the channel was closed (disconnected).
+    // receive() returned nullopt: the consumer is down -- consumer.down_reason() says why.
 }
 ```
 

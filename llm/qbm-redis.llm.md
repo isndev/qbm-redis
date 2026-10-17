@@ -262,7 +262,7 @@ co_await consumer.connect();
 co_await consumer.hello(3);                 // RESP3 push frames
 co_await consumer.subscribe("alerts");      // also subscribe(vector), psubscribe(...)
 
-// Coroutine consumer: pull sequentially; receive() yields std::nullopt on close.
+// Coroutine consumer: pull sequentially; receive() yields std::nullopt once the consumer is down.
 qb::redis::tcp::co_consumer rx{qb::io::uri{"tcp://127.0.0.1:6379"}};
 co_await rx.connect();
 co_await rx.hello(3);

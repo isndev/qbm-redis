@@ -48,7 +48,7 @@ actor on it stops with you — silently, because nothing in the framework diagno
 **Building from source:** configure the qb-dev superproject; its qb module loader registers qbm-redis. The module's
 `CMakeLists.txt` is not standalone-configurable because it needs qb's development-time CMake helpers.
 
-<!-- src: qbm/redis/README.md:441-442 -->
+<!-- src: qbm/redis/README.md:446-447 -->
 
 ```cmake
 add_subdirectory(qb)                                   # the framework first
