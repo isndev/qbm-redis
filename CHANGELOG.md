@@ -62,6 +62,13 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **Scheduled tests and documentation checks select their intended inputs (Huly QB-558–560, QB-621).**
+  Nightly uses paired `develop` branches, doc-lint triggers on checker and workflow edits,
+  the pull request template points to the public superbuild recipe, and clang-tidy includes
+  module headers. The qbm-http and qbm-pgsql lanes had these since the same tickets; this
+  repository had been left out. clang-tidy 22 over the module's 53 translation units now shows
+  357 warnings in its own headers that the old filter hid, 353 of them one class (a forwarding
+  reference passed to `std::move`), tracked as Huly QB-1099.
 - **Typed replies accept RESP3 attributes at every generic decode level (Huly QB-136).** Decorated scalars,
   strings, optional values and container elements decode their underlying value; decorated errors preserve the
   server's message. `raw()` retains the complete original reply, and callbacks still complete once even if they
