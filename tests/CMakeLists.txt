@@ -20,7 +20,7 @@
 #   system/      in-process loopback socket, no external daemon (reconnect UAF)
 #   integration/ needs live redis:6379 — REQUIRES live (skip-not-fail), shares the
 #                qb_redis_integration RESOURCE_LOCK (serialized FLUSHALL against one DB)
-#   benchmark/   google-benchmark; RESP parse + reply codec (daemon-free)
+#   benchmark/   google-benchmark; RESP codec + client loopback (daemon-free)
 # Includes resolve "../redis.h" / "../../shared/*.h" via INCLUDES=tests dir.
 # -----------------------------------------------------------------------------
 
@@ -119,6 +119,14 @@ qredis_itest(module-commands integration/admin/module-commands.cpp)
 # BENCHMARK — RESP parse + reply codec (daemon-free)
 qredis_bench(resp-parse benchmark/parser/resp-parse.bench.cpp)
 qredis_bench(reply-codec benchmark/parser/reply-codec.bench.cpp)
+
+# Complete client command/reply batches; no external Redis or background thread.
+qb_register_module_benchmark(
+        MODULE_NAME redis BENCH_NAME client-roundtrip
+        SOURCES benchmark/client/client-roundtrip.bench.cpp
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        LABELS module:qbm-redis bench client loopback)
+
 
 # UNIT -- a command that cannot be serialized leaves no handler and no bytes behind (Huly QB-255).
 qredis_test(unit serialization-failure unit/commands/serialization-failure.cpp EXTRA_LABELS commands)

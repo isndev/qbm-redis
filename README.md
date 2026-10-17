@@ -624,3 +624,12 @@ Claude Desktop and other clients without native remote-MCP support wrap the same
 ## License
 
 Apache License 2.0. Part of the [qb Actor Framework](https://github.com/isndev/qb).
+
+
+## Client round-trip benchmark
+
+`qbm-redis-bench-client-roundtrip` exercises command serialization, transport, reply parsing and callback
+completion through persistent loopback connections, without an external Redis daemon. Its four cells vary
+connection count and response size. Results include the loop and the in-process peer; they are batch timings,
+not isolated client CPU cost or individual request latency. See the [benchmark protocol](tests/benchmark/README.md)
+for the exact roster, correctness checks, timing window and smoke command.

@@ -9,6 +9,12 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **A daemon-free client round-trip instrument (Huly QB-248).** `qbm-redis-bench-client-roundtrip`
+  measures complete callback GET batches over persistent loopback connections, including the event loop and
+  in-process peer. The peer reads and verifies commands before answering; every batch checks reply identity,
+  payload, counts and an empty pending-reply FIFO outside timing. This is a benchmark instrument, not a client
+  latency result or a completed Windows performance baseline.
+
 - **RESP3 metadata is available through `Reply<T>::attributes()` (Huly QB-136).** It returns a borrowed
   `const parser::Map *` to the outermost attribute block, or null when absent. The map lives with `raw()`;
   nested metadata blocks remain separate. The accessor adds no reply state or metadata copy.
