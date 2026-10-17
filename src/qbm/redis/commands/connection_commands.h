@@ -17,6 +17,7 @@
 #ifndef QBM_REDIS_CONNECTION_COMMANDS_H
 #define QBM_REDIS_CONNECTION_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -65,7 +66,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     hello(Func &&func, int version = 3) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "HELLO", std::to_string(version));
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"HELLO">, std::to_string(version));
     }
 
     /**
@@ -92,7 +93,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     auth(Func &&func, const std::string &password) {
-        return derived().template command<status>(std::forward<Func>(func), "AUTH", password);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"AUTH">, password);
     }
 
     /**
@@ -122,7 +123,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     auth(Func &&func, const std::string &user, const std::string &password) {
-        return derived().template command<status>(std::forward<Func>(func), "AUTH", user, password);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"AUTH">, user, password);
     }
 
     /**
@@ -150,7 +151,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     echo(Func &&func, const std::string &message) {
-        return derived().template command<std::string>(std::forward<Func>(func), "ECHO", message);
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"ECHO">, message);
     }
 
     /**
@@ -175,7 +176,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     ping(Func &&func) {
-        return derived().template command<std::string>(std::forward<Func>(func), "PING");
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"PING">);
     }
 
     /**
@@ -203,7 +204,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     ping(Func &&func, const std::string &message) {
-        return derived().template command<std::string>(std::forward<Func>(func), "PING", message);
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"PING">, message);
     }
 
     /**
@@ -228,7 +229,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     quit(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "QUIT");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"QUIT">);
     }
 
     /**
@@ -255,7 +256,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     select(Func &&func, long long index) {
-        return derived().template command<status>(std::forward<Func>(func), "SELECT", index);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"SELECT">, index);
     }
 
     /**
@@ -285,7 +286,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     swapdb(Func &&func, long long index1, long long index2) {
-        return derived().template command<status>(std::forward<Func>(func), "SWAPDB", index1, index2);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"SWAPDB">, index1, index2);
     }
 
     /**
@@ -317,7 +318,7 @@ public:
         if constexpr (requires { derived().reset_session_command(std::forward<Func>(func)); })
             return derived().reset_session_command(std::forward<Func>(func));
         else
-            return derived().template command<status>(std::forward<Func>(func), "RESET");
+            return derived().template command<status>(std::forward<Func>(func), detail::verb<"RESET">);
     }
 };
 

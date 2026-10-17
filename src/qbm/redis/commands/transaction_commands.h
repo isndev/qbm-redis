@@ -16,6 +16,7 @@
 #define QBM_REDIS_TRANSACTION_COMMANDS_H
 
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -81,7 +82,7 @@ public:
                     in_multi_ = true;
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
-            "MULTI");
+            detail::verb<"MULTI">);
     }
 
     /**
@@ -118,7 +119,7 @@ public:
                 in_multi_ = false;
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
-            "EXEC");
+            detail::verb<"EXEC">);
     }
 
     /**
@@ -151,7 +152,7 @@ public:
                 in_multi_ = false;
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
-            "DISCARD");
+            detail::verb<"DISCARD">);
     }
 
     /**
@@ -188,7 +189,7 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "WATCH", key);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"WATCH">, key);
     }
 
     /**
@@ -223,7 +224,7 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "WATCH", keys);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"WATCH">, keys);
     }
 
     /**
@@ -250,7 +251,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     unwatch(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "UNWATCH");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"UNWATCH">);
     }
 
     /**

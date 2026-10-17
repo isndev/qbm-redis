@@ -18,6 +18,7 @@
 #ifndef QBM_REDIS_FUNCTION_COMMANDS_H
 #define QBM_REDIS_FUNCTION_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -72,9 +73,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     function_list(Func &&func, const std::optional<std::string> &library = std::nullopt) {
         if (library) {
-            return derived().template command<qb::json>(std::forward<Func>(func), "FUNCTION", "LIST", "LIBRARYNAME", *library);
+            return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"FUNCTION">, "LIST", "LIBRARYNAME", *library);
         } else {
-            return derived().template command<qb::json>(std::forward<Func>(func), "FUNCTION", "LIST");
+            return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"FUNCTION">, "LIST");
         }
     }
 
@@ -111,7 +112,8 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     function_load(Func &&func, const std::string &code, Args &&...options) {
-        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "LOAD", std::forward<Args>(options)..., code);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"FUNCTION">, "LOAD", std::forward<Args>(options)...,
+                                                  code);
     }
 
     /**
@@ -140,7 +142,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     function_delete(Func &&func, const std::string &library) {
-        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "DELETE", library);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"FUNCTION">, "DELETE", library);
     }
 
     /**
@@ -168,7 +170,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     function_flush(Func &&func, const std::string &mode = "SYNC") {
-        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "FLUSH", mode);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"FUNCTION">, "FLUSH", mode);
     }
 
     /**
@@ -195,7 +197,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     function_kill(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "KILL");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"FUNCTION">, "KILL");
     }
 
     /**
@@ -221,7 +223,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     function_stats(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "FUNCTION", "STATS");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"FUNCTION">, "STATS");
     }
 
     /**
@@ -248,7 +250,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     function_dump(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "FUNCTION", "DUMP");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"FUNCTION">, "DUMP");
     }
 
     /**
@@ -280,7 +282,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     function_restore(Func &&func, const std::string &payload, const std::string &policy = "APPEND") {
-        return derived().template command<status>(std::forward<Func>(func), "FUNCTION", "RESTORE", payload, policy);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"FUNCTION">, "RESTORE", payload, policy);
     }
 
     /**
@@ -307,7 +309,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     function_help(Func &&func) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "FUNCTION", "HELP");
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"FUNCTION">, "HELP");
     }
 
     /**
@@ -344,7 +346,7 @@ public:
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     fcall(Func &&func, const std::string &name, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "FCALL", name, keys.size(), keys, args);
+        return derived().template command<Ret>(std::forward<Func>(func), detail::verb<"FCALL">, name, keys.size(), keys, args);
     }
 
     /**
@@ -381,7 +383,7 @@ public:
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     fcallRo(Func &&func, const std::string &name, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "FCALL_RO", name, keys.size(), keys, args);
+        return derived().template command<Ret>(std::forward<Func>(func), detail::verb<"FCALL_RO">, name, keys.size(), keys, args);
     }
 };
 

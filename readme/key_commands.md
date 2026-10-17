@@ -13,7 +13,7 @@ minimal `co_await` and callback snippet.
 
 ## Summary
 
-The key commands are defined by the `qb::redis::key_commands<Derived>` CRTP mixin (`key_commands.h:39`), which
+The key commands are defined by the `qb::redis::key_commands<Derived>` CRTP mixin (`key_commands.h:40`), which
 `qb::redis::tcp::client` inherits along with every other command group. You call these methods directly on a connected
 client. Each command exists in two forms that share one method name: a **coroutine** form you `co_await` to get a
 `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument and returns the client for
@@ -67,13 +67,13 @@ the cursor yourself (see [`scan`](#scan) below).
 The coroutine `exists`, `touch` and `unlink` wrappers accept literal key arguments as well as strings and containers.
 Their by-value captures copy owning lvalues and move rvalues; pointers and `std::string_view` remain borrowed until
 the awaiter's command serialization. Keep borrowed key data alive through that point.
-<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:186-191,628-633,698-703 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:187-192,630-635,700-705 -->
 
 ### Method-name renames
 
-Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:782`),
-`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:988`, `:1014`, `:1041`). Note that `move()` is the Redis
-`MOVE` command (`key_commands.h:339-340`) and does not collide with the `std::move` you use in callbacks. Every other method
+Three Redis verbs are renamed to avoid clashing with the standard library: `COPY` → `copyKey` (`key_commands.h:784`),
+`SORT` → `sortKey`/`sortKeyStore`/`sortKeyRo` (`key_commands.h:990`, `:1016`, `:1043`). Note that `move()` is the Redis
+`MOVE` command (`key_commands.h:340-341`) and does not collide with the `std::move` you use in callbacks. Every other method
 matches its Redis verb in lowercase.
 
 ## Setup for the examples
@@ -94,7 +94,7 @@ if (!co_await redis.connect())
 <!-- src: qbm/redis/tests/integration/key/key-commands.cpp; qbm/redis/readme/connection.md -->
 
 Each command shows its coroutine signature, its callback overload, and a snippet. The callback form always returns
-`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:149`).
+`Derived&` (the client) for chaining and is SFINAE-gated on the callback accepting `Reply<T>&&` (`key_commands.h:150`).
 
 ## Existence and deletion
 
@@ -171,9 +171,9 @@ auto r = co_await redis.touch("k1", "k2", "k3");
 > **Unit boundary.** `EXPIRE`/`EXPIREAT` work in **seconds**; `PEXPIRE`/`PEXPIREAT` work in **milliseconds**. The chrono
 > overloads enforce this at the type level, and the *relative* and *absolute* commands take different shapes: `expire`
 > takes a `std::chrono::seconds` **duration** and `pexpire` a `std::chrono::milliseconds` one, each forwarding
-> `.count()` to the `long long` form (`key_commands.h:239-240`, `key_commands.h:395-396`); `expireat` and `pexpireat`
+> `.count()` to the `long long` form (`key_commands.h:240-241`, `key_commands.h:396-397`); `expireat` and `pexpireat`
 > take a `std::chrono::time_point<std::chrono::system_clock, …>` at the matching precision and forward
-> `.time_since_epoch().count()` (`key_commands.h:284-285`, `key_commands.h:440-441`). The raw `long long` overloads
+> `.time_since_epoch().count()` (`key_commands.h:285-286`, `key_commands.h:441-442`). The raw `long long` overloads
 > bypass the check, so prefer the chrono overloads for self-documenting code. These are `std::chrono` protocol values,
 > **not** `qb::duration`.
 
@@ -422,12 +422,12 @@ do {
 <!-- src: qbm/redis/tests/integration/key/key-commands.cpp:200-226 -->
 
 > **Pitfalls for the auto-iterating callback overload `scan(func, pattern)`.** It accumulates the **entire** matched
-> keyspace in memory and invokes `func` once when the cursor returns to `0` or a page fails (`key_commands.h:98-117`,
-`key_commands.h:611-620`) —
-> it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:87-89`,
-`key_commands.h:107-109`) — unlike the single-iteration overload, which does pass `COUNT` (`key_commands.h:604`). And if
+> keyspace in memory and invokes `func` once when the cursor returns to `0` or a page fails (`key_commands.h:99-118`,
+`key_commands.h:613-622`) —
+> it is not a per-batch stream. Its internal SCAN calls use `MATCH` only, with no `COUNT` hint (`key_commands.h:88-90`,
+`key_commands.h:108-110`) — unlike the single-iteration overload, which does pass `COUNT` (`key_commands.h:605-606`). And if
 your callback throws, the scanner catches `std::exception` and only logs a warning (
-`key_commands.h:113-114`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer
+`key_commands.h:114-115`) — the exception does not surface to the caller. For large keyspaces and for back-pressure, prefer
 > the explicit-cursor loop above.
 
 A failed automatic SCAN stops the walk and returns `ok() == false`, the failed page's `error()`, and any

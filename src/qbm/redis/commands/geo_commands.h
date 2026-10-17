@@ -15,6 +15,7 @@
 #ifndef QBM_REDIS_GEO_COMMANDS_H
 #define QBM_REDIS_GEO_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -75,7 +76,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "GEOADD requires at least one member");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "GEOADD", key, std::forward<Members>(members)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"GEOADD">, key, std::forward<Members>(members)...);
     }
 
     /**
@@ -109,7 +110,8 @@ public:
     template <typename Func>
     Derived &
     geodist(Func &&func, const std::string &key, const std::string &member1, const std::string &member2, GeoUnit unit = GeoUnit::M) {
-        return derived().template command<std::optional<double>>(std::forward<Func>(func), "GEODIST", key, member1, member2, to_string(unit));
+        return derived().template command<std::optional<double>>(std::forward<Func>(func), detail::verb<"GEODIST">, key, member1, member2,
+                                                                 to_string(unit));
     }
 
     /**
@@ -148,7 +150,7 @@ public:
             fail_client<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "GEOHASH requires at least one member");
             return derived();
         }
-        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "GEOHASH", key,
+        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), detail::verb<"GEOHASH">, key,
                                                                                    std::forward<Members>(members)...);
     }
 
@@ -188,7 +190,7 @@ public:
             fail_client<std::vector<std::optional<geo_pos>>>(std::forward<Func>(func), "GEOPOS requires at least one member");
             return derived();
         }
-        return derived().template command<std::vector<std::optional<geo_pos>>>(std::forward<Func>(func), "GEOPOS", key,
+        return derived().template command<std::vector<std::optional<geo_pos>>>(std::forward<Func>(func), detail::verb<"GEOPOS">, key,
                                                                                std::forward<Members>(members)...);
     }
 
@@ -234,8 +236,8 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     georadius(Func &&func, const std::string &key, double longitude, double latitude, double radius, GeoUnit unit = GeoUnit::M,
               const std::vector<std::string> &options = {}) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEORADIUS", key, longitude, latitude, radius,
-                                                                    to_string(unit), options);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"GEORADIUS">, key, longitude,
+                                                                    latitude, radius, to_string(unit), options);
     }
 
     /**
@@ -277,7 +279,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     georadiusbymember(Func &&func, const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
                       const std::vector<std::string> &options = {}) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEORADIUSBYMEMBER", key, member,
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"GEORADIUSBYMEMBER">, key, member,
                                                                     std::to_string(radius), to_string(unit), options);
     }
 
@@ -319,8 +321,8 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     geosearch(Func &&func, const std::string &key, const std::string &member, double radius, GeoUnit unit = GeoUnit::M,
               const std::vector<std::string> &options = {}) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "GEOSEARCH", key, "FROMMEMBER", member,
-                                                                    "BYRADIUS", std::to_string(radius), to_string(unit), options);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"GEOSEARCH">, key, "FROMMEMBER",
+                                                                    member, "BYRADIUS", std::to_string(radius), to_string(unit), options);
     }
 };
 

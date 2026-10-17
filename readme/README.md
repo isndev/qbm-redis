@@ -81,14 +81,14 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
 ## TLS and time
 
 - **TLS** — there is no redis-specific SSL option. Transport security follows the framework-wide `QB_HAS_SSL` (derived
-  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:3910-3916`); with it
+  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:4019-4025`); with it
   off, the build emits a status note and only cleartext TCP is available. For `rediss://`, certificate and hostname
   verification is on by default; `set_verify_peer(false)` disables it and must be set before `connect()`.
 - **Time — framework side.** Connect and command timeouts and the `RetryPolicy` delays are `qb::duration`. Defaults:
   `RetryPolicy.initial_delay` 100 ms, `max_delay` 30 s, `connect_timeout` zero (each attempt takes the 3 s of `connect()`);
   `connect()` default timeout 3 s;
   `command_timeout` is `qb::duration::zero()` (disabled). `set_command_timeout` is a connection-health watchdog, not a
-  per-command timer: on deadline it drops the whole connection (`redis.h:2342-2366,1882-1898`). `debug_sleep` also takes
+  per-command timer: on deadline it drops the whole connection (`redis.h:2411-2435,1921-1937`). `debug_sleep` also takes
   `qb::duration`.
 - **Time — Redis-protocol side.** Command arguments retain native Redis units. A duration is relative; an expiry
   timestamp is an absolute `system_clock` instant. The available overloads differ by command:
@@ -105,9 +105,9 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
   So `expire(key, 60s)` sets 60 seconds, while `expireat` needs an absolute time point, not `60s`.
   `restore(key, dump, 60000)` uses a raw integer in milliseconds. Reply TTL values (`ttl`, `pttl`, `expiretime`,
   `pexpiretime`) are plain integers —
-  the unit lives in the method name, not a wrapped type (`key_commands.h:657,461,814,835`). Stream blocking and
+  the unit lives in the method name, not a wrapped type (`key_commands.h:659,462,816,837`). Stream blocking and
   idle-time arguments (`XREAD`/`XREADGROUP` `block`, `XCLAIM`/`XAUTOCLAIM` `min_idle_time`) are raw `long long`
-  milliseconds with no chrono overload (`stream_commands.h:436,523,811,899`). Blocking-list timeouts (`BLPOP`,
+  milliseconds with no chrono overload (`stream_commands.h:437,524,812,900`). Blocking-list timeouts (`BLPOP`,
   `BLMOVE`, ...) are seconds.
 
 ## API at a glance
@@ -116,7 +116,7 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
   resolves once the connection's handshake ran. The server stays on RESP2 unless the handshake says otherwise:
   `redis.with_resp3()` before connecting (HELLO 3 on every connection), and `with_auth()` / `with_select()` /
   `set_handshake()` for the rest of the session. `hello(3)` sent by hand holds for one connection only
-  (`connection_commands.h:52`). Auto-reconnect and `RetryPolicy` cover a peer's loss and replay the handshake -- a
+  (`connection_commands.h:53`). Auto-reconnect and `RetryPolicy` cover a peer's loss and replay the handshake -- a
   consumer's confirmed subscriptions with it, a gap marker after them -- but in-flight commands are not replayed;
   `disconnect()` is terminal.
 - **Run a command.** `Reply<T> r = co_await redis.get("key");` suspends without blocking the event loop. The callback
@@ -124,8 +124,8 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
 - **Check the result.** `Reply<T>` carries a status and a typed value: `r.ok()`, `r.result()`, `r.error()`. Redis
   command errors are reported as `ok() == false`; they are not thrown.
 - **Pipeline.** Issue several callback-form commands without awaiting between them; each enqueues one handler and
-  replies return in FIFO order. Drain with the client's `await()` (`redis.h:2326-2331`), or `flush()` on the `tcp::pipeline`
-  wrapper (`redis.h:2517-2518`, which itself calls `client().await()`). `pending_reply_count()` reports the queue depth.
+  replies return in FIFO order. Drain with the client's `await()` (`redis.h:2395-2400`), or `flush()` on the `tcp::pipeline`
+  wrapper (`redis.h:2588-2589`, which itself calls `client().await()`). `pending_reply_count()` reports the queue depth.
 - **Generic escape hatch.** For a command without a typed wrapper, call `command<T>` with the verb and arguments:
 
   ```cpp
@@ -192,20 +192,20 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 
 - **Auto-reconnect does not replay work.** On disconnect, all pending replies fail and predicted subscription state is
   cleared. After a reconnect you must re-issue any in-flight commands yourself; the configured handshake and a consumer's
-  confirmed subscriptions are what is replayed (`redis.h:1986-2022,3146-3147,3149-3161`).
+  confirmed subscriptions are what is replayed (`redis.h:2025-2064,3225-3226,3228-3240`).
 - **`set_command_timeout` drops the connection.** It is a health watchdog, not a per-command deadline: because FIFO
   pipelining cannot fail one mid-queue command without desyncing later replies, tripping the deadline disconnects and
-  fails every pending command (`redis.h:1882-1898,1833-1867`).
+  fails every pending command (`redis.h:1921-1937,1872-1906`).
 - **Auto-iterating scanners and `hvals` are callback-only.** All four no-cursor overloads — key-space `scan` plus
   `sscan` / `zscan` / `hscan` — and multi-key `hvals` buffer the whole result and fire the callback once; there is no
   coroutine form, so `co_await redis.scan("prefix*")` does not compile (only the cursor-taking
   `scan(cursor, pattern, count)` is awaitable), and a throwing callback is caught and logged, not propagated
-  (`key_commands.h:611-620`, `:592`, `:111-115`, `set_commands.h:109-110`, `hash_commands.h:675-686,877-884`).
+  (`key_commands.h:613-622`, `:593`, `:112-116`, `set_commands.h:110-111`, `hash_commands.h:677-688,879-886`).
 - **Empty required arguments resolve as a failed `Reply`, not a bad frame.** A required-variadic / required-collection
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
-  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:160-161`, `reply.h:1447-1451`).
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:161-162`, `reply.h:1447-1451`).
 - **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
   (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
   with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /
@@ -213,10 +213,10 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   left the callback unfired and parked the coroutine form forever; they now behave like the rest.
 - **Multi-stream `xread` / `xreadgroup` throw synchronously.** They throw `std::invalid_argument` from the callback body
   when `keys` is empty or `keys.size() != ids.size()` — catch it; it is not delivered as a `Reply` error (
-  `stream_commands.h:524-525,437-438`).
+  `stream_commands.h:525-526,438-439`).
 - **`GETEX` unit asymmetry.** The integer overload uses `EX` (seconds) while the `std::chrono::milliseconds` overload
   uses `PX` (milliseconds) — unlike `SET`, whose integer and chrono overloads both use milliseconds (
-  `string_commands.h:586,880,896`).
+  `string_commands.h:587,881,897`).
 
 ## Examples as specification
 

@@ -29,6 +29,8 @@
  *     called, and the hook sees each one, before the callback, with its verb, family and outcome;
  *   - latency is opt-in: off, no histogram and a zero duration; on, the family's histogram records each
  *     command and the hook's duration is the round trip;
+ *   - the send times stay in step with the replies: a command in flight when latency is turned on is not
+ *     timed and takes no later command's time; the commands a lost link fails are timed to their failure;
  *   - a held command is counted as held; a reconnection the run reached counts, a `disconnect()` + `connect()`
  *     does not; an unknown verb is named, in family `other`; a throwing hook is contained;
  *   - a consumer counts its stream: the messages received, those its full queue dropped, the gap markers.
@@ -309,6 +311,45 @@ TEST_F(ClientStats, LatencyIsRecordedOnlyOnceTurnedOn) {
 
     client.set_latency_stats(false);
     EXPECT_EQ(client.latency(command_family::string).count(), 0u) << "off drops what was recorded";
+}
+
+TEST_F(ClientStats, TheSendTimesStayInStepWithTheReplies) {
+    FakeRedis server;
+    Client    client{server.uri()};
+    Recorder  rec;
+    rec.watch(client);
+    auto peer = connect(client, server);
+    ASSERT_TRUE(peer);
+
+    client.command<std::string>(rec.sink(), "GET", "a"); // in flight when latency is turned on
+    client.command<std::string>(rec.sink(), "GET", "b");
+    ASSERT_TRUE(peer->expect(2));
+    client.set_latency_stats(true);
+    client.command<std::string>(rec.sink(), "HGET", "h", "f");
+    client.command<std::string>(rec.sink(), "HGET", "h", "g");
+    ASSERT_TRUE(peer->expect(2));
+    settle(2ms);
+    peer->send(bulk("1") + bulk("2") + bulk("3") + bulk("4"));
+    ASSERT_TRUE(run_until([&] { return rec.callbacks == 4; }));
+    EXPECT_EQ(client.latency(command_family::string).count(), 0u) << "in flight before: not timed";
+    EXPECT_EQ(client.latency(command_family::hash).count(), 2u) << "each timed with its own send time";
+    ASSERT_EQ(rec.seen.size(), 4u);
+    EXPECT_EQ(rec.seen[0].duration, qb::duration::zero());
+    EXPECT_EQ(rec.seen[1].duration, qb::duration::zero());
+    EXPECT_GE(rec.seen[2].duration, qb::duration{std::chrono::milliseconds{2}});
+    EXPECT_GE(rec.seen[3].duration, qb::duration{std::chrono::milliseconds{2}});
+
+    client.command<std::string>(rec.sink(), "LPUSH", "l", "x"); // lost with the link
+    client.command<std::string>(rec.sink(), "LPUSH", "l", "y");
+    ASSERT_TRUE(peer->expect(2));
+    settle(2ms);
+    peer->sock.disconnect();
+    ASSERT_TRUE(run_until([&] { return rec.callbacks == 6; }));
+    EXPECT_EQ(client.latency(command_family::list).count(), 2u) << "failed with the link: timed to the failure";
+    ASSERT_EQ(rec.seen.size(), 6u);
+    EXPECT_EQ(rec.seen[4].outcome, command_outcome::failed);
+    EXPECT_GE(rec.seen[4].duration, qb::duration{std::chrono::milliseconds{2}});
+    EXPECT_GE(rec.seen[5].duration, qb::duration{std::chrono::milliseconds{2}});
 }
 
 TEST_F(ClientStats, HeldCommandsAndReconnectionsAreCounted) {

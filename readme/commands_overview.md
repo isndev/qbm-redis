@@ -23,7 +23,7 @@ how the command surface is organized.
 ### Where the methods come from
 
 The client class composes a stack of CRTP mixins, one per Redis command group. `qb::redis::tcp::client` is an alias for
-`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:3900`), and that class inherits — in this order — from
+`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:4009`), and that class inherits — in this order — from
 `connection_commands`, `server_commands`, `key_commands`, `string_commands`, `list_commands`, `hash_commands`,
 `set_commands`, `sorted_set_commands`, `hyperloglog_commands`, `geo_commands`, `scripting_commands`, `publish_commands`,
 `stream_commands`, `bitmap_commands`, `transaction_commands`, `cluster_commands`, `acl_commands`, `module_commands`, and
@@ -47,11 +47,16 @@ Both forms end in the same place. The callback form serializes the command name 
 then pushes one reply handler onto a FIFO queue:
 
 ```cpp
-// redis.h:2196-2235 — the callback dispatcher, simplified
+// redis.h:2287-2295 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);
 ```
+
+A command group passes its verb resolved at compile time -- `detail::verb<"GET">`, a verb with no row in the command
+table does not compile -- to the same dispatcher's other overload (`redis.h:2301-2307`): the verb's family and flags
+are read at its row, with no lookup (`stats.h:373-434`). A verb named at run time, as above, is looked up once
+(`redis.h:1625-1633`). Both forms then share one path (`redis.h:2206-2232`).
 
 Arguments are converted to RESP bulk strings in order, then the reply handler is enqueued — still **before** a byte is
 sent: writing to the pipe sends nothing, so no reply can run ahead of its handler. A command that cannot be serialized
@@ -86,7 +91,7 @@ sequenceDiagram
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
-resumes your coroutine when the reply lands (`redis.h:2439-2443`, `redis.h:1461-1472`).
+resumes your coroutine when the reply lands (`redis.h:2510-2514`, `redis.h:1461-1472`).
 
 ### The reply type: `qb::redis::Reply<T>`
 
@@ -242,9 +247,9 @@ units by design** — `EXPIRE` is seconds, `PEXPIRE` is milliseconds — and the
 
 ```cpp
 #include <chrono>
-// key_commands.h:238-241 — EXPIRE takes seconds
+// key_commands.h:239-242 — EXPIRE takes seconds
 co_await redis.expire("k", std::chrono::seconds{60});
-// key_commands.h:394-397 — PEXPIRE takes milliseconds
+// key_commands.h:395-398 — PEXPIRE takes milliseconds
 co_await redis.pexpire("k", std::chrono::milliseconds{1500});
 // raw integer overloads also exist, in the command's native unit
 co_await redis.expire("k", 60);          // seconds
@@ -257,7 +262,7 @@ as value types, not durations. The framework `qb::duration` type *is* used elsew
 command timeouts and the `RetryPolicy` delays (`redis.h:231`) — but those are transport-level deadlines, not Redis
 command arguments. See [Connection](./connection.md).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:215-251,371-407 (expire/pexpire native-unit overloads) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:216-252,372-408 (expire/pexpire native-unit overloads) -->
 
 ## Command groups
 

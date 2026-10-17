@@ -21,6 +21,7 @@
 #include <tuple>
 #include <qb/io.h> // QB_LOG_WARN — the scanner callback guard below logs through it
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -316,7 +317,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "HDEL requires at least one field");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "HDEL", key, std::forward<Fields>(fields)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"HDEL">, key, std::forward<Fields>(fields)...);
     }
 
     /**
@@ -346,7 +347,7 @@ public:
     template <typename Func>
     Derived &
     hexists(Func &&func, const std::string &key, const std::string &field) {
-        return derived().template command<bool>(std::forward<Func>(func), "HEXISTS", key, field);
+        return derived().template command<bool>(std::forward<Func>(func), detail::verb<"HEXISTS">, key, field);
     }
 
     /**
@@ -376,7 +377,7 @@ public:
     template <typename Func>
     Derived &
     hget(Func &&func, const std::string &key, const std::string &field) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "HGET", key, field);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"HGET">, key, field);
     }
 
     /**
@@ -404,7 +405,7 @@ public:
     template <typename Func>
     Derived &
     hgetall(Func &&func, const std::string &key) {
-        return derived().template command<qb::unordered_map<std::string, std::string>>(std::forward<Func>(func), "HGETALL", key);
+        return derived().template command<qb::unordered_map<std::string, std::string>>(std::forward<Func>(func), detail::verb<"HGETALL">, key);
     }
 
     /**
@@ -436,7 +437,7 @@ public:
     template <typename Func>
     Derived &
     hincrby(Func &&func, const std::string &key, const std::string &field, long long increment) {
-        return derived().template command<long long>(std::forward<Func>(func), "HINCRBY", key, field, increment);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"HINCRBY">, key, field, increment);
     }
 
     /**
@@ -468,7 +469,7 @@ public:
     template <typename Func>
     Derived &
     hincrbyfloat(Func &&func, const std::string &key, const std::string &field, double increment) {
-        return derived().template command<double>(std::forward<Func>(func), "HINCRBYFLOAT", key, field, increment);
+        return derived().template command<double>(std::forward<Func>(func), detail::verb<"HINCRBYFLOAT">, key, field, increment);
     }
 
     /**
@@ -496,7 +497,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     hkeys(Func &&func, const std::string &key) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "HKEYS", key);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"HKEYS">, key);
     }
 
     /**
@@ -523,7 +524,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     hlen(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "HLEN", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"HLEN">, key);
     }
 
     /**
@@ -563,7 +564,7 @@ public:
             fail_client<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "HMGET requires at least one field");
             return derived();
         }
-        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "HMGET", key,
+        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), detail::verb<"HMGET">, key,
                                                                                    std::forward<Fields>(fields)...);
     }
 
@@ -605,7 +606,8 @@ public:
             fail_client<status>(std::forward<Func>(func), "HMSET requires at least one field-value pair");
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "HMSET", key, std::forward<FieldValues>(field_values)...);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"HMSET">, key,
+                                                  std::forward<FieldValues>(field_values)...);
     }
 
     /**
@@ -650,8 +652,8 @@ public:
             fail_client<qb::redis::scan<Out>>(std::forward<Func>(func), "HSCAN requires a non-empty key");
             return derived();
         }
-        return derived().template command<qb::redis::scan<Out>>(std::forward<Func>(func), "HSCAN", key, cursor, "MATCH", pattern, "COUNT",
-                                                                count);
+        return derived().template command<qb::redis::scan<Out>>(std::forward<Func>(func), detail::verb<"HSCAN">, key, cursor, "MATCH", pattern,
+                                                                "COUNT", count);
     }
 
     /**
@@ -714,7 +716,7 @@ public:
     template <typename Func>
     Derived &
     hset(Func &&func, const std::string &key, const std::string &field, const std::string &val) {
-        return derived().template command<long long>(std::forward<Func>(func), "HSET", key, field, val);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"HSET">, key, field, val);
     }
 
     /**
@@ -775,7 +777,7 @@ public:
     template <typename Func>
     Derived &
     hsetnx(Func &&func, const std::string &key, const std::string &field, const std::string &val) {
-        return derived().template command<bool>(std::forward<Func>(func), "HSETNX", key, field, val);
+        return derived().template command<bool>(std::forward<Func>(func), detail::verb<"HSETNX">, key, field, val);
     }
 
     /**
@@ -834,7 +836,7 @@ public:
     template <typename Func>
     Derived &
     hstrlen(Func &&func, const std::string &key, const std::string &field) {
-        return derived().template command<long long>(std::forward<Func>(func), "HSTRLEN", key, field);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"HSTRLEN">, key, field);
     }
 
     /**
@@ -862,7 +864,7 @@ public:
     template <typename Func>
     Derived &
     hvals(Func &&func, const std::string &key) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "HVALS", key);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"HVALS">, key);
     }
 
     /**

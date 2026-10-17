@@ -18,6 +18,7 @@
 #include <qb/system/container/unordered_set.h> // for qb::unordered_set (previously picked up transitively via listener.h)
 #include <qb/io.h>                             // QB_LOG_WARN — the scanner callback guard below logs through it
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -161,7 +162,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "SADD requires at least one member");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "SADD", key, std::forward<Members>(members)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SADD">, key, std::forward<Members>(members)...);
     }
 
     /**
@@ -194,7 +195,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "SCARD requires a non-empty key");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "SCARD", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SCARD">, key);
     }
 
     // =============== Set Operations ===============
@@ -230,7 +231,7 @@ public:
             return derived();
         }
 
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SDIFF", keys);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"SDIFF">, keys);
     }
 
     /**
@@ -265,7 +266,7 @@ public:
             return derived();
         }
 
-        return derived().template command<long long>(std::forward<Func>(func), "SDIFFSTORE", destination, keys);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SDIFFSTORE">, destination, keys);
     }
 
     /**
@@ -300,7 +301,7 @@ public:
             return derived();
         }
 
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SINTER", keys);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"SINTER">, keys);
     }
 
     /**
@@ -340,7 +341,7 @@ public:
             args.push_back("LIMIT");
             args.push_back(std::to_string(*limit));
         }
-        return derived().template command<long long>(std::forward<Func>(func), "SINTERCARD", keys.size(), keys, args);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SINTERCARD">, keys.size(), keys, args);
     }
 
     /**
@@ -374,7 +375,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "SINTERSTORE requires at least one key");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "SINTERSTORE", destination, keys);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SINTERSTORE">, destination, keys);
     }
 
     /**
@@ -411,7 +412,7 @@ public:
             fail_client<bool>(std::forward<Func>(func), "SISMEMBER requires a non-empty key and member");
             return derived();
         }
-        return derived().template command<bool>(std::forward<Func>(func), "SISMEMBER", key, member);
+        return derived().template command<bool>(std::forward<Func>(func), detail::verb<"SISMEMBER">, key, member);
     }
 
     /**
@@ -451,7 +452,8 @@ public:
             fail_client<std::vector<bool>>(std::forward<Func>(func), "SMISMEMBER requires at least one member");
             return derived();
         }
-        return derived().template command<std::vector<bool>>(std::forward<Func>(func), "SMISMEMBER", key, std::forward<Members>(members)...);
+        return derived().template command<std::vector<bool>>(std::forward<Func>(func), detail::verb<"SMISMEMBER">, key,
+                                                             std::forward<Members>(members)...);
     }
 
     /**
@@ -485,7 +487,7 @@ public:
             fail_client<qb::unordered_set<std::string>>(std::forward<Func>(func), "SMEMBERS requires a non-empty key");
             return derived();
         }
-        return derived().template command<qb::unordered_set<std::string>>(std::forward<Func>(func), "SMEMBERS", key);
+        return derived().template command<qb::unordered_set<std::string>>(std::forward<Func>(func), detail::verb<"SMEMBERS">, key);
     }
 
     /**
@@ -523,7 +525,7 @@ public:
             fail_client<bool>(std::forward<Func>(func), "SMOVE requires a non-empty source, destination and member");
             return derived();
         }
-        return derived().template command<bool>(std::forward<Func>(func), "SMOVE", source, destination, member);
+        return derived().template command<bool>(std::forward<Func>(func), detail::verb<"SMOVE">, source, destination, member);
     }
 
     /**
@@ -557,7 +559,7 @@ public:
             fail_client<std::optional<std::string>>(std::forward<Func>(func), "SPOP requires a non-empty key");
             return derived();
         }
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "SPOP", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"SPOP">, key);
     }
 
     /**
@@ -593,7 +595,7 @@ public:
             fail_client<std::vector<std::string>>(std::forward<Func>(func), "SPOP requires a non-empty key and a count >= 1");
             return derived();
         }
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SPOP", key, count);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"SPOP">, key, count);
     }
 
     /**
@@ -628,7 +630,7 @@ public:
             fail_client<std::optional<std::string>>(std::forward<Func>(func), "SRANDMEMBER requires a non-empty key");
             return derived();
         }
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "SRANDMEMBER", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"SRANDMEMBER">, key);
     }
 
     /**
@@ -665,7 +667,7 @@ public:
             fail_client<std::vector<std::string>>(std::forward<Func>(func), "SRANDMEMBER requires a non-empty key");
             return derived();
         }
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SRANDMEMBER", key, count);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"SRANDMEMBER">, key, count);
     }
 
     /**
@@ -704,7 +706,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "SREM requires at least one member");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "SREM", key, std::forward<Members>(members)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SREM">, key, std::forward<Members>(members)...);
     }
 
     // =============== Set Scanning Operations ===============
@@ -746,7 +748,8 @@ public:
             fail_client<scan<>>(std::forward<Func>(func), "SSCAN requires a non-empty key");
             return derived();
         }
-        return derived().template command<scan<>>(std::forward<Func>(func), "SSCAN", key, cursor, "MATCH", pattern, "COUNT", count);
+        return derived().template command<scan<>>(std::forward<Func>(func), detail::verb<"SSCAN">, key, cursor, "MATCH", pattern, "COUNT",
+                                                  count);
     }
 
     /**
@@ -814,7 +817,7 @@ public:
         std::vector<std::string> args;
         args.reserve(keys.size());
         args.insert(args.end(), keys.begin(), keys.end());
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "SUNION", args);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"SUNION">, args);
     }
 
     /**
@@ -849,7 +852,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "SUNIONSTORE requires at least one key");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "SUNIONSTORE", destination, keys);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SUNIONSTORE">, destination, keys);
     }
 };
 

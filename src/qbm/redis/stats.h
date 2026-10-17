@@ -113,11 +113,11 @@ command_family_name(command_family const family) noexcept {
 
 /**
  * @brief What the client knows of a verb: its family and how it may be handled.
- * @details One table, looked up once per command -- the lookup the command watchdog already needed for
- *          `blocking`. `read_only` holds for the verb in every form it takes: a verb with an option that writes
- *          (`SORT ... STORE`) is not read-only. `idempotent` describes the verb's plain form: a retrying view
- *          (`command_retry`, Huly QB-133) also refuses the options that break it -- SET with NX, XX or GET, ZADD
- *          with INCR.
+ * @details One table. A command group's verb is resolved to its row at compile time (`detail::verb<"GET">`); a
+ *          verb named at run time is looked up once, the lookup the command watchdog needs for `blocking`.
+ *          `read_only` holds for the verb in every form it takes: a verb with an option that writes (`SORT ... STORE`)
+ *          is not read-only. `idempotent` describes the verb's plain form: a retrying view (`command_retry`, Huly
+ *          QB-133) also refuses the options that break it -- SET with NX, XX or GET, ZADD with INCR.
  */
 struct command_traits {
     command_family family     = command_family::other;
@@ -369,6 +369,69 @@ inline constexpr std::array<command_row, 228> command_table{{
     {"ZSCORE", {command_family::sorted_set, false, true, false}},
     {"ZUNIONSTORE", {command_family::sorted_set, false, false, false}},
 }};
+
+/// The row of `verb` (exact spelling) in `command_table`, or `command_table.size()`: the compile-time lookup.
+[[nodiscard]] consteval std::size_t
+command_row_of(std::string_view const verb) noexcept {
+    std::size_t lo = 0;
+    std::size_t hi = command_table.size();
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        if (command_table[mid].verb < verb)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo < command_table.size() && command_table[lo].verb == verb ? lo : command_table.size();
+}
+
+/// A verb as the source spells it, held by value: the template argument of `verb<"GET">`.
+template <std::size_t N>
+struct verb_literal {
+    std::array<char, N> text{};
+
+    // Not explicit: the template argument "GET" initializes it by copy (the fixed-string idiom).
+    constexpr verb_literal(const char (&literal)[N]) noexcept {
+        for (std::size_t i = 0; i < N; ++i)
+            text[i] = literal[i];
+    }
+
+    [[nodiscard]] constexpr std::string_view
+    view() const noexcept {
+        return {text.data(), N - 1};
+    }
+};
+
+/**
+ * @brief A verb of `command_table`, its row resolved at compile time: what a command group passes to `command<T>()`.
+ * @details The client reads the verb's family and flags at that row -- no hash, no string compare -- and writes its
+ *          name from it. Every class a command group is mixed into takes it (`Redis`, the consumers, the handshake
+ *          handles, the retrying view).
+ */
+struct known_verb {
+    std::uint16_t row;
+
+    [[nodiscard]] constexpr std::string_view
+    name() const noexcept {
+        return command_table[row].verb;
+    }
+
+    [[nodiscard]] constexpr command_traits const &
+    traits() const noexcept {
+        return command_table[row].traits;
+    }
+};
+
+/// The row of `V` in `command_table`; a verb with no row does not compile.
+template <verb_literal V>
+struct verb_row {
+    static constexpr std::size_t value = command_row_of(V.view());
+    static_assert(value < command_table.size(), "a command group's verb needs its row in command_table");
+};
+
+/// `V` as a `known_verb`: `detail::verb<"GET">`.
+template <verb_literal V>
+inline constexpr known_verb verb{static_cast<std::uint16_t>(verb_row<V>::value)};
 
 /// The index of `verb` (exact spelling) in `command_table`, or `command_table.size()` when it is not there.
 [[nodiscard]] inline std::size_t

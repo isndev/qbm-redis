@@ -17,6 +17,7 @@
 #ifndef QBM_REDIS_HYPERLOG_COMMANDS_H
 #define QBM_REDIS_HYPERLOG_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -76,7 +77,7 @@ public:
     template <typename Func, typename... Elements>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     pfadd(Func &&func, const std::string &key, Elements &&...elements) {
-        return derived().template command<bool>(std::forward<Func>(func), "PFADD", key, std::forward<Elements>(elements)...);
+        return derived().template command<bool>(std::forward<Func>(func), detail::verb<"PFADD">, key, std::forward<Elements>(elements)...);
     }
 
     /**
@@ -112,7 +113,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "PFCOUNT requires at least one key");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "PFCOUNT", std::forward<Keys>(keys)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"PFCOUNT">, std::forward<Keys>(keys)...);
     }
 
     /**
@@ -150,7 +151,7 @@ public:
             fail_client<status>(std::forward<Func>(func), "PFMERGE requires a destination and at least one source key");
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "PFMERGE", destination, std::forward<Keys>(keys)...);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"PFMERGE">, destination, std::forward<Keys>(keys)...);
     }
 };
 

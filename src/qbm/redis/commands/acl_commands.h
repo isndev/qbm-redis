@@ -16,6 +16,7 @@
 #ifndef QBM_REDIS_ACL_COMMANDS_H
 #define QBM_REDIS_ACL_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -67,7 +68,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     acl_list(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "LIST");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"ACL">, "LIST");
     }
 
     /**
@@ -99,9 +100,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     acl_log(Func &&func, std::optional<long long> count = std::nullopt) {
         if (count) {
-            return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "LOG", *count);
+            return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"ACL">, "LOG", *count);
         } else {
-            return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "LOG");
+            return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"ACL">, "LOG");
         }
     }
 
@@ -133,9 +134,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     acl_cat(Func &&func, const std::string &category = "") {
         if (category.empty()) {
-            return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ACL", "CAT");
+            return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ACL">, "CAT");
         } else {
-            return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ACL", "CAT", category);
+            return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ACL">, "CAT", category);
         }
     }
 
@@ -166,7 +167,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     acl_getuser(Func &&func, const std::string &username) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "GETUSER", username);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"ACL">, "GETUSER", username);
     }
 
     /**
@@ -193,7 +194,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     acl_users(Func &&func) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ACL", "USERS");
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ACL">, "USERS");
     }
 
     /**
@@ -219,7 +220,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     acl_whoami(Func &&func) {
-        return derived().template command<std::string>(std::forward<Func>(func), "ACL", "WHOAMI");
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"ACL">, "WHOAMI");
     }
 
     /**
@@ -245,7 +246,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     acl_help(Func &&func) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ACL", "HELP");
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ACL">, "HELP");
     }
 
     /**
@@ -274,7 +275,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     acl_deluser(Func &&func, const std::string &username) {
-        return derived().template command<long long>(std::forward<Func>(func), "ACL", "DELUSER", username);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ACL">, "DELUSER", username);
     }
 
     /**
@@ -304,9 +305,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     acl_genpass(Func &&func, std::optional<long long> bits = std::nullopt) {
         if (bits) {
-            return derived().template command<std::string>(std::forward<Func>(func), "ACL", "GENPASS", *bits);
+            return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"ACL">, "GENPASS", *bits);
         } else {
-            return derived().template command<std::string>(std::forward<Func>(func), "ACL", "GENPASS");
+            return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"ACL">, "GENPASS");
         }
     }
 
@@ -333,7 +334,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     acl_load(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "ACL", "LOAD");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"ACL">, "LOAD");
     }
 
     /**
@@ -359,7 +360,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     acl_save(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "ACL", "SAVE");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"ACL">, "SAVE");
     }
 
     /**
@@ -392,7 +393,8 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     acl_setuser(Func &&func, const std::string &username, Args &&...rules) {
-        return derived().template command<status>(std::forward<Func>(func), "ACL", "SETUSER", username, std::forward<Args>(rules)...);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"ACL">, "SETUSER", username,
+                                                  std::forward<Args>(rules)...);
     }
 
     /**
@@ -426,7 +428,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     acl_dryrun(Func &&func, const std::string &username, const std::string &command, const std::vector<std::string> &args = {}) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "ACL", "DRYRUN", username, command, args);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"ACL">, "DRYRUN", username, command, args);
     }
 };
 

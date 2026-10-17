@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <qb/system/parse.h>
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -82,7 +83,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<stream_id> &&>, Derived &>
     xadd(Func &&func, const std::string &key, const std::vector<std::pair<std::string, std::string>> &entries,
          const std::optional<std::string> &id = std::nullopt) {
-        return derived().template command<stream_id>(std::forward<Func>(func), "XADD", key, id ? *id : "*", entries);
+        return derived().template command<stream_id>(std::forward<Func>(func), detail::verb<"XADD">, key, id ? *id : "*", entries);
     }
 
     /**
@@ -131,7 +132,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xlen(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "XLEN", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"XLEN">, key);
     }
 
     /**
@@ -164,7 +165,7 @@ public:
     template <typename Func, typename... Ids>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xdel(Func &&func, const std::string &key, Ids &&...ids) {
-        return derived().template command<long long>(std::forward<Func>(func), "XDEL", key, std::forward<Ids>(ids)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"XDEL">, key, std::forward<Ids>(ids)...);
     }
 
     /**
@@ -207,7 +208,7 @@ public:
         if (mkstream) {
             args.push_back("MKSTREAM");
         }
-        return derived().template command<status>(std::forward<Func>(func), "XGROUP", args);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"XGROUP">, args);
     }
 
     /**
@@ -238,7 +239,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xgroup_destroy(Func &&func, const std::string &key, const std::string &group) {
-        return derived().template command<long long>(std::forward<Func>(func), "XGROUP", "DESTROY", key, group);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"XGROUP">, "DESTROY", key, group);
     }
 
     /**
@@ -270,7 +271,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xgroup_delconsumer(Func &&func, const std::string &key, const std::string &group, const std::string &consumer) {
-        return derived().template command<long long>(std::forward<Func>(func), "XGROUP", "DELCONSUMER", key, group, consumer);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"XGROUP">, "DELCONSUMER", key, group, consumer);
     }
 
     /**
@@ -306,7 +307,7 @@ public:
     template <typename Func, typename... Ids>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     xack(Func &&func, const std::string &key, const std::string &group, Ids &&...ids) {
-        return derived().template command<long long>(std::forward<Func>(func), "XACK", key, group, std::forward<Ids>(ids)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"XACK">, key, group, std::forward<Ids>(ids)...);
     }
 
     /**
@@ -350,7 +351,7 @@ public:
             args.push_back("=");
         }
         args.push_back(std::to_string(maxlen));
-        return derived().template command<long long>(std::forward<Func>(func), "XTRIM", args);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"XTRIM">, args);
     }
 
     /**
@@ -394,7 +395,7 @@ public:
             args.insert(args.end(), {"COUNT", std::to_string(*count)});
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
-        return derived().template command<qb::json>(std::forward<Func>(func), "XREADGROUP", args, "STREAMS", key, id);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XREADGROUP">, args, "STREAMS", key, id);
     }
 
     /**
@@ -444,7 +445,7 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<qb::json>(std::forward<Func>(func), "XREADGROUP", args, "STREAMS", keys, ids);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XREADGROUP">, args, "STREAMS", keys, ids);
     }
 
     /**
@@ -486,7 +487,7 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<qb::json>(std::forward<Func>(func), "XREAD", args, "STREAMS", key, id);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XREAD">, args, "STREAMS", key, id);
     }
 
     /**
@@ -531,7 +532,7 @@ public:
         if (block)
             args.insert(args.end(), {"BLOCK", std::to_string(*block)});
 
-        return derived().template command<qb::json>(std::forward<Func>(func), "XREAD", args, "STREAMS", keys, ids);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XREAD">, args, "STREAMS", keys, ids);
     }
 
     /**
@@ -557,7 +558,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_stream(Func &&func, const std::string &key) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "STREAM", key);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XINFO">, "STREAM", key);
     }
 
     /**
@@ -583,7 +584,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_groups(Func &&func, const std::string &key) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "GROUPS", key);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XINFO">, "GROUPS", key);
     }
 
     /**
@@ -612,7 +613,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_consumers(Func &&func, const std::string &key, const std::string &group) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "CONSUMERS", key, group);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XINFO">, "CONSUMERS", key, group);
     }
 
     /**
@@ -636,7 +637,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     xinfo_help(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "XINFO", "HELP");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XINFO">, "HELP");
     }
 
     /**
@@ -688,7 +689,7 @@ public:
         if (consumer) {
             args.push_back(*consumer);
         }
-        return derived().template command<qb::json>(std::forward<Func>(func), "XPENDING", args);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XPENDING">, args);
     }
 
     /**
@@ -728,7 +729,7 @@ public:
             opt.push_back("COUNT");
             opt.push_back(std::to_string(*count));
         }
-        return derived().template command<stream_entry_list>(std::forward<Func>(func), "XRANGE", key, start, end, opt);
+        return derived().template command<stream_entry_list>(std::forward<Func>(func), detail::verb<"XRANGE">, key, start, end, opt);
     }
 
     /**
@@ -768,7 +769,7 @@ public:
             opt.push_back("COUNT");
             opt.push_back(std::to_string(*count));
         }
-        return derived().template command<stream_entry_list>(std::forward<Func>(func), "XREVRANGE", key, end, start, opt);
+        return derived().template command<stream_entry_list>(std::forward<Func>(func), detail::verb<"XREVRANGE">, key, end, start, opt);
     }
 
     /**
@@ -817,7 +818,7 @@ public:
         std::vector<std::string> args = {key, group, consumer, std::to_string(min_idle_time)};
         args.insert(args.end(), ids.begin(), ids.end());
         args.insert(args.end(), options.begin(), options.end());
-        return derived().template command<stream_entry_list>(std::forward<Func>(func), "XCLAIM", args);
+        return derived().template command<stream_entry_list>(std::forward<Func>(func), detail::verb<"XCLAIM">, args);
     }
 
     /**
@@ -854,7 +855,7 @@ public:
         args.insert(args.end(), ids.begin(), ids.end());
         args.insert(args.end(), options.begin(), options.end());
         args.push_back("JUSTID");
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "XCLAIM", args);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"XCLAIM">, args);
     }
 
     /**
@@ -905,8 +906,8 @@ public:
         }
         if (justid)
             opt.push_back("JUSTID");
-        return derived().template command<qb::json>(std::forward<Func>(func), "XAUTOCLAIM", key, group, consumer, std::to_string(min_idle_time),
-                                                    start, opt);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"XAUTOCLAIM">, key, group, consumer,
+                                                    std::to_string(min_idle_time), start, opt);
     }
 
     /**
@@ -946,7 +947,7 @@ public:
             opt.push_back("ENTRIESREAD");
             opt.push_back(std::to_string(*entries_read));
         }
-        return derived().template command<status>(std::forward<Func>(func), "XGROUP", "SETID", key, group, id, opt);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"XGROUP">, "SETID", key, group, id, opt);
     }
 
     /**
@@ -978,7 +979,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     xgroupCreateconsumer(Func &&func, const std::string &key, const std::string &group, const std::string &consumer) {
-        return derived().template command<bool>(std::forward<Func>(func), "XGROUP", "CREATECONSUMER", key, group, consumer);
+        return derived().template command<bool>(std::forward<Func>(func), detail::verb<"XGROUP">, "CREATECONSUMER", key, group, consumer);
     }
 };
 

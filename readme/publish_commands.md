@@ -23,7 +23,7 @@ the methods below are called on a live client through its public alias `qb::redi
 `make_coro_command<T>(...)`, which own argument serialization, I/O, and connection lifetime (
 see [connection.md](./connection.md)).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:37-42 (the CRTP derived accessor), redis.h:3900 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:38-43 (the CRTP derived accessor), redis.h:4009 (tcp::client alias) -->
 
 ```cpp
 #include <qbm/redis/redis.h>            // umbrella header; pulls in publish_commands.h
@@ -49,7 +49,7 @@ clients that received the message at the moment you published:
 - A count of `0` means nobody was subscribed; the message is dropped. Redis Pub/Sub does not buffer messages for absent
   subscribers, so this is not an error — `reply.ok()` is still `true`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:56-79 (also a FACTBOOK invariant) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:57-80 (also a FACTBOOK invariant) -->
 
 A subscriber receives a message only if it was subscribed *before* you published. If you need at-least-once semantics,
 durability, or consumer groups, use Redis Streams instead (see your stream command reference), not Pub/Sub.
@@ -87,7 +87,7 @@ std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 publish(Func &&func, const std::string &channel, const std::string &message);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:56-79 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:57-80 -->
 
 | Argument  | Type                              | Meaning                                |
 |:----------|:----------------------------------|:---------------------------------------|
@@ -146,7 +146,7 @@ void announce(tcp::client &redis) {
 The callback overload is SFINAE-gated on `std::is_invocable_v<Func, Reply<long long>&&>`: a lambda whose parameter is
 not `Reply<long long>&&` does not match this overload, so you cannot accidentally bind the wrong reply type.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:75-79 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:76-80 -->
 
 ---
 
@@ -165,7 +165,7 @@ if (r)
 
 The callback form is `spublish(cb, channel, message)`, `cb` taking `Reply<long long>&&`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:81-100; qbm/redis/tests/integration/pubsub/pubsub-sharded.cpp:67-128 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:82-101; qbm/redis/tests/integration/pubsub/pubsub-sharded.cpp:67-128 -->
 
 ## End-to-end: publish to a live subscriber
 

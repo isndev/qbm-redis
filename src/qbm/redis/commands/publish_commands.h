@@ -17,6 +17,7 @@
 #ifndef QBM_REDIS_PUBLISH_COMMANDS_H
 #define QBM_REDIS_PUBLISH_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -75,7 +76,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     publish(Func &&func, const std::string &channel, const std::string &message) {
-        return derived().template command<long long>(std::forward<Func>(func), "PUBLISH", channel, message);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"PUBLISH">, channel, message);
     }
 
     /**
@@ -96,7 +97,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     spublish(Func &&func, const std::string &channel, const std::string &message) {
-        return derived().template command<long long>(std::forward<Func>(func), "SPUBLISH", channel, message);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SPUBLISH">, channel, message);
     }
 };
 

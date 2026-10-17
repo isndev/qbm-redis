@@ -61,7 +61,7 @@ explicit Redis<QB_IO_>(qb::io::uri uri);
 | `make_coro_command` | `template<class T,class Func> auto make_coro_command(Func&&)` | Builds a `redis_awaiter<T>` from a callback op (mixin hook). | internal |
 | `set_latency_stats` / `latency_stats` | `void set_latency_stats(bool enabled); bool latency_stats() const noexcept` | Per-family latency histograms, opt-in (Huly QB-134): on, each command is timed send to completion; off (default), no clock and no histogram. Off drops what was recorded. | `c.set_latency_stats(true);` |
 | `latency` | `qb::redis::latency_histogram latency(qb::redis::command_family) const noexcept` | One family's histogram, by value; empty while off. p50/p95/p99 = `percentile(0.50/0.95/0.99)`. | `c.latency(qb::redis::command_family::string).percentile(0.99)` |
-| `retrying` (`redis.h:2434-2437`) | `RetryingClient<Redis<QB_IO_>> retrying(qb::redis::command_retry retry = {})` | A view whose eligible commands are retried (Huly QB-133): the whole command surface but the transaction commands, coroutine and callback. One outcome per command, the last, unchanged. Must not outlive the client. | `co_await c.retrying().get("k");` |
+| `retrying` (`redis.h:2505-2508`) | `RetryingClient<Redis<QB_IO_>> retrying(qb::redis::command_retry retry = {})` | A view whose eligible commands are retried (Huly QB-133): the whole command surface but the transaction commands, coroutine and callback. One outcome per command, the last, unchanged. Must not outlive the client. | `co_await c.retrying().get("k");` |
 | `on_command_complete` | `Redis& on_command_complete(std::function<void(qb::redis::command_info const&)>)` | Told of every completed command, before its callback: verb, family, outcome, error text, duration (latency on). Must not drive the client; views valid during the call; throws contained. Empty (default): one branch per completion. | `c.on_command_complete([](auto const& i){ /* push a copy */ });` |
 
 Inherited connector methods: see **connector** below.
@@ -114,7 +114,7 @@ auto pol = RetryPolicy{}.with_max_attempts(5).with_initial_delay(200ms).with_max
 ```
 
 ### Transport aliases — `qb::redis::tcp`
-`redis.h:3899` · `struct`. Plaintext-TCP aliases the build always provides:
+`redis.h:4008` · `struct`. Plaintext-TCP aliases the build always provides:
 
 ```cpp
 qb::redis::tcp::client       // detail::Redis<qb::io::transport::tcp>
@@ -123,17 +123,17 @@ qb::redis::tcp::cb_consumer  // detail::RedisCallbackConsumer<...>
 qb::redis::tcp::co_consumer  // detail::RedisCoroConsumer<...>
 template<class D> tcp::consumer = detail::RedisConsumer<..., D>;
 ```
-`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:3911`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
+`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:4020`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
 
-`qb::redis::database<QB_IO_>` (`redis.h:3893`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
-`qb::redis::no_check` (`redis.h:3924`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
+`qb::redis::database<QB_IO_>` (`redis.h:4002`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
+`qb::redis::no_check` (`redis.h:4033`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
 
 ### Pipelining & consumers
-- `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:2485`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
-- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:2541`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`. Keeps the subscriptions the server CONFIRMED (a successful RESET forgets them) and replays them in the handshake of every reconnection; marks the hole with ONE gap marker before the new connection's first message. `on_gap(std::function<void(qb::io::gap_info const&)>)` → `Derived&`: told each time a marker enters the stream.
-- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:3229`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook; `on_message` also receives the gap marker (`msg.is_gap()`). Ctor: `uri` + optional callbacks.
-- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:3347`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` fires for each message a full queue drops, and one coalesced gap marker carries the count (`gap.reason` overflow, `gap.lost`); `message_channel_capacity()` reports capacity.
-  - `receive()` (`redis.h:3489`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next item; suspends until one arrives. An item is a message or a gap marker (`is_gap()`). `nullopt` only once the consumer is DOWN and what it queued is read (`down_reason()` says why); a loss an armed run recovers from keeps the stream open.
+- `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:2556`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
+- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:2612`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`. Keeps the subscriptions the server CONFIRMED (a successful RESET forgets them) and replays them in the handshake of every reconnection; marks the hole with ONE gap marker before the new connection's first message. `on_gap(std::function<void(qb::io::gap_info const&)>)` → `Derived&`: told each time a marker enters the stream.
+- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:3308`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook; `on_message` also receives the gap marker (`msg.is_gap()`). Ctor: `uri` + optional callbacks.
+- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:3426`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` fires for each message a full queue drops, and one coalesced gap marker carries the count (`gap.reason` overflow, `gap.lost`); `message_channel_capacity()` reports capacity.
+  - `receive()` (`redis.h:3568`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next item; suspends until one arrives. An item is a message or a gap marker (`is_gap()`). `nullopt` only once the consumer is DOWN and what it queued is read (`down_reason()` says why); a loss an armed run recovers from keeps the stream open.
 
 ```cpp
 auto m = co_await consumer.receive(); if (!m) co_return;  // down: consumer.down_reason() says why
@@ -146,17 +146,17 @@ if (m->is_gap()) { /* resynchronise: m->gap.reason, m->gap.lost */ }
 The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are plain increments on paths the client already runs; latency and the hook cost one predictable branch while off.
 
 - `enum class qb::redis::command_family : std::uint8_t` (`stats.h:37-59`) — the command group that issues a verb: `acl`, `bitmap`, `cluster`, `connection`, `function`, `geo`, `hash`, `hyperloglog`, `key`, `list`, `module`, `publish`, `scripting`, `server`, `set`, `sorted_set`, `stream`, `string`, `subscription`, `transaction`, `other` (a verb the client does not issue: a module command). `command_families = 21`; `command_family_name(f)`.
-- `struct qb::redis::command_traits` (`stats.h:122-127`) — `{command_family family; bool blocking; bool read_only; bool idempotent;}`; `command_traits_of(std::string_view verb)` (`stats.h:406-412`), any letter case, `other`/all-false for an unknown verb. One hand-maintained table (`detail::command_table`), checked against the command groups' sources by `tests/unit/stats/command-traits.cpp`; `blocking` is the command watchdog's set.
-- `enum class qb::redis::command_outcome : std::uint8_t { ok, error, failed }` (`stats.h:415-419`) — a value, the server's error reply, no answer (refused locally, the link lost, a timeout, the client down).
-- `struct qb::redis::command_info` (`stats.h:426-440`) — `{command_family family; std::string_view name; qb::duration duration; bool ok; command_outcome outcome; std::string_view error;}`; views valid during the call only; arguments never reported.
-- `struct qb::redis::latency_histogram` (`stats.h:446-490`) — 32 log2 buckets in microseconds; `record(span)`, `count()`, `percentile(p)` (the upper bound of the bucket holding the p-th quantile).
-- `struct qb::redis::stats` (`stats.h:499-510`) — `commands`, `errors` (of them, not ok), `failed` (of the errors, no answer), `held`, `std::array<std::uint64_t, 21> by_family`, `reconnects` (ready connections reached after a lost one; `disconnect()` ends the session), `gaps`, `messages_received`, `messages_dropped`. On a client every command is counted once, when it completes: `commands` equals the callbacks called.
+- `struct qb::redis::command_traits` (`stats.h:122-127`) — `{command_family family; bool blocking; bool read_only; bool idempotent;}`; `command_traits_of(std::string_view verb)` (`stats.h:469-475`), any letter case, `other`/all-false for an unknown verb. One hand-maintained table (`detail::command_table`), checked against the command groups' sources by `tests/unit/stats/command-traits.cpp`; `blocking` is the command watchdog's set. A command group passes its verb resolved at compile time (`detail::verb<"GET">`, `stats.h:432-434`): no lookup on that path; a verb with no row does not compile.
+- `enum class qb::redis::command_outcome : std::uint8_t { ok, error, failed }` (`stats.h:478-482`) — a value, the server's error reply, no answer (refused locally, the link lost, a timeout, the client down).
+- `struct qb::redis::command_info` (`stats.h:489-503`) — `{command_family family; std::string_view name; qb::duration duration; bool ok; command_outcome outcome; std::string_view error;}`; views valid during the call only; arguments never reported.
+- `struct qb::redis::latency_histogram` (`stats.h:509-553`) — 32 log2 buckets in microseconds; `record(span)`, `count()`, `percentile(p)` (the upper bound of the bucket holding the p-th quantile).
+- `struct qb::redis::stats` (`stats.h:562-573`) — `commands`, `errors` (of them, not ok), `failed` (of the errors, no answer), `held`, `std::array<std::uint64_t, 21> by_family`, `reconnects` (ready connections reached after a lost one; `disconnect()` ends the session), `gaps`, `messages_received`, `messages_dropped`. On a client every command is counted once, when it completes: `commands` equals the callbacks called.
 
 ### Per-command retry — `Redis::retrying()` (Huly QB-133)
-`qb::redis::command_retry` (`redis.h:247-257`) · `struct { qb::io::reconnect_policy backoff /* 3 attempts, 50 ms then 100 ms */; bool idempotent_writes = false; }`. `redis.retrying(retry)` returns `qb::redis::detail::RetryingClient<Redis<QB_IO_>>` (`redis.h:3719`), a view of the client: each command through it is retried when its verb is read-only (`command_traits_of(verb).read_only`), or an idempotent write with `idempotent_writes` on, AND it failed with no answer ("disconnected", "command timed out") while the client can still carry it (ready or reconnecting -- a retry during a run is held behind the handshake), or the server answered LOADING, BUSY, TRYAGAIN or MASTERDOWN (the first word: BUSYGROUP is not BUSY). **Never retried**: non-idempotent writes (INCR and DECR families, APPEND, list pushes, pops and moves, SPOP, XADD, a relative EXPIRE, PUBLISH, EVAL, FCALL, ...), SET with NX, XX or GET, ZADD with INCR, blocking commands, anything inside MULTI, and anything on a client that is down or idle. Attempts and waits are `backoff`'s (the first attempt included; `on_retry` told before each wait); every re-issue counts in `stats().retries`. The callback or awaiter sees one outcome, the last, unchanged -- no exception (not `qb::io::async::with_retry`, which throws `retry_exhausted` and loses the last `Reply`). A command the view retries is serialized once, at submission; an ineligible one passes through. The view holds a pointer and the client's liveness token: it must not outlive the client (asserted in debug); a retry pending when the client is destroyed is dropped, never called.
+`qb::redis::command_retry` (`redis.h:247-257`) · `struct { qb::io::reconnect_policy backoff /* 3 attempts, 50 ms then 100 ms */; bool idempotent_writes = false; }`. `redis.retrying(retry)` returns `qb::redis::detail::RetryingClient<Redis<QB_IO_>>` (`redis.h:3811`), a view of the client: each command through it is retried when its verb is read-only (`command_traits_of(verb).read_only`), or an idempotent write with `idempotent_writes` on, AND it failed with no answer ("disconnected", "command timed out") while the client can still carry it (ready or reconnecting -- a retry during a run is held behind the handshake), or the server answered LOADING, BUSY, TRYAGAIN or MASTERDOWN (the first word: BUSYGROUP is not BUSY). **Never retried**: non-idempotent writes (INCR and DECR families, APPEND, list pushes, pops and moves, SPOP, XADD, a relative EXPIRE, PUBLISH, EVAL, FCALL, ...), SET with NX, XX or GET, ZADD with INCR, blocking commands, anything inside MULTI, and anything on a client that is down or idle. Attempts and waits are `backoff`'s (the first attempt included; `on_retry` told before each wait); every re-issue counts in `stats().retries`. The callback or awaiter sees one outcome, the last, unchanged -- no exception (not `qb::io::async::with_retry`, which throws `retry_exhausted` and loses the last `Reply`). A command the view retries is serialized once, at submission; an ineligible one passes through. The view holds a pointer and the client's liveness token: it must not outlive the client (asserted in debug); a retry pending when the client is destroyed is dropped, never called.
 
 ## Connection commands — `connection_commands<Derived>`
-`connection_commands.h:33`. HELLO/AUTH/ECHO/PING/QUIT/SELECT/SWAPDB/RESET.
+`connection_commands.h:34`. HELLO/AUTH/ECHO/PING/QUIT/SELECT/SWAPDB/RESET.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -172,7 +172,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## String commands — `string_commands<Derived>`
-`string_commands.h:49`.
+`string_commands.h:50`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -199,7 +199,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Key commands — `key_commands<Derived>`
-`key_commands.h:39`.
+`key_commands.h:40`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -241,7 +241,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Bitmap commands — `bitmap_commands<Derived>`
-`bitmap_commands.h:36`. Operate on strings as bit arrays.
+`bitmap_commands.h:37`. Operate on strings as bit arrays.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -254,7 +254,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Hash commands — `hash_commands<Derived>`
-`hash_commands.h:40`.
+`hash_commands.h:41`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -275,7 +275,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## List commands — `list_commands<Derived>`
-`list_commands.h:36`.
+`list_commands.h:37`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -297,7 +297,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Set commands — `set_commands<Derived>`
-`set_commands.h:37`.
+`set_commands.h:38`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -316,7 +316,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Sorted set commands — `sorted_set_commands<Derived>`
-`sorted_set_commands.h:39`. Members are `qb::redis::score_member` (`{double score, std::string member}`).
+`sorted_set_commands.h:40`. Members are `qb::redis::score_member` (`{double score, std::string member}`).
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -345,7 +345,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Stream commands — `stream_commands<Derived>`
-`stream_commands.h:36`. Stream block timeouts (`block`/`min_idle_time`) are raw `long long` **milliseconds**.
+`stream_commands.h:37`. Stream block timeouts (`block`/`min_idle_time`) are raw `long long` **milliseconds**.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -368,12 +368,12 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 | `xautoclaim` | `auto xautoclaim(key, group, consumer, long long min_idle_time, start, count=nullopt, bool justid=false)` | XAUTOCLAIM; **min_idle_time = ms**; +JUSTID. `Reply<qb::json>` | `co_await c.xautoclaim("s","g","c",0,"0-0");` |
 | `xinfo_stream` / `xinfo_groups` / `xinfo_consumers` / `xinfo_help` | `auto xinfo_stream(const std::string& key)` (etc.) | XINFO subcommands. `Reply<qb::json>` | `co_await c.xinfo_stream("s");` |
 
-`parse_stream_id` (`stream_commands.h:95`) · `static stream_id parse_stream_id(const std::string&)` — parses unsigned `ts-seq` components across the full `uint64_t` range; a missing dash yields `{0,0}`, while an invalid component becomes zero independently. It does not signal errors; use typed replies when validity matters.
+`parse_stream_id` (`stream_commands.h:96`) · `static stream_id parse_stream_id(const std::string&)` — parses unsigned `ts-seq` components across the full `uint64_t` range; a missing dash yields `{0,0}`, while an invalid component becomes zero independently. It does not signal errors; use typed replies when validity matters.
 
 ---
 
 ## Geo commands — `geo_commands<Derived>`
-`geo_commands.h:34`. Distance unit is `qb::redis::GeoUnit` (M/KM/MI/FT), default M.
+`geo_commands.h:35`. Distance unit is `qb::redis::GeoUnit` (M/KM/MI/FT), default M.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -388,7 +388,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## HyperLogLog commands — `hyperloglog_commands<Derived>`
-`hyperloglog_commands.h:39`.
+`hyperloglog_commands.h:40`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -401,12 +401,12 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ## Publish/Subscribe
 
 ### Publish — `publish_commands<Derived>`
-`publish_commands.h:37`.
+`publish_commands.h:38`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
 | `publish` | `auto publish(const std::string& channel, const std::string& message)` | PUBLISH; number of subscribers that received it. `Reply<long long>` | `co_await c.publish("ch","msg");` |
-| `spublish` (`publish_commands.h:90`) | `auto spublish(const std::string& channel, const std::string& message)` | SPUBLISH, sharded pub/sub (Redis 7+, Huly QB-127): reaches the channel's SSUBSCRIBE subscribers; number that received it. On a cluster send it to the node that owns the channel's slot (no redirect followed). `Reply<long long>` | `co_await c.spublish("orders:{7}","msg");` |
+| `spublish` (`publish_commands.h:91`) | `auto spublish(const std::string& channel, const std::string& message)` | SPUBLISH, sharded pub/sub (Redis 7+, Huly QB-127): reaches the channel's SSUBSCRIBE subscribers; number that received it. On a cluster send it to the node that owns the channel's slot (no redirect followed). `Reply<long long>` | `co_await c.spublish("orders:{7}","msg");` |
 
 ### Subscription — `subscription_commands<Derived>`
 `subscription_commands.h:41`. Used by the **consumer** classes, not the data client. Every method has coro + callback forms; all yield `Reply<qb::redis::subscription>` (`{std::optional<std::string> channel, long long num}`).
@@ -425,7 +425,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Transaction commands — `transaction_commands<Derived>`
-`transaction_commands.h:38`. MULTI/EXEC/DISCARD/WATCH/UNWATCH.
+`transaction_commands.h:39`. MULTI/EXEC/DISCARD/WATCH/UNWATCH.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -440,7 +440,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Scripting commands — `scripting_commands<Derived>`
-`scripting_commands.h:36`. Lua. `numkeys` is computed automatically from `keys.size()`.
+`scripting_commands.h:37`. Lua. `numkeys` is computed automatically from `keys.size()`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -456,7 +456,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Server commands — `server_commands<Derived>`
-`server_commands.h:43`.
+`server_commands.h:44`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -496,7 +496,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Cluster commands — `cluster_commands<Derived>`
-`cluster_commands.h:34`.
+`cluster_commands.h:35`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -519,7 +519,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## ACL commands — `acl_commands<Derived>`
-`acl_commands.h:38`.
+`acl_commands.h:39`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -533,7 +533,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Function commands — `function_commands<Derived>`
-`function_commands.h:35`. Redis Functions. `numkeys` computed from `keys.size()`.
+`function_commands.h:36`. Redis Functions. `numkeys` computed from `keys.size()`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|
@@ -549,7 +549,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 ---
 
 ## Module commands — `module_commands<Derived>`
-`module_commands.h:34`.
+`module_commands.h:35`.
 
 | Command | Signature (coro) | Purpose / reply | Usage |
 |---|---|---|---|

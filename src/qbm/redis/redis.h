@@ -1032,10 +1032,10 @@ protected:
     template <typename... Args>
     [[nodiscard]] std::optional<std::string>
     try_put_command(Args &&...args) {
-        if (auto error = serialize_into_(this->out(), std::forward<Args>(args)...))
-            return error;
-        this->ready_to_write();
-        return std::nullopt;
+        auto error = serialize_into_(this->out(), std::forward<Args>(args)...);
+        if (!error)
+            this->ready_to_write();
+        return error;
     }
 
     /// Move the first `bytes` of `held` (a held command, serialized when it was submitted) onto the link.
@@ -1540,20 +1540,22 @@ public:
 private:
     /**
      * @struct PendingReply
-     * @brief One in-flight command awaiting its positional RESP reply.
+     * @brief One in-flight command awaiting its positional RESP reply: 16 bytes.
      *
      * `blocking` marks commands that park server-side with their own timeout
      * (BLPOP, WAIT, …); the client-side command deadline is suspended while any
-     * such command is in flight so it is never spuriously dropped.
+     * such command is in flight so it is never spuriously dropped. Its send time is
+     * not kept here: with latency stats on, `_latency` holds it, in step with the queue.
      */
     struct PendingReply {
         enum class Kind : std::uint8_t { command, monitor_admission, monitor_reset, monitor_quit };
         std::unique_ptr<IReply> handler;
-        bool                    blocking;
+        std::uint16_t           verb{kUnnamedVerb}; ///< the verb's id (verb_id_): its name at completion
+        bool                    blocking{false};
         Kind                    kind{Kind::command};
-        std::uint16_t           verb{kUnnamedVerb}; ///< the verb's id (verb_id_): its family and name at completion
-        qb::mono_time           sent_at{};          ///< when it left, if latency stats were on then; zero otherwise
+        command_family          family{command_family::other}; ///< counted at completion without a lookup
     };
+    static_assert(sizeof(PendingReply) <= 2 * sizeof(void *), "PendingReply is the reply FIFO's element: keep it 16 bytes");
 
     std::queue<PendingReply> _replies;
 
@@ -1578,9 +1580,38 @@ private:
     std::size_t               _held_gen{0};       ///< bumped to retire a held-deadline watcher
     bool                      _held_armed{false}; ///< a held-deadline watcher is live
 
+    /**
+     * @brief When each command of a reply FIFO left, in the FIFO's order: the leading `untimed` ones left before
+     *        latency stats were on and carry no time.
+     */
+    struct sent_times {
+        std::size_t               untimed{0};
+        std::deque<qb::mono_time> at;
+
+        /// The time the front command left, removed: the zero time for an untimed one.
+        [[nodiscard]] qb::mono_time
+        take() noexcept {
+            if (untimed > 0) {
+                --untimed;
+                return qb::mono_time{};
+            }
+            if (at.empty())
+                return qb::mono_time{};
+            const auto sent = at.front();
+            at.pop_front();
+            return sent;
+        }
+    };
+
+    /// What latency stats hold while on: the histograms, and the send times of `_replies` (its side ring).
+    struct latency_state {
+        std::array<latency_histogram, command_families> histograms{};
+        sent_times                                      sent;
+    };
+
     // Observability (Huly QB-134): the counts live in the connector (stats()); these are the client's own.
-    /// Latency histograms, one per family, allocated as one block by set_latency_stats(true); null when off.
-    std::unique_ptr<std::array<latency_histogram, command_families>> _latency;
+    /// Latency stats, allocated as one block by set_latency_stats(true); null when off.
+    std::unique_ptr<latency_state> _latency;
     /// Told of every completed command; empty by default (one predictable branch per completion).
     std::function<void(command_info const &)> _on_command_complete;
     /// Verbs the command table does not know (module commands), interned on first use so a completion can
@@ -1591,7 +1622,8 @@ private:
     static constexpr std::uint16_t kUnnamedVerb   = 0xFFFF; ///< past kMaxOtherVerbs unknown verbs: family other, no name
     static constexpr std::size_t   kMaxOtherVerbs = 256;
 
-    /// The verb's id: its row in the command table -- one lookup, the one blocking detection needed anyway.
+    /// The id of a verb named at run time: its row in the command table -- one lookup, the one blocking detection
+    /// needed anyway. A command group's verb arrives resolved (`detail::known_verb`).
     [[nodiscard]] std::uint16_t
     verb_id_(std::string_view const name) {
         const auto row = detail::command_index(name);
@@ -1634,39 +1666,80 @@ private:
         return other < _other_verbs.size() ? std::string_view{_other_verbs[other]} : std::string_view{};
     }
 
-    /// When a command leaves: read only while latency stats are on.
-    [[nodiscard]] qb::mono_time
-    sent_stamp_() const noexcept {
-        return _latency ? qb::mono_now() : qb::mono_time{};
+    /// One sent command joins `_replies`; its send time joins the side ring while latency stats are on.
+    void
+    queue_reply_(std::unique_ptr<IReply> handler, std::uint16_t const verb, bool const blocking, typename PendingReply::Kind const kind) {
+        _replies.push(PendingReply{std::move(handler), verb, blocking, kind, verb_family_(verb)});
+        if (_latency) [[unlikely]]
+            stamp_sent_();
+    }
+
+    QB_NOINLINE void
+    stamp_sent_() {
+        _latency->sent.at.push_back(qb::mono_now());
     }
 
     /**
-     * @brief One command completed: counted, and -- when latency stats are on or a hook is set -- timed and
-     *        reported. Called once per command, before its callback.
+     * @brief The reply to `entry`, just popped from `_replies`: counted here, inline; timed and reported out of
+     *        line, only while latency stats are on or a hook is set. Called once per command, before its callback.
      */
     void
-    complete_(std::uint16_t const verb, qb::mono_time const sent_at, command_outcome const outcome, std::string_view const error) noexcept {
-        const auto family = verb_family_(verb);
-        auto      &counts = this->stats_mut_();
+    complete_reply_(PendingReply const &entry, ReplyValue const *reply) noexcept {
+        auto &counts = this->stats_mut_();
         ++counts.commands;
-        ++counts.by_family[static_cast<std::size_t>(family)];
-        if (outcome != command_outcome::ok) [[unlikely]] {
+        ++counts.by_family[static_cast<std::size_t>(entry.family)];
+        const bool error = reply && reply::is_error(*reply);
+        if (error) [[unlikely]]
             ++counts.errors;
-            if (outcome == command_outcome::failed)
-                ++counts.failed;
-        }
         if (_latency || _on_command_complete) [[unlikely]]
-            observe_(verb, family, sent_at, outcome, error);
+            observe_reply_(entry.verb, entry.family, reply, error);
     }
 
-    /// Out of line: the histograms and the hook. An exception escaping the hook is contained and logged.
+    /// Out of line: the send time leaves the side ring; the error text is read only for a hook.
+    QB_NOINLINE void
+    observe_reply_(std::uint16_t const verb, command_family const family, ReplyValue const *reply, bool const error) noexcept {
+        const auto  sent_at = _latency ? _latency->sent.take() : qb::mono_time{};
+        std::string text;
+        if (error && _on_command_complete) {
+            try {
+                text = reply->get_error_message();
+            } catch (...) {
+            }
+        }
+        observe_(verb, family, sent_at, error ? command_outcome::error : command_outcome::ok, text);
+    }
+
+    /**
+     * @brief A command that ended without an answer -- refused locally, held then failed, or in flight on a lost
+     *        link (`sent_at` then, if it was timed): counted, timed and reported. The cold paths only.
+     */
+    QB_NOINLINE void
+    complete_failed_(std::uint16_t const verb, command_family const family, qb::mono_time const sent_at,
+                     std::string_view const error) noexcept {
+        auto &counts = this->stats_mut_();
+        ++counts.commands;
+        ++counts.by_family[static_cast<std::size_t>(family)];
+        ++counts.errors;
+        ++counts.failed;
+        if (_latency || _on_command_complete)
+            observe_(verb, family, sent_at, command_outcome::failed, error);
+    }
+
+    /// Refuse a command before anything of it is written: counted, then its handler failed with `reason`.
+    QB_NOINLINE void
+    refuse_(IReply &handler, std::uint16_t const verb, std::string const &reason) {
+        complete_failed_(verb, verb_family_(verb), qb::mono_time{}, reason);
+        handler.fail(reason);
+    }
+
+    /// The histograms and the hook. An exception escaping the hook is contained and logged.
     QB_NOINLINE void
     observe_(std::uint16_t const verb, command_family const family, qb::mono_time const sent_at, command_outcome const outcome,
              std::string_view const error) noexcept {
         qb::duration took{};
         if (_latency && sent_at != qb::mono_time{}) {
             took = std::chrono::duration_cast<qb::duration>(qb::mono_now() - sent_at);
-            (*_latency)[static_cast<std::size_t>(family)].record(took);
+            _latency->histograms[static_cast<std::size_t>(family)].record(took);
         }
         if (!_on_command_complete)
             return;
@@ -1678,28 +1751,6 @@ private:
         } catch (...) {
             QB_LOG_WARN("[qbm][redis] on_command_complete hook threw a non-std exception");
         }
-    }
-
-    /// A reply arrived for `entry`: ok, or the server's error reply -- its text read only for a hook.
-    void
-    complete_reply_(PendingReply const &entry, ReplyValue const *reply) noexcept {
-        if (reply && reply::is_error(*reply)) [[unlikely]] {
-            complete_error_reply_(entry, *reply);
-            return;
-        }
-        complete_(entry.verb, entry.sent_at, command_outcome::ok, {});
-    }
-
-    QB_NOINLINE void
-    complete_error_reply_(PendingReply const &entry, ReplyValue const &reply) noexcept {
-        std::string text;
-        if (_on_command_complete) {
-            try {
-                text = reply.get_error_message();
-            } catch (...) {
-            }
-        }
-        complete_(entry.verb, entry.sent_at, command_outcome::error, text);
     }
 
     struct MonitorSession {
@@ -1782,18 +1833,6 @@ private:
             return false;
         const auto text = reply.as_string_view();
         return (kind == PendingReply::Kind::monitor_reset && text == "RESET") || (kind == PendingReply::Kind::monitor_quit && text == "OK");
-    }
-
-    [[nodiscard]] static bool
-    command_is(std::string_view actual, std::string_view expected) noexcept {
-        if (actual.size() != expected.size())
-            return false;
-        for (std::size_t i = 0; i < actual.size(); ++i) {
-            const char c = actual[i];
-            if ((c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') : c) != expected[i])
-                return false;
-        }
-        return true;
     }
 
     // ---- Optional command deadline (opt-in via set_command_timeout) --------
@@ -1996,13 +2035,16 @@ private:
         // new command must NOT be failed by this same drain loop.
         std::queue<PendingReply> pending;
         std::swap(pending, _replies);
+        sent_times sent;
+        if (_latency)
+            std::swap(sent, _latency->sent);
         auto session = std::move(_monitor);
         end_monitor(session, timed_out ? "command timed out" : "disconnected");
         const std::string_view lost = timed_out ? "command timed out" : "disconnected";
         while (!pending.empty()) {
             auto entry = std::move(pending.front());
             pending.pop();
-            complete_(entry.verb, entry.sent_at, command_outcome::failed, lost);
+            complete_failed_(entry.verb, entry.family, sent.take(), lost);
             if (entry.kind == PendingReply::Kind::monitor_admission)
                 continue; // the session was failed exactly once above
             try {
@@ -2034,7 +2076,7 @@ private:
             this->put_held_bytes_(_held_out, entry.bytes);
             if (entry.blocking)
                 ++_inflight_blocking;
-            _replies.push(PendingReply{std::move(entry.handler), entry.blocking, entry.kind, entry.verb, sent_stamp_()});
+            queue_reply_(std::move(entry.handler), entry.verb, entry.blocking, entry.kind);
         }
         _held_out.reset();
         this->arm_write_();
@@ -2044,7 +2086,7 @@ private:
     /// Fail one held entry: a held MONITOR ends its session, every other entry its handler.
     void
     fail_held_entry_(HeldReply &entry, const std::string &reason) {
-        complete_(entry.verb, qb::mono_time{}, command_outcome::failed, reason);
+        complete_failed_(entry.verb, verb_family_(entry.verb), qb::mono_time{}, reason);
         if (entry.kind == PendingReply::Kind::monitor_admission) {
             if (auto session = std::move(_monitor))
                 end_monitor(session, reason);
@@ -2112,18 +2154,17 @@ private:
      */
     template <typename... Args>
     QB_NOINLINE void
-    submit_unready_(std::unique_ptr<IReply> handler, typename PendingReply::Kind kind, std::string const &name, Args &&...args) {
-        const std::uint16_t verb = verb_id_(name);
+    submit_unready_(std::unique_ptr<IReply> handler, typename PendingReply::Kind kind, std::uint16_t const verb, std::string_view const name,
+                    Args &&...args) {
         if (!this->holding_()) {
             auto reason = this->refusal_text_();
-            complete_(verb, qb::mono_time{}, command_outcome::failed, reason);
+            complete_failed_(verb, verb_family_(verb), qb::mono_time{}, reason);
             this->fail_soon_(std::move(handler), std::move(reason));
             return;
         }
         const std::size_t before = _held_out.size();
         if (auto error = this->serialize_into_(_held_out, name, std::forward<Args>(args)...)) {
-            complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
-            handler->fail(*error); // nothing held, nothing written (Huly QB-255)
+            refuse_(*handler, verb, *error); // nothing held, nothing written (Huly QB-255)
             return;
         }
         ++this->stats_mut_().held;
@@ -2139,24 +2180,74 @@ private:
      */
     template <typename Ret, typename Func, typename... Args>
     void
-    direct_command_(Func &&func, std::string const &name, Args &&...args) {
+    direct_command_(Func &&func, std::string_view const name, Args &&...args) {
         auto                handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
         const std::uint16_t verb    = verb_id_(name);
-        if (command_is(name, "MONITOR")) {
-            complete_(verb, qb::mono_time{}, command_outcome::failed, "MONITOR cannot run in the handshake");
-            handler->fail("MONITOR cannot run in the handshake");
+        if (verb == detail::verb<"MONITOR">.row) {
+            refuse_(*handler, verb, "MONITOR cannot run in the handshake");
             return;
         }
         if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
-            complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
-            handler->fail(*error);
+            refuse_(*handler, verb, *error);
             return;
         }
         const bool blocking = verb_blocks_(verb);
-        _replies.push(PendingReply{std::move(handler), blocking, PendingReply::Kind::command, verb, sent_stamp_()});
+        queue_reply_(std::move(handler), verb, blocking, PendingReply::Kind::command);
         if (blocking)
             ++_inflight_blocking;
         arm_deadline();
+    }
+
+    /**
+     * @brief Submit one command: the path every `command<T>()` takes, its verb resolved.
+     * @details The checks a MONITOR stream needs, and the not-ready and serialization failures, leave through
+     *          functions out of line: what stays here is the gate, the write and the queueing.
+     */
+    template <typename... Args>
+    void
+    submit_(std::unique_ptr<IReply> handler, std::uint16_t const verb, std::string_view const name, Args &&...args) {
+        auto kind = PendingReply::Kind::command;
+        if (_monitor || verb == detail::verb<"MONITOR">.row) [[unlikely]] {
+            const auto admitted = monitor_gate_(*handler, verb);
+            if (!admitted)
+                return;
+            kind = *admitted;
+        }
+        if (!this->ready_()) [[unlikely]] {
+            // Not ready: held behind the handshake, or failed when nothing would ever send it (R2, R4).
+            submit_unready_(std::move(handler), kind, verb, name, std::forward<Args>(args)...);
+            return;
+        }
+        if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) [[unlikely]] {
+            refuse_(*handler, verb, *error); // the client is consistent again: a callback may issue its next command
+            return;
+        }
+        const bool blocking = verb_blocks_(verb);
+        queue_reply_(std::move(handler), verb, blocking, kind);
+        if (kind != PendingReply::Kind::command) [[unlikely]]
+            _monitor->stopping = true;
+        if (blocking)
+            ++_inflight_blocking;
+        arm_deadline();
+    }
+
+    /**
+     * @brief MONITOR through `command()`, or any command while a MONITOR stream owns the connection: refused --
+     *        but for the RESET or QUIT that ends the stream, whose kind is returned.
+     */
+    QB_NOINLINE std::optional<typename PendingReply::Kind>
+                monitor_gate_(IReply &handler, std::uint16_t const verb) {
+        if (verb == detail::verb<"MONITOR">.row) {
+            refuse_(handler, verb, "use monitor(callback) for the MONITOR stream");
+            return std::nullopt;
+        }
+        const bool resetting = verb == detail::verb<"RESET">.row;
+        const bool quitting  = verb == detail::verb<"QUIT">.row;
+        if ((!resetting && !quitting) || _monitor->stopping) {
+            refuse_(handler, verb, "MONITOR owns this connection; only RESET or QUIT may end it");
+            return std::nullopt;
+        }
+        return resetting ? PendingReply::Kind::monitor_reset : PendingReply::Kind::monitor_quit;
     }
 
     Redis &
@@ -2189,7 +2280,7 @@ public:
      * @tparam Ret  Expected decoded reply type for `Reply<Ret>`.
      * @param func  Callback invoked with `Reply<Ret>&&` on success, Redis error, or
      *              disconnect.
-     * @param name  Redis command verb (used for blocking-command detection).
+     * @param name  Redis command verb, any letter case: its family and flags are looked up in the command table.
      * @param args  Command arguments, serialized in order.
      * @return *this, for fluent chaining.
      */
@@ -2199,38 +2290,19 @@ public:
     command(Func &&func, std::string const &name, Args &&...args) {
         auto                handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
         const std::uint16_t verb    = verb_id_(name);
-        if (command_is(name, "MONITOR")) [[unlikely]] {
-            complete_(verb, qb::mono_time{}, command_outcome::failed, "use monitor(callback) for the MONITOR stream");
-            handler->fail("use monitor(callback) for the MONITOR stream");
-            return *this;
-        }
-        const bool resetting = command_is(name, "RESET");
-        const bool quitting  = command_is(name, "QUIT");
-        const bool exiting   = resetting || quitting;
-        if (_monitor && (!exiting || _monitor->stopping)) {
-            complete_(verb, qb::mono_time{}, command_outcome::failed, "MONITOR owns this connection; only RESET or QUIT may end it");
-            handler->fail("MONITOR owns this connection; only RESET or QUIT may end it");
-            return *this;
-        }
-        const auto kind =
-            _monitor ? (resetting ? PendingReply::Kind::monitor_reset : PendingReply::Kind::monitor_quit) : PendingReply::Kind::command;
-        if (!this->ready_()) [[unlikely]] {
-            // Not ready: held behind the handshake, or failed when nothing would ever send it (R2, R4).
-            submit_unready_(std::move(handler), kind, name, std::forward<Args>(args)...);
-            return *this;
-        }
-        if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
-            complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
-            handler->fail(*error); // the client is consistent again: a callback may issue its next command
-            return *this;
-        }
-        const bool blocking = verb_blocks_(verb);
-        _replies.push(PendingReply{std::move(handler), blocking, kind, verb, sent_stamp_()});
-        if (_monitor)
-            _monitor->stopping = true;
-        if (blocking)
-            ++_inflight_blocking;
-        arm_deadline();
+        submit_(std::move(handler), verb, name, std::forward<Args>(args)...);
+        return *this;
+    }
+
+    /**
+     * @brief The command groups' form of `command()`: the verb resolved at compile time (`detail::verb<"GET">`),
+     *        so its family and flags cost no lookup.
+     */
+    template <typename Ret, typename Func, typename... Args>
+    requires std::invocable<Func, Reply<Ret> &&>
+    Redis &
+    command(Func &&func, detail::known_verb const verb, Args &&...args) {
+        submit_(std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func)), verb.row, verb.name(), std::forward<Args>(args)...);
         return *this;
     }
 
@@ -2247,23 +2319,21 @@ public:
     Redis &
     monitor(Func &&func) {
         auto                handler = std::make_unique<TReply<Func, std::string>>(std::forward<Func>(func));
-        const std::uint16_t verb    = verb_id_("MONITOR");
+        const std::uint16_t verb    = detail::verb<"MONITOR">.row;
         if (_monitor) {
-            complete_(verb, qb::mono_time{}, command_outcome::failed, "MONITOR already active");
-            handler->fail("MONITOR already active");
+            refuse_(*handler, verb, "MONITOR already active");
             return *this;
         }
         if (!this->ready_()) [[unlikely]] {
             if (!this->holding_()) {
                 auto reason = this->refusal_text_();
-                complete_(verb, qb::mono_time{}, command_outcome::failed, reason);
+                complete_failed_(verb, verb_family_(verb), qb::mono_time{}, reason);
                 this->fail_soon_(std::move(handler), std::move(reason));
                 return *this;
             }
             const std::size_t before = _held_out.size();
             if (auto error = this->serialize_into_(_held_out, "MONITOR")) {
-                complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
-                handler->fail(*error);
+                refuse_(*handler, verb, *error);
                 return *this;
             }
             _monitor = std::make_shared<MonitorSession>(std::move(handler));
@@ -2273,12 +2343,11 @@ public:
             return *this;
         }
         if (auto error = this->try_put_command("MONITOR")) {
-            complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
-            handler->fail(*error);
+            refuse_(*handler, verb, *error);
             return *this;
         }
         _monitor = std::make_shared<MonitorSession>(std::move(handler));
-        _replies.push(PendingReply{nullptr, false, PendingReply::Kind::monitor_admission, verb, sent_stamp_()});
+        queue_reply_(nullptr, verb, false, PendingReply::Kind::monitor_admission);
         arm_deadline();
         return *this;
     }
@@ -2374,9 +2443,9 @@ public:
     /**
      * @brief Turn the per-family latency histograms on or off (Huly QB-134).
      * @details On, every command is timed from its send to its completion and recorded in its family's
-     *          histogram (`latency()`); the histograms are allocated then, as one block. Off -- the default --
-     *          the client reads no clock for it and holds no histogram; turning it off drops what was recorded.
-     *          Commands already in flight when it is turned on are not timed.
+     *          histogram (`latency()`); the histograms are allocated then, as one block, beside a ring of send times
+     *          kept in step with the replies. Off -- the default -- the client reads no clock for it and holds
+     *          neither; turning it off drops what was recorded. Commands in flight when it is turned on are not timed.
      */
     void
     set_latency_stats(bool const enabled) {
@@ -2384,8 +2453,10 @@ public:
             _latency.reset();
             return;
         }
-        if (!_latency)
-            _latency = std::make_unique<std::array<latency_histogram, command_families>>();
+        if (_latency)
+            return;
+        _latency               = std::make_unique<latency_state>();
+        _latency->sent.untimed = _replies.size(); // in flight already: not timed
     }
 
     /** @brief Whether the latency histograms are on. */
@@ -2400,7 +2471,7 @@ public:
      */
     [[nodiscard]] latency_histogram
     latency(command_family const family) const noexcept {
-        return _latency ? (*_latency)[static_cast<std::size_t>(family)] : latency_histogram{};
+        return _latency ? _latency->histograms[static_cast<std::size_t>(family)] : latency_histogram{};
     }
 
     /**
@@ -2680,7 +2751,7 @@ private:
     template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
     Derived &
-    command(Func &&func, std::string const &name, Args &&...args) {
+    command(Func &&func, std::string_view const name, Args &&...args) {
         auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
         if (!this->ready_()) [[unlikely]] {
             hold_command_(std::move(handler), name, std::forward<Args>(args)...);
@@ -2694,10 +2765,18 @@ private:
         return derived();
     }
 
+    /// The command groups' form: the verb resolved at compile time.
+    template <typename Ret, typename Func, typename... Args>
+    requires std::invocable<Func, Reply<Ret> &&>
+    Derived &
+    command(Func &&func, known_verb const verb, Args &&...args) {
+        return command<Ret>(std::forward<Func>(func), verb.name(), std::forward<Args>(args)...);
+    }
+
     /// The handshake's write path for a plain command: straight to the link.
     template <typename Ret, typename Func, typename... Args>
     void
-    direct_command_(Func &&func, std::string const &name, Args &&...args) {
+    direct_command_(Func &&func, std::string_view const name, Args &&...args) {
         auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
         if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
             handler->fail(*error);
@@ -2709,7 +2788,7 @@ private:
     /// A plain command submitted while not ready: held, or failed on the next loop pass when idle or down.
     template <typename... Args>
     QB_NOINLINE void
-    hold_command_(std::unique_ptr<IReply> handler, std::string const &name, Args &&...args) {
+    hold_command_(std::unique_ptr<IReply> handler, std::string_view const name, Args &&...args) {
         if (!this->holding_()) {
             this->fail_soon_(std::move(handler), this->refusal_text_());
             return;
@@ -3546,6 +3625,19 @@ public:
         return self();
     }
 
+    /// The command groups' form: the verb resolved at compile time.
+    template <typename Ret, typename Func, typename... Args>
+    requires std::invocable<Func, Reply<Ret> &&>
+    Self &
+    command(Func &&func, known_verb const verb, Args &&...args) {
+        if (!live()) {
+            TReply<Func, Ret>{std::forward<Func>(func)}.fail("handshake over");
+            return self();
+        }
+        _owner->template direct_command_<Ret>(std::forward<Func>(func), verb.name(), std::forward<Args>(args)...);
+        return self();
+    }
+
     /** @brief Send a raw command on the handshake's link and await its reply (co_await API). */
     template <typename Ret, typename... Args>
     auto
@@ -3809,8 +3901,7 @@ class RetryingClient<Redis<QB_IO_>>
     /// Whether `name` may be retried, and its arguments then (serialized once); false passes it through.
     template <typename... Args>
     [[nodiscard]] bool
-    eligible_(std::string const &name, std::vector<std::string> &parts, Args const &...args) const {
-        const auto traits = command_traits_of(name);
+    eligible_(std::string_view const name, command_traits const traits, std::vector<std::string> &parts, Args const &...args) const {
         if (traits.blocking || _client->is_in_multi())
             return false;
         if (!traits.read_only && !(traits.idempotent && _retry.idempotent_writes))
@@ -3835,6 +3926,28 @@ public:
     using publish_commands<RetryingClient<Redis<QB_IO_>>>::publish;
     using server_commands<RetryingClient<Redis<QB_IO_>>>::command;
 
+private:
+    /// Retried when eligible, else passed to the client as it came (`verb`: the name, or the resolved verb).
+    template <typename Ret, typename Func, typename Verb, typename... Args>
+    RetryingClient &
+    submit_(Func &&func, Verb const &verb, std::string_view const name, command_traits const traits, Args &&...args) {
+        assert(*_alive && "a retrying view must not outlive its client");
+        if (!*_alive) [[unlikely]] {
+            TReply<Func, Ret>{std::forward<Func>(func)}.fail("the client is gone");
+            return *this;
+        }
+        std::vector<std::string> parts;
+        if (!eligible_(name, traits, parts, args...)) {
+            _client->template command<Ret>(std::forward<Func>(func), verb, std::forward<Args>(args)...);
+            return *this;
+        }
+        using State = attempt_state<Ret, std::decay_t<Func>>;
+        std::make_shared<State>(_client, _alive, _retry, std::string{name}, std::move(parts), std::decay_t<Func>(std::forward<Func>(func)))
+            ->issue();
+        return *this;
+    }
+
+public:
     /** @brief The policy this view retries with. */
     [[nodiscard]] qb::redis::command_retry const &
     policy() const noexcept {
@@ -3849,19 +3962,15 @@ public:
     requires std::invocable<Func, Reply<Ret> &&>
     RetryingClient &
     command(Func &&func, std::string const &name, Args &&...args) {
-        assert(*_alive && "a retrying view must not outlive its client");
-        if (!*_alive) [[unlikely]] {
-            TReply<Func, Ret>{std::forward<Func>(func)}.fail("the client is gone");
-            return *this;
-        }
-        std::vector<std::string> parts;
-        if (!eligible_(name, parts, args...)) {
-            _client->template command<Ret>(std::forward<Func>(func), name, std::forward<Args>(args)...);
-            return *this;
-        }
-        using State = attempt_state<Ret, std::decay_t<Func>>;
-        std::make_shared<State>(_client, _alive, _retry, name, std::move(parts), std::decay_t<Func>(std::forward<Func>(func)))->issue();
-        return *this;
+        return submit_<Ret>(std::forward<Func>(func), name, name, command_traits_of(name), std::forward<Args>(args)...);
+    }
+
+    /// The command groups' form: the verb resolved at compile time, its traits read at its row.
+    template <typename Ret, typename Func, typename... Args>
+    requires std::invocable<Func, Reply<Ret> &&>
+    RetryingClient &
+    command(Func &&func, known_verb const verb, Args &&...args) {
+        return submit_<Ret>(std::forward<Func>(func), verb, verb.name(), verb.traits(), std::forward<Args>(args)...);
     }
 
     /** @brief Send a raw command through the view and await its last outcome (co_await API). */

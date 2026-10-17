@@ -60,7 +60,8 @@ public:
 
     template <typename Ret, typename Func, typename... Args>
     ScriptedServerCommands &
-    command(Func &&func, const std::string &name, Args &&...args) {
+    command(Func &&func, qb::redis::detail::known_verb const verb, Args &&...args) {
+        const auto name = verb.name();
         qb::redis::put_in_pipe(_out, name, std::forward<Args>(args)...);
         qb::redis::TReply<Func, Ret> handler{std::forward<Func>(func)};
         ++_commands;

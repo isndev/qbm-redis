@@ -18,6 +18,7 @@
 #define QBM_REDIS_STRING_COMMANDS_H
 #include <bitset>
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -86,7 +87,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     append(Func &&func, const std::string &key, const std::string &val) {
-        return derived().template command<long long>(std::forward<Func>(func), "APPEND", key, val);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"APPEND">, key, val);
     }
 
     /**
@@ -112,7 +113,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     decr(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "DECR", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"DECR">, key);
     }
 
     /**
@@ -141,7 +142,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     decrby(Func &&func, const std::string &key, long long decrement) {
-        return derived().template command<long long>(std::forward<Func>(func), "DECRBY", key, decrement);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"DECRBY">, key, decrement);
     }
 
     /**
@@ -168,7 +169,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     get(Func &&func, const std::string &key) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "GET", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"GET">, key);
     }
 
     /**
@@ -199,7 +200,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     getrange(Func &&func, const std::string &key, long long start, long long end) {
-        return derived().template command<std::string>(std::forward<Func>(func), "GETRANGE", key, start, end);
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"GETRANGE">, key, start, end);
     }
 
     /**
@@ -229,7 +230,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     substr(Func &&func, const std::string &key, long long start, long long end) {
-        return derived().template command<std::string>(std::forward<Func>(func), "SUBSTR", key, start, end);
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"SUBSTR">, key, start, end);
     }
 
     /**
@@ -258,7 +259,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     getset(Func &&func, const std::string &key, const std::string &val) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "GETSET", key, val);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"GETSET">, key, val);
     }
 
     /**
@@ -284,7 +285,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     incr(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "INCR", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"INCR">, key);
     }
 
     /**
@@ -313,7 +314,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     incrby(Func &&func, const std::string &key, long long increment) {
-        return derived().template command<long long>(std::forward<Func>(func), "INCRBY", key, increment);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"INCRBY">, key, increment);
     }
 
     /**
@@ -351,7 +352,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<double> &&>, Derived &>
     incrbyfloat(Func &&func, const std::string &key, double increment) {
-        return derived().template command<double>(std::forward<Func>(func), "INCRBYFLOAT", key, increment);
+        return derived().template command<double>(std::forward<Func>(func), detail::verb<"INCRBYFLOAT">, key, increment);
     }
 
     /**
@@ -382,7 +383,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<std::string>>> &&>, Derived &>
     mget(Func &&func, const std::vector<std::string> &keys) {
-        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), "MGET", keys);
+        return derived().template command<std::vector<std::optional<std::string>>>(std::forward<Func>(func), detail::verb<"MGET">, keys);
     }
 
     /**
@@ -412,7 +413,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     mset(Func &&func, const std::vector<std::pair<std::string, std::string>> &keys) {
-        return derived().template command<status>(std::forward<Func>(func), "MSET", keys);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"MSET">, keys);
     }
 
     /**
@@ -442,7 +443,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     msetnx(Func &&func, const std::vector<std::pair<std::string, std::string>> &keys) {
-        return derived().template command<bool>(std::forward<Func>(func), "MSETNX", keys);
+        return derived().template command<bool>(std::forward<Func>(func), detail::verb<"MSETNX">, keys);
     }
 
     /**
@@ -477,7 +478,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     psetex(Func &&func, const std::string &key, long long ttl, const std::string &val) {
-        return derived().template command<status>(std::forward<Func>(func), "PSETEX", key, ttl, val);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"PSETEX">, key, ttl, val);
     }
 
     /**
@@ -547,7 +548,7 @@ public:
         if (type != UpdateType::ALWAYS)
             opt = to_string(type);
 
-        return derived().template command<status>(std::forward<Func>(func), "SET", key, val, opt);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"SET">, key, val, opt);
     }
 
     /**
@@ -583,7 +584,7 @@ public:
         std::optional<std::string> opt;
         if (type != UpdateType::ALWAYS)
             opt = to_string(type);
-        return derived().template command<status>(std::forward<Func>(func), "SET", key, val, "PX", ttl, opt);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"SET">, key, val, "PX", ttl, opt);
     }
 
     /**
@@ -656,7 +657,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     setex(Func &&func, const std::string &key, long long ttl, const std::string &val) {
-        return derived().template command<status>(std::forward<Func>(func), "SETEX", key, ttl, val);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"SETEX">, key, ttl, val);
     }
 
     /**
@@ -722,7 +723,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<bool> &&>, Derived &>
     setnx(Func &&func, const std::string &key, const std::string &val) {
-        return derived().template command<bool>(std::forward<Func>(func), "SETNX", key, val);
+        return derived().template command<bool>(std::forward<Func>(func), detail::verb<"SETNX">, key, val);
     }
 
     /**
@@ -760,7 +761,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     setrange(Func &&func, const std::string &key, long long offset, const std::string &val) {
-        return derived().template command<long long>(std::forward<Func>(func), "SETRANGE", key, offset, val);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SETRANGE">, key, offset, val);
     }
 
     /**
@@ -790,7 +791,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     strlen(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "STRLEN", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"STRLEN">, key);
     }
 
     /**
@@ -823,7 +824,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     getdel(Func &&func, const std::string &key) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "GETDEL", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"GETDEL">, key);
     }
 
     /**
@@ -877,7 +878,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     getex(Func &&func, const std::string &key, long long ttl) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "GETEX", key, "EX", ttl);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"GETEX">, key, "EX", ttl);
     }
 
     /**
@@ -893,7 +894,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     getex(Func &&func, const std::string &key, std::chrono::milliseconds const &ttl) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "GETEX", key, "PX", ttl.count());
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"GETEX">, key, "PX", ttl.count());
     }
 
     /**
@@ -929,7 +930,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     lcs(Func &&func, const std::string &key1, const std::string &key2) {
-        return derived().template command<std::string>(std::forward<Func>(func), "LCS", key1, key2);
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"LCS">, key1, key2);
     }
 };
 

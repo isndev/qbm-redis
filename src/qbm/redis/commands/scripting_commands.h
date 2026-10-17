@@ -18,6 +18,7 @@
 #ifndef QBM_REDIS_SCRIPTING_COMMANDS_H
 #define QBM_REDIS_SCRIPTING_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -77,7 +78,7 @@ public:
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     eval(Func &&func, const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "EVAL", script, keys.size(), keys, args);
+        return derived().template command<Ret>(std::forward<Func>(func), detail::verb<"EVAL">, script, keys.size(), keys, args);
     }
 
     /**
@@ -112,7 +113,7 @@ public:
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     evalsha(Func &&func, const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "EVALSHA", script, keys.size(), keys, args);
+        return derived().template command<Ret>(std::forward<Func>(func), detail::verb<"EVALSHA">, script, keys.size(), keys, args);
     }
 
     /**
@@ -148,7 +149,8 @@ public:
             fail_client<std::vector<bool>>(std::forward<Func>(func), "SCRIPT EXISTS requires at least one sha1");
             return derived();
         }
-        return derived().template command<std::vector<bool>>(std::forward<Func>(func), "SCRIPT", "EXISTS", std::forward<Keys>(keys)...);
+        return derived().template command<std::vector<bool>>(std::forward<Func>(func), detail::verb<"SCRIPT">, "EXISTS",
+                                                             std::forward<Keys>(keys)...);
     }
 
     /**
@@ -173,7 +175,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     script_flush(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "FLUSH");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"SCRIPT">, "FLUSH");
     }
 
     /**
@@ -198,7 +200,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     script_kill(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "KILL");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"SCRIPT">, "KILL");
     }
 
     /**
@@ -226,7 +228,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     script_load(Func &&func, std::string const &script) {
-        return derived().template command<std::string>(std::forward<Func>(func), "SCRIPT", "LOAD", script);
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"SCRIPT">, "LOAD", script);
     }
 
     /**
@@ -261,7 +263,7 @@ public:
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     evalRo(Func &&func, const std::string &script, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "EVAL_RO", script, keys.size(), keys, args);
+        return derived().template command<Ret>(std::forward<Func>(func), detail::verb<"EVAL_RO">, script, keys.size(), keys, args);
     }
 
     /**
@@ -296,7 +298,7 @@ public:
     template <typename Ret, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<Ret> &&>, Derived &>
     evalshaRo(Func &&func, const std::string &sha1, const std::vector<std::string> &keys = {}, const std::vector<std::string> &args = {}) {
-        return derived().template command<Ret>(std::forward<Func>(func), "EVALSHA_RO", sha1, keys.size(), keys, args);
+        return derived().template command<Ret>(std::forward<Func>(func), detail::verb<"EVALSHA_RO">, sha1, keys.size(), keys, args);
     }
 
     /**
@@ -323,7 +325,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     scriptDebug(Func &&func, const std::string &mode) {
-        return derived().template command<status>(std::forward<Func>(func), "SCRIPT", "DEBUG", mode);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"SCRIPT">, "DEBUG", mode);
     }
 };
 

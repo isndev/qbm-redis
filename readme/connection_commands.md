@@ -53,7 +53,7 @@ boundary documented for key-expiry commands does not apply here. Connect and com
 
 ### Where these methods come from
 
-`connection_commands<Derived>` is a header-only CRTP mixin (`connection_commands.h:33`). It is one of the bases of
+`connection_commands<Derived>` is a header-only CRTP mixin (`connection_commands.h:34`). It is one of the bases of
 `qb::redis::detail::Redis<QB_IO_>`, so `qb::redis::tcp::client`, `qb::redis::tcp::ssl::client`, and the pub/sub
 consumers all expose these eight methods directly. Each method forwards to the inherited command machinery:
 
@@ -112,10 +112,10 @@ callable accepts the matching `Reply<T> &&`.
 ### `hello` — protocol negotiation
 
 ```cpp
-// Coroutine — connection_commands.h:52
+// Coroutine — connection_commands.h:53
 auto hello(int version = 3);                       // -> redis_awaiter yielding Reply<qb::json>
 
-// Callback — connection_commands.h:67
+// Callback — connection_commands.h:68
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
 hello(Func &&func, int version = 3);
@@ -140,18 +140,18 @@ if (resp2.ok() && resp2.result().is_object())
     qb::io::cout() << resp2.result()["proto"].get<int>() << std::endl;     // 2
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.cpp:602-636; qbm/redis/tests/unit/reply/reply-json-decode.cpp:254-270 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.cpp:602-636; qbm/redis/tests/unit/reply/reply-json-decode.cpp:255-271 -->
 
 ### `auth` — authentication
 
 ```cpp
-// Legacy password-only (the "default" user) — connection_commands.h:79 / :94
+// Legacy password-only (the "default" user) — connection_commands.h:80 / :95
 auto auth(const std::string &password);            // -> Reply<status>
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 auth(Func &&func, const std::string &password);
 
-// ACL user + password (Redis 6+) — connection_commands.h:107 / :124
+// ACL user + password (Redis 6+) — connection_commands.h:108 / :125
 auto auth(const std::string &user, const std::string &password);   // -> Reply<status>
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
@@ -180,10 +180,10 @@ if (!a)
 ### `echo` — round-trip check
 
 ```cpp
-// Coroutine — connection_commands.h:136
+// Coroutine — connection_commands.h:137
 auto echo(const std::string &message);             // -> Reply<std::string>
 
-// Callback — connection_commands.h:152
+// Callback — connection_commands.h:153
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
 echo(Func &&func, const std::string &message);
@@ -202,13 +202,13 @@ if (r.ok())
 ### `ping` — liveness probe
 
 ```cpp
-// No payload — connection_commands.h:163 / :177
+// No payload — connection_commands.h:164 / :178
 auto ping();                                       // -> Reply<std::string> ("PONG")
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
 ping(Func &&func);
 
-// Custom payload — connection_commands.h:189 / :205
+// Custom payload — connection_commands.h:190 / :206
 auto ping(const std::string &message);             // -> Reply<std::string> (echoes message)
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
@@ -236,15 +236,15 @@ redis.ping([](qb::redis::Reply<std::string> &&reply) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:175-179 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:176-180 -->
 
 ### `quit` — close the connection
 
 ```cpp
-// Coroutine — connection_commands.h:216
+// Coroutine — connection_commands.h:217
 auto quit();                                       // -> Reply<status>
 
-// Callback — connection_commands.h:230
+// Callback — connection_commands.h:231
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 quit(Func &&func);
@@ -259,15 +259,15 @@ auto r = co_await redis.quit();
 // r.ok() && r.result().ok(); the server closes the link afterward.
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:215-232 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:216-233 -->
 
 ### `select` — switch logical database
 
 ```cpp
-// Coroutine — connection_commands.h:242
+// Coroutine — connection_commands.h:243
 auto select(long long index);                      // -> Reply<status>
 
-// Callback — connection_commands.h:257
+// Callback — connection_commands.h:258
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 select(Func &&func, long long index);
@@ -287,10 +287,10 @@ assert(r.ok() && r.result().ok());
 ### `swapdb` — swap two databases
 
 ```cpp
-// Coroutine — connection_commands.h:270
+// Coroutine — connection_commands.h:271
 auto swapdb(long long index1, long long index2);   // -> Reply<status>
 
-// Callback — connection_commands.h:287
+// Callback — connection_commands.h:288
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 swapdb(Func &&func, long long index1, long long index2);
@@ -309,10 +309,10 @@ assert(r.ok() && r.result().ok());
 ### `reset` — reset connection state
 
 ```cpp
-// Coroutine — connection_commands.h:302
+// Coroutine — connection_commands.h:303
 auto reset();                                      // -> Reply<status>
 
-// Callback — connection_commands.h:316
+// Callback — connection_commands.h:317
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 reset(Func &&func);
@@ -339,12 +339,12 @@ instead of guessing how many confirmations the server will send. Await `reset()`
 After success, an unsubscribe-all from the empty state resolves on Redis's single empty-state confirmation; re-authenticate
 if the server requires it, and call `hello(3)` again to regain RESP3. The connection itself remains open. The live
 RESP2/RESP3 tests cover channels, patterns, a pipelined command after the barrier and a command rejected during it.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2728-2766,2809-2820; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2807-2845,2888-2899; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
 
 
 
 > Three unrelated APIs share the name `reset`/`reset_*` in this module — the protocol parser's `redis<IO_>::reset()` (
-`redis.h:207`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:273`), and this user-facing
+`redis.h:207`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:274`), and this user-facing
 `RESET` command. This page documents only the last one.
 
 ---
@@ -396,7 +396,7 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:175-179 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/connection_commands.h:176-180 -->
 
 ---
 

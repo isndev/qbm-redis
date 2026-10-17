@@ -282,7 +282,7 @@ remain active.
 After a successful connection-level `RESET`, the consumer's predicted channel and pattern sets are empty too;
 `unsubscribe("")` or `punsubscribe("")` therefore waits for one empty-state confirmation. Pub/Sub calls made before
 `RESET` answers fail locally; await it first. See [Connection commands](./connection_commands.md#reset--reset-connection-state).
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2728-2766,2778-2794,2809-2820 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2807-2845,2857-2873,2888-2899 -->
 
 - **Coroutine, single/all:** `auto unsubscribe(const std::string &channel = "")`
 - **Coroutine, multiple:** `auto unsubscribe(const std::vector<std::string> &channels)`
@@ -428,7 +428,7 @@ qb::io::async::task<void> watch_keys(qb::redis::tcp::client &client, qb::redis::
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:402 (config_set), qbm/redis/src/qbm/redis/commands/subscription_commands.h:210 (psubscribe) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:403 (config_set), qbm/redis/src/qbm/redis/commands/subscription_commands.h:210 (psubscribe) -->
 
 A pattern match reaches `on_message` with `pattern` set — `pmessage` adds no field — so both consumers keep the pattern
 that matched. Three things to know before relying on it:

@@ -16,6 +16,7 @@
 #ifndef QBM_REDIS_CLUSTER_COMMANDS_H
 #define QBM_REDIS_CLUSTER_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -64,7 +65,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     cluster_info(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "CLUSTER", "INFO");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"CLUSTER">, "INFO");
     }
 
     /**
@@ -92,7 +93,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     cluster_nodes(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "CLUSTER", "NODES");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"CLUSTER">, "NODES");
     }
 
     /**
@@ -120,7 +121,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     cluster_slots(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "CLUSTER", "SLOTS");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"CLUSTER">, "SLOTS");
     }
 
     /**
@@ -151,7 +152,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_meet(Func &&func, const std::string &ip, int port) {
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "MEET", ip, port);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "MEET", ip, port);
     }
 
     /**
@@ -180,7 +181,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_forget(Func &&func, const std::string &node_id) {
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "FORGET", node_id);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "FORGET", node_id);
     }
 
     /**
@@ -209,7 +210,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_reset(Func &&func, const std::string &mode = "SOFT") {
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "RESET", mode);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "RESET", mode);
     }
 
     /**
@@ -240,9 +241,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_failover(Func &&func, const std::string &option = "") {
         if (option.empty()) {
-            return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "FAILOVER");
+            return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "FAILOVER");
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "FAILOVER", option);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "FAILOVER", option);
     }
 
     /**
@@ -271,7 +272,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_replicate(Func &&func, const std::string &node_id) {
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "REPLICATE", node_id);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "REPLICATE", node_id);
     }
 
     /**
@@ -297,7 +298,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_saveconfig(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "SAVECONFIG");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "SAVECONFIG");
     }
 
     /**
@@ -326,7 +327,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_set_config_epoch(Func &&func, long long epoch) {
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "SET-CONFIG-EPOCH", epoch);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "SET-CONFIG-EPOCH", epoch);
     }
 
     /**
@@ -352,7 +353,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_bumpepoch(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "BUMPEPOCH");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "BUMPEPOCH");
     }
 
     /**
@@ -378,7 +379,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     cluster_myid(Func &&func) {
-        return derived().template command<std::string>(std::forward<Func>(func), "CLUSTER", "MYID");
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"CLUSTER">, "MYID");
     }
 
     /**
@@ -407,7 +408,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     cluster_keyslot(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "CLUSTER", "KEYSLOT", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"CLUSTER">, "KEYSLOT", key);
     }
 
     /**
@@ -436,7 +437,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     cluster_countkeysinslot(Func &&func, int slot) {
-        return derived().template command<long long>(std::forward<Func>(func), "CLUSTER", "COUNTKEYSINSLOT", slot);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"CLUSTER">, "COUNTKEYSINSLOT", slot);
     }
 
     /**
@@ -467,7 +468,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     cluster_getkeysinslot(Func &&func, int slot, int count) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "CLUSTER", "GETKEYSINSLOT", slot, count);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"CLUSTER">, "GETKEYSINSLOT", slot,
+                                                                    count);
     }
 
     // =============== New Cluster Commands (TODO_COMMANDS.md) ===============
@@ -494,7 +496,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     asking(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "ASKING");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"ASKING">);
     }
 
     /**
@@ -519,7 +521,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     readonly(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "READONLY");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"READONLY">);
     }
 
     /**
@@ -544,7 +546,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     readwrite(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "READWRITE");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"READWRITE">);
     }
 
     /**
@@ -580,7 +582,7 @@ public:
             fail_client<status>(std::forward<Func>(func), "CLUSTER ADDSLOTS requires at least one slot");
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "ADDSLOTS", std::forward<Slots>(slots)...);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "ADDSLOTS", std::forward<Slots>(slots)...);
     }
 
     /**
@@ -613,7 +615,7 @@ public:
             args.push_back(std::to_string(r.first));
             args.push_back(std::to_string(r.second));
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "ADDSLOTSRANGE", args);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "ADDSLOTSRANGE", args);
     }
 
     /**
@@ -641,7 +643,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     cluster_count_failure_reports(Func &&func, const std::string &node_id) {
-        return derived().template command<long long>(std::forward<Func>(func), "CLUSTER", "COUNT-FAILURE-REPORTS", node_id);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"CLUSTER">, "COUNT-FAILURE-REPORTS", node_id);
     }
 
     /**
@@ -677,7 +679,7 @@ public:
             fail_client<status>(std::forward<Func>(func), "CLUSTER DELSLOTS requires at least one slot");
             return derived();
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "DELSLOTS", std::forward<Slots>(slots)...);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "DELSLOTS", std::forward<Slots>(slots)...);
     }
 
     /**
@@ -710,7 +712,7 @@ public:
             args.push_back(std::to_string(r.first));
             args.push_back(std::to_string(r.second));
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "DELSLOTSRANGE", args);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "DELSLOTSRANGE", args);
     }
 
     /**
@@ -735,7 +737,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_flushslots(Func &&func) {
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "FLUSHSLOTS");
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "FLUSHSLOTS");
     }
 
     /**
@@ -760,7 +762,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     cluster_links(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "CLUSTER", "LINKS");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"CLUSTER">, "LINKS");
     }
 
     /**
@@ -785,7 +787,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::string> &&>, Derived &>
     cluster_myshardid(Func &&func) {
-        return derived().template command<std::string>(std::forward<Func>(func), "CLUSTER", "MYSHARDID");
+        return derived().template command<std::string>(std::forward<Func>(func), detail::verb<"CLUSTER">, "MYSHARDID");
     }
 
     /**
@@ -813,7 +815,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     cluster_replicas(Func &&func, const std::string &node_id) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "CLUSTER", "REPLICAS", node_id);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"CLUSTER">, "REPLICAS", node_id);
     }
 
     /**
@@ -846,9 +848,9 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     cluster_setslot(Func &&func, int slot, const std::string &subcommand, const std::string &node_id = "") {
         if (node_id.empty()) {
-            return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "SETSLOT", slot, subcommand);
+            return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "SETSLOT", slot, subcommand);
         }
-        return derived().template command<status>(std::forward<Func>(func), "CLUSTER", "SETSLOT", slot, subcommand, node_id);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"CLUSTER">, "SETSLOT", slot, subcommand, node_id);
     }
 
     /**
@@ -873,7 +875,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     cluster_shards(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "CLUSTER", "SHARDS");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"CLUSTER">, "SHARDS");
     }
 
     /**
@@ -901,7 +903,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     cluster_slaves(Func &&func, const std::string &node_id) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "CLUSTER", "SLAVES", node_id);
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"CLUSTER">, "SLAVES", node_id);
     }
 };
 

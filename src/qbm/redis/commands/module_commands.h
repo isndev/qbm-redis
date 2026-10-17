@@ -17,6 +17,7 @@
 #ifndef QBM_REDIS_MODULE_COMMANDS_H
 #define QBM_REDIS_MODULE_COMMANDS_H
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -68,7 +69,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
     module_list(Func &&func) {
-        return derived().template command<qb::json>(std::forward<Func>(func), "MODULE", "LIST");
+        return derived().template command<qb::json>(std::forward<Func>(func), detail::verb<"MODULE">, "LIST");
     }
 
     /**
@@ -102,7 +103,7 @@ public:
     template <typename Func, typename... Args>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     module_load(Func &&func, const std::string &path, Args &&...args) {
-        return derived().template command<status>(std::forward<Func>(func), "MODULE", "LOAD", path, std::forward<Args>(args)...);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"MODULE">, "LOAD", path, std::forward<Args>(args)...);
     }
 
     /**
@@ -130,7 +131,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     module_unload(Func &&func, const std::string &name) {
-        return derived().template command<status>(std::forward<Func>(func), "MODULE", "UNLOAD", name);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"MODULE">, "UNLOAD", name);
     }
 
     /**
@@ -157,7 +158,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     module_help(Func &&func) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "MODULE", "HELP");
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"MODULE">, "HELP");
     }
 };
 

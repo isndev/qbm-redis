@@ -109,7 +109,7 @@ does not parse or validate these tokens; it forwards them to the server, which i
 grammar. A malformed rule is rejected by Redis, surfacing as a non-`OK` `status` (or an error on the `Reply`), not at
 compile time.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:375-396 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:376-398 -->
 
 ### `ACL DRYRUN` tests a grant without applying it
 
@@ -147,12 +147,12 @@ template <typename Func, typename... Args>
 Derived &acl_setuser(Func &&func, const std::string &username, Args &&...rules);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:375-396 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:376-398 -->
 
 Creates `username` if it does not exist, then applies each rule token in order. Returns `status` (`OK` on success).
 
 ```cpp
-// coroutine — <!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:377 -->
+// coroutine — <!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:378 -->
 auto set = co_await redis.acl_setuser(
     "alice", "on", ">s3cr3t", "~app:*", "+@read", "+@write", "-@dangerous");
 if (set && set.result())             // Reply<status> ok AND status == "OK"
@@ -179,7 +179,7 @@ template <typename Func>
 Derived &acl_getuser(Func &&func, const std::string &username);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:152-170 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:153-171 -->
 
 Returns a `qb::json` object describing `username` — its `flags`, `passwords`, `commands`, `keys`, and `channels`.
 
@@ -201,7 +201,7 @@ template <typename Func>
 Derived &acl_list(Func &&func);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:51-70 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:52-71 -->
 
 Returns a `qb::json` array, one entry per user, each a full ACL rule line (e.g. `"user default on nopass ~* &* +@all"`).
 
@@ -224,7 +224,7 @@ template <typename Func>
 Derived &acl_users(Func &&func);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:180-197 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:181-198 -->
 
 Returns the configured user names. `default` is always present.
 
@@ -247,7 +247,7 @@ template <typename Func>
 Derived &acl_deluser(Func &&func, const std::string &username);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:260-278 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:261-279 -->
 
 Removes `username` and terminates its open connections. Returns the number of users actually deleted (`0` if the name
 did not exist). This overload deletes a single user; to delete several in one round trip, drop to the generic escape
@@ -279,7 +279,7 @@ template <typename Func>
 Derived &acl_whoami(Func &&func);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:207-223 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:208-224 -->
 
 Returns the user name this connection is authenticated as (`default` until you `AUTH` as someone else;
 see [connection.md](./connection.md)).
@@ -302,7 +302,7 @@ template <typename Func>
 Derived &acl_cat(Func &&func, const std::string &category = "");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:118-134 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:119-135 -->
 
 With no argument, returns every ACL command category (`string`, `keyspace`, `read`, `write`, `dangerous`, …). With a
 `category`, returns the command names in it. The module decodes both forms to `std::vector<std::string>`; if you want
@@ -338,7 +338,7 @@ template <typename Func>
 Derived &acl_log(Func &&func, std::optional<long long> count = std::nullopt);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:83-109 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:84-110 -->
 
 Returns the security log — a `qb::json` array of recent ACL denials, each entry naming the offending command, the user,
 the client address, and a reason. Pass `count` to cap the number of entries. To clear the log, use the generic form
@@ -363,7 +363,7 @@ template <typename Func>
 Derived &acl_genpass(Func &&func, std::optional<long long> bits = std::nullopt);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:289-310 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:290-311 -->
 
 Asks the server to generate a cryptographically secure random password, returned as a hex string. With no argument the
 server uses its default entropy (256 bits); pass `bits` to request a specific strength.
@@ -390,7 +390,7 @@ Derived &acl_dryrun(Func &&func, const std::string &username,
                     const std::vector<std::string> &args = {});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:409-429 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:411-431 -->
 
 Returns `"OK"` (as a `qb::json` string) if `username` would be allowed to run `command` with `args`, or a denial message
 otherwise. The command is never executed. Requires Redis 7.0+.
@@ -415,7 +415,7 @@ template <typename Func>
 Derived &acl_help(Func &&func);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:233-249 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:234-250 -->
 
 Returns the server's `ACL` help lines as a string vector.
 
@@ -439,7 +439,7 @@ template <typename Func> Derived &acl_load(Func &&func);
 template <typename Func> Derived &acl_save(Func &&func);
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:321-363 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/acl_commands.h:322-364 -->
 
 `acl_load` reloads the rule set from the server's configured ACL file, discarding in-memory changes; `acl_save` writes
 the current in-memory rules back to that file. Both return `status` (`OK`). Both require the server to be configured

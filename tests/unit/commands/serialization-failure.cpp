@@ -73,8 +73,8 @@ struct FrameCapture : qb::redis::server_commands<FrameCapture> {
 
     template <typename Ret, typename Func, typename... Args>
     FrameCapture &
-    command(Func &&, std::string const &name, Args &&...args) {
-        qb::redis::put_in_pipe(out, name, std::forward<Args>(args)...);
+    command(Func &&, qb::redis::detail::known_verb const verb, Args &&...args) {
+        qb::redis::put_in_pipe(out, verb.name(), std::forward<Args>(args)...);
         ++queued;
         return *this;
     }

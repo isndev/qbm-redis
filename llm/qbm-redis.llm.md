@@ -131,7 +131,7 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   `Reply` that owns their raw data. Custom parse-result types carry their own ownership
   responsibility. Terminal page errors survive aggregation; ordinary page setup or merge
   exceptions fail the automatic scan once. Completion callback exceptions are logged and
-  cannot trigger a second completion (`hash_commands.h:49-62`, `:88-101`, `:131-182`, `:675-684`).
+  cannot trigger a second completion (`hash_commands.h:50-63`, `:89-102`, `:132-183`, `:677-686`).
 - **`AsyncResult<std::string>` stores string success values.** Construct an error explicitly
   with `AsyncResult<T>::from_error(std::string)` (also on `void`); an empty message still
   means failure. Other supported payload types retain their existing constructors

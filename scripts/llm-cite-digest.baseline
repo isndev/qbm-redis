@@ -12,17 +12,17 @@
 # excerpt rather than as an opaque hash.  Fields: doc <TAB> cited-spec <TAB>
 # digest <TAB> excerpt.  Keyed WITHOUT the doc's own line number, so
 # re-flowing a paragraph does not re-key the file.
-llm/qbm-redis.llm.api.md	acl_commands.h:38-38	9e6db83181ab	class acl_commands {
-llm/qbm-redis.llm.api.md	bitmap_commands.h:36-36	af34bddea64b	class bitmap_commands {
-llm/qbm-redis.llm.api.md	cluster_commands.h:34-34	403efb70a077	class cluster_commands {
-llm/qbm-redis.llm.api.md	connection_commands.h:33-33	2370285d9c1b	class connection_commands {
-llm/qbm-redis.llm.api.md	function_commands.h:35-35	76bf3c2ae507	class function_commands {
-llm/qbm-redis.llm.api.md	geo_commands.h:34-34	b05338421762	class geo_commands {
-llm/qbm-redis.llm.api.md	hash_commands.h:40-40	ccdadcdf88ba	class hash_commands {
-llm/qbm-redis.llm.api.md	hyperloglog_commands.h:39-39	2b36cc8752b2	class hyperloglog_commands {
-llm/qbm-redis.llm.api.md	key_commands.h:39-39	b028456ff379	class key_commands {
-llm/qbm-redis.llm.api.md	list_commands.h:36-36	2bc003d3c0ef	class list_commands {
-llm/qbm-redis.llm.api.md	module_commands.h:34-34	d8e23f3ea583	class module_commands {
+llm/qbm-redis.llm.api.md	acl_commands.h:39-39	9e6db83181ab	class acl_commands {
+llm/qbm-redis.llm.api.md	bitmap_commands.h:37-37	af34bddea64b	class bitmap_commands {
+llm/qbm-redis.llm.api.md	cluster_commands.h:35-35	403efb70a077	class cluster_commands {
+llm/qbm-redis.llm.api.md	connection_commands.h:34-34	2370285d9c1b	class connection_commands {
+llm/qbm-redis.llm.api.md	function_commands.h:36-36	76bf3c2ae507	class function_commands {
+llm/qbm-redis.llm.api.md	geo_commands.h:35-35	b05338421762	class geo_commands {
+llm/qbm-redis.llm.api.md	hash_commands.h:41-41	ccdadcdf88ba	class hash_commands {
+llm/qbm-redis.llm.api.md	hyperloglog_commands.h:40-40	2b36cc8752b2	class hyperloglog_commands {
+llm/qbm-redis.llm.api.md	key_commands.h:40-40	b028456ff379	class key_commands {
+llm/qbm-redis.llm.api.md	list_commands.h:37-37	2bc003d3c0ef	class list_commands {
+llm/qbm-redis.llm.api.md	module_commands.h:35-35	d8e23f3ea583	class module_commands {
 llm/qbm-redis.llm.api.md	parser/parser.h:191-191	cddb703b2663	parse() {
 llm/qbm-redis.llm.api.md	parser/parser.h:216-216	58348934494b	parse_all() {
 llm/qbm-redis.llm.api.md	parser/parser.h:260-260	9205ddf330ce	has_complete_value() const {
@@ -32,8 +32,8 @@ llm/qbm-redis.llm.api.md	parser/types.h:138-138	bb7a54deeb3d	namespace type_id {
 llm/qbm-redis.llm.api.md	parser/types.h:43-43	5d9f6306792e	enum class ProtocolVersion { RESP2 = 2, RESP3 = 3 };
 llm/qbm-redis.llm.api.md	parser/types.h:50-50	fbe1faa57c66	enum class ParseErrorCode {
 llm/qbm-redis.llm.api.md	parser/types.h:66-66	1f85eaa019e5	class ParseError {
-llm/qbm-redis.llm.api.md	publish_commands.h:37-37	3c65ae0990bb	class publish_commands {
-llm/qbm-redis.llm.api.md	publish_commands.h:90-90	a7fc816d80c4	spublish(const std::string &channel, const std::string &message) {
+llm/qbm-redis.llm.api.md	publish_commands.h:38-38	3c65ae0990bb	class publish_commands {
+llm/qbm-redis.llm.api.md	publish_commands.h:91-91	a7fc816d80c4	spublish(const std::string &channel, const std::string &message) {
 llm/qbm-redis.llm.api.md	redis.h:106-108	39cb75f31c29	struct message {
 llm/qbm-redis.llm.api.md	redis.h:1066-1112	f5b4440bc420	* @struct connect_awaiter
 llm/qbm-redis.llm.api.md	redis.h:1441-1441	0657b2a52a29	class redis_awaiter {
@@ -41,20 +41,20 @@ llm/qbm-redis.llm.api.md	redis.h:1462-1463	20f77c2202ca	await_suspend(std::corou
 llm/qbm-redis.llm.api.md	redis.h:1483-1483	351bb30df879	make_redis_awaiter(Func &&operation) {
 llm/qbm-redis.llm.api.md	redis.h:1509-1509	4ab5c6be2991	class Redis
 llm/qbm-redis.llm.api.md	redis.h:231-231	2a41a928458d	using RetryPolicy = qb::io::reconnect_policy;
-llm/qbm-redis.llm.api.md	redis.h:2434-2437	c7c1f4cef1e7	[[nodiscard]] RetryingClient<Redis<QB_IO_>>
 llm/qbm-redis.llm.api.md	redis.h:247-257	e871084531fb	struct command_retry {
-llm/qbm-redis.llm.api.md	redis.h:2485-2485	fe3c529f759a	class RedisPipeline {
-llm/qbm-redis.llm.api.md	redis.h:2541-2541	cd678de7f8c1	class RedisConsumer
+llm/qbm-redis.llm.api.md	redis.h:2505-2508	c7c1f4cef1e7	[[nodiscard]] RetryingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:2556-2556	fe3c529f759a	class RedisPipeline {
+llm/qbm-redis.llm.api.md	redis.h:2612-2612	cd678de7f8c1	class RedisConsumer
 llm/qbm-redis.llm.api.md	redis.h:319-408	4be94e4b27da	template <typename QB_IO_, typename Derived>
-llm/qbm-redis.llm.api.md	redis.h:3229-3229	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
-llm/qbm-redis.llm.api.md	redis.h:3347-3347	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
+llm/qbm-redis.llm.api.md	redis.h:3308-3308	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
 llm/qbm-redis.llm.api.md	redis.h:336-336	94cca6232ff0	using handshake_client = HandshakeClient<Derived>;
-llm/qbm-redis.llm.api.md	redis.h:3489-3489	1d2fe40d4864	receive() {
-llm/qbm-redis.llm.api.md	redis.h:3719-3719	77fd328b928f	class RetryingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:3893-3893	5b0051a25645	using database = detail::Redis<QB_IO_>;
-llm/qbm-redis.llm.api.md	redis.h:3899-3899	e19a828745ea	struct tcp {
-llm/qbm-redis.llm.api.md	redis.h:3911-3911	97c8e8c3b177	struct ssl {
-llm/qbm-redis.llm.api.md	redis.h:3924-3924	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
+llm/qbm-redis.llm.api.md	redis.h:3426-3426	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
+llm/qbm-redis.llm.api.md	redis.h:3568-3568	1d2fe40d4864	receive() {
+llm/qbm-redis.llm.api.md	redis.h:3811-3811	77fd328b928f	class RetryingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:4002-4002	5b0051a25645	using database = detail::Redis<QB_IO_>;
+llm/qbm-redis.llm.api.md	redis.h:4008-4008	e19a828745ea	struct tcp {
+llm/qbm-redis.llm.api.md	redis.h:4020-4020	97c8e8c3b177	struct ssl {
+llm/qbm-redis.llm.api.md	redis.h:4033-4033	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
 llm/qbm-redis.llm.api.md	redis.h:91-92	fec8f2f5d4ae	template <typename IO_>
 llm/qbm-redis.llm.api.md	reply.cpp:31-40	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
 llm/qbm-redis.llm.api.md	reply.h:105-105	f053ab3c6ce5	class ConnectionError : public Error {
@@ -90,8 +90,8 @@ llm/qbm-redis.llm.api.md	reply.h:791-791	942df14650e3	class SecurityError : publ
 llm/qbm-redis.llm.api.md	reply.h:798-798	700a3550088e	is_valid_redis_string_size(const std::string &s) {
 llm/qbm-redis.llm.api.md	reply.h:808-1055	c137ddf46832	to_redis_string(qb::allocator::pipe<char> &pipe, const char (&str)[N]) {
 llm/qbm-redis.llm.api.md	reply.h:89-89	8fb3eba7b399	class ProtoError : public Error {
-llm/qbm-redis.llm.api.md	scripting_commands.h:36-36	ad1c3b4f6a52	class scripting_commands {
-llm/qbm-redis.llm.api.md	server_commands.h:43-43	6b7e173c7bf2	class server_commands {
+llm/qbm-redis.llm.api.md	scripting_commands.h:37-37	ad1c3b4f6a52	class scripting_commands {
+llm/qbm-redis.llm.api.md	server_commands.h:44-44	6b7e173c7bf2	class server_commands {
 llm/qbm-redis.llm.api.md	server_reply.h:104-104	85cf63923001	class ValueExtractor {
 llm/qbm-redis.llm.api.md	server_reply.h:272-278	b725f32cfd36	[[nodiscard]] bool extract_string_value(const parser::Value &input, s...
 llm/qbm-redis.llm.api.md	server_reply.h:288-335	463bed51ccbf	extract_string(const parser::Value &input) {
@@ -102,8 +102,8 @@ llm/qbm-redis.llm.api.md	server_reply.h:448-448	ba5e615305cb	from_error(std::str
 llm/qbm-redis.llm.api.md	server_reply.h:483-483	ff310f9d46fe	extract_stream_id(const parser::Value &input) {
 llm/qbm-redis.llm.api.md	server_reply.h:50-50	f62abfceba6a	struct ServerReply {
 llm/qbm-redis.llm.api.md	server_reply.h:509-509	5cbe2f518bc8	extract_score_member(const parser::Array &input, size_t index) {
-llm/qbm-redis.llm.api.md	set_commands.h:37-37	abd3bbcd2d8d	class set_commands {
-llm/qbm-redis.llm.api.md	sorted_set_commands.h:39-39	3ca9c8d4c2be	class sorted_set_commands {
+llm/qbm-redis.llm.api.md	set_commands.h:38-38	abd3bbcd2d8d	class set_commands {
+llm/qbm-redis.llm.api.md	sorted_set_commands.h:40-40	3ca9c8d4c2be	class sorted_set_commands {
 llm/qbm-redis.llm.api.md	src/qbm/redis/parser/types.h:455-455	2cba24c099e9	struct Value : ValueBase {
 llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:318-318	eba0cc43479a	struct LimitOptions {
 llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:328-339	77f4d3ee6f74	struct geo_pos {
@@ -129,22 +129,23 @@ llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:637-648	84691f337c56	/** @brief R
 llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:88-311	055213becd7e	// ==================================================================...
 llm/qbm-redis.llm.api.md	stats.h:122-127	9dc66ba4087d	struct command_traits {
 llm/qbm-redis.llm.api.md	stats.h:37-59	acbdf3c1c303	enum class command_family : std::uint8_t {
-llm/qbm-redis.llm.api.md	stats.h:406-412	0d26a17f4b7d	[[nodiscard]] inline command_traits
-llm/qbm-redis.llm.api.md	stats.h:415-419	8f39623b2702	enum class command_outcome : std::uint8_t {
-llm/qbm-redis.llm.api.md	stats.h:426-440	c77cddcacc8f	struct command_info {
-llm/qbm-redis.llm.api.md	stats.h:446-490	63be9e0f8414	struct latency_histogram {
-llm/qbm-redis.llm.api.md	stats.h:499-510	8ca7478c6372	struct stats {
-llm/qbm-redis.llm.api.md	stream_commands.h:36-36	4816175b91eb	class stream_commands {
-llm/qbm-redis.llm.api.md	stream_commands.h:95-95	20a4409c5b05	parse_stream_id(const std::string &id_str) {
-llm/qbm-redis.llm.api.md	string_commands.h:49-49	c879e6021a5d	class string_commands {
+llm/qbm-redis.llm.api.md	stats.h:432-434	859cf373fcf5	/// `V` as a `known_verb`: `detail::verb<"GET">`.
+llm/qbm-redis.llm.api.md	stats.h:469-475	0d26a17f4b7d	[[nodiscard]] inline command_traits
+llm/qbm-redis.llm.api.md	stats.h:478-482	8f39623b2702	enum class command_outcome : std::uint8_t {
+llm/qbm-redis.llm.api.md	stats.h:489-503	c77cddcacc8f	struct command_info {
+llm/qbm-redis.llm.api.md	stats.h:509-553	63be9e0f8414	struct latency_histogram {
+llm/qbm-redis.llm.api.md	stats.h:562-573	8ca7478c6372	struct stats {
+llm/qbm-redis.llm.api.md	stream_commands.h:37-37	4816175b91eb	class stream_commands {
+llm/qbm-redis.llm.api.md	stream_commands.h:96-96	20a4409c5b05	parse_stream_id(const std::string &id_str) {
+llm/qbm-redis.llm.api.md	string_commands.h:50-50	c879e6021a5d	class string_commands {
 llm/qbm-redis.llm.api.md	subscription_commands.h:354-354	ebb96219434a	ssubscribe(const std::string &channel) {
 llm/qbm-redis.llm.api.md	subscription_commands.h:406-406	442e66ae710c	sunsubscribe(const std::string &channel = "") {
 llm/qbm-redis.llm.api.md	subscription_commands.h:41-41	a1757770a5f5	class subscription_commands {
-llm/qbm-redis.llm.api.md	transaction_commands.h:38-38	d12ba69a350e	class transaction_commands {
-llm/qbm-redis.llm.md	hash_commands.h:131-182	f656c86197cb	start() {
-llm/qbm-redis.llm.md	hash_commands.h:49-62	f57257594da9	contains_borrowed_scan_view() {
-llm/qbm-redis.llm.md	hash_commands.h:675-684	df0349de74fb	template <typename Func, typename Out = qb::unordered_map<std::string...
-llm/qbm-redis.llm.md	hash_commands.h:88-101	23fd81169bc6	finish() {
+llm/qbm-redis.llm.api.md	transaction_commands.h:39-39	d12ba69a350e	class transaction_commands {
+llm/qbm-redis.llm.md	hash_commands.h:132-183	f656c86197cb	start() {
+llm/qbm-redis.llm.md	hash_commands.h:50-63	f57257594da9	contains_borrowed_scan_view() {
+llm/qbm-redis.llm.md	hash_commands.h:677-686	df0349de74fb	template <typename Func, typename Out = qb::unordered_map<std::string...
+llm/qbm-redis.llm.md	hash_commands.h:89-102	23fd81169bc6	finish() {
 llm/qbm-redis.llm.md	server_reply.h:357-389	bb231bafc716	class AsyncResult {
 llm/qbm-redis.llm.md	server_reply.h:435-450	a4739270dd02	class AsyncResult<void> {
 llm/qbm-redis.llm.md	src/qbm/redis/reply.cpp:31-40	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {

@@ -20,6 +20,7 @@
 #include <utility>
 #include <qb/io.h> // QB_LOG_WARN — the scanner callback guard below logs through it
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -154,8 +155,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
     bzpopmax(Func &&func, const std::vector<std::string> &keys, long long timeout) {
-        return derived().template command<std::optional<std::tuple<std::string, std::string, double>>>(std::forward<Func>(func), "BZPOPMAX",
-                                                                                                       keys, timeout);
+        return derived().template command<std::optional<std::tuple<std::string, std::string, double>>>(std::forward<Func>(func),
+                                                                                                       detail::verb<"BZPOPMAX">, keys, timeout);
     }
 
     /**
@@ -211,8 +212,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
     bzpopmin(Func &&func, const std::vector<std::string> &keys, long long timeout) {
-        return derived().template command<std::optional<std::tuple<std::string, std::string, double>>>(std::forward<Func>(func), "BZPOPMIN",
-                                                                                                       keys, timeout);
+        return derived().template command<std::optional<std::tuple<std::string, std::string, double>>>(std::forward<Func>(func),
+                                                                                                       detail::verb<"BZPOPMIN">, keys, timeout);
     }
 
     /**
@@ -279,7 +280,7 @@ public:
 
         if (changed)
             opt_ch = "CH";
-        return derived().template command<long long>(std::forward<Func>(func), "ZADD", key, opt_up, opt_ch, members);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZADD">, key, opt_up, opt_ch, members);
     }
 
     /**
@@ -304,7 +305,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zcard(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZCARD", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZCARD">, key);
     }
 
     /**
@@ -336,7 +337,7 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zcount(Func &&func, const std::string &key, const Interval &interval) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZCOUNT", key, interval.lower(), interval.upper());
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZCOUNT">, key, interval.lower(), interval.upper());
     }
 
     /**
@@ -366,7 +367,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<double> &&>, Derived &>
     zincrby(Func &&func, const std::string &key, double increment, const std::string &member) {
-        return derived().template command<double>(std::forward<Func>(func), "ZINCRBY", key, increment, member);
+        return derived().template command<double>(std::forward<Func>(func), detail::verb<"ZINCRBY">, key, increment, member);
     }
 
     /**
@@ -404,8 +405,8 @@ public:
         std::optional<std::string> opt;
         if (!weights.empty())
             opt = "WEIGHTS";
-        return derived().template command<long long>(std::forward<Func>(func), "ZUNIONSTORE", destination, keys.size(), keys, opt, weights,
-                                                     "AGGREGATE", to_string(type));
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZUNIONSTORE">, destination, keys.size(), keys, opt,
+                                                     weights, "AGGREGATE", to_string(type));
     }
 
     /**
@@ -443,8 +444,8 @@ public:
         std::optional<std::string> opt;
         if (!weights.empty())
             opt = "WEIGHTS";
-        return derived().template command<long long>(std::forward<Func>(func), "ZINTERSTORE", destination, keys.size(), keys, opt, weights,
-                                                     "AGGREGATE", to_string(type));
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZINTERSTORE">, destination, keys.size(), keys, opt,
+                                                     weights, "AGGREGATE", to_string(type));
     }
 
     /**
@@ -475,7 +476,8 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zlexcount(Func &&func, const std::string &key, const Interval &interval) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZLEXCOUNT", key, interval.lower(), interval.upper());
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZLEXCOUNT">, key, interval.lower(),
+                                                     interval.upper());
     }
 
     /**
@@ -503,7 +505,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zpopmax(Func &&func, const std::string &key, long long count = 1) {
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZPOPMAX", key, count);
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZPOPMAX">, key, count);
     }
 
     /**
@@ -531,7 +533,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zpopmin(Func &&func, const std::string &key, long long count = 1) {
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZPOPMIN", key, count);
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZPOPMIN">, key, count);
     }
 
     /**
@@ -561,7 +563,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zrange(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZRANGE", key, start, stop, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZRANGE">, key, start, stop,
+                                                                     "WITHSCORES");
     }
 
     /**
@@ -603,8 +606,8 @@ public:
         std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
         std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opts.offset) : std::nullopt;
         std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opts.count) : std::nullopt;
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZRANGEBYLEX", key, interval.lower(),
-                                                                    interval.upper(), limit_kw, limit_off, limit_cnt);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ZRANGEBYLEX">, key,
+                                                                    interval.lower(), interval.upper(), limit_kw, limit_off, limit_cnt);
     }
 
     /**
@@ -648,8 +651,9 @@ public:
         std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
         std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opts.offset) : std::nullopt;
         std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opts.count) : std::nullopt;
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZRANGEBYSCORE", key, interval.lower(),
-                                                                     interval.upper(), limit_kw, limit_off, limit_cnt, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZRANGEBYSCORE">, key,
+                                                                     interval.lower(), interval.upper(), limit_kw, limit_off, limit_cnt,
+                                                                     "WITHSCORES");
     }
 
     /**
@@ -677,7 +681,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>, Derived &>
     zrank(Func &&func, const std::string &key, const std::string &member) {
-        return derived().template command<std::optional<long long>>(std::forward<Func>(func), "ZRANK", key, member);
+        return derived().template command<std::optional<long long>>(std::forward<Func>(func), detail::verb<"ZRANK">, key, member);
     }
 
     /**
@@ -705,7 +709,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zrem(Func &&func, const std::string &key, const std::vector<std::string> &members) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZREM", key, members);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZREM">, key, members);
     }
 
     /**
@@ -736,7 +740,8 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zremrangebylex(Func &&func, const std::string &key, Interval const &interval) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZREMRANGEBYLEX", key, interval.lower(), interval.upper());
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZREMRANGEBYLEX">, key, interval.lower(),
+                                                     interval.upper());
     }
 
     /**
@@ -766,7 +771,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zremrangebyrank(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZREMRANGEBYRANK", key, start, stop);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZREMRANGEBYRANK">, key, start, stop);
     }
 
     /**
@@ -797,7 +802,8 @@ public:
     template <typename Func, typename Interval>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zremrangebyscore(Func &&func, const std::string &key, Interval const &interval) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZREMRANGEBYSCORE", key, interval.lower(), interval.upper());
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZREMRANGEBYSCORE">, key, interval.lower(),
+                                                     interval.upper());
     }
 
     /**
@@ -827,7 +833,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zrevrange(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZREVRANGE", key, start, stop, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZREVRANGE">, key, start, stop,
+                                                                     "WITHSCORES");
     }
 
     /**
@@ -867,8 +874,8 @@ public:
         std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
         std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opt.offset) : std::nullopt;
         std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opt.count) : std::nullopt;
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZREVRANGEBYLEX", key, interval.upper(),
-                                                                    interval.lower(), limit_kw, limit_off, limit_cnt);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ZREVRANGEBYLEX">, key,
+                                                                    interval.upper(), interval.lower(), limit_kw, limit_off, limit_cnt);
     }
 
     /**
@@ -906,8 +913,9 @@ public:
         std::optional<std::string> limit_kw  = use_limit ? std::optional<std::string>("LIMIT") : std::nullopt;
         std::optional<long long>   limit_off = use_limit ? std::optional<long long>(opt.offset) : std::nullopt;
         std::optional<long long>   limit_cnt = use_limit ? std::optional<long long>(opt.count) : std::nullopt;
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZREVRANGEBYSCORE", key, interval.upper(),
-                                                                     interval.lower(), "WITHSCORES", limit_kw, limit_off, limit_cnt);
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZREVRANGEBYSCORE">, key,
+                                                                     interval.upper(), interval.lower(), "WITHSCORES", limit_kw, limit_off,
+                                                                     limit_cnt);
     }
 
     /**
@@ -935,7 +943,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>, Derived &>
     zrevrank(Func &&func, const std::string &key, const std::string &member) {
-        return derived().template command<std::optional<long long>>(std::forward<Func>(func), "ZREVRANK", key, member);
+        return derived().template command<std::optional<long long>>(std::forward<Func>(func), detail::verb<"ZREVRANK">, key, member);
     }
 
     /**
@@ -974,8 +982,8 @@ public:
             fail_client<qb::redis::scan<qb::unordered_map<std::string, double>>>(std::forward<Func>(func), "ZSCAN requires a non-empty key");
             return derived();
         }
-        return derived().template command<qb::redis::scan<qb::unordered_map<std::string, double>>>(std::forward<Func>(func), "ZSCAN", key,
-                                                                                                   cursor, "MATCH", pattern, "COUNT", count);
+        return derived().template command<qb::redis::scan<qb::unordered_map<std::string, double>>>(
+            std::forward<Func>(func), detail::verb<"ZSCAN">, key, cursor, "MATCH", pattern, "COUNT", count);
     }
 
     /**
@@ -1026,7 +1034,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<double>> &&>, Derived &>
     zscore(Func &&func, const std::string &key, const std::string &member) {
-        return derived().template command<std::optional<double>>(std::forward<Func>(func), "ZSCORE", key, member);
+        return derived().template command<std::optional<double>>(std::forward<Func>(func), detail::verb<"ZSCORE">, key, member);
     }
 
     // =============== Set-algebra and extended sorted set commands ===============
@@ -1067,7 +1075,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     zdiff(Func &&func, const std::vector<std::string> &keys) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZDIFF", keys.size(), keys);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ZDIFF">, keys.size(), keys);
     }
     /**
      * @brief Asynchronous version of zdiffWithScores
@@ -1081,7 +1089,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zdiffWithScores(Func &&func, const std::vector<std::string> &keys) {
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZDIFF", keys.size(), keys, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZDIFF">, keys.size(), keys,
+                                                                     "WITHSCORES");
     }
 
     /**
@@ -1110,7 +1119,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     zdiffstore(Func &&func, const std::string &destination, const std::vector<std::string> &keys) {
-        return derived().template command<long long>(std::forward<Func>(func), "ZDIFFSTORE", destination, keys.size(), keys);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZDIFFSTORE">, destination, keys.size(), keys);
     }
 
     /**
@@ -1164,7 +1173,7 @@ public:
         }
         opt.push_back("AGGREGATE");
         opt.push_back(to_string(type));
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ZINTER">, keys.size(), keys, opt);
     }
 
     /**
@@ -1191,7 +1200,7 @@ public:
         opt.push_back("AGGREGATE");
         opt.push_back(to_string(type));
         opt.push_back("WITHSCORES");
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZINTER", keys.size(), keys, opt);
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZINTER">, keys.size(), keys, opt);
     }
 
     /**
@@ -1225,7 +1234,7 @@ public:
             opt.push_back("LIMIT");
             opt.push_back(std::to_string(*limit));
         }
-        return derived().template command<long long>(std::forward<Func>(func), "ZINTERCARD", keys.size(), keys, opt);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZINTERCARD">, keys.size(), keys, opt);
     }
 
     /**
@@ -1267,8 +1276,8 @@ public:
             opt.push_back("COUNT");
             opt.push_back(std::to_string(count));
         }
-        return derived().template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(std::forward<Func>(func), "ZMPOP",
-                                                                                                            keys.size(), keys, min_or_max, opt);
+        return derived().template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
+            std::forward<Func>(func), detail::verb<"ZMPOP">, keys.size(), keys, min_or_max, opt);
     }
 
     /**
@@ -1297,7 +1306,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<double>>> &&>, Derived &>
     zmscore(Func &&func, const std::string &key, const std::vector<std::string> &members) {
-        return derived().template command<std::vector<std::optional<double>>>(std::forward<Func>(func), "ZMSCORE", key, members);
+        return derived().template command<std::vector<std::optional<double>>>(std::forward<Func>(func), detail::verb<"ZMSCORE">, key, members);
     }
 
     /**
@@ -1324,7 +1333,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     zrandmember(Func &&func, const std::string &key) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "ZRANDMEMBER", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"ZRANDMEMBER">, key);
     }
 
     /**
@@ -1361,7 +1370,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     zrandmemberCount(Func &&func, const std::string &key, long long count) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "ZRANDMEMBER", key, count);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"ZRANDMEMBER">, key, count);
     }
 
     /**
@@ -1371,7 +1380,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
     zrandmemberWithScores(Func &&func, const std::string &key, long long count) {
-        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), "ZRANDMEMBER", key, count, "WITHSCORES");
+        return derived().template command<std::vector<score_member>>(std::forward<Func>(func), detail::verb<"ZRANDMEMBER">, key, count,
+                                                                     "WITHSCORES");
     }
 
     /**
@@ -1411,7 +1421,7 @@ public:
                 const std::vector<std::string> &options = {}) {
         std::vector<std::string> args = {dst, src, min, max};
         args.insert(args.end(), options.begin(), options.end());
-        return derived().template command<long long>(std::forward<Func>(func), "ZRANGESTORE", args);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"ZRANGESTORE">, args);
     }
 
     /**
@@ -1455,7 +1465,7 @@ public:
             opt.push_back(std::to_string(count));
         }
         return derived().template command<std::optional<std::pair<std::string, std::vector<score_member>>>>(
-            std::forward<Func>(func), "BZMPOP", timeout, keys.size(), keys, min_or_max, opt);
+            std::forward<Func>(func), detail::verb<"BZMPOP">, timeout, keys.size(), keys, min_or_max, opt);
     }
 };
 

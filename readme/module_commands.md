@@ -48,7 +48,7 @@ seconds-versus-milliseconds boundary documented for key-expiry commands does not
 > `MODULE LOAD` **executes server-side native code.** A loaded module runs in the server's address space with no
 > sandbox — it can register commands, allocate memory, and crash or compromise the server. Treat `module_load` like any
 > other privileged admin operation: the module is a thin RESP wrapper and performs no authorization of its own; gate it
-> behind Redis ACLs and trusted input. (`module_commands.h:105`; FACTBOOK invariant on destructive admin commands.)
+> behind Redis ACLs and trusted input. (`module_commands.h:106`; FACTBOOK invariant on destructive admin commands.)
 
 > The client is **not thread-safe.** Issue module commands from a single I/O thread / strand, like every other command.
 
@@ -58,7 +58,7 @@ seconds-versus-milliseconds boundary documented for key-expiry commands does not
 
 ### Where these methods come from
 
-`module_commands<Derived>` is a header-only CRTP mixin (`module_commands.h:34`). It is one of the bases of
+`module_commands<Derived>` is a header-only CRTP mixin (`module_commands.h:35`). It is one of the bases of
 `qb::redis::detail::Redis<QB_IO_>` (`redis.h:1528`), so `qb::redis::tcp::client` and `qb::redis::tcp::ssl::client` expose
 these four methods directly. The pub/sub consumers (`tcp::cb_consumer` / `tcp::co_consumer`) do **not** — they inherit
 only `connection_commands` and `subscription_commands`. Each method forwards to the inherited command machinery:
@@ -71,7 +71,7 @@ The reply type `T` differs per command (`qb::json`, `status`, `std::vector<std::
 
 Variadic coroutine `module_load` accepts literal arguments. Its by-value captures copy owning lvalues and move rvalues;
 pointers and `std::string_view` still borrow their data until command serialization when the awaiter suspends.
-<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:85-91 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:86-92 -->
 
 ### Reading a `Reply<T>`
 
@@ -132,10 +132,10 @@ callable accepts the matching `Reply<T> &&`.
 ### `module_list` — enumerate loaded modules
 
 ```cpp
-// Coroutine — module_commands.h:57
+// Coroutine — module_commands.h:58
 auto module_list();                                // -> redis_awaiter yielding Reply<qb::json>
 
-// Callback — module_commands.h:70
+// Callback — module_commands.h:71
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<qb::json> &&>, Derived &>
 module_list(Func &&func);
@@ -170,17 +170,17 @@ redis.module_list([](qb::redis::Reply<qb::json> &&reply) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:68-72 (derived) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:69-73 (derived) -->
 
 ### `module_load` — load a module
 
 ```cpp
-// Coroutine — module_commands.h:87
+// Coroutine — module_commands.h:88
 template <typename... Args>
 auto module_load(const std::string &path, Args&&... args);
                                                    // -> redis_awaiter yielding Reply<status>
 
-// Callback — module_commands.h:104
+// Callback — module_commands.h:105
 template <typename Func, typename... Args>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 module_load(Func &&func, const std::string &path, Args&&... args);
@@ -216,17 +216,17 @@ auto r2 = co_await redis.module_load(
     "/opt/redis/modules/redisearch.so", "MAXSEARCHRESULTS", "100000");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:85-91 (derived) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:86-92 (derived) -->
 
 > `module_load` runs untrusted native code in the server process. See the security note above.
 
 ### `module_unload` — unload a module
 
 ```cpp
-// Coroutine — module_commands.h:118
+// Coroutine — module_commands.h:119
 auto module_unload(const std::string &name);       // -> redis_awaiter yielding Reply<status>
 
-// Callback — module_commands.h:132
+// Callback — module_commands.h:133
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
 module_unload(Func &&func, const std::string &name);
@@ -254,15 +254,15 @@ if (r.ok() && r.result().ok())
     qb::io::cout() << "ReJSON unloaded" << std::endl;
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:117-120 (derived) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/module_commands.h:118-121 (derived) -->
 
 ### `module_help` — fetch help text
 
 ```cpp
-// Coroutine — module_commands.h:145
+// Coroutine — module_commands.h:146
 auto module_help();                                // -> redis_awaiter yielding Reply<std::vector<std::string>>
 
-// Callback — module_commands.h:159
+// Callback — module_commands.h:160
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
 module_help(Func &&func);

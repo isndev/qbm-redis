@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -64,7 +65,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     llen(Func &&func, const std::string &key) {
-        return derived().template command<long long>(std::forward<Func>(func), "LLEN", key);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"LLEN">, key);
     }
 
     // =============== Push Operations ===============
@@ -99,7 +100,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "LPUSH requires at least one value");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "LPUSH", key, std::forward<Args>(args)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"LPUSH">, key, std::forward<Args>(args)...);
     }
 
     /**
@@ -132,7 +133,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "LPUSHX requires at least one value");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "LPUSHX", key, std::forward<Args>(args)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"LPUSHX">, key, std::forward<Args>(args)...);
     }
 
     /**
@@ -165,7 +166,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "RPUSH requires at least one value");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "RPUSH", key, std::forward<Args>(args)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"RPUSH">, key, std::forward<Args>(args)...);
     }
 
     /**
@@ -198,7 +199,7 @@ public:
             fail_client<long long>(std::forward<Func>(func), "RPUSHX requires at least one value");
             return derived();
         }
-        return derived().template command<long long>(std::forward<Func>(func), "RPUSHX", key, std::forward<Args>(args)...);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"RPUSHX">, key, std::forward<Args>(args)...);
     }
 
     // =============== Pop Operations ===============
@@ -231,7 +232,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     lpop(Func &&func, const std::string &key, long long count) {
         return derived().template command<std::optional<std::vector<std::string>>>(
-            nil_as_default<std::vector<std::string>>(std::forward<Func>(func)), "LPOP", key, count);
+            nil_as_default<std::vector<std::string>>(std::forward<Func>(func)), detail::verb<"LPOP">, key, count);
     }
 
     /**
@@ -256,7 +257,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     lpop(Func &&func, const std::string &key) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "LPOP", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"LPOP">, key);
     }
 
     /**
@@ -287,7 +288,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     rpop(Func &&func, const std::string &key, long long count) {
         return derived().template command<std::optional<std::vector<std::string>>>(
-            nil_as_default<std::vector<std::string>>(std::forward<Func>(func)), "RPOP", key, count);
+            nil_as_default<std::vector<std::string>>(std::forward<Func>(func)), detail::verb<"RPOP">, key, count);
     }
 
     /**
@@ -312,7 +313,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     rpop(Func &&func, const std::string &key) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "RPOP", key);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"RPOP">, key);
     }
 
     // =============== Blocking Operations ===============
@@ -341,7 +342,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>, Derived &>
     blpop(Func &&func, const std::vector<std::string> &keys, long long timeout) {
-        return derived().template command<std::optional<std::pair<std::string, std::string>>>(std::forward<Func>(func), "BLPOP", keys, timeout);
+        return derived().template command<std::optional<std::pair<std::string, std::string>>>(std::forward<Func>(func), detail::verb<"BLPOP">,
+                                                                                              keys, timeout);
     }
 
     /**
@@ -393,7 +395,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::pair<std::string, std::string>>> &&>, Derived &>
     brpop(Func &&func, const std::vector<std::string> &keys, long long timeout) {
-        return derived().template command<std::optional<std::pair<std::string, std::string>>>(std::forward<Func>(func), "BRPOP", keys, timeout);
+        return derived().template command<std::optional<std::pair<std::string, std::string>>>(std::forward<Func>(func), detail::verb<"BRPOP">,
+                                                                                              keys, timeout);
     }
 
     /**
@@ -448,7 +451,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     lindex(Func &&func, const std::string &key, long long index) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "LINDEX", key, index);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"LINDEX">, key, index);
     }
 
     /**
@@ -479,7 +482,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     linsert(Func &&func, const std::string &key, InsertPosition position, const std::string &pivot, const std::string &val) {
-        return derived().template command<long long>(std::forward<Func>(func), "LINSERT", key, to_string(position), pivot, val);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"LINSERT">, key, to_string(position), pivot, val);
     }
 
     /**
@@ -508,7 +511,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
     lrange(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), "LRANGE", key, start, stop);
+        return derived().template command<std::vector<std::string>>(std::forward<Func>(func), detail::verb<"LRANGE">, key, start, stop);
     }
 
     /**
@@ -539,7 +542,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     lrem(Func &&func, const std::string &key, long long count, const std::string &val) {
-        return derived().template command<long long>(std::forward<Func>(func), "LREM", key, count, val);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"LREM">, key, count, val);
     }
 
     /**
@@ -568,7 +571,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     lset(Func &&func, const std::string &key, long long index, const std::string &val) {
-        return derived().template command<status>(std::forward<Func>(func), "LSET", key, index, val);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"LSET">, key, index, val);
     }
 
     /**
@@ -597,7 +600,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     ltrim(Func &&func, const std::string &key, long long start, long long stop) {
-        return derived().template command<status>(std::forward<Func>(func), "LTRIM", key, start, stop);
+        return derived().template command<status>(std::forward<Func>(func), detail::verb<"LTRIM">, key, start, stop);
     }
 
     // =============== Advanced List Operations ===============
@@ -628,7 +631,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     rpoplpush(Func &&func, const std::string &source, const std::string &destination) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "RPOPLPUSH", source, destination);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"RPOPLPUSH">, source, destination);
     }
 
     /**
@@ -662,7 +665,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     lmove(Func &&func, const std::string &source, const std::string &destination, ListPosition wherefrom, ListPosition whereto) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "LMOVE", source, destination,
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"LMOVE">, source, destination,
                                                                       to_string(wherefrom), to_string(whereto));
     }
 
@@ -707,7 +710,7 @@ public:
             opt.push_back(std::to_string(count));
         }
         return derived().template command<std::optional<std::pair<std::string, std::vector<std::string>>>>(
-            std::forward<Func>(func), "LMPOP", keys.size(), keys, to_string(position), opt);
+            std::forward<Func>(func), detail::verb<"LMPOP">, keys.size(), keys, to_string(position), opt);
     }
 
     /**
@@ -752,7 +755,7 @@ public:
             opt.push_back(std::to_string(count));
         }
         return derived().template command<std::optional<std::pair<std::string, std::vector<std::string>>>>(
-            std::forward<Func>(func), "BLMPOP", timeout, keys.size(), keys, to_string(position), opt);
+            std::forward<Func>(func), detail::verb<"BLMPOP">, timeout, keys.size(), keys, to_string(position), opt);
     }
 
     /**
@@ -787,7 +790,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     blmove(Func &&func, const std::string &source, const std::string &destination, ListPosition wherefrom, ListPosition whereto,
            long long timeout) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "BLMOVE", source, destination,
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"BLMOVE">, source, destination,
                                                                       to_string(wherefrom), to_string(whereto), timeout);
     }
 
@@ -820,7 +823,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<std::string>> &&>, Derived &>
     brpoplpush(Func &&func, const std::string &source, const std::string &destination, long long timeout) {
-        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), "BRPOPLPUSH", source, destination, timeout);
+        return derived().template command<std::optional<std::string>>(std::forward<Func>(func), detail::verb<"BRPOPLPUSH">, source, destination,
+                                                                      timeout);
     }
 
     /**
@@ -878,7 +882,7 @@ public:
             args.push_back(std::to_string(*maxlen));
         }
 
-        return derived().template command<std::vector<long long>>(std::forward<Func>(func), "LPOS", key, element, args);
+        return derived().template command<std::vector<long long>>(std::forward<Func>(func), detail::verb<"LPOS">, key, element, args);
     }
 };
 

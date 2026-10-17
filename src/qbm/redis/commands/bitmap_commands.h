@@ -15,6 +15,7 @@
 #define QBM_REDIS_BITMAP_COMMANDS_H
 
 #include "../reply.h"
+#include "../stats.h"
 
 namespace qb::redis {
 
@@ -79,7 +80,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     bitcount(Func &&func, const std::string &key, long long start = 0, long long end = -1) {
-        return derived().template command<long long>(std::forward<Func>(func), "BITCOUNT", key, start, end);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"BITCOUNT">, key, start, end);
     }
 
     /**
@@ -113,7 +114,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<long long>>> &&>, Derived &>
     bitfield(Func &&func, const std::string &key, const std::vector<std::string> &operations) {
-        return derived().template command<std::vector<std::optional<long long>>>(std::forward<Func>(func), "BITFIELD", key, operations);
+        return derived().template command<std::vector<std::optional<long long>>>(std::forward<Func>(func), detail::verb<"BITFIELD">, key,
+                                                                                 operations);
     }
 
     /**
@@ -148,7 +150,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     bitop(Func &&func, const std::string &operation, const std::string &destkey, const std::vector<std::string> &keys) {
-        return derived().template command<long long>(std::forward<Func>(func), "BITOP", operation, destkey, keys);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"BITOP">, operation, destkey, keys);
     }
 
     /**
@@ -213,7 +215,7 @@ public:
         if (start.has_value() && end.has_value()) {
             emit_end = *end;
         }
-        return derived().template command<long long>(std::forward<Func>(func), "BITPOS", key, bit ? 1 : 0, start, emit_end);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"BITPOS">, key, bit ? 1 : 0, start, emit_end);
     }
 
     /**
@@ -245,7 +247,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     getbit(Func &&func, const std::string &key, long long offset) {
-        return derived().template command<long long>(std::forward<Func>(func), "GETBIT", key, offset);
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"GETBIT">, key, offset);
     }
 
     /**
@@ -279,7 +281,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
     setbit(Func &&func, const std::string &key, long long offset, bool value) {
-        return derived().template command<long long>(std::forward<Func>(func), "SETBIT", key, offset, static_cast<int>(value));
+        return derived().template command<long long>(std::forward<Func>(func), detail::verb<"SETBIT">, key, offset, static_cast<int>(value));
     }
 
     /**
@@ -312,7 +314,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<long long>>> &&>, Derived &>
     bitfieldRo(Func &&func, const std::string &key, const std::vector<std::string> &operations) {
-        return derived().template command<std::vector<std::optional<long long>>>(std::forward<Func>(func), "BITFIELD_RO", key, operations);
+        return derived().template command<std::vector<std::optional<long long>>>(std::forward<Func>(func), detail::verb<"BITFIELD_RO">, key,
+                                                                                 operations);
     }
 };
 

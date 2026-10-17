@@ -666,7 +666,8 @@ public:
     bool                                     failed{};
     template <typename Ret, typename Func, typename... Args>
     AggregationClient &
-    command(Func &&func, const std::string &name, Args &&...args) {
+    command(Func &&func, qb::redis::detail::known_verb const verb, Args &&...args) {
+        const auto name  = verb.name();
         const auto index = next++;
         ++commands;
         if (index >= replies.size()) {

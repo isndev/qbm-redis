@@ -57,7 +57,8 @@ public:
 
     template <typename Ret, typename Func, typename... Args>
     ScriptedClient &
-    command(Func &&func, const std::string &name, Args &&...args) {
+    command(Func &&func, qb::redis::detail::known_verb const verb, Args &&...args) {
+        const auto                name = verb.name();
         qb::allocator::pipe<char> out;
         qb::redis::put_in_pipe(out, name, std::forward<Args>(args)...);
         frame.assign(out.begin(), out.size());
@@ -394,7 +395,7 @@ TEST(CommandReplyFailures, ConfigGetAndTimeKeepSuccessfulSourceRaw) {
 TEST(CommandReplyFailures, ConfigGetAndTimeKeepDecodeFailureDetails) {
     ScriptedClient       source(":42\r\n");
     Captured<StringList> expected;
-    source.command<StringList>(expected.sink(), "TIME");
+    source.command<StringList>(expected.sink(), qb::redis::detail::verb<"TIME">);
     ASSERT_FALSE(expected.reply.ok());
     ASSERT_FALSE(expected.reply.error().empty());
 

@@ -256,9 +256,9 @@ The protocol's `onMessage(std::size_t)` runs under the libev C callback and is d
    dropped; the remaining pending replies still dispatch (`redis.h:195-199`).
 2. The command-reply dispatch in the client (`on(message&&)`) wraps the handler call in
    `try { … } catch (const std::exception&) { … }` for the same reason — it also runs under the libev read dispatch (
-   `redis.h:1978-1982`).
+   `redis.h:2017-2021`).
 3. The disconnect drain (`on(disconnected&&)`) catches both `const std::exception&` and `...`, because a failing
-   callback may legitimately re-issue a command and that nested call could throw (`redis.h:1994-2019`).
+   callback may legitimately re-issue a command and that nested call could throw (`redis.h:2033-2061`).
 
 The contract for *your* callbacks: a throw will not crash the process, but it will cause that reply to be dropped with
 only a log line. Handle your own errors inside the callback; do not rely on the backstop as control flow.
@@ -392,7 +392,7 @@ if (!r)
 
 ### A command timeout surfaces as a failed reply
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1831-1834 (is_blocking_command), :1986-2022 (link-loss drain), :2355-2372 (set_command_timeout/getter) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1870-1873 (is_blocking_command), :2025-2064 (link-loss drain), :2424-2441 (set_command_timeout/getter) -->
 
 `command_timeout` defaults to `qb::duration::zero()` (disabled). It is a connection-health watchdog, not a per-command
 timer: when the deadline trips, the client drops the whole connection and fails **every** pending reply with
@@ -431,7 +431,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   callback.
 - **Auto-reconnect does not replay work.** On disconnect, every pending command is failed with `Reply{ok=false}`;
   in-flight commands are not re-issued -- only the configured handshake is, with a consumer's confirmed
-  subscriptions. Re-send after you observe the failure (`redis.h:1986-2022`).
+  subscriptions. Re-send after you observe the failure (`redis.h:2025-2064`).
 - **A faulted parser is dead until reset.** A corrupt frame faults the parser sticky and drops the connection; you
   cannot keep feeding the same socket. Reconnect (or rely on auto-reconnect) to get a fresh parser (
   `src/qbm/redis/parser/parser.h:153-154`, `redis.h:206-211`).
@@ -475,7 +475,7 @@ The view is a pointer to the client, its liveness token and the policy: make it 
 past the client (a debug build asserts it). A retry still waiting when the client is destroyed is dropped, never
 called -- as the client's own pending replies are.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:247-257 (command_retry), :2434-2437 (retrying), :3634-3707 (what is retried), :3719-3883 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:247-257 (command_retry), :2505-2508 (retrying), :3726-3799 (what is retried), :3811-3992 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
 
 ---
 

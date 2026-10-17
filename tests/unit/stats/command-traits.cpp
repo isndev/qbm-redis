@@ -21,14 +21,15 @@
  *
  * The table is hand-maintained; this test is what keeps it honest. It reads every `*_commands.h` of the
  * module, finds each verb a command group issues -- the string literal after the first argument of a
- * `command<...>(` or `pubsub_command(` call -- and requires the table to hold exactly those verbs (plus the
- * ones the client issues outside the groups: MONITOR), each with the family of the group that issues it. A
- * verb added to a group without its row, a row whose verb no group issues any more, a row in the wrong family
- * or out of order: each fails here. The scan refuses to pass vacuously.
+ * `command<...>(` call (`detail::verb<"GET">`) or of a `pubsub_command(` one -- and requires the table to hold
+ * exactly those verbs (plus the ones the client issues outside the groups: MONITOR), each with the family of the
+ * group that issues it. A verb added to a group without its row, a row whose verb no group issues any more, a
+ * row in the wrong family or out of order: each fails here. The scan refuses to pass vacuously.
  *
  * It also pins what the flags say for the verbs whose classification matters (the command watchdog's blocking
  * set, read-only and idempotent writes for QB-133 -- `idempotent` is the verb's plain form, the retrying view
- * refuses the options that break it), the letter-case fallback, and the latency histogram.
+ * refuses the options that break it), the letter-case fallback, the compile-time resolution of a group's verb,
+ * and the latency histogram.
  */
 
 #include <gtest/gtest.h>
@@ -42,6 +43,9 @@
 #include <qbm/redis/stats.h>
 
 namespace command_traits_test {
+
+/// How a command group spells a verb resolved at compile time: `detail::verb<"GET">`.
+const std::string kResolved = "detail::verb<";
 
 /// The verbs the command groups issue, read from their sources: verb -> the group's file stem (`string`).
 std::map<std::string, std::string>
@@ -103,6 +107,8 @@ scan_verbs(std::filesystem::path const &commands_dir) {
                 ++i;
                 while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
                     ++i;
+                if (s.compare(i, kResolved.size(), kResolved) == 0)
+                    i += kResolved.size(); // a command group's verb, resolved at compile time
                 if (i >= s.size() || s[i] != '"')
                     continue; // the verb is a variable: the generic command<T>(name, ...)
                 const auto end  = s.find('"', i + 1);
@@ -185,6 +191,29 @@ TEST(RedisCommandTraits, ALookupIgnoresTheLetterCaseAndKnowsNothingElse) {
     EXPECT_EQ(unknown.family, command_family::other);
     EXPECT_FALSE(unknown.blocking || unknown.read_only || unknown.idempotent);
     EXPECT_EQ(command_traits_of(std::string(64, 'x')).family, command_family::other) << "a verb past the fold buffer";
+}
+
+namespace command_traits_test {
+
+/// Every row, resolved at compile time, is the row the run-time lookup finds: the binary search agrees with it.
+consteval bool
+every_row_resolves_to_itself() {
+    for (std::size_t i = 0; i < qb::redis::detail::command_table.size(); ++i)
+        if (qb::redis::detail::command_row_of(qb::redis::detail::command_table[i].verb) != i)
+            return false;
+    return qb::redis::detail::command_row_of("NOT-A-VERB") == qb::redis::detail::command_table.size();
+}
+static_assert(every_row_resolves_to_itself(), "the compile-time lookup disagrees with the command table");
+
+} // namespace command_traits_test
+
+TEST(RedisCommandTraits, AGroupsVerbIsResolvedToItsRow) {
+    using qb::redis::detail::verb;
+    EXPECT_EQ(verb<"GET">.name(), "GET");
+    EXPECT_EQ(verb<"GET">.row, qb::redis::detail::command_index("GET"));
+    EXPECT_EQ(verb<"ZUNIONSTORE">.row, qb::redis::detail::command_table.size() - 1);
+    EXPECT_TRUE(verb<"BLPOP">.traits().blocking);
+    EXPECT_EQ(verb<"HSET">.traits().family, command_family::hash);
 }
 
 TEST(RedisCommandTraits, EveryFamilyHasAName) {
