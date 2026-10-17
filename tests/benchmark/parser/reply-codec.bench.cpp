@@ -18,6 +18,9 @@
  *       heuristic (the widest inbound conversion).
  *   (e) interval bound formatting (std::to_chars on doubles) via constructing
  *       BoundedInterval<double> — the score/range formatting hot spot.
+ *   (f) reply::parse<qb::redis::message> over a pub/sub `message` frame — what a
+ *       consumer does for every message it receives; the struct carries a gap
+ *       marker's `kind` and `gap` since QB-126b (104 -> 128 bytes).
  *
  * The Value trees are built once with local builders that mirror the shapes the
  * reply unit tests assert on (reply-parse.cpp / reply-serialize.cpp /
@@ -403,6 +406,40 @@ BM_ReplyParse_JsonWideMap(benchmark::State &state) {
 }
 
 // ---------------------------------------------------------------------------
+// (f) parse<qb::redis::message> over a pub/sub `message` frame (Huly QB-126b).
+// ---------------------------------------------------------------------------
+
+Value
+make_pubsub_message(std::size_t payload_bytes) {
+    std::vector<std::unique_ptr<Value>> elems;
+    elems.push_back(mk_bulk("message"));
+    elems.push_back(mk_bulk("orders:{7}"));
+    elems.push_back(mk_bulk(std::string(payload_bytes, 'p')));
+    return make_array(std::move(elems));
+}
+
+void
+BM_ReplyParse_PubSubMessage(benchmark::State &state) {
+    const auto  bytes = static_cast<std::size_t>(state.range(0));
+    const Value reply = make_pubsub_message(bytes);
+
+    {
+        const auto m = qb::redis::reply::parse<qb::redis::message>(reply);
+        if (m.channel != "orders:{7}" || m.payload.size() != bytes || !m.pattern.empty()) {
+            state.SkipWithError("message decode produced the wrong channel, payload or pattern");
+            return;
+        }
+    }
+
+    for (auto _ : state) {
+        auto m = qb::redis::reply::parse<qb::redis::message>(reply);
+        benchmark::DoNotOptimize(m);
+    }
+
+    state.SetItemsProcessed(state.iterations());
+}
+
+// ---------------------------------------------------------------------------
 // (e) Interval bound formatting (std::to_chars on doubles) via constructing
 // BoundedInterval<double>. Construction formats both bounds; lower()/upper()
 // return the pre-formatted "[x" / "(x" strings.
@@ -767,6 +804,7 @@ BENCHMARK(BM_ReplySerialize_PutInPipe)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_ReplySerialize_JsonInteger)->Arg(0)->Arg(1)->Arg(2)->ArgNames({"fixture"})->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_ReplyParse_JsonWideMap)->Arg(100)->Arg(1000)->ArgNames({"fields"})->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_ReplyFormat_IntervalToChars)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_ReplyParse_PubSubMessage)->Arg(16)->Arg(256)->ArgNames({"payload_bytes"})->Unit(benchmark::kNanosecond);
 
 BENCHMARK(BM_TReply_SuccessDispatch)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_TReply_TimerBoundaryEmpty)->Arg(1)->Arg(64)->Arg(128)->ArgNames({"replies"})->Unit(benchmark::kNanosecond);
