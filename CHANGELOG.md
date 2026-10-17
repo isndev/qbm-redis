@@ -39,6 +39,14 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Changed
 
+- **`qb::redis::RetryPolicy` is qb-io's `qb::io::reconnect_policy` (Huly QB-126).** One reconnection policy for
+  qbm-redis, qbm-pgsql and the qbm-http clients (`qb/io/reconnect.h`); every field and builder keeps its name, and
+  `connect_with_retry()` now takes its waits from the policy's own `next_delay()`. Three readings change, none in a
+  sane policy: `RetryPolicy{}.connect_timeout` reads `0` where it read 3 s -- zero means "the client's own", and the
+  client's own is still the 3 s of a plain `connect()`, so each attempt's deadline is unchanged; an `initial_delay`
+  above `max_delay` now waits `max_delay` (it waited the larger value once, then the cap); a `multiplier` below 1
+  reads as 1 (the waits used to shrink).
+
 - **Source change -- `client_unblock()` replies `Reply<bool>`, was `Reply<status>` (Huly QB-652).** `CLIENT UNBLOCK`
   answers the integer `1` when it unblocked a blocked client and `0` when the ID names none; a status cannot decode
   either, so every call -- whatever happened on the server -- reached its caller as a failed reply. Both forms now

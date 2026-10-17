@@ -33,24 +33,24 @@ llm/qbm-redis.llm.api.md	parser/types.h:43-43	5d9f6306792e	enum class ProtocolVe
 llm/qbm-redis.llm.api.md	parser/types.h:50-50	fbe1faa57c66	enum class ParseErrorCode {
 llm/qbm-redis.llm.api.md	parser/types.h:66-66	1f85eaa019e5	class ParseError {
 llm/qbm-redis.llm.api.md	publish_commands.h:37-37	3c65ae0990bb	class publish_commands {
-llm/qbm-redis.llm.api.md	redis.h:101-103	39cb75f31c29	struct message {
-llm/qbm-redis.llm.api.md	redis.h:1398-1398	fe3c529f759a	class RedisPipeline {
-llm/qbm-redis.llm.api.md	redis.h:1454-1454	cd678de7f8c1	class RedisConsumer
-llm/qbm-redis.llm.api.md	redis.h:1828-1828	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
-llm/qbm-redis.llm.api.md	redis.h:1935-1935	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
-llm/qbm-redis.llm.api.md	redis.h:2042-2042	1d2fe40d4864	receive() {
-llm/qbm-redis.llm.api.md	redis.h:2059-2059	5b0051a25645	using database = detail::Redis<QB_IO_>;
-llm/qbm-redis.llm.api.md	redis.h:2065-2065	e19a828745ea	struct tcp {
-llm/qbm-redis.llm.api.md	redis.h:2077-2077	97c8e8c3b177	struct ssl {
-llm/qbm-redis.llm.api.md	redis.h:2090-2090	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
-llm/qbm-redis.llm.api.md	redis.h:224-224	faac5b76e250	struct RetryPolicy {
-llm/qbm-redis.llm.api.md	redis.h:296-319	bb3b89039e82	template <typename QB_IO_, typename Derived>
-llm/qbm-redis.llm.api.md	redis.h:465-468	76c91e8904ff	* @struct connect_awaiter
-llm/qbm-redis.llm.api.md	redis.h:763-763	0657b2a52a29	class redis_awaiter {
-llm/qbm-redis.llm.api.md	redis.h:784-785	20f77c2202ca	await_suspend(std::coroutine_handle<> h) {
-llm/qbm-redis.llm.api.md	redis.h:805-805	351bb30df879	make_redis_awaiter(Func &&operation) {
-llm/qbm-redis.llm.api.md	redis.h:831-831	4ab5c6be2991	class Redis
-llm/qbm-redis.llm.api.md	redis.h:86-87	fec8f2f5d4ae	template <typename IO_>
+llm/qbm-redis.llm.api.md	redis.h:102-104	39cb75f31c29	struct message {
+llm/qbm-redis.llm.api.md	redis.h:1339-1339	fe3c529f759a	class RedisPipeline {
+llm/qbm-redis.llm.api.md	redis.h:1395-1395	cd678de7f8c1	class RedisConsumer
+llm/qbm-redis.llm.api.md	redis.h:1769-1769	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
+llm/qbm-redis.llm.api.md	redis.h:1876-1876	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
+llm/qbm-redis.llm.api.md	redis.h:1983-1983	1d2fe40d4864	receive() {
+llm/qbm-redis.llm.api.md	redis.h:2000-2000	5b0051a25645	using database = detail::Redis<QB_IO_>;
+llm/qbm-redis.llm.api.md	redis.h:2006-2006	e19a828745ea	struct tcp {
+llm/qbm-redis.llm.api.md	redis.h:2018-2018	97c8e8c3b177	struct ssl {
+llm/qbm-redis.llm.api.md	redis.h:2031-2031	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
+llm/qbm-redis.llm.api.md	redis.h:227-227	2a41a928458d	using RetryPolicy = qb::io::reconnect_policy;
+llm/qbm-redis.llm.api.md	redis.h:248-271	bb3b89039e82	template <typename QB_IO_, typename Derived>
+llm/qbm-redis.llm.api.md	redis.h:417-420	76c91e8904ff	* @struct connect_awaiter
+llm/qbm-redis.llm.api.md	redis.h:704-704	0657b2a52a29	class redis_awaiter {
+llm/qbm-redis.llm.api.md	redis.h:725-726	20f77c2202ca	await_suspend(std::coroutine_handle<> h) {
+llm/qbm-redis.llm.api.md	redis.h:746-746	351bb30df879	make_redis_awaiter(Func &&operation) {
+llm/qbm-redis.llm.api.md	redis.h:772-772	4ab5c6be2991	class Redis
+llm/qbm-redis.llm.api.md	redis.h:87-88	fec8f2f5d4ae	template <typename IO_>
 llm/qbm-redis.llm.api.md	reply.cpp:31-40	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
 llm/qbm-redis.llm.api.md	reply.h:105-105	f053ab3c6ce5	class ConnectionError : public Error {
 llm/qbm-redis.llm.api.md	reply.h:1060-1197	6f172527538f	redis_count(qb::redis::score const &) {

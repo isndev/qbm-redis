@@ -116,8 +116,8 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   an object with the exact `cmdstat_*` keys and complete raw text values. Errors
   keep their original `error()` and `raw()`; generic `info()` still returns a
   JSON string. `client_kill(..., skipme)` always emits `SKIPME yes` or `no`.
-- **RetryPolicy** drives connect-with-retry and auto-reconnect (exponential
-  backoff). A reconnect does **not** replay in-flight commands or subscriptions.
+- **RetryPolicy** (qb-io's `qb::io::reconnect_policy`, shared with qbm-http) drives
+  connect-with-retry and auto-reconnect (exponential backoff). A reconnect does **not** replay in-flight commands or subscriptions.
 - **HSCAN preserves `Out` across pages.** The cursor coroutine and automatic callback
   forms use the selected container (default `qb::unordered_map<std::string,std::string>`).
   Automatic scans require owning output: nested standard containers/wrappers of
@@ -135,7 +135,8 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
 
 - **Framework-side time is `qb::duration`**: connect timeout, `RetryPolicy`
   delays/`connect_timeout`, `set_command_timeout`, `debug_sleep`. Defaults:
-  `RetryPolicy.initial_delay` 100 ms, `max_delay` 30 s, `connect_timeout` 3 s;
+  `RetryPolicy.initial_delay` 100 ms, `max_delay` 30 s, `connect_timeout` zero
+  (= the 3 s of `connect()`);
   `connect()` timeout 3 s; `command_timeout` `qb::duration::zero()` (disabled).
 - **Redis command time args keep native wire units** via `std::chrono`-unit
   overloads — a documented boundary, **NOT** `qb::duration`:

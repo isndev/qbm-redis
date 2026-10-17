@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2061-2087 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2002-2028 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -132,20 +132,20 @@ instead be selected by setting `REDIS_UNIX_SOCKET` before running CTest directly
 four coroutine overloads and two callback overloads:
 
 ```cpp
-// Coroutine form — qbm/redis/src/qbm/redis/redis.h:526-543
+// Coroutine form — qbm/redis/src/qbm/redis/redis.h:478-495
 connect_awaiter connect();                                   // use the stored URI, 3s default timeout
 connect_awaiter connect(qb::io::uri uri);                    // set + use this URI
 connect_awaiter connect(qb::duration timeout);              // stored URI, custom timeout
 connect_awaiter connect(qb::io::uri uri, qb::duration timeout);
 
-// Callback form — qbm/redis/src/qbm/redis/redis.h:617-647
+// Callback form — qbm/redis/src/qbm/redis/redis.h:558-588
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3));
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::duration timeout = std::chrono::seconds(3));
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:465-543,617-647 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:417-495,558-588 -->
 
 The default connect timeout is **3 seconds** (`qb::duration`). The awaiter resolves to `true` only when the socket
 opened *and* `setup_connection` adopted the transport; a failed handshake or an elapsed timeout resolves to `false`.
@@ -158,7 +158,7 @@ The framework's canonical time type is `qb::duration` (a `std::chrono::nanosecon
 
 - the `connect()` timeout (default `3s`);
 - every delay in `RetryPolicy` — `initial_delay` (default `100ms`), `max_delay` (default `30s`), `connect_timeout` (
-  default `3s`), and the `next_delay` passed to the `on_retry` callback;
+  default zero: each attempt takes the 3 s of `connect()`), and the `next_delay` passed to the `on_retry` callback;
 - the optional `set_command_timeout(...)` deadline (default `qb::duration::zero()` = disabled).
 
 > The retired aliases `qb::Duration`, `qb::Timestamp`, and `qb::TimePoint` (and the helpers `to_timestamp(...)` /
@@ -266,7 +266,7 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:617-647 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:558-588 -->
 
 `set_uri(uri)` updates the stored endpoint without connecting; a later argument-less `connect()` uses it. `uri()`
 returns the current endpoint. `is_connected()` reports the live socket state.
@@ -323,7 +323,7 @@ if (!co_await redis.connect())
 #endif
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:658-685 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:599-626 -->
 
 `set_verify_peer(bool)` toggles TLS chain + hostname verification; it **defaults to `true`** and must be set before
 `connect()`. `verify_peer()` reads the current setting. For a **private CA**, call `set_ssl_root_cert(path)` (a PEM
@@ -340,19 +340,24 @@ There are two related but distinct mechanisms, both driven by `RetryPolicy`.
 
 ### `RetryPolicy` — backoff configuration
 
+`qb::redis::RetryPolicy` is qb-io's `qb::io::reconnect_policy` -- the one reconnection policy qbm-redis, qbm-pgsql
+and the qbm-http clients share (`qb::http::RetryPolicy` is the same type):
+
 ```cpp
-struct RetryPolicy {
+using RetryPolicy = qb::io::reconnect_policy;
+
+struct reconnect_policy {                    // qb/io/reconnect.h
     int          max_attempts   = -1;        // -1 = unlimited
     qb::duration initial_delay  {100ms};
     qb::duration max_delay      {30s};
-    double       multiplier     = 2.0;
+    double       multiplier     = 2.0;       // below 1 reads as 1
     bool         jitter         = true;
-    qb::duration connect_timeout{3s};        // per-attempt connect deadline
+    qb::duration connect_timeout{};          // per-attempt connect deadline; zero = the 3 s of connect()
     std::function<void(int attempt, qb::duration next_delay)> on_retry;
 };
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:224-231 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:227; qb/src/qb/io/reconnect.h:218-228 -->
 
 Every field has a fluent setter that returns `*this`, so you build a policy inline. **All three time fields
 are `qb::duration`,** and the `on_retry` callback receives the next delay as a `qb::duration`:
@@ -376,8 +381,10 @@ auto policy = qb::redis::RetryPolicy{}
 
 The backoff is exponential: the delay starts at `initial_delay`, multiplies by `multiplier` after each failed attempt,
 and is capped at `max_delay`. With `jitter` on, each delay is randomized by ±25% to avoid thundering herds. The math
-runs in integer milliseconds and is assigned back into `qb::duration`. `max_attempts < 0` means retry forever; with
-`max_attempts == n`, retries stop after `n` failed attempts.
+runs in integer milliseconds and is assigned back into `qb::duration` -- the policy's own `next_delay(attempt)`, so the
+waits are the ones the HTTP/2 client's run takes. An `initial_delay` above `max_delay` waits `max_delay`, and a
+`multiplier` below 1 reads as 1. `max_attempts < 0` means retry forever; with `max_attempts == n`, retries stop after
+`n` failed attempts.
 
 ### `connect_with_retry` — one-shot retried connect
 
@@ -428,7 +435,7 @@ lands. The retry runs on the same I/O loop — there is no extra thread.
 For a callback consumer, `on_disconnected` runs after pending replies fail and before the connector decides whether to
 start that retry loop. If it throws, the connector logs the error and still checks the current policy. A callback that
 calls `disable_auto_reconnect()` therefore prevents the retry even if it later throws.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:365-389 (disconnect order, exception containment, reconnect decision), :1762-1784 (consumer pending-reply drain before notification) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:317-341 (disconnect order, exception containment, reconnect decision), :1703-1725 (consumer pending-reply drain before notification) -->
 
 > **Auto-reconnect re-dials, it does not restore session state.** A reconnected socket is a *fresh* connection. It
 > defaults to RESP2 (call `hello(3)` again if you need RESP3), it is unauthenticated (re-issue `auth(...)`), it is back
@@ -462,7 +469,7 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1156-1191 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1097-1132 -->
 
 The queue is swapped *before* the drain loop so that a failing handler may legitimately re-issue a command (for example
 to kick off a reconnect-and-retry) without that brand-new command being failed by the same loop.
@@ -500,7 +507,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1324-1350 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1265-1291 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,

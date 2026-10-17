@@ -42,6 +42,7 @@
 #include <utility>
 #include <qb/io/async.h>
 #include <qb/io/async/tcp/connector.h>
+#include <qb/io/reconnect.h>
 #ifdef QB_HAS_SSL
 #include <qb/io/tcp/ssl/context.h> // qb::io::ssl::Context for make_connect_socket_() (rediss:// custom-CA / client-cert)
 #endif
@@ -215,64 +216,15 @@ namespace qb::redis {
 // ============================================================================
 
 /**
- * @struct RetryPolicy
- * @brief Configuration for connection retry behavior with exponential backoff
+ * @brief The reconnection backoff: qb-io's shared `qb::io::reconnect_policy` (`qb/io/reconnect.h`).
  *
- * Used by connect_with_retry() and enable_auto_reconnect() to control
- * reconnection attempts when the Redis connection is lost.
+ * Used by connect_with_retry() and enable_auto_reconnect(). The same type as `qb::http::RetryPolicy`:
+ * exponential backoff from `initial_delay` by `multiplier` up to `max_delay`, jittered by a quarter
+ * either way, `max_attempts` per run (-1 = unlimited), `on_retry(attempt, next_delay)` before each
+ * wait. Its `connect_timeout` bounds each attempt's connect; zero (the default) means the 3 s a plain
+ * `connect()` takes.
  */
-struct RetryPolicy {
-    int                                                       max_attempts = -1;
-    qb::duration                                              initial_delay{std::chrono::milliseconds(100)};
-    qb::duration                                              max_delay{std::chrono::seconds(30)};
-    double                                                    multiplier      = 2.0;
-    bool                                                      jitter          = true;
-    qb::duration                                              connect_timeout = std::chrono::seconds(3);
-    std::function<void(int attempt, qb::duration next_delay)> on_retry;
-
-    /** @brief Set maximum number of retry attempts (-1 = unlimited) */
-    RetryPolicy &
-    with_max_attempts(int n) noexcept {
-        max_attempts = n;
-        return *this;
-    }
-    /** @brief Set initial delay between retries */
-    RetryPolicy &
-    with_initial_delay(qb::duration d) noexcept {
-        initial_delay = d;
-        return *this;
-    }
-    /** @brief Set maximum delay cap */
-    RetryPolicy &
-    with_max_delay(qb::duration d) noexcept {
-        max_delay = d;
-        return *this;
-    }
-    /** @brief Set exponential backoff multiplier */
-    RetryPolicy &
-    with_multiplier(double m) noexcept {
-        multiplier = m;
-        return *this;
-    }
-    /** @brief Enable/disable random jitter on delays */
-    RetryPolicy &
-    with_jitter(bool j) noexcept {
-        jitter = j;
-        return *this;
-    }
-    /** @brief Set connection timeout */
-    RetryPolicy &
-    with_connect_timeout(qb::duration t) noexcept {
-        connect_timeout = t;
-        return *this;
-    }
-    /** @brief Set callback invoked before each retry (attempt, next_delay) */
-    RetryPolicy &
-    with_on_retry(std::function<void(int, qb::duration)> cb) {
-        on_retry = std::move(cb);
-        return *this;
-    }
-};
+using RetryPolicy = qb::io::reconnect_policy;
 
 // ============================================================================
 // Connector base class
@@ -568,31 +520,23 @@ public:
         // before touching *this again (the next connect_awaiter{*this}).
         auto alive = _alive;
 
-        auto delay   = policy.initial_delay;
-        int  attempt = 0;
+        // The wait between attempts is the shared policy's own arithmetic (qb::io::reconnect_policy::
+        // next_delay): the same run the qbm-http clients follow.
+        const qb::duration attempt_timeout = policy.connect_timeout > qb::duration::zero() ? policy.connect_timeout : std::chrono::seconds(3);
+        int                attempt         = 0;
 
-        while (policy.max_attempts < 0 || attempt < policy.max_attempts) {
+        while (policy.allows_attempt(attempt)) {
             ++attempt;
 
-            if (co_await connect_awaiter{*this, policy.connect_timeout})
+            if (co_await connect_awaiter{*this, attempt_timeout})
                 co_return true;
             if (!*alive)
                 co_return false; // *this may have been destroyed
 
-            if (policy.max_attempts > 0 && attempt >= policy.max_attempts)
+            if (!policy.allows_attempt(attempt))
                 break;
 
-            // Backoff math is done in integer milliseconds (jitter + exponential
-            // growth), then assigned back into the qb::duration delay variables.
-            const auto   delay_ms    = std::chrono::duration_cast<std::chrono::milliseconds>(delay).count();
-            qb::duration sleep_delay = delay;
-            if (policy.jitter && delay_ms > 0) {
-                const long long                          quarter = delay_ms / 4;
-                std::uniform_int_distribution<long long> dist{-quarter, quarter};
-                sleep_delay =
-                    std::max(qb::duration{std::chrono::milliseconds{1}}, qb::duration{std::chrono::milliseconds{delay_ms + dist(rng_)}});
-            }
-
+            const qb::duration sleep_delay = policy.next_delay(attempt, &rng_);
             if (policy.on_retry) {
                 policy.on_retry(attempt, sleep_delay);
             }
@@ -600,9 +544,6 @@ public:
             co_await qb::io::async::sleep(sleep_delay);
             if (!*alive)
                 co_return false; // destroyed during the backoff sleep
-
-            const auto next_ms = static_cast<long long>(static_cast<double>(delay_ms) * policy.multiplier);
-            delay              = std::min(qb::duration{std::chrono::milliseconds{next_ms}}, policy.max_delay);
         }
 
         co_return false;
