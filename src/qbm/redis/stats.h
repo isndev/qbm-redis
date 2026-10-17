@@ -137,7 +137,7 @@ struct command_row {
  *        the groups' sources and refuses any drift) and MONITOR. Sorted by verb; HAND-MAINTAINED -- a verb added
  *        to a command group is added here, with its family and flags.
  */
-inline constexpr std::array<command_row, 225> command_table{{
+inline constexpr std::array<command_row, 228> command_table{{
     {"ACL", {command_family::acl, false, false, false}},
     {"APPEND", {command_family::string, false, false, false}},
     {"ASKING", {command_family::cluster, false, false, false}},
@@ -298,14 +298,17 @@ inline constexpr std::array<command_row, 225> command_table{{
     {"SORT", {command_family::key, false, false, false}},
     {"SORT_RO", {command_family::key, false, true, false}},
     {"SPOP", {command_family::set, false, false, false}},
+    {"SPUBLISH", {command_family::publish, false, false, false}},
     {"SRANDMEMBER", {command_family::set, false, true, false}},
     {"SREM", {command_family::set, false, false, true}},
     {"SSCAN", {command_family::set, false, true, false}},
+    {"SSUBSCRIBE", {command_family::subscription, false, false, false}},
     {"STRLEN", {command_family::string, false, true, false}},
     {"SUBSCRIBE", {command_family::subscription, false, false, false}},
     {"SUBSTR", {command_family::string, false, true, false}},
     {"SUNION", {command_family::set, false, true, false}},
     {"SUNIONSTORE", {command_family::set, false, false, false}},
+    {"SUNSUBSCRIBE", {command_family::subscription, false, false, false}},
     {"SWAPDB", {command_family::connection, false, false, false}},
     {"SYNC", {command_family::server, false, false, false}},
     {"TIME", {command_family::server, false, true, false}},

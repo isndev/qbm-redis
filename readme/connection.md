@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3550-3576 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3584-3610 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -465,7 +465,7 @@ empty until set and read only on those transitions: `on_connected()` each time t
 `on_disconnected` runs after the work in flight failed and before the connector decides whether to start the run: if it
 throws, the connector logs the error and still checks the current policy, so a hook that calls
 `disable_auto_reconnect()` prevents the run even if it later throws.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:581-643 (link-loss order, exception containment, reconnect decision), :3054-3077 (consumer pending-reply drain before notification) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:581-643 (link-loss order, exception containment, reconnect decision), :3087-3111 (consumer pending-reply drain before notification) -->
 
 > **Auto-reconnect replays the handshake, never a request.** Every reconnection runs the configured handshake --
 > RESP3, credentials, database, the hook, and a consumer's CONFIRMED subscriptions -- before anything else, so nothing
@@ -588,7 +588,7 @@ _redis.on_command_complete([this, metrics = _metrics_id](qb::redis::command_info
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/stats.h:421-435 (command_info), :494-504 (stats), :441-485 (latency_histogram); qbm/redis/src/qbm/redis/redis.h:2340-2381 (set_latency_stats, latency, on_command_complete), qbm/redis/src/qbm/redis/redis.h:1612-1646 (each command counted once, the hook out of line) -->
+<!-- src: qbm/redis/src/qbm/redis/stats.h:424-438 (command_info), :497-507 (stats), :444-488 (latency_histogram); qbm/redis/src/qbm/redis/redis.h:2340-2381 (set_latency_stats, latency, on_command_complete), qbm/redis/src/qbm/redis/redis.h:1612-1646 (each command counted once, the hook out of line) -->
 
 ---
 

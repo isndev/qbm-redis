@@ -23,7 +23,7 @@ the methods below are called on a live client through its public alias `qb::redi
 `make_coro_command<T>(...)`, which own argument serialization, I/O, and connection lifetime (
 see [connection.md](./connection.md)).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:37-42 (the CRTP derived accessor), redis.h:3555 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:37-42 (the CRTP derived accessor), redis.h:3589 (tcp::client alias) -->
 
 ```cpp
 #include <qbm/redis/redis.h>            // umbrella header; pulls in publish_commands.h
@@ -34,7 +34,8 @@ qb::redis::tcp::client redis{qb::io::uri{"tcp://127.0.0.1:6379"}};
 
 This page covers only the publish side. The subscriber side — receiving those messages through
 `qb::redis::tcp::cb_consumer`, and the `subscribe`/`psubscribe`/`unsubscribe`/`punsubscribe` commands — lives
-in [subscription_commands.md](./subscription_commands.md). There is no `SPUBLISH` (sharded Pub/Sub) in this slice.
+in [subscription_commands.md](./subscription_commands.md). Sharded pub/sub (Redis 7+) has its own publish, `spublish`,
+below.
 
 ---
 
@@ -148,6 +149,23 @@ not `Reply<long long>&&` does not match this overload, so you cannot accidentall
 <!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:75-79 -->
 
 ---
+
+## `spublish` -- sharded pub/sub (Redis 7+)
+
+`spublish(channel, message)` sends `SPUBLISH`: the message reaches the subscribers that `ssubscribe`d to the shard
+channel, and the reply is how many of them received it (Huly QB-127). A shard channel lives on the cluster node that
+owns its hash slot; the client follows no `MOVED` redirect, so on a cluster send it to that node -- a hash tag
+(`orders:{7}`) pins related channels to one slot. On a standalone server it behaves as `publish` does.
+
+```cpp
+auto r = co_await redis.spublish("orders:{7}", R"({"id":7,"state":"paid"})");
+if (r)
+    qb::io::cout() << "delivered to " << r.result() << " shard subscriber(s)\n";
+```
+
+The callback form is `spublish(cb, channel, message)`, `cb` taking `Reply<long long>&&`.
+
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:81-100; qbm/redis/tests/integration/pubsub/pubsub-sharded.cpp:67-128 -->
 
 ## End-to-end: publish to a live subscriber
 

@@ -77,6 +77,27 @@ public:
     publish(Func &&func, const std::string &channel, const std::string &message) {
         return derived().template command<long long>(std::forward<Func>(func), "PUBLISH", channel, message);
     }
+
+    /**
+     * @brief Publishes a message to a shard channel (coroutine awaitable): Redis 7+ sharded pub/sub.
+     * @details Reaches the SSUBSCRIBE subscribers of the channel, on the node that owns its hash slot; the reply
+     *          is the number of them that received it. On a cluster the client follows no redirect: send it to the
+     *          node that owns the channel's slot.
+     * @return Awaitable that yields Reply<long long>, the number of subscribers that received the message
+     * @see https://redis.io/commands/spublish
+     */
+    auto
+    spublish(const std::string &channel, const std::string &message) {
+        return derived().template make_coro_command<long long>(
+            [this, channel, message](auto &&callback) { this->spublish(std::move(callback), channel, message); });
+    }
+
+    /** @brief Asynchronous version of spublish */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
+    spublish(Func &&func, const std::string &channel, const std::string &message) {
+        return derived().template command<long long>(std::forward<Func>(func), "SPUBLISH", channel, message);
+    }
 };
 
 } // namespace qb::redis

@@ -54,7 +54,7 @@ reply surface.
 
 ### `qb::redis::status`
 
-`status` (`src/qbm/redis/types.h:553`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`src/qbm/redis/types.h:563`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK". The status
 commands here are routinely tested with `reply.ok()` (the reply arrived without a protocol/transport error) rather than
 the value, because a standalone server answers them with a cluster-disabled error.

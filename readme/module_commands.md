@@ -325,4 +325,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified-against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:553 (status), qbm/redis/src/qbm/redis/reply.h:1234 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.2.1 -->
+<!-- Verified-against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:563 (status), qbm/redis/src/qbm/redis/reply.h:1234 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.2.1 -->

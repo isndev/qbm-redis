@@ -82,7 +82,7 @@ std::cout << id.to_string() << '\n';     // 1-18446744073709551615
 
 ### `qb::redis::status`
 
-`status` (`src/qbm/redis/types.h:553-604`) wraps a status string. It converts to `bool` (true when the string is
+`status` (`src/qbm/redis/types.h:563-614`) wraps a status string. It converts to `bool` (true when the string is
 `"OK"`), to `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said
 OK".
 

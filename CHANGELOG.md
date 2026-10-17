@@ -9,6 +9,16 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **Sharded pub/sub: `ssubscribe`, `sunsubscribe`, `spublish` (Huly QB-127; Redis 7+).** A consumer subscribes to shard
+  channels and receives their `smessage` frames as `qb::redis::message`s, through `on_message` or `receive()`; a client
+  publishes with `spublish`. The (P|S)(UN)SUBSCRIBE commands share one counting path, keyed by
+  `qb::redis::subscription_kind` (`channel`, `pattern`, `shard`): an unsubscribe-all of the shard channels resolves on
+  the last confirmation; the confirmed shard channels are replayed on reconnection, one `SSUBSCRIBE` each (a cluster
+  refuses several slots in one call), and a successful `RESET` forgets them. On a cluster the client follows no
+  redirect: talk to the node that owns the channel's slot. An `smessage` used to be dropped as an unknown push. Pinned by
+  `integration/pubsub/pubsub-sharded.cpp` (RESP2 and RESP3), `system/connection/co-consumer-lifecycle.cpp` (the replay,
+  the unsubscribe-all count) and `system/connection/consumer-unknown-push.cpp` (an `smessage` is delivered).
+
 - **Client observability: `stats()`, per-family latency, `on_command_complete` (Huly QB-134).** `qbm/redis/stats.h`,
   the mirror of qbm-pgsql's `stats()` / `on_query_complete`. `stats()` returns monotonic counts since construction: a
   client's `commands` (each counted once, when it completes, whatever way -- as many as the callbacks called), `errors`,

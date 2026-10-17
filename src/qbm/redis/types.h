@@ -509,6 +509,16 @@ struct json_value {
     }
 };
 
+/**
+ * @brief Which subscription a (P|S)(UN)SUBSCRIBE manages: a channel, a pattern, or a shard channel (sharded
+ *        pub/sub, Redis 7+). One counting path for the three (Huly QB-127).
+ */
+enum class subscription_kind : std::uint8_t {
+    channel, ///< SUBSCRIBE / UNSUBSCRIBE: messages arrive as `message`
+    pattern, ///< PSUBSCRIBE / PUNSUBSCRIBE: messages arrive as `pmessage`, `pattern` set
+    shard,   ///< SSUBSCRIBE / SUNSUBSCRIBE: messages arrive as `smessage`
+};
+
 /** @brief What a consumer's stream item is: a published message, or the marker of a gap before the next one. */
 enum class message_kind : std::uint8_t {
     data, ///< a message the server published

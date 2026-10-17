@@ -84,7 +84,8 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE", false, false, std::vector<std::string>{channel});
+        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE", false, subscription_kind::channel,
+                                        std::vector<std::string>{channel});
     }
 
     /**
@@ -121,7 +122,7 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE", false, false, channels);
+        return derived().pubsub_command(std::forward<Func>(func), "SUBSCRIBE", false, subscription_kind::channel, channels);
     }
 
     /**
@@ -155,9 +156,11 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     unsubscribe(Func &&func, const std::string &channel = "") {
         if (channel.empty()) {
-            return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, false, std::vector<std::string>{});
+            return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, subscription_kind::channel,
+                                            std::vector<std::string>{});
         }
-        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, false, std::vector<std::string>{channel});
+        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, subscription_kind::channel,
+                                        std::vector<std::string>{channel});
     }
 
     /**
@@ -185,7 +188,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     unsubscribe(Func &&func, const std::vector<std::string> &channels) {
-        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, false, channels);
+        return derived().pubsub_command(std::forward<Func>(func), "UNSUBSCRIBE", true, subscription_kind::channel, channels);
     }
 
     // =============== Pattern Subscription Commands ===============
@@ -228,7 +231,8 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE", false, true, std::vector<std::string>{pattern});
+        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE", false, subscription_kind::pattern,
+                                        std::vector<std::string>{pattern});
     }
 
     /**
@@ -263,7 +267,7 @@ public:
             func(std::move(reply));
             return derived();
         }
-        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE", false, true, patterns);
+        return derived().pubsub_command(std::forward<Func>(func), "PSUBSCRIBE", false, subscription_kind::pattern, patterns);
     }
 
     /**
@@ -297,9 +301,11 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     punsubscribe(Func &&func, const std::string &pattern = "") {
         if (pattern.empty()) {
-            return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, true, std::vector<std::string>{});
+            return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, subscription_kind::pattern,
+                                            std::vector<std::string>{});
         }
-        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, true, std::vector<std::string>{pattern});
+        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, subscription_kind::pattern,
+                                        std::vector<std::string>{pattern});
     }
 
     /**
@@ -327,7 +333,104 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
     punsubscribe(Func &&func, const std::vector<std::string> &patterns) {
-        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, true, patterns);
+        return derived().pubsub_command(std::forward<Func>(func), "PUNSUBSCRIBE", true, subscription_kind::pattern, patterns);
+    }
+
+    // =============== Sharded Channel Subscription Commands (Redis 7+) ===============
+
+    /**
+     * @brief Subscribes to a shard channel (coroutine awaitable)
+     *
+     * Sharded pub/sub: a shard channel lives on the node that owns its hash slot, and a message published
+     * there with SPUBLISH reaches its SSUBSCRIBE subscribers as an `smessage`, delivered like any message.
+     * On a standalone server it works as SUBSCRIBE does; on a cluster the client follows no redirect, so
+     * connect the consumer to the node that owns the channel's slot.
+     *
+     * @param channel Shard channel name to subscribe to
+     * @return redis_awaiter yielding Reply<qb::redis::subscription>
+     * @see https://redis.io/commands/ssubscribe
+     */
+    auto
+    ssubscribe(const std::string &channel) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, channel](auto &&callback) { this->ssubscribe(std::move(callback), channel); });
+    }
+
+    /**
+     * @brief Asynchronous version of ssubscribe
+     * @see https://redis.io/commands/ssubscribe
+     */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
+    ssubscribe(Func &&func, const std::string &channel) {
+        if (channel.empty()) {
+            Reply<qb::redis::subscription> reply;
+            reply.ok()    = false;
+            reply.error() = "Channel name cannot be empty";
+            func(std::move(reply));
+            return derived();
+        }
+        return derived().pubsub_command(std::forward<Func>(func), "SSUBSCRIBE", false, subscription_kind::shard,
+                                        std::vector<std::string>{channel});
+    }
+
+    /**
+     * @brief Subscribes to several shard channels (coroutine awaitable); on a cluster they must share a slot
+     * @see https://redis.io/commands/ssubscribe
+     */
+    auto
+    ssubscribe(const std::vector<std::string> &channels) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, channels](auto &&callback) { this->ssubscribe(std::move(callback), channels); });
+    }
+
+    /** @brief Asynchronous version of ssubscribe for several shard channels */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
+    ssubscribe(Func &&func, const std::vector<std::string> &channels) {
+        if (channels.empty()) {
+            Reply<qb::redis::subscription> reply;
+            reply.ok()    = false;
+            reply.error() = "Channel list cannot be empty";
+            func(std::move(reply));
+            return derived();
+        }
+        return derived().pubsub_command(std::forward<Func>(func), "SSUBSCRIBE", false, subscription_kind::shard, channels);
+    }
+
+    /**
+     * @brief Unsubscribes from a shard channel, or from every shard channel when none is given (coroutine awaitable)
+     * @see https://redis.io/commands/sunsubscribe
+     */
+    auto
+    sunsubscribe(const std::string &channel = "") {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, channel](auto &&callback) { this->sunsubscribe(std::move(callback), channel); });
+    }
+
+    /** @brief Asynchronous version of sunsubscribe */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
+    sunsubscribe(Func &&func, const std::string &channel = "") {
+        if (channel.empty())
+            return derived().pubsub_command(std::forward<Func>(func), "SUNSUBSCRIBE", true, subscription_kind::shard,
+                                            std::vector<std::string>{});
+        return derived().pubsub_command(std::forward<Func>(func), "SUNSUBSCRIBE", true, subscription_kind::shard,
+                                        std::vector<std::string>{channel});
+    }
+
+    /** @brief Unsubscribes from several shard channels (coroutine awaitable) */
+    auto
+    sunsubscribe(const std::vector<std::string> &channels) {
+        return derived().template make_coro_command<qb::redis::subscription>(
+            [this, channels](auto &&callback) { this->sunsubscribe(std::move(callback), channels); });
+    }
+
+    /** @brief Asynchronous version of sunsubscribe for several shard channels */
+    template <typename Func>
+    std::enable_if_t<std::is_invocable_v<Func, Reply<qb::redis::subscription> &&>, Derived &>
+    sunsubscribe(Func &&func, const std::vector<std::string> &channels) {
+        return derived().pubsub_command(std::forward<Func>(func), "SUNSUBSCRIBE", true, subscription_kind::shard, channels);
     }
 };
 

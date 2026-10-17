@@ -386,6 +386,10 @@ if (!r.ok()) {
   `connect()` there owns the client). `on_connected` / `on_disconnected(reason)`
   strictly alternate; `on_disconnected` runs after the in-flight work failed and
   before the reconnection decision, so disarming the policy there prevents the run.
+- **Sharded pub/sub** (Redis 7+, Huly QB-127): `consumer.ssubscribe(ch)` /
+  `sunsubscribe(ch)`, `client.spublish(ch, msg)`; an `smessage` is delivered as a
+  `message`. On a cluster the client follows no redirect: talk to the node that owns
+  the channel's slot, and keep the channels of one call in one slot.
 - **Observability** (`<qbm/redis/stats.h>`, Huly QB-134): `stats()` is a snapshot of
   monotonic counts -- a client's `commands` / `errors` / `failed` / `held` / `by_family`,
   `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.

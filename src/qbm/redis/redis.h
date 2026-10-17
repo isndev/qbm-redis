@@ -2502,13 +2502,14 @@ public:
     using redis_protocol = typename connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>::redis_protocol;
 
 private:
-    enum class MsgType { SUBSCRIBE, UNSUBSCRIBE, PSUBSCRIBE, PUNSUBSCRIBE, MESSAGE, PMESSAGE, UNKNOWN };
+    enum class MsgType { SUBSCRIBE, UNSUBSCRIBE, PSUBSCRIBE, PUNSUBSCRIBE, SSUBSCRIBE, SUNSUBSCRIBE, MESSAGE, PMESSAGE, SMESSAGE, UNKNOWN };
 
     static MsgType
     msg_type(const std::string_view &type) {
         static const qb::unordered_flat_map<std::string_view, MsgType> str_to_enum{
-            {"message", MsgType::MESSAGE},         {"pmessage", MsgType::PMESSAGE},     {"subscribe", MsgType::SUBSCRIBE},
-            {"unsubscribe", MsgType::UNSUBSCRIBE}, {"psubscribe", MsgType::PSUBSCRIBE}, {"punsubscribe", MsgType::PUNSUBSCRIBE}
+            {"message", MsgType::MESSAGE},           {"pmessage", MsgType::PMESSAGE},       {"smessage", MsgType::SMESSAGE},
+            {"subscribe", MsgType::SUBSCRIBE},       {"unsubscribe", MsgType::UNSUBSCRIBE}, {"psubscribe", MsgType::PSUBSCRIBE},
+            {"punsubscribe", MsgType::PUNSUBSCRIBE}, {"ssubscribe", MsgType::SSUBSCRIBE},   {"sunsubscribe", MsgType::SUNSUBSCRIBE}
         };
 
         auto it = str_to_enum.find(type);
@@ -2548,10 +2549,10 @@ private:
      */
     struct HeldCommand {
         std::unique_ptr<IReply>  handler;
-        std::size_t              bytes      = 0;
-        const char              *pubsub     = nullptr; ///< the verb of a held (P)(UN)SUBSCRIBE, else null
-        bool                     is_unsub   = false;
-        bool                     is_pattern = false;
+        std::size_t              bytes    = 0;
+        const char              *pubsub   = nullptr; ///< the verb of a held (P|S)(UN)SUBSCRIBE, else null
+        bool                     is_unsub = false;
+        subscription_kind        kind     = subscription_kind::channel;
         std::vector<std::string> names;
     };
 
@@ -2563,12 +2564,14 @@ private:
     /// with no argument) is exact even when pipelined behind pending subscribes.
     qb::unordered_flat_set<std::string> _pred_channels;
     qb::unordered_flat_set<std::string> _pred_patterns;
+    qb::unordered_flat_set<std::string> _pred_shards;
     bool                                _reset_pending = false;
 
     /// The subscriptions the SERVER confirmed: what a reconnection replays (R5). A confirmation frame adds or
     /// removes its name, a successful RESET clears both; a lost connection keeps them.
     qb::unordered_flat_set<std::string> _confirmed_channels;
     qb::unordered_flat_set<std::string> _confirmed_patterns;
+    qb::unordered_flat_set<std::string> _confirmed_shards;
 
     std::function<void(qb::io::gap_info const &)> _on_gap;
 
@@ -2680,8 +2683,10 @@ private:
             if (reply.ok()) {
                 owner->_pred_channels.clear();
                 owner->_pred_patterns.clear();
+                owner->_pred_shards.clear();
                 owner->_confirmed_channels.clear(); // the server forgot them: nothing to replay
                 owner->_confirmed_patterns.clear();
+                owner->_confirmed_shards.clear();
             }
             callback(std::move(reply));
         }
@@ -2708,14 +2713,15 @@ private:
      * @brief Compute the number of confirmation frames Redis will emit and
      *        advance the predicted-subscription state accordingly.
      *
-     * SUBSCRIBE/PSUBSCRIBE acknowledge once per channel argument (even repeats),
-     * so the count is the argument count. UNSUBSCRIBE/PUNSUBSCRIBE with explicit
-     * names acknowledge once per name; with no name they acknowledge once per
-     * currently-subscribed channel/pattern (or once when none are subscribed).
+     * SUBSCRIBE/PSUBSCRIBE/SSUBSCRIBE acknowledge once per channel argument (even
+     * repeats), so the count is the argument count. The UNSUBSCRIBE forms with
+     * explicit names acknowledge once per name; with no name they acknowledge once
+     * per currently-subscribed name of their kind (or once when none are). One path
+     * for the three kinds (Huly QB-127).
      */
     int
-    predict_confirmations(bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
-        auto &set = is_pattern ? _pred_patterns : _pred_channels;
+    predict_confirmations(bool is_unsub, subscription_kind kind, const std::vector<std::string> &names) {
+        auto &set = kind == subscription_kind::pattern ? _pred_patterns : kind == subscription_kind::shard ? _pred_shards : _pred_channels;
         if (!is_unsub) {
             for (auto const &n : names)
                 set.insert(n);
@@ -2736,64 +2742,66 @@ private:
      *        that resolves only after all of its confirmation frames arrive.
      *
      * @param func       Reply<subscription> callback.
-     * @param cmd        Redis command verb ("SUBSCRIBE", "PUNSUBSCRIBE", …).
-     * @param is_unsub   True for (P)UNSUBSCRIBE.
-     * @param is_pattern True for the pattern variants (P*).
-     * @param names      Channel/pattern arguments (empty ⇒ unsubscribe-all).
+     * @param cmd      Redis command verb ("SUBSCRIBE", "PUNSUBSCRIBE", "SSUBSCRIBE", …).
+     * @param is_unsub True for the UNSUBSCRIBE forms.
+     * @param kind     Channel, pattern or shard channel: the set of names it manages.
+     * @param names    Channel/pattern arguments (empty ⇒ unsubscribe-all).
      */
     template <typename Func>
     requires std::invocable<Func, Reply<qb::redis::subscription> &&>
     Derived &
-    pubsub_command(Func &&func, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
+    pubsub_command(Func &&func, const char *cmd, bool is_unsub, subscription_kind kind, const std::vector<std::string> &names) {
         auto handler = std::make_unique<TReply<Func, qb::redis::subscription>>(std::forward<Func>(func));
         if (_reset_pending) {
             handler->fail("RESET pending; await its reply before Pub/Sub commands");
             return derived();
         }
         if (!this->ready_()) [[unlikely]] {
-            hold_pubsub_(std::move(handler), cmd, is_unsub, is_pattern, names);
+            hold_pubsub_(std::move(handler), cmd, is_unsub, kind, names);
             return derived();
         }
-        put_pubsub_(std::move(handler), cmd, is_unsub, is_pattern, names);
+        put_pubsub_(std::move(handler), cmd, is_unsub, kind, names);
         return derived();
     }
 
-    /// Serialize a (P)(UN)SUBSCRIBE on the link and predict its confirmations.
+    /// Serialize a (P|S)(UN)SUBSCRIBE on the link and predict its confirmations.
     void
-    put_pubsub_(std::unique_ptr<IReply> handler, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
+    put_pubsub_(std::unique_ptr<IReply> handler, const char *cmd, bool is_unsub, subscription_kind kind,
+                const std::vector<std::string> &names) {
         // Serialized first, the prediction advanced only for a command that will reach the server (Huly QB-255).
         if (auto error = names.empty() ? this->try_put_command(cmd) : this->try_put_command(cmd, names)) {
             handler->fail(*error);
             return;
         }
-        const int expected = predict_confirmations(is_unsub, is_pattern, names);
+        const int expected = predict_confirmations(is_unsub, kind, names);
         _replies.push(PendingReply{std::move(handler), expected, /*is_subscription=*/true});
     }
 
-    /// The handshake's write path for a (P)(UN)SUBSCRIBE: straight to the link.
+    /// The handshake's write path for a (P|S)(UN)SUBSCRIBE: straight to the link.
     template <typename Func>
     void
-    direct_pubsub_command_(Func &&func, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
-        put_pubsub_(std::make_unique<TReply<Func, qb::redis::subscription>>(std::forward<Func>(func)), cmd, is_unsub, is_pattern, names);
+    direct_pubsub_command_(Func &&func, const char *cmd, bool is_unsub, subscription_kind kind, const std::vector<std::string> &names) {
+        put_pubsub_(std::make_unique<TReply<Func, qb::redis::subscription>>(std::forward<Func>(func)), cmd, is_unsub, kind, names);
     }
 
-    /// A (P)(UN)SUBSCRIBE submitted while not ready: held with its arguments, or failed soon when idle or down.
+    /// A (P|S)(UN)SUBSCRIBE submitted while not ready: held with its arguments, or failed soon when idle or down.
     QB_NOINLINE void
-    hold_pubsub_(std::unique_ptr<IReply> handler, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
+    hold_pubsub_(std::unique_ptr<IReply> handler, const char *cmd, bool is_unsub, subscription_kind kind,
+                 const std::vector<std::string> &names) {
         if (!this->holding_()) {
             this->fail_soon_(std::move(handler), this->refusal_text_());
             return;
         }
         HeldCommand entry;
-        entry.handler    = std::move(handler);
-        entry.pubsub     = cmd;
-        entry.is_unsub   = is_unsub;
-        entry.is_pattern = is_pattern;
-        entry.names      = names;
+        entry.handler  = std::move(handler);
+        entry.pubsub   = cmd;
+        entry.is_unsub = is_unsub;
+        entry.kind     = kind;
+        entry.names    = names;
         _held.push_back(std::move(entry));
     }
 
-    /// Ready: the held work leaves in submission order; a held (P)(UN)SUBSCRIBE is predicted now.
+    /// Ready: the held work leaves in submission order; a held (P|S)(UN)SUBSCRIBE is predicted now.
     void
     on_ready_() {
         if (!_held.empty()) {
@@ -2801,7 +2809,7 @@ private:
                 auto entry = std::move(_held.front());
                 _held.pop_front();
                 if (entry.pubsub) {
-                    put_pubsub_(std::move(entry.handler), entry.pubsub, entry.is_unsub, entry.is_pattern, entry.names);
+                    put_pubsub_(std::move(entry.handler), entry.pubsub, entry.is_unsub, entry.kind, entry.names);
                 } else {
                     this->put_held_bytes_(_held_out, entry.bytes);
                     _replies.push(PendingReply{std::move(entry.handler), 1});
@@ -2907,6 +2915,15 @@ private:
                         QB_LOG_WARN("[qbm][redis] message handler error: " << e.what());
                     }
                     return;
+                case MsgType::SMESSAGE:
+                    // Sharded pub/sub (Redis 7+, Huly QB-127): the shape of a message, delivered as one.
+                    ++this->stats_mut_().messages_received;
+                    try {
+                        derived().on(parse<qb::redis::message>(raw));
+                    } catch (const std::exception &e) {
+                        QB_LOG_WARN("[qbm][redis] message handler error: " << e.what());
+                    }
+                    return;
                 case MsgType::PMESSAGE:
                     ++this->stats_mut_().messages_received;
                     try {
@@ -2918,7 +2935,9 @@ private:
                 case MsgType::SUBSCRIBE:
                 case MsgType::UNSUBSCRIBE:
                 case MsgType::PSUBSCRIBE:
-                case MsgType::PUNSUBSCRIBE: {
+                case MsgType::PUNSUBSCRIBE:
+                case MsgType::SSUBSCRIBE:
+                case MsgType::SUNSUBSCRIBE: {
                     confirm_(type, raw); // the server's word on what this consumer is subscribed to
                     // A subscription confirmation. One (P)SUBSCRIBE/(P)UNSUBSCRIBE
                     // over N channels yields N confirmations but only one handler:
@@ -2955,8 +2974,8 @@ private:
             }
 
             // A RESP3 PUSH frame of a kind this consumer does not know -- `invalidate` from
-            // client-side caching (CLIENT TRACKING on this connection), `smessage` /
-            // `ssubscribe` from sharded pub/sub, whatever a later server adds -- is OUT OF
+            // client-side caching (CLIENT TRACKING on this connection), whatever a later server
+            // adds -- is OUT OF
             // BAND: it answers no command, so it must not pop the handler at the head of the
             // FIFO. Until 3.2 it did exactly that (Huly QB-141), the class of defect the
             // `is_subscription` guard above was written to kill on the confirmation side, and
@@ -3015,6 +3034,12 @@ private:
             case MsgType::PUNSUBSCRIBE:
                 _confirmed_patterns.erase(value);
                 break;
+            case MsgType::SSUBSCRIBE:
+                _confirmed_shards.insert(std::move(value));
+                break;
+            case MsgType::SUNSUBSCRIBE:
+                _confirmed_shards.erase(value);
+                break;
             default:
                 break;
         }
@@ -3023,7 +3048,7 @@ private:
     /// The session a reconnection replays: the confirmed subscriptions (R5).
     [[nodiscard]] bool
     has_session_to_replay_() const noexcept {
-        return !_confirmed_channels.empty() || !_confirmed_patterns.empty();
+        return !_confirmed_channels.empty() || !_confirmed_patterns.empty() || !_confirmed_shards.empty();
     }
 
     /**
@@ -3036,6 +3061,7 @@ private:
     replay_session_(typename connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>::handshake_client &hs) {
         std::vector<std::string> channels(_confirmed_channels.begin(), _confirmed_channels.end());
         std::vector<std::string> patterns(_confirmed_patterns.begin(), _confirmed_patterns.end());
+        std::vector<std::string> shards(_confirmed_shards.begin(), _confirmed_shards.end());
         if (!channels.empty()) {
             auto r = co_await hs.subscribe(channels);
             if (!r)
@@ -3043,6 +3069,13 @@ private:
         }
         if (!patterns.empty()) {
             auto r = co_await hs.psubscribe(patterns);
+            if (!r)
+                co_return r.error();
+        }
+        // One SSUBSCRIBE per shard channel: on a cluster, names of several slots in one call are refused
+        // (CROSSSLOT), and the consumer does not compute slots.
+        for (auto const &shard : shards) {
+            auto r = co_await hs.ssubscribe(shard);
             if (!r)
                 co_return r.error();
         }
@@ -3056,6 +3089,7 @@ private:
         // _reset_pending through its own completion, failed below; a held one keeps it set.
         _pred_channels.clear();
         _pred_patterns.clear();
+        _pred_shards.clear();
         while (!_replies.empty()) {
             auto handler = std::move(_replies.front().handler);
             _replies.pop();
@@ -3523,12 +3557,12 @@ class HandshakeClient<RedisConsumer<QB_IO_, Derived>>
     template <typename Func>
     requires std::invocable<Func, Reply<qb::redis::subscription> &&>
     HandshakeClient &
-    pubsub_command(Func &&func, const char *cmd, bool is_unsub, bool is_pattern, const std::vector<std::string> &names) {
+    pubsub_command(Func &&func, const char *cmd, bool is_unsub, subscription_kind kind, const std::vector<std::string> &names) {
         if (!this->live()) {
             TReply<Func, qb::redis::subscription>{std::forward<Func>(func)}.fail("handshake over");
             return *this;
         }
-        this->_owner->direct_pubsub_command_(std::forward<Func>(func), cmd, is_unsub, is_pattern, names);
+        this->_owner->direct_pubsub_command_(std::forward<Func>(func), cmd, is_unsub, kind, names);
         return *this;
     }
 

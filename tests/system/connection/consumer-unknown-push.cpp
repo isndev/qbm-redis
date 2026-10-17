@@ -27,10 +27,12 @@
  * so the assertions read a settled state rather than a timer.
  *
  * What is proved, in both polarities:
- *   - a PUSH frame whose kind is unknown (`invalidate`, the shape CLIENT TRACKING produces;
- *     `smessage`, the sharded pub/sub one) leaves the pending handler UNRESOLVED and the FIFO
- *     at the same depth -- until 3.2 it popped the head and resolved the SUBSCRIBE with an
- *     invalidation, desynchronising the reply/command FIFO for the connection's lifetime;
+ *   - a PUSH frame whose kind is unknown (`invalidate`, the shape CLIENT TRACKING produces)
+ *     leaves the pending handler UNRESOLVED and the FIFO at the same depth -- until 3.2 it popped
+ *     the head and resolved the SUBSCRIBE with an invalidation, desynchronising the reply/command
+ *     FIFO for the connection's lifetime;
+ *   - a sharded pub/sub `smessage` (Huly QB-127) is no longer unknown: it is delivered to the
+ *     message callback, like a `message`, and it too leaves the pending handler alone;
  *   - a known PUSH kind (`message`) is still delivered to the message callback;
  *   - a PUSH `subscribe` confirmation still resolves the pending handler -- the guard drops
  *     the unknown, not the push;
@@ -162,13 +164,14 @@ TEST(ConsumerUnknownPush, InvalidatePushLeavesThePendingHandlerAlone) {
     EXPECT_EQ(h.messages_seen, 1);
 }
 
-TEST(ConsumerUnknownPush, ShardedMessagePushLeavesThePendingHandlerAlone) {
+TEST(ConsumerUnknownPush, ShardedMessagePushIsDeliveredAndLeavesThePendingHandlerAlone) {
     qb::io::async::init();
     Harness h;
-    ASSERT_TRUE(h.serve(frame('>', {"smessage", "shard-channel", "payload"}) + kKnownMessage, 1));
-    EXPECT_EQ(h.handler_calls, 0);
+    ASSERT_TRUE(h.serve(frame('>', {"smessage", "shard-channel", "payload"}) + kKnownMessage, 2))
+        << "an smessage is a message of the sharded pub/sub (Huly QB-127): it must be delivered";
+    EXPECT_EQ(h.handler_calls, 0) << "a message resolves no pending command";
     EXPECT_EQ(h.consumer->pending_reply_count(), 1u);
-    EXPECT_EQ(h.messages_seen, 1) << "an unknown kind is not a message either: only the known one counts";
+    EXPECT_EQ(h.messages_seen, 2);
 }
 
 TEST(ConsumerUnknownPush, KnownMessagePushStillDelivers) {

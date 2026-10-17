@@ -282,7 +282,7 @@ remain active.
 After a successful connection-level `RESET`, the consumer's predicted channel and pattern sets are empty too;
 `unsubscribe("")` or `punsubscribe("")` therefore waits for one empty-state confirmation. Pub/Sub calls made before
 `RESET` answers fail locally; await it first. See [Connection commands](./connection_commands.md#reset--reset-connection-state).
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2669-2705,2716-2732,2747-2758 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2672-2710,2722-2738,2753-2764 -->
 
 - **Coroutine, single/all:** `auto unsubscribe(const std::string &channel = "")`
 - **Coroutine, multiple:** `auto unsubscribe(const std::vector<std::string> &channels)`
@@ -337,6 +337,31 @@ auto all = co_await consumer.punsubscribe("");   // every pattern
 ```
 
 <!-- src: qbm/redis/tests/integration/pubsub/pubsub-subscribe.cpp:333-357 -->
+
+### `SSUBSCRIBE shardchannel [shardchannel ...]` / `SUNSUBSCRIBE [shardchannel ...]`
+
+Sharded pub/sub (Redis 7+, Huly QB-127): `ssubscribe` subscribes to shard channels, and the messages published to
+them with `spublish` arrive as `smessage` frames, delivered to your callback or `receive()` loop as ordinary
+`qb::redis::message`s (`channel`, `payload`). The confirmation's `num` counts this connection's shard subscriptions --
+a count of its own, apart from channels and patterns. `sunsubscribe` with an empty string leaves every shard channel
+and resolves on the last confirmation. A consumer replays its confirmed shard channels on reconnection, one
+`SSUBSCRIBE` each, and a successful `RESET` forgets them like the others.
+
+- **Coroutine:** `auto ssubscribe(const std::string &channel)`, `auto ssubscribe(const std::vector<std::string> &channels)`,
+  `auto sunsubscribe(const std::string &channel = "")`, `auto sunsubscribe(const std::vector<std::string> &channels)`
+- **Callback:** the same with the callback first, `Reply<qb::redis::subscription>&&`
+
+On a cluster a shard channel lives on the node that owns its slot and the client follows no redirect: connect the
+consumer to that node, and keep the channels of one call in one slot (a hash tag, `orders:{7}`), or the server
+refuses the call with `CROSSSLOT`.
+
+```cpp
+auto r = co_await consumer.ssubscribe("orders:{7}");
+// r.result().num == 1 -- this connection's shard subscriptions
+auto all = co_await consumer.sunsubscribe();   // every shard channel; num == 0 at the end
+```
+
+<!-- src: qbm/redis/src/qbm/redis/commands/subscription_commands.h:339-434; qbm/redis/tests/integration/pubsub/pubsub-sharded.cpp:67-169 -->
 
 ---
 
@@ -403,7 +428,7 @@ qb::io::async::task<void> watch_keys(qb::redis::tcp::client &client, qb::redis::
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:402 (config_set), qbm/redis/src/qbm/redis/commands/subscription_commands.h:207 (psubscribe) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:402 (config_set), qbm/redis/src/qbm/redis/commands/subscription_commands.h:210 (psubscribe) -->
 
 A pattern match reaches `on_message` with `pattern` set — `pmessage` adds no field — so both consumers keep the pattern
 that matched. Three things to know before relying on it:

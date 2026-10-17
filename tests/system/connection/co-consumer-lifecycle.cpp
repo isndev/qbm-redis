@@ -48,6 +48,7 @@
 #include <gtest/gtest.h>
 #include <array>
 #include <chrono>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <vector>
@@ -178,6 +179,12 @@ read_commands(qb::io::tcp::socket &peer, std::size_t n, std::chrono::millisecond
         },
         timeout);
     return out;
+}
+
+/// A RESP2 ssubscribe confirmation for `channel`, `count` shard subscriptions active.
+std::string
+shard_confirmation(std::string const &channel, int count) {
+    return "*3\r\n$10\r\nssubscribe\r\n$" + std::to_string(channel.size()) + "\r\n" + channel + "\r\n:" + std::to_string(count) + "\r\n";
 }
 
 /// A RESP2 subscribe confirmation for `channel`, `count` subscriptions active.
@@ -382,4 +389,61 @@ TEST_F(CoConsumerLifecycle, WithoutARunALostPeerEndsTheStreamWithItsReason) {
     ASSERT_TRUE(run_until([&] { return d.ended; })) << "no run armed: the loss is terminal, the stream ends";
     EXPECT_EQ(consumer.state(), qb::io::connection_state::down);
     EXPECT_EQ(consumer.down_reason(), qb::io::down_reason::peer);
+}
+
+// Huly QB-127: the confirmed shard channels are replayed too, one SSUBSCRIBE each -- on a cluster several slots
+// in one call are refused (CROSSSLOT), and the consumer computes no slot. An unsubscribe-all of the shards
+// expects one confirmation per shard channel it predicted.
+TEST_F(CoConsumerLifecycle, AReconnectionReplaysTheConfirmedShardChannelsOneByOne) {
+    LoopbackServer              server;
+    qb::redis::tcp::co_consumer consumer{qb::io::uri{server.uri()}};
+    consumer.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(1ms).with_jitter(false));
+    ASSERT_TRUE(qb::io::async::run_sync(consumer.connect()));
+    auto first = server.accept_one();
+    first.set_nonblocking(true);
+
+    int confirmed = 0;
+    consumer.ssubscribe([&](qb::redis::Reply<qb::redis::subscription> &&r) { confirmed += r.ok(); }, "s1");
+    consumer.ssubscribe([&](qb::redis::Reply<qb::redis::subscription> &&r) { confirmed += r.ok(); }, "s2");
+    const auto sent = read_commands(first, 2);
+    ASSERT_EQ(sent.size(), 2u);
+    EXPECT_EQ(sent[0], (std::vector<std::string>{"SSUBSCRIBE", "s1"}));
+    const auto conf = shard_confirmation("s1", 1) + shard_confirmation("s2", 2);
+    ASSERT_EQ(first.write(conf.data(), conf.size()), static_cast<int>(conf.size()));
+    ASSERT_TRUE(run_until([&] { return confirmed == 2; }));
+
+    first.disconnect();
+    ASSERT_TRUE(run_until([&] { return consumer.is_reconnecting(); }));
+    qb::io::tcp::socket second;
+    server.listener.set_nonblocking(true);
+    ASSERT_TRUE(run_until(
+        [&, accepted = false]() mutable { return accepted || (accepted = server.listener.accept(second) == qb::io::SocketStatus::Done); }));
+    second.set_nonblocking(true);
+    auto replay = read_commands(second, 1);
+    ASSERT_EQ(replay.size(), 1u) << "one SSUBSCRIBE at a time: the replay waits for each confirmation";
+    ASSERT_EQ(replay[0].size(), 2u);
+    EXPECT_EQ(replay[0][0], "SSUBSCRIBE");
+    const auto first_shard = replay[0][1];
+    auto       c1          = shard_confirmation(first_shard, 1);
+    ASSERT_EQ(second.write(c1.data(), c1.size()), static_cast<int>(c1.size()));
+    replay = read_commands(second, 1);
+    ASSERT_EQ(replay.size(), 1u);
+    ASSERT_EQ(replay[0].size(), 2u);
+    EXPECT_EQ(replay[0][0], "SSUBSCRIBE");
+    EXPECT_NE(replay[0][1], first_shard);
+    EXPECT_TRUE((first_shard == "s1" && replay[0][1] == "s2") || (first_shard == "s2" && replay[0][1] == "s1"));
+    auto c2 = shard_confirmation(replay[0][1], 2);
+    ASSERT_EQ(second.write(c2.data(), c2.size()), static_cast<int>(c2.size()));
+    ASSERT_TRUE(run_until([&] { return consumer.is_connected(); })) << "the replay is part of the handshake";
+
+    bool all_gone = false;
+    consumer.sunsubscribe([&](qb::redis::Reply<qb::redis::subscription> &&r) { all_gone = r.ok() && r.result().num == 0; });
+    const auto unsub = read_commands(second, 1);
+    ASSERT_EQ(unsub.size(), 1u);
+    EXPECT_EQ(unsub[0], (std::vector<std::string>{"SUNSUBSCRIBE"}));
+    const auto u = "*3\r\n$12\r\nsunsubscribe\r\n$2\r\ns1\r\n:1\r\n*3\r\n$12\r\nsunsubscribe\r\n$2\r\ns2\r\n:0\r\n";
+    ASSERT_EQ(second.write(u, std::strlen(u)), static_cast<int>(std::strlen(u)));
+    ASSERT_TRUE(run_until([&] { return all_gone; })) << "resolved on the second confirmation, the one per predicted shard";
+    EXPECT_EQ(consumer.pending_reply_count(), 0u);
+    consumer.disconnect();
 }

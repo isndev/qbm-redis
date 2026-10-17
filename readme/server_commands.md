@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1478 (public inheritance), qbm/redis/src/qbm/redis/redis.h:3555 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1478 (public inheritance), qbm/redis/src/qbm/redis/redis.h:3589 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -60,7 +60,7 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
 
 - **`qb::redis::status`** — the `OK`-style simple-string reply. It converts implicitly to `std::string` and to `bool`,
   where the `bool`/`ok()` value is `true` **only** when the server string is exactly `"OK"`. Test success with `.ok()` (
-  or the `bool` conversion), not by comparing against arbitrary strings. <!-- src: qbm/redis/src/qbm/redis/types.h:553-604 -->
+  or the `bool` conversion), not by comparing against arbitrary strings. <!-- src: qbm/redis/src/qbm/redis/types.h:563-614 -->
 - **`long long`** — counts and timestamps (`DBSIZE`, `COMMAND COUNT`, `LASTSAVE`, `CLIENT ID`, `MEMORY USAGE`,
   `LATENCY RESET`).
 - **`std::string`** — opaque human-readable blobs (`MEMORY DOCTOR`, `DEBUG OBJECT`, `CLIENT INFO`, `LATENCY DOCTOR`/

@@ -64,7 +64,7 @@ than assuming either family.
 | `spop(key, count)`, `srandmember(key, count)`                                     | `std::vector<std::string>`                                           |
 | `sscan` (cursor form)                                                             | `qb::redis::scan<Out>`, `Out` defaults to `std::vector<std::string>` |
 
-<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:139, 175, 211, 245, 281, 315, 355, 390, 429, 465, 501, 537, 572, 608, 644, 682, 723, 793, 830; qbm/redis/src/qbm/redis/types.h:611 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/set_commands.h:139, 175, 211, 245, 281, 315, 355, 390, 429, 465, 501, 537, 572, 608, 644, 682, 723, 793, 830; qbm/redis/src/qbm/redis/types.h:621 -->
 
 > **`smembers` yields a set, not a vector.** The reply payload is `qb::unordered_set<std::string>` (
 `set_commands.h:480`), iterable but unordered with no index access. The `sdiff` / `sinter` / `sunion` family return
@@ -75,7 +75,7 @@ than assuming either family.
 The `scan<Out>` struct has two fields — `cursor` (a `std::size_t`; `0` means iteration is complete) and `items` (the
 `Out` page, here `std::vector<std::string>`).
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:610-614 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:620-624 -->
 
 ---
 

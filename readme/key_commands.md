@@ -55,12 +55,12 @@ an explicit `operator bool()`. Reads of TTL/count replies go through `reply.resu
 
 ### `qb::redis::status`
 
-`status` (`src/qbm/redis/types.h:553`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
+`status` (`src/qbm/redis/types.h:563`) wraps a status string. It converts to `bool` (true when the string is `"OK"`), to
 `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said OK".
 
 ### `qb::redis::scan<Out>`
 
-`scan<Out>` (`src/qbm/redis/types.h:611-615`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
+`scan<Out>` (`src/qbm/redis/types.h:621-625`) is `{ std::size_t cursor; Out items; }` with `Out` defaulting to `std::vector<std::string>`.
 `SCAN` returns one of these per round-trip; a returned `cursor` of `0` signals the iteration is complete. You loop on
 the cursor yourself (see [`scan`](#scan) below).
 

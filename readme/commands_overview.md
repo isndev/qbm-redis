@@ -23,7 +23,7 @@ how the command surface is organized.
 ### Where the methods come from
 
 The client class composes a stack of CRTP mixins, one per Redis command group. `qb::redis::tcp::client` is an alias for
-`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:3555`), and that class inherits — in this order — from
+`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:3589`), and that class inherits — in this order — from
 `connection_commands`, `server_commands`, `key_commands`, `string_commands`, `list_commands`, `hash_commands`,
 `set_commands`, `sorted_set_commands`, `hyperloglog_commands`, `geo_commands`, `scripting_commands`, `publish_commands`,
 `stream_commands`, `bitmap_commands`, `transaction_commands`, `cluster_commands`, `acl_commands`, `module_commands`, and
@@ -136,7 +136,7 @@ if (!r) {
 #### `qb::redis::status` — the "OK" reply
 
 Commands that return a RESP simple string (such as `SET`, `MULTI`, `SELECT`) decode to `qb::redis::status` (
-`src/qbm/redis/types.h:553`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
+`src/qbm/redis/types.h:563`). A `status` is truthy **only** when the server string equals exactly `"OK"`; use `.ok()` or the `bool`
 conversion rather than comparing strings yourself. So for `Reply<status>`, `reply.ok()` confirms the command did not
 fail at the protocol level, and `reply.value().ok()` confirms the server replied `+OK`.
 

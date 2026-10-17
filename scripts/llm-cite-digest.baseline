@@ -33,6 +33,7 @@ llm/qbm-redis.llm.api.md	parser/types.h:43-43	5d9f6306792e	enum class ProtocolVe
 llm/qbm-redis.llm.api.md	parser/types.h:50-50	fbe1faa57c66	enum class ParseErrorCode {
 llm/qbm-redis.llm.api.md	parser/types.h:66-66	1f85eaa019e5	class ParseError {
 llm/qbm-redis.llm.api.md	publish_commands.h:37-37	3c65ae0990bb	class publish_commands {
+llm/qbm-redis.llm.api.md	publish_commands.h:90-90	a7fc816d80c4	spublish(const std::string &channel, const std::string &message) {
 llm/qbm-redis.llm.api.md	redis.h:1032-1078	f5b4440bc420	* @struct connect_awaiter
 llm/qbm-redis.llm.api.md	redis.h:106-108	39cb75f31c29	struct message {
 llm/qbm-redis.llm.api.md	redis.h:1407-1407	0657b2a52a29	class redis_awaiter {
@@ -44,13 +45,13 @@ llm/qbm-redis.llm.api.md	redis.h:2429-2429	fe3c529f759a	class RedisPipeline {
 llm/qbm-redis.llm.api.md	redis.h:2485-2485	cd678de7f8c1	class RedisConsumer
 llm/qbm-redis.llm.api.md	redis.h:285-374	4be94e4b27da	template <typename QB_IO_, typename Derived>
 llm/qbm-redis.llm.api.md	redis.h:302-302	94cca6232ff0	using handshake_client = HandshakeClient<Derived>;
-llm/qbm-redis.llm.api.md	redis.h:3139-3139	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
-llm/qbm-redis.llm.api.md	redis.h:3257-3257	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
-llm/qbm-redis.llm.api.md	redis.h:3399-3399	1d2fe40d4864	receive() {
-llm/qbm-redis.llm.api.md	redis.h:3548-3548	5b0051a25645	using database = detail::Redis<QB_IO_>;
-llm/qbm-redis.llm.api.md	redis.h:3554-3554	e19a828745ea	struct tcp {
-llm/qbm-redis.llm.api.md	redis.h:3566-3566	97c8e8c3b177	struct ssl {
-llm/qbm-redis.llm.api.md	redis.h:3579-3579	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
+llm/qbm-redis.llm.api.md	redis.h:3173-3173	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
+llm/qbm-redis.llm.api.md	redis.h:3291-3291	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
+llm/qbm-redis.llm.api.md	redis.h:3433-3433	1d2fe40d4864	receive() {
+llm/qbm-redis.llm.api.md	redis.h:3582-3582	5b0051a25645	using database = detail::Redis<QB_IO_>;
+llm/qbm-redis.llm.api.md	redis.h:3588-3588	e19a828745ea	struct tcp {
+llm/qbm-redis.llm.api.md	redis.h:3600-3600	97c8e8c3b177	struct ssl {
+llm/qbm-redis.llm.api.md	redis.h:3613-3613	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
 llm/qbm-redis.llm.api.md	redis.h:91-92	fec8f2f5d4ae	template <typename IO_>
 llm/qbm-redis.llm.api.md	reply.cpp:31-40	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
 llm/qbm-redis.llm.api.md	reply.h:105-105	f053ab3c6ce5	class ConnectionError : public Error {
@@ -114,24 +115,27 @@ llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:437-437	9194d1e13831	struct memor
 llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:46-46	15c268cec2d4	using reply_ptr = std::unique_ptr<parser::Value>;
 llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:464-464	d7ff802dabad	struct pipeline_result {
 llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:471-471	ff13c4957700	struct json_value {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:512-536	db4e2221c9e2	/** @brief What a consumer's stream item is: a published message, or ...
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:516-520	365af5069ea7	enum class subscription_kind : std::uint8_t {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:522-546	db4e2221c9e2	/** @brief What a consumer's stream item is: a published message, or ...
 llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:53-86	b8f1e4095c62	enum class UpdateType { EXIST, NOT_EXIST, ALWAYS };
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:542-542	6ad047b52bcb	struct subscription {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:553-553	1f2e9d6e5a7d	struct status {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:611-612	1c7654a31db5	template <typename Out = std::vector<std::string>>
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:618-618	bc1deb6d0eaf	struct error {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:627-638	84691f337c56	/** @brief Render a @ref BitOp as its BITOP operation keyword. */
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:552-552	6ad047b52bcb	struct subscription {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:563-563	1f2e9d6e5a7d	struct status {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:621-622	1c7654a31db5	template <typename Out = std::vector<std::string>>
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:628-628	bc1deb6d0eaf	struct error {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:637-648	84691f337c56	/** @brief Render a @ref BitOp as its BITOP operation keyword. */
 llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:88-311	055213becd7e	// ==================================================================...
 llm/qbm-redis.llm.api.md	stats.h:120-125	9dc66ba4087d	struct command_traits {
 llm/qbm-redis.llm.api.md	stats.h:37-59	acbdf3c1c303	enum class command_family : std::uint8_t {
-llm/qbm-redis.llm.api.md	stats.h:401-407	0d26a17f4b7d	[[nodiscard]] inline command_traits
-llm/qbm-redis.llm.api.md	stats.h:410-414	8f39623b2702	enum class command_outcome : std::uint8_t {
-llm/qbm-redis.llm.api.md	stats.h:421-435	c77cddcacc8f	struct command_info {
-llm/qbm-redis.llm.api.md	stats.h:441-485	63be9e0f8414	struct latency_histogram {
-llm/qbm-redis.llm.api.md	stats.h:494-504	cc224fb9ff86	struct stats {
+llm/qbm-redis.llm.api.md	stats.h:404-410	0d26a17f4b7d	[[nodiscard]] inline command_traits
+llm/qbm-redis.llm.api.md	stats.h:413-417	8f39623b2702	enum class command_outcome : std::uint8_t {
+llm/qbm-redis.llm.api.md	stats.h:424-438	c77cddcacc8f	struct command_info {
+llm/qbm-redis.llm.api.md	stats.h:444-488	63be9e0f8414	struct latency_histogram {
+llm/qbm-redis.llm.api.md	stats.h:497-507	cc224fb9ff86	struct stats {
 llm/qbm-redis.llm.api.md	stream_commands.h:36-36	4816175b91eb	class stream_commands {
 llm/qbm-redis.llm.api.md	stream_commands.h:95-95	20a4409c5b05	parse_stream_id(const std::string &id_str) {
 llm/qbm-redis.llm.api.md	string_commands.h:49-49	c879e6021a5d	class string_commands {
+llm/qbm-redis.llm.api.md	subscription_commands.h:354-354	ebb96219434a	ssubscribe(const std::string &channel) {
+llm/qbm-redis.llm.api.md	subscription_commands.h:406-406	442e66ae710c	sunsubscribe(const std::string &channel = "") {
 llm/qbm-redis.llm.api.md	subscription_commands.h:41-41	a1757770a5f5	class subscription_commands {
 llm/qbm-redis.llm.api.md	transaction_commands.h:38-38	d12ba69a350e	class transaction_commands {
 llm/qbm-redis.llm.md	hash_commands.h:131-182	f656c86197cb	start() {

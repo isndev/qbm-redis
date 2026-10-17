@@ -330,7 +330,7 @@ qb::io::async::task<void> chat() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2485-2488 (consumer base), qbm/redis/src/qbm/redis/redis.h:3199-3210 (cb_consumer constructor), subscription_commands.h:63/207, publish_commands.h:57 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2485-2488 (consumer base), qbm/redis/src/qbm/redis/redis.h:3233-3244 (cb_consumer constructor), subscription_commands.h:63/207, publish_commands.h:57 -->
 
 Prefer to receive sequentially? Use `co_consumer` and `co_await receive()`, which yields `std::nullopt` once the
 consumer is down (`down_reason()` says why) and, across a reconnection, one gap marker (`msg->is_gap()`) where the stream
@@ -353,7 +353,7 @@ qb::io::async::task<void> notifications() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3399-3401 (RedisCoroConsumer::receive), qbm/redis/src/qbm/redis/redis.h:3327-3329 (going down closes the channel), qbm/redis/src/qbm/redis/redis.h:3339-3346 (the next lifecycle's queue) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3433-3435 (RedisCoroConsumer::receive), qbm/redis/src/qbm/redis/redis.h:3361-3363 (going down closes the channel), qbm/redis/src/qbm/redis/redis.h:3373-3380 (the next lifecycle's queue) -->
 
 ---
 
@@ -473,7 +473,7 @@ Two build-time conditions are worth knowing:
   TCP-only — the `#ifdef QB_HAS_SSL` block in `redis.h` is excluded, and CMake prints an informational message rather
   than failing.
 
-<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:3565-3576 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
+<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:3599-3610 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
 
 A module **cannot be configured standalone**: it calls `qb_register_module()` and `qb_add_test()`, development-time
 helpers an installed qb does not ship. The repository's own CI configures `.github/ci/superbuild/CMakeLists.txt`, a
@@ -547,7 +547,7 @@ arguments keep native units by design** and are exposed through `std::chrono`-un
 The consumers carry the connection and subscription commands (`connect`, `hello`, `subscribe`, `psubscribe`,
 `unsubscribe`), but not the data or `publish` commands — publish from a `tcp::client`. The full `tcp::client` does not
 subscribe; that surface belongs to the consumers.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3548-3577 (aliases), qbm/redis/src/qbm/redis/redis.h:2485-2488 (consumer mixins), qbm/redis/src/qbm/redis/redis.h:1475-1495 (client mixins) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3582-3611 (aliases), qbm/redis/src/qbm/redis/redis.h:2485-2488 (consumer mixins), qbm/redis/src/qbm/redis/redis.h:1475-1495 (client mixins) -->
 
 ---
 
