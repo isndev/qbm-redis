@@ -138,3 +138,9 @@ qredis_test(unit command-reply-types unit/commands/command-reply-types.cpp EXTRA
 # SYSTEM -- the client's side of the reconnect contract (Huly QB-126a): the handshake gate, held work,
 # terminal disconnect, refusals, the state machine and its notifications. A loopback peer, no daemon.
 qredis_test(system reconnect-contract system/connection/reconnect-contract.cpp EXTRA_LABELS coroutine)
+
+# SYSTEM -- what a client or consumer reports of itself: stats(), on_command_complete, latency (Huly QB-134).
+qredis_test(system client-stats system/connection/client-stats.cpp EXTRA_LABELS coroutine)
+
+# UNIT -- the command table of stats.h against the command groups' own sources (Huly QB-134).
+qredis_test(unit command-traits unit/stats/command-traits.cpp)

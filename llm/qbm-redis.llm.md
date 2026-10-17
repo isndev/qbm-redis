@@ -386,6 +386,14 @@ if (!r.ok()) {
   `connect()` there owns the client). `on_connected` / `on_disconnected(reason)`
   strictly alternate; `on_disconnected` runs after the in-flight work failed and
   before the reconnection decision, so disarming the policy there prevents the run.
+- **Observability** (`<qbm/redis/stats.h>`, Huly QB-134): `stats()` is a snapshot of
+  monotonic counts -- a client's `commands` / `errors` / `failed` / `held` / `by_family`,
+  `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.
+  `set_latency_stats(true)` turns on per-family histograms (`latency(family)`,
+  p50/p95/p99 = `percentile(0.50/0.95/0.99)`); `on_command_complete(fn)` sees every
+  completed command (`command_info`: verb, family, outcome, error, duration) before its
+  callback. Off, both cost one branch. To feed a metrics actor, push a COPY from the hook:
+  its `std::string_view`s die with the call; never drive the client from it.
 - RESP3 `PUSH` frames must not pop a command handler; the plain client discards
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,

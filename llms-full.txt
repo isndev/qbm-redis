@@ -401,6 +401,14 @@ if (!r.ok()) {
   `connect()` there owns the client). `on_connected` / `on_disconnected(reason)`
   strictly alternate; `on_disconnected` runs after the in-flight work failed and
   before the reconnection decision, so disarming the policy there prevents the run.
+- **Observability** (`<qbm/redis/stats.h>`, Huly QB-134): `stats()` is a snapshot of
+  monotonic counts -- a client's `commands` / `errors` / `failed` / `held` / `by_family`,
+  `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.
+  `set_latency_stats(true)` turns on per-family histograms (`latency(family)`,
+  p50/p95/p99 = `percentile(0.50/0.95/0.99)`); `on_command_complete(fn)` sees every
+  completed command (`command_info`: verb, family, outcome, error, duration) before its
+  callback. Off, both cost one branch. To feed a metrics actor, push a COPY from the hook:
+  its `std::string_view`s die with the call; never drive the client from it.
 - RESP3 `PUSH` frames must not pop a command handler; the plain client discards
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,
@@ -539,7 +547,7 @@ The Redis command argument units (EXPIRE seconds vs PEXPIRE milliseconds) are a 
 ## Client, transport, retry
 
 ### `qb::redis::detail::Redis<QB_IO_>` — the client
-`redis.h:1450` · `class template`. Full client inheriting `connector` + all `*_commands` mixins. Callback + coroutine command APIs, callback pipelining, `await()` drain, opt-in command-deadline watchdog. **Not thread-safe** (single I/O thread/strand).
+`redis.h:1475` · `class template`. Full client inheriting `connector` + all `*_commands` mixins. Callback + coroutine command APIs, callback pipelining, `await()` drain, opt-in command-deadline watchdog. **Not thread-safe** (single I/O thread/strand).
 
 ```cpp
 Redis<QB_IO_>();
@@ -555,11 +563,14 @@ explicit Redis<QB_IO_>(qb::io::uri uri);
 | `set_command_timeout` | `void set_command_timeout(qb::duration timeout) noexcept` | Opt-in per-connection command deadline (**qb::duration**; `<=0`/zero disables = default). On timeout the connection drops and pending commands fail. A connection-health watchdog, not a per-command timer. | `c.set_command_timeout(5s);` |
 | `command_timeout` | `qb::duration command_timeout() const noexcept` | Current deadline (`qb::duration::zero()` = disabled). | `auto t = c.command_timeout();` |
 | `make_coro_command` | `template<class T,class Func> auto make_coro_command(Func&&)` | Builds a `redis_awaiter<T>` from a callback op (mixin hook). | internal |
+| `set_latency_stats` / `latency_stats` | `void set_latency_stats(bool enabled); bool latency_stats() const noexcept` | Per-family latency histograms, opt-in (Huly QB-134): on, each command is timed send to completion; off (default), no clock and no histogram. Off drops what was recorded. | `c.set_latency_stats(true);` |
+| `latency` | `qb::redis::latency_histogram latency(qb::redis::command_family) const noexcept` | One family's histogram, by value; empty while off. p50/p95/p99 = `percentile(0.50/0.95/0.99)`. | `c.latency(qb::redis::command_family::string).percentile(0.99)` |
+| `on_command_complete` | `Redis& on_command_complete(std::function<void(qb::redis::command_info const&)>)` | Told of every completed command, before its callback: verb, family, outcome, error text, duration (latency on). Must not drive the client; views valid during the call; throws contained. Empty (default): one branch per completion. | `c.on_command_complete([](auto const& i){ /* push a copy */ });` |
 
 Inherited connector methods: see **connector** below.
 
 ### `qb::redis::detail::connector<QB_IO_,Derived>` — connection base
-`redis.h:283-370` · `class template` : `qb::io::async::tcp::client<...>`. Owns uri, `RetryPolicy`, the connection state (`state()`, `down_reason()`), the handshake configuration, the observability hooks, TLS settings, liveness token. Handles connect, the handshake, auto-reconnect, protocol switching.
+`redis.h:285-374` · `class template` : `qb::io::async::tcp::client<...>`. Owns uri, `RetryPolicy`, the connection state (`state()`, `down_reason()`), the handshake configuration, the observability hooks, TLS settings, liveness token. Handles connect, the handshake, auto-reconnect, protocol switching.
 
 | Method | Signature | Purpose / reply | Usage |
 |---|---|---|---|
@@ -575,17 +586,18 @@ Inherited connector methods: see **connector** below.
 | `enable_auto_reconnect` / `disable_auto_reconnect` | `void enable_auto_reconnect(RetryPolicy policy={}) noexcept; void disable_auto_reconnect() noexcept` | Arm/disarm the reconnection run of a peer's loss (closed or reset link, a parser refusal, the command watchdog); an explicit `disconnect()` never starts one. A throwing `on_disconnected` is logged before the current policy is checked. | `c.enable_auto_reconnect(pol);` |
 | `is_reconnecting` / `is_connected` | `bool is_reconnecting() const noexcept; bool is_connected() const noexcept` | A reconnection run in progress / the client is ready (the handshake ran). | `if (c.is_connected())...` |
 | `state` / `down_reason` | `qb::io::connection_state state() const noexcept; qb::io::down_reason down_reason() const noexcept` | `idle`, `connecting`, `handshaking`, `ready`, `reconnecting`, `down`; why it is down (`user`, `peer`, `protocol`, `retries_exhausted`, `handshake_refused`). | `if (c.state() == qb::io::connection_state::down)...` |
+| `stats` | `qb::redis::stats stats() const noexcept` | A snapshot, by value, of monotonic counts since construction (Huly QB-134): the client's commands (`commands`, `errors`, `failed`, `held`, `by_family`), `reconnects`, a consumer's `gaps`, `messages_received`, `messages_dropped`. | `auto s = c.stats();` |
 | `on_connected` / `on_disconnected` / `on_down` | `auto& on_connected(std::function<void()>); auto& on_disconnected(std::function<void(qb::io::down_reason)>); auto& on_down(std::function<void(qb::io::down_reason)>)` | Each time ready; once per ready connection lost, with its cause, before the reconnection decision (the two alternate); each time down, after held work failed. Chainable. | `c.on_connected([]{...});` |
 | `set_handshake` | `auto& set_handshake(std::function<qb::io::async::task<bool>(handshake_client&)>)` | The user's step of every connection's handshake, after the protocol's; `false` or a throw refuses (terminal). Writes only through its `handshake_client&`. | `c.set_handshake([](auto &hs) -> task<bool> {...});` |
 | `with_auth` / `with_select` / `with_resp3` | `auto& with_auth(std::string pw); auto& with_auth(std::string user, std::string pw); auto& with_select(long long db); auto& with_resp3(bool = true)` | The protocol's handshake of every connection: HELLO 3 (carrying the credentials) or AUTH, then SELECT. | `c.with_resp3().with_auth("u","p");` |
 | `disconnect` | `void disconnect() noexcept` | Terminal: `down`, `down_reason::user`, no run whatever the policy. Fails what was in flight and what was held, completing the teardown before returning; the sending side is shut down, so the server reads EOF and drops the client while the object lives (qb-io, Huly QB-1060). From inside a MONITOR callback, the stream stops before the next parsed line and its terminal callback follows that line callback. | `c.disconnect();` |
 
-`connect_awaiter` (`redis.h:1017-1063`): coroutine awaiter for async connect; default timeout **3s (qb::duration)**; `await_resume()` → `bool`, `true` once the client is ready. Neither copyable nor movable (Huly QB-1000): a prvalue to `co_await`, or a named one awaited where it was named.
+`connect_awaiter` (`redis.h:1032-1078`): coroutine awaiter for async connect; default timeout **3s (qb::duration)**; `await_resume()` → `bool`, `true` once the client is ready. Neither copyable nor movable (Huly QB-1000): a prvalue to `co_await`, or a named one awaited where it was named.
 
-`handshake_client` (`redis.h:300`): the hook's write handle -- the client's command surface (a consumer's: the connection and subscription commands) writing on the link only while that handshake runs; any other time a command through it fails with `"handshake over"`. Copyable; `live()` says whether it still writes.
+`handshake_client` (`redis.h:302`): the hook's write handle -- the client's command surface (a consumer's: the connection and subscription commands) writing on the link only while that handshake runs; any other time a command through it fails with `"handshake over"`. Copyable; `live()` says whether it still writes.
 
 ### `qb::redis::RetryPolicy`
-`redis.h:229` · `using RetryPolicy = qb::io::reconnect_policy;` — qb-io's shared reconnection backoff (`<qb/io/reconnect.h>`, `qb/src/qb/io/reconnect.h:218`), the same type as `qb::http::RetryPolicy`. **All time fields are `qb::duration`.**
+`redis.h:231` · `using RetryPolicy = qb::io::reconnect_policy;` — qb-io's shared reconnection backoff (`<qb/io/reconnect.h>`, `qb/src/qb/io/reconnect.h:218`), the same type as `qb::http::RetryPolicy`. **All time fields are `qb::duration`.**
 
 ```cpp
 struct qb::io::reconnect_policy {
@@ -605,7 +617,7 @@ auto pol = RetryPolicy{}.with_max_attempts(5).with_initial_delay(200ms).with_max
 ```
 
 ### Transport aliases — `qb::redis::tcp`
-`redis.h:3325` · `struct`. Plaintext-TCP aliases the build always provides:
+`redis.h:3554` · `struct`. Plaintext-TCP aliases the build always provides:
 
 ```cpp
 qb::redis::tcp::client       // detail::Redis<qb::io::transport::tcp>
@@ -614,17 +626,17 @@ qb::redis::tcp::cb_consumer  // detail::RedisCallbackConsumer<...>
 qb::redis::tcp::co_consumer  // detail::RedisCoroConsumer<...>
 template<class D> tcp::consumer = detail::RedisConsumer<..., D>;
 ```
-`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:3337`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
+`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:3566`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
 
-`qb::redis::database<QB_IO_>` (`redis.h:3319`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
-`qb::redis::no_check` (`redis.h:3350`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
+`qb::redis::database<QB_IO_>` (`redis.h:3548`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
+`qb::redis::no_check` (`redis.h:3579`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
 
 ### Pipelining & consumers
-- `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:2204`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
-- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:2260`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`. Keeps the subscriptions the server CONFIRMED (a successful RESET forgets them) and replays them in the handshake of every reconnection; marks the hole with ONE gap marker before the new connection's first message. `on_gap(std::function<void(qb::io::gap_info const&)>)` → `Derived&`: told each time a marker enters the stream.
-- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:2911`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook; `on_message` also receives the gap marker (`msg.is_gap()`). Ctor: `uri` + optional callbacks.
-- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:3029`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` fires for each message a full queue drops, and one coalesced gap marker carries the count (`gap.reason` overflow, `gap.lost`); `message_channel_capacity()` reports capacity.
-  - `receive()` (`redis.h:3170`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next item; suspends until one arrives. An item is a message or a gap marker (`is_gap()`). `nullopt` only once the consumer is DOWN and what it queued is read (`down_reason()` says why); a loss an armed run recovers from keeps the stream open.
+- `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:2429`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
+- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:2485`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`. Keeps the subscriptions the server CONFIRMED (a successful RESET forgets them) and replays them in the handshake of every reconnection; marks the hole with ONE gap marker before the new connection's first message. `on_gap(std::function<void(qb::io::gap_info const&)>)` → `Derived&`: told each time a marker enters the stream.
+- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:3139`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook; `on_message` also receives the gap marker (`msg.is_gap()`). Ctor: `uri` + optional callbacks.
+- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:3257`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` fires for each message a full queue drops, and one coalesced gap marker carries the count (`gap.reason` overflow, `gap.lost`); `message_channel_capacity()` reports capacity.
+  - `receive()` (`redis.h:3399`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next item; suspends until one arrives. An item is a message or a gap marker (`is_gap()`). `nullopt` only once the consumer is DOWN and what it queued is read (`down_reason()` says why); a loss an armed run recovers from keeps the stream open.
 
 ```cpp
 auto m = co_await consumer.receive(); if (!m) co_return;  // down: consumer.down_reason() says why
@@ -632,6 +644,16 @@ if (m->is_gap()) { /* resynchronise: m->gap.reason, m->gap.lost */ }
 ```
 
 ---
+
+### Observability — `qbm/redis/stats.h` (Huly QB-134)
+The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are plain increments on paths the client already runs; latency and the hook cost one predictable branch while off.
+
+- `enum class qb::redis::command_family : std::uint8_t` (`stats.h:37-59`) — the command group that issues a verb: `acl`, `bitmap`, `cluster`, `connection`, `function`, `geo`, `hash`, `hyperloglog`, `key`, `list`, `module`, `publish`, `scripting`, `server`, `set`, `sorted_set`, `stream`, `string`, `subscription`, `transaction`, `other` (a verb the client does not issue: a module command). `command_families = 21`; `command_family_name(f)`.
+- `struct qb::redis::command_traits` (`stats.h:120-125`) — `{command_family family; bool blocking; bool read_only; bool idempotent;}`; `command_traits_of(std::string_view verb)` (`stats.h:401-407`), any letter case, `other`/all-false for an unknown verb. One hand-maintained table (`detail::command_table`), checked against the command groups' sources by `tests/unit/stats/command-traits.cpp`; `blocking` is the command watchdog's set.
+- `enum class qb::redis::command_outcome : std::uint8_t { ok, error, failed }` (`stats.h:410-414`) — a value, the server's error reply, no answer (refused locally, the link lost, a timeout, the client down).
+- `struct qb::redis::command_info` (`stats.h:421-435`) — `{command_family family; std::string_view name; qb::duration duration; bool ok; command_outcome outcome; std::string_view error;}`; views valid during the call only; arguments never reported.
+- `struct qb::redis::latency_histogram` (`stats.h:441-485`) — 32 log2 buckets in microseconds; `record(span)`, `count()`, `percentile(p)` (the upper bound of the bucket holding the p-th quantile).
+- `struct qb::redis::stats` (`stats.h:494-504`) — `commands`, `errors` (of them, not ok), `failed` (of the errors, no answer), `held`, `std::array<std::uint64_t, 21> by_family`, `reconnects` (ready connections reached after a lost one; `disconnect()` ends the session), `gaps`, `messages_received`, `messages_dropped`. On a client every command is counted once, when it completes: `commands` equals the callbacks called.
 
 ## Connection commands — `connection_commands<Derived>`
 `connection_commands.h:33`. HELLO/AUTH/ECHO/PING/QUIT/SELECT/SWAPDB/RESET.
@@ -1129,8 +1151,8 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:65`; `what()` vali
 
 ## Protocol & parser (advanced)
 
-- `qb::protocol::redis<IO_>` (`redis.h:89-90`) · `class template : qb::io::async::AProtocol<IO_>` — native RESP2/RESP3 protocol attached to a qb-io session (CRTP). RESP3, `max_nesting_depth=64`, `max_bulk_size=512MiB`, `max_array_size=1,000,000`. `message{std::unique_ptr<parser::Value> reply}` (`redis.h:104-106`) — one parsed reply (ownership moved into `on(message)`).
-- `qb::redis::redis_awaiter<T,Operation>` (`redis.h:1382`) — coroutine awaiter yielding `Reply<T>`; guards resume with a `shared_ptr<bool>` so a reply arriving after the awaiter is destroyed no-ops. Its `await_suspend` records `"redis"` in the coroutine scheduler's suspension dump (`redis.h:1403-1404`). `make_redis_awaiter<T>(Func&&)` (`redis.h:1424`) builds one from a callback op.
+- `qb::protocol::redis<IO_>` (`redis.h:91-92`) · `class template : qb::io::async::AProtocol<IO_>` — native RESP2/RESP3 protocol attached to a qb-io session (CRTP). RESP3, `max_nesting_depth=64`, `max_bulk_size=512MiB`, `max_array_size=1,000,000`. `message{std::unique_ptr<parser::Value> reply}` (`redis.h:106-108`) — one parsed reply (ownership moved into `on(message)`).
+- `qb::redis::redis_awaiter<T,Operation>` (`redis.h:1407`) — coroutine awaiter yielding `Reply<T>`; guards resume with a `shared_ptr<bool>` so a reply arriving after the awaiter is destroyed no-ops. Its `await_suspend` records `"redis"` in the coroutine scheduler's suspension dump (`redis.h:1428-1429`). `make_redis_awaiter<T>(Func&&)` (`redis.h:1449`) builds one from a callback op.
 - `qb::redis::parser` namespace (`src/qbm/redis/parser/types.h`): `Value : ValueBase` (`src/qbm/redis/parser/types.h:455`) — variant of all 15 RESP node types (`Null/SimpleString/SimpleError/Integer/BulkString/Array/Boolean/Double/BigNumber/BulkError/VerbatimString/Map/Attribute/Set/Push`) with `is_*`/`as_*`/`to_*` helpers; `ProtocolVersion{RESP2=2,RESP3=3}` (`parser/types.h:43`); `ParseErrorCode` (`parser/types.h:50`) / `ParseError` (`parser/types.h:66`) / `ParseResult<T> = expected<T,ParseError>` (`parser/types.h:119`); `type_id::*` first-byte prefix constants (`parser/types.h:138`); `is_valid_type_prefix` / `is_resp3_type` / `is_aggregate_type`.
 - `ParserConfig::strict_mode` (default `false`) applies to the one-shot `parser::parse()` only, whose input is complete: a byte left after the first value is a `PROTOCOL_ERROR`. The streaming `RespParser` never applies it — there the next bytes are the next pipelined reply.
 - `RespParser::parse()` (`parser/parser.h:191`), `parse_all()` (`parser/parser.h:216`), `has_complete_value()` (`parser/parser.h:260`) and one-shot `parser::parse()` (`parser/parser.h:909`) are caller-side templates with default ABI discriminator: direct calls retain their spelling, while taking an address requires `<>` (for example, `&RespParser::parse<>`). All internal `ParseResult<Value>` helpers are likewise discriminated so mixed C++20/C++23 translation units cannot fold one mode's body into the other.

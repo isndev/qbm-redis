@@ -9,6 +9,19 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **Client observability: `stats()`, per-family latency, `on_command_complete` (Huly QB-134).** `qbm/redis/stats.h`,
+  the mirror of qbm-pgsql's `stats()` / `on_query_complete`. `stats()` returns monotonic counts since construction: a
+  client's `commands` (each counted once, when it completes, whatever way -- as many as the callbacks called), `errors`,
+  `failed` (no answer), `held`, `by_family`; `reconnects` (ready connections reached after a lost one; `disconnect()`
+  ends the session); a consumer's `gaps`, `messages_received`, `messages_dropped`. `set_latency_stats(true)` allocates
+  21 per-family log2 histograms as one block and times each command send to completion (`latency(family)`,
+  `percentile(0.50/0.95/0.99)`); off, no clock is read for it. `on_command_complete(hook)` receives a
+  `qb::redis::command_info` -- verb, family, outcome (`ok`, `error`, `failed`), error text, duration -- before the
+  command's callback; without a hook a completion costs one branch. The verbs' families and flags
+  (`blocking`, `read_only`, `idempotent`) live in one hand-maintained table (`command_traits_of`), which now also gives
+  the command watchdog its blocking set -- still one lookup per command; `tests/unit/stats/command-traits.cpp` reads the
+  command groups' sources and refuses any drift. Pinned by `system/connection/client-stats.cpp`.
+
 - **The consumers' side of the reconnect contract (Huly QB-126b, QB-1091).** `qb::redis::message` gains
   `kind` (`message_kind::data` or `message_kind::gap`), `gap` (a `qb::io::gap_info`: `reason`, `lost`) and `is_gap()`;
   both consumers gain `on_gap(cb)`, told each time a gap marker enters the stream. A consumer keeps the subscriptions the

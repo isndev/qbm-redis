@@ -42,6 +42,7 @@
 #include <random>
 #include <string>
 #include <utility>
+#include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/tcp/connector.h>
 #include <qb/io/reconnect.h>
@@ -53,6 +54,7 @@
 // Native Redis Protocol Parser (C++20/23)
 #include "parser.h"
 #include "reply.h"
+#include "stats.h"
 
 // Command traits
 #include "commands/acl_commands.h"
@@ -367,7 +369,9 @@ private:
     std::function<void()>                    _on_connected;
     std::function<void(qb::io::down_reason)> _on_disconnected;
     std::function<void(qb::io::down_reason)> _on_down;
-    std::shared_ptr<bool>                    _alive{std::make_shared<bool>(true)};
+    qb::redis::stats                         _stats{}; ///< what this client or consumer has done (stats(), Huly QB-134)
+    bool                  _lost_since_ready = false;   ///< a ready link was lost, not by disconnect(): the next ready is a reconnect
+    std::shared_ptr<bool> _alive{std::make_shared<bool>(true)};
 
     /**
      * @brief Build the transport socket for a new connection.
@@ -514,11 +518,15 @@ private:
     /// The handshake succeeded: release what was held, then tell the user.
     void
     enter_ready_() {
-        _state           = qb::io::connection_state::ready;
-        _session_ready   = true;
-        _recovering      = false;
-        _ever_ready      = true;
-        _live_handshake  = 0;
+        _state          = qb::io::connection_state::ready;
+        _session_ready  = true;
+        _recovering     = false;
+        _ever_ready     = true;
+        _live_handshake = 0;
+        if (_lost_since_ready) {
+            _lost_since_ready = false;
+            ++_stats.reconnects;
+        }
         const auto epoch = _epoch;
         derived().on_ready_(); // held work leaves in order; a consumer then queues its pending gap marker
         if (epoch != _epoch || _state != qb::io::connection_state::ready)
@@ -588,6 +596,7 @@ private:
         // again must find the client holding (a run will follow) or down (none will), never ready on a link
         // that is gone -- its bytes would be written to a dead pipe and its handler queued for no reply.
         if (was_ready && cause != qb::io::down_reason::user) {
+            _lost_since_ready = true;
             if (_reconnect_policy) {
                 _state      = qb::io::connection_state::reconnecting;
                 _recovering = true;
@@ -951,6 +960,12 @@ protected:
 
     /// Failures fail_soon_() scheduled and the loop has not run yet (await() drains them too).
     std::size_t _failing_soon = 0;
+
+    /// The counts, for the derived class's paths (Huly QB-134).
+    [[nodiscard]] qb::redis::stats &
+    stats_mut_() noexcept {
+        return _stats;
+    }
 
     /**
      * @brief Serialize one command into `pipe`: all of it, or nothing.
@@ -1319,6 +1334,15 @@ public:
     }
 
     /**
+     * @brief What this client or consumer has done so far, by value (Huly QB-134): monotonic counts since
+     *        construction -- two snapshots give a rate, a reconnection resets nothing. See `qb::redis::stats`.
+     */
+    [[nodiscard]] qb::redis::stats
+    stats() const noexcept {
+        return _stats;
+    }
+
+    /**
      * @brief Disconnect for good, and complete the teardown before returning.
      * @details Terminal: `down` with `down_reason::user`, whatever the reconnection policy -- an explicit
      *          disconnect starts no run (the qbm-http clients' rule). What was in flight fails with
@@ -1329,6 +1353,7 @@ public:
      */
     void
     disconnect() noexcept {
+        _lost_since_ready = false; // an explicit disconnect ends the session: the next ready is no reconnect
         switch (_state) {
             case qb::io::connection_state::idle:
             case qb::io::connection_state::down:
@@ -1487,10 +1512,12 @@ private:
      * such command is in flight so it is never spuriously dropped.
      */
     struct PendingReply {
-        enum class Kind { command, monitor_admission, monitor_reset, monitor_quit };
+        enum class Kind : std::uint8_t { command, monitor_admission, monitor_reset, monitor_quit };
         std::unique_ptr<IReply> handler;
         bool                    blocking;
         Kind                    kind{Kind::command};
+        std::uint16_t           verb{kUnnamedVerb}; ///< the verb's id (verb_id_): its family and name at completion
+        qb::mono_time           sent_at{};          ///< when it left, if latency stats were on then; zero otherwise
     };
 
     std::queue<PendingReply> _replies;
@@ -1508,12 +1535,137 @@ private:
         typename PendingReply::Kind kind;
         std::size_t                 bytes; ///< its serialized length at the front of what `_held_out` holds for it
         qb::mono_time               since; ///< when it was submitted (the held deadline counts from here)
+        std::uint16_t               verb;  ///< the verb's id (verb_id_)
     };
 
     std::deque<HeldReply>     _held;
     qb::allocator::pipe<char> _held_out;
     std::size_t               _held_gen{0};       ///< bumped to retire a held-deadline watcher
     bool                      _held_armed{false}; ///< a held-deadline watcher is live
+
+    // Observability (Huly QB-134): the counts live in the connector (stats()); these are the client's own.
+    /// Latency histograms, one per family, allocated as one block by set_latency_stats(true); null when off.
+    std::unique_ptr<std::array<latency_histogram, command_families>> _latency;
+    /// Told of every completed command; empty by default (one predictable branch per completion).
+    std::function<void(command_info const &)> _on_command_complete;
+    /// Verbs the command table does not know (module commands), interned on first use so a completion can
+    /// name them; stable addresses, looked up by view.
+    std::deque<std::string>                                 _other_verbs;
+    qb::unordered_flat_map<std::string_view, std::uint16_t> _other_index;
+
+    static constexpr std::uint16_t kUnnamedVerb   = 0xFFFF; ///< past kMaxOtherVerbs unknown verbs: family other, no name
+    static constexpr std::size_t   kMaxOtherVerbs = 256;
+
+    /// The verb's id: its row in the command table -- one lookup, the one blocking detection needed anyway.
+    [[nodiscard]] std::uint16_t
+    verb_id_(std::string_view const name) {
+        const auto row = detail::command_index(name);
+        if (row < detail::command_table.size()) [[likely]]
+            return static_cast<std::uint16_t>(row);
+        return other_verb_id_(name);
+    }
+
+    /// A verb the table does not know as spelled: in another letter case, or interned (a module command).
+    QB_NOINLINE std::uint16_t
+                other_verb_id_(std::string_view const name) {
+        const auto row = detail::command_index_folded(name);
+        if (row < detail::command_table.size())
+            return static_cast<std::uint16_t>(row);
+        if (const auto it = _other_index.find(name); it != _other_index.end())
+            return it->second;
+        if (_other_verbs.size() >= kMaxOtherVerbs)
+            return kUnnamedVerb;
+        const auto id = static_cast<std::uint16_t>(detail::command_table.size() + _other_verbs.size());
+        _other_verbs.emplace_back(name);
+        _other_index.emplace(std::string_view{_other_verbs.back()}, id);
+        return id;
+    }
+
+    [[nodiscard]] static bool
+    verb_blocks_(std::uint16_t const verb) noexcept {
+        return verb < detail::command_table.size() && detail::command_table[verb].traits.blocking;
+    }
+
+    [[nodiscard]] static command_family
+    verb_family_(std::uint16_t const verb) noexcept {
+        return verb < detail::command_table.size() ? detail::command_table[verb].traits.family : command_family::other;
+    }
+
+    [[nodiscard]] std::string_view
+    verb_name_(std::uint16_t const verb) const noexcept {
+        if (verb < detail::command_table.size())
+            return detail::command_table[verb].verb;
+        const std::size_t other = static_cast<std::size_t>(verb) - detail::command_table.size();
+        return other < _other_verbs.size() ? std::string_view{_other_verbs[other]} : std::string_view{};
+    }
+
+    /// When a command leaves: read only while latency stats are on.
+    [[nodiscard]] qb::mono_time
+    sent_stamp_() const noexcept {
+        return _latency ? qb::mono_now() : qb::mono_time{};
+    }
+
+    /**
+     * @brief One command completed: counted, and -- when latency stats are on or a hook is set -- timed and
+     *        reported. Called once per command, before its callback.
+     */
+    void
+    complete_(std::uint16_t const verb, qb::mono_time const sent_at, command_outcome const outcome, std::string_view const error) noexcept {
+        const auto family = verb_family_(verb);
+        auto      &counts = this->stats_mut_();
+        ++counts.commands;
+        ++counts.by_family[static_cast<std::size_t>(family)];
+        if (outcome != command_outcome::ok) [[unlikely]] {
+            ++counts.errors;
+            if (outcome == command_outcome::failed)
+                ++counts.failed;
+        }
+        if (_latency || _on_command_complete) [[unlikely]]
+            observe_(verb, family, sent_at, outcome, error);
+    }
+
+    /// Out of line: the histograms and the hook. An exception escaping the hook is contained and logged.
+    QB_NOINLINE void
+    observe_(std::uint16_t const verb, command_family const family, qb::mono_time const sent_at, command_outcome const outcome,
+             std::string_view const error) noexcept {
+        qb::duration took{};
+        if (_latency && sent_at != qb::mono_time{}) {
+            took = std::chrono::duration_cast<qb::duration>(qb::mono_now() - sent_at);
+            (*_latency)[static_cast<std::size_t>(family)].record(took);
+        }
+        if (!_on_command_complete)
+            return;
+        try {
+            const command_info info{family, verb_name_(verb), took, outcome == command_outcome::ok, outcome, error};
+            _on_command_complete(info);
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] on_command_complete hook error: " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] on_command_complete hook threw a non-std exception");
+        }
+    }
+
+    /// A reply arrived for `entry`: ok, or the server's error reply -- its text read only for a hook.
+    void
+    complete_reply_(PendingReply const &entry, ReplyValue const *reply) noexcept {
+        if (reply && reply::is_error(*reply)) [[unlikely]] {
+            complete_error_reply_(entry, *reply);
+            return;
+        }
+        complete_(entry.verb, entry.sent_at, command_outcome::ok, {});
+    }
+
+    QB_NOINLINE void
+    complete_error_reply_(PendingReply const &entry, ReplyValue const &reply) noexcept {
+        std::string text;
+        if (_on_command_complete) {
+            try {
+                text = reply.get_error_message();
+            } catch (...) {
+            }
+        }
+        complete_(entry.verb, entry.sent_at, command_outcome::error, text);
+    }
 
     struct MonitorSession {
         explicit MonitorSession(std::unique_ptr<IReply> callback)
@@ -1643,9 +1795,7 @@ private:
      */
     [[nodiscard]] static bool
     is_blocking_command(std::string_view name) noexcept {
-        static const qb::unordered_flat_set<std::string_view> blocking{"BLPOP",    "BRPOP",  "BLMOVE", "BLMPOP",  "BRPOPLPUSH", "BZPOPMIN",
-                                                                       "BZPOPMAX", "BZMPOP", "WAIT",   "WAITAOF", "XREAD",      "XREADGROUP"};
-        return blocking.find(name) != blocking.end();
+        return command_traits_of(name).blocking; // the command table's flag (stats.h, Huly QB-134)
     }
 
     /** @brief Arm the deadline watcher if one is warranted and not already live. */
@@ -1736,6 +1886,7 @@ private:
                     _replies.pop();
                     ++_reply_progress;
                     arm_deadline();
+                    complete_reply_(entry, msg.reply.get());
                     auto session = std::move(_monitor);
                     if (msg.reply->is_error()) {
                         _monitor           = std::move(session);
@@ -1766,6 +1917,7 @@ private:
             auto session = _monitor;
             ++_reply_progress;
             arm_deadline();
+            complete_reply_(entry, msg.reply.get()); // MONITOR completes at its admission
             if (!session)
                 return;
             if (msg.reply && msg.reply->is_simple_string() && msg.reply->as_string_view() == "OK") {
@@ -1784,6 +1936,7 @@ private:
         // of tripping, and arm a fresh one if more commands are still in flight.
         ++_reply_progress;
         arm_deadline();
+        complete_reply_(entry, msg.reply.get());
         // Transfer ownership of reply to handler. Guard against a throwing
         // transform/user callback: this runs inside the libev read dispatch, so
         // an escaping exception would cross a noexcept boundary and terminate.
@@ -1810,9 +1963,11 @@ private:
         std::swap(pending, _replies);
         auto session = std::move(_monitor);
         end_monitor(session, timed_out ? "command timed out" : "disconnected");
+        const std::string_view lost = timed_out ? "command timed out" : "disconnected";
         while (!pending.empty()) {
             auto entry = std::move(pending.front());
             pending.pop();
+            complete_(entry.verb, entry.sent_at, command_outcome::failed, lost);
             if (entry.kind == PendingReply::Kind::monitor_admission)
                 continue; // the session was failed exactly once above
             try {
@@ -1844,7 +1999,7 @@ private:
             this->put_held_bytes_(_held_out, entry.bytes);
             if (entry.blocking)
                 ++_inflight_blocking;
-            _replies.push(PendingReply{std::move(entry.handler), entry.blocking, entry.kind});
+            _replies.push(PendingReply{std::move(entry.handler), entry.blocking, entry.kind, entry.verb, sent_stamp_()});
         }
         _held_out.reset();
         this->arm_write_();
@@ -1854,6 +2009,7 @@ private:
     /// Fail one held entry: a held MONITOR ends its session, every other entry its handler.
     void
     fail_held_entry_(HeldReply &entry, const std::string &reason) {
+        complete_(entry.verb, qb::mono_time{}, command_outcome::failed, reason);
         if (entry.kind == PendingReply::Kind::monitor_admission) {
             if (auto session = std::move(_monitor))
                 end_monitor(session, reason);
@@ -1922,16 +2078,21 @@ private:
     template <typename... Args>
     QB_NOINLINE void
     submit_unready_(std::unique_ptr<IReply> handler, typename PendingReply::Kind kind, std::string const &name, Args &&...args) {
+        const std::uint16_t verb = verb_id_(name);
         if (!this->holding_()) {
-            this->fail_soon_(std::move(handler), this->refusal_text_());
+            auto reason = this->refusal_text_();
+            complete_(verb, qb::mono_time{}, command_outcome::failed, reason);
+            this->fail_soon_(std::move(handler), std::move(reason));
             return;
         }
         const std::size_t before = _held_out.size();
         if (auto error = this->serialize_into_(_held_out, name, std::forward<Args>(args)...)) {
+            complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
             handler->fail(*error); // nothing held, nothing written (Huly QB-255)
             return;
         }
-        _held.push_back(HeldReply{std::move(handler), is_blocking_command(name), kind, _held_out.size() - before, qb::mono_now()});
+        ++this->stats_mut_().held;
+        _held.push_back(HeldReply{std::move(handler), verb_blocks_(verb), kind, _held_out.size() - before, qb::mono_now(), verb});
         if (_monitor)
             _monitor->stopping = true;
         arm_held_deadline_();
@@ -1944,17 +2105,20 @@ private:
     template <typename Ret, typename Func, typename... Args>
     void
     direct_command_(Func &&func, std::string const &name, Args &&...args) {
-        auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        auto                handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        const std::uint16_t verb    = verb_id_(name);
         if (command_is(name, "MONITOR")) {
+            complete_(verb, qb::mono_time{}, command_outcome::failed, "MONITOR cannot run in the handshake");
             handler->fail("MONITOR cannot run in the handshake");
             return;
         }
         if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
+            complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
             handler->fail(*error);
             return;
         }
-        const bool blocking = is_blocking_command(name);
-        _replies.push(PendingReply{std::move(handler), blocking, PendingReply::Kind::command});
+        const bool blocking = verb_blocks_(verb);
+        _replies.push(PendingReply{std::move(handler), blocking, PendingReply::Kind::command, verb, sent_stamp_()});
         if (blocking)
             ++_inflight_blocking;
         arm_deadline();
@@ -1992,8 +2156,10 @@ public:
     requires std::invocable<Func, Reply<Ret> &&>
     Redis &
     command(Func &&func, std::string const &name, Args &&...args) {
-        auto handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
-        if (command_is(name, "MONITOR")) {
+        auto                handler = std::make_unique<TReply<Func, Ret>>(std::forward<Func>(func));
+        const std::uint16_t verb    = verb_id_(name);
+        if (command_is(name, "MONITOR")) [[unlikely]] {
+            complete_(verb, qb::mono_time{}, command_outcome::failed, "use monitor(callback) for the MONITOR stream");
             handler->fail("use monitor(callback) for the MONITOR stream");
             return *this;
         }
@@ -2001,6 +2167,7 @@ public:
         const bool quitting  = command_is(name, "QUIT");
         const bool exiting   = resetting || quitting;
         if (_monitor && (!exiting || _monitor->stopping)) {
+            complete_(verb, qb::mono_time{}, command_outcome::failed, "MONITOR owns this connection; only RESET or QUIT may end it");
             handler->fail("MONITOR owns this connection; only RESET or QUIT may end it");
             return *this;
         }
@@ -2012,11 +2179,12 @@ public:
             return *this;
         }
         if (auto error = this->try_put_command(name, std::forward<Args>(args)...)) {
+            complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
             handler->fail(*error); // the client is consistent again: a callback may issue its next command
             return *this;
         }
-        const bool blocking = is_blocking_command(name);
-        _replies.push(PendingReply{std::move(handler), blocking, kind});
+        const bool blocking = verb_blocks_(verb);
+        _replies.push(PendingReply{std::move(handler), blocking, kind, verb, sent_stamp_()});
         if (_monitor)
             _monitor->stopping = true;
         if (blocking)
@@ -2037,32 +2205,39 @@ public:
     requires std::invocable<Func, Reply<std::string> &&>
     Redis &
     monitor(Func &&func) {
-        auto handler = std::make_unique<TReply<Func, std::string>>(std::forward<Func>(func));
+        auto                handler = std::make_unique<TReply<Func, std::string>>(std::forward<Func>(func));
+        const std::uint16_t verb    = verb_id_("MONITOR");
         if (_monitor) {
+            complete_(verb, qb::mono_time{}, command_outcome::failed, "MONITOR already active");
             handler->fail("MONITOR already active");
             return *this;
         }
         if (!this->ready_()) [[unlikely]] {
             if (!this->holding_()) {
-                this->fail_soon_(std::move(handler), this->refusal_text_());
+                auto reason = this->refusal_text_();
+                complete_(verb, qb::mono_time{}, command_outcome::failed, reason);
+                this->fail_soon_(std::move(handler), std::move(reason));
                 return *this;
             }
             const std::size_t before = _held_out.size();
             if (auto error = this->serialize_into_(_held_out, "MONITOR")) {
+                complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
                 handler->fail(*error);
                 return *this;
             }
             _monitor = std::make_shared<MonitorSession>(std::move(handler));
-            _held.push_back(HeldReply{nullptr, false, PendingReply::Kind::monitor_admission, _held_out.size() - before, qb::mono_now()});
+            ++this->stats_mut_().held;
+            _held.push_back(HeldReply{nullptr, false, PendingReply::Kind::monitor_admission, _held_out.size() - before, qb::mono_now(), verb});
             arm_held_deadline_();
             return *this;
         }
         if (auto error = this->try_put_command("MONITOR")) {
+            complete_(verb, qb::mono_time{}, command_outcome::failed, *error);
             handler->fail(*error);
             return *this;
         }
         _monitor = std::make_shared<MonitorSession>(std::move(handler));
-        _replies.push(PendingReply{nullptr, false, PendingReply::Kind::monitor_admission});
+        _replies.push(PendingReply{nullptr, false, PendingReply::Kind::monitor_admission, verb, sent_stamp_()});
         arm_deadline();
         return *this;
     }
@@ -2153,6 +2328,56 @@ public:
     [[nodiscard]] qb::duration
     command_timeout() const noexcept {
         return _command_timeout;
+    }
+
+    /**
+     * @brief Turn the per-family latency histograms on or off (Huly QB-134).
+     * @details On, every command is timed from its send to its completion and recorded in its family's
+     *          histogram (`latency()`); the histograms are allocated then, as one block. Off -- the default --
+     *          the client reads no clock for it and holds no histogram; turning it off drops what was recorded.
+     *          Commands already in flight when it is turned on are not timed.
+     */
+    void
+    set_latency_stats(bool const enabled) {
+        if (!enabled) {
+            _latency.reset();
+            return;
+        }
+        if (!_latency)
+            _latency = std::make_unique<std::array<latency_histogram, command_families>>();
+    }
+
+    /** @brief Whether the latency histograms are on. */
+    [[nodiscard]] bool
+    latency_stats() const noexcept {
+        return _latency != nullptr;
+    }
+
+    /**
+     * @brief The latency histogram of one family, by value: p50 / p95 / p99 are its `percentile(0.50)`,
+     *        `percentile(0.95)`, `percentile(0.99)`. Empty while latency stats are off.
+     */
+    [[nodiscard]] latency_histogram
+    latency(command_family const family) const noexcept {
+        return _latency ? (*_latency)[static_cast<std::size_t>(family)] : latency_histogram{};
+    }
+
+    /**
+     * @brief Be told of every completed command (Huly QB-134; qbm-pgsql's `on_query_complete`).
+     * @details @p hook receives one `qb::redis::command_info` per command, on the client's thread, as the command
+     *          completes and before its own callback or awaiter sees the result: a value, the server's error
+     *          reply, or a failure without an answer -- refused locally, the link lost, a timeout, the client
+     *          down. Keep it short; it must not drive this client (no command, no `disconnect()`). The views it
+     *          receives are valid only during the call. An exception escaping it is contained and logged. An
+     *          empty `std::function` -- the default -- removes it; without a hook a completion costs one
+     *          predictable branch. To feed a metrics actor, push from it (`qb::Actor::push`): the event carries
+     *          copies, never the views.
+     * @return *this
+     */
+    Redis &
+    on_command_complete(std::function<void(command_info const &)> hook) {
+        _on_command_complete = std::move(hook);
+        return *this;
     }
 
     template <typename T, typename Func>
@@ -2380,6 +2605,7 @@ protected:
         const qb::io::gap_info gap = _gap;
         _gap_pending               = false;
         _gap                       = qb::io::gap_info{};
+        ++this->stats_mut_().gaps;
         if (!_on_gap)
             return;
         try {
@@ -2674,6 +2900,7 @@ private:
                     // a malformed MESSAGE frame) must NOT propagate to the outer catch,
                     // which would fail an unrelated pending command and desync the FIFO —
                     // a pub/sub message has no pending reply of its own.
+                    ++this->stats_mut_().messages_received;
                     try {
                         derived().on(parse<qb::redis::message>(raw));
                     } catch (const std::exception &e) {
@@ -2681,6 +2908,7 @@ private:
                     }
                     return;
                 case MsgType::PMESSAGE:
+                    ++this->stats_mut_().messages_received;
                     try {
                         derived().on(parse<qb::redis::pmessage>(raw));
                     } catch (const std::exception &e) {
@@ -3060,6 +3288,7 @@ class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>
     QB_NOINLINE void
     drop_message_(qb::redis::message &&msg) {
         this->mark_gap_(qb::io::gap_reason::overflow, 1);
+        ++this->stats_mut_().messages_dropped;
         if (_on_message_dropped) {
             try {
                 _on_message_dropped(std::move(msg));
