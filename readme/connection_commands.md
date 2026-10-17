@@ -339,7 +339,7 @@ instead of guessing how many confirmations the server will send. Await `reset()`
 After success, an unsubscribe-all from the empty state resolves on Redis's single empty-state confirmation; re-authenticate
 if the server requires it, and call `hello(3)` again to regain RESP3. The connection itself remains open. The live
 RESP2/RESP3 tests cover channels, patterns, a pipelined command after the barrier and a command rejected during it.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2391-2425,2467-2478; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2443-2479,2521-2532; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
 
 
 
@@ -409,7 +409,7 @@ redis.connect([&redis](bool connected) {
   server replies. Check `info.is_object()` and `contains(...)` before indexing; other commands can retain array shape.
 - **Configure the session; do not send it.** The URI carries no credentials. `auth`, `hello(3)` and `select` sent by
   hand hold for one connection; `with_auth()`, `with_resp3()` and `with_select()` (and `set_handshake()`) are replayed by
-  the handshake of every connection. A consumer's subscriptions are not replayed: re-`subscribe`.
+  the handshake of every connection, and so are a consumer's confirmed subscriptions.
 - **`quit` closes the link; `reset` does not.** `RESET` clears connection state and leaves the socket open for reuse;
   `QUIT` asks the server to hang up. Do not keep issuing commands after `quit()`.
 - **No time arguments here.** This group takes only `int` / `long long` / `std::string`. The `qb::duration` vs
@@ -425,7 +425,7 @@ redis.connect([&redis](bool connected) {
 ## See also
 
 - [connection.md](./connection.md) — opening the connection, connect/command deadlines (`qb::duration`), auto-reconnect,
-  and why connection state is not replayed
+  and what a reconnection replays (the handshake, a consumer's confirmed subscriptions)
 - [commands_overview.md](./commands_overview.md) — the coroutine/callback dual API, `Reply<T>`, and the native time-unit
   boundary for command arguments
 - [error_handling.md](./error_handling.md) — `Reply<T>`, `AuthError`, `ConnectionError`, the disconnect signal

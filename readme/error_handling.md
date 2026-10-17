@@ -58,7 +58,7 @@ sticky error state that tears the connection down instead of looping forever on 
 
 The per-command failure message is a `std::string` you read through `reply.error()`. The exception classes (`Error`,
 `ProtoError`, `CommandError`, …) exist for the internal parse seam; in adopter code you read strings, not catch types.
-Do not confuse that string with `qb::redis::error` — a distinct struct (`src/qbm/redis/types.h:599-602`) that is the pub/sub consumer's
+Do not confuse that string with `qb::redis::error` — a distinct struct (`src/qbm/redis/types.h:618-621`) that is the pub/sub consumer's
 error *event* (`{std::string what; reply_ptr raw;}`), delivered to a consumer's `on_error` callback, not to a command
 reply.
 
@@ -298,8 +298,9 @@ on a byte the parser cannot advance past (`redis.h:161-165`). A feed failure (bu
 `not_ok()` + reset path (`redis.h:138-144`).
 
 When the connection is torn down, `on(disconnected&&)` fails every pending command. Auto-reconnect (if enabled)
-re-establishes the connection and its handshake, but does **not** replay in-flight commands or re-issue subscriptions —
-those callers already saw `Reply{ok=false}`, and your application must re-send (see [connection.md](./connection.md)).
+re-establishes the connection and its handshake -- a consumer's confirmed subscriptions included -- but does **not**
+replay in-flight commands — those callers already saw `Reply{ok=false}`, and your application must re-send (see
+[connection.md](./connection.md)).
 A command submitted while the client reconnects is held, not failed; one submitted to a client that is `down` fails
 with the reason (`"disconnected"`, `"reconnection attempts exhausted"`, `"handshake refused: …"`).
 
@@ -429,13 +430,13 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   `redis.h:193-197`); it is a process-safety backstop, not error handling. Catch your own exceptions inside the
   callback.
 - **Auto-reconnect does not replay work.** On disconnect, every pending command is failed with `Reply{ok=false}`;
-  subscriptions and in-flight commands are not re-issued -- only the configured handshake is. Re-send after you observe
-  the failure (`redis.h:1798-1832`).
+  in-flight commands are not re-issued -- only the configured handshake is, with a consumer's confirmed
+  subscriptions. Re-send after you observe the failure (`redis.h:1798-1832`).
 - **A faulted parser is dead until reset.** A corrupt frame faults the parser sticky and drops the connection; you
   cannot keep feeding the same socket. Reconnect (or rely on auto-reconnect) to get a fresh parser (
   `src/qbm/redis/parser/parser.h:153-154`, `redis.h:204-209`).
 - **`reply.error()` is the per-command message; `qb::redis::error` is a different thing.** Command failures hand you a
-  `std::string` through `reply.error()` — compare and log it as text. `qb::redis::error` (`src/qbm/redis/types.h:599-602`) is the pub/sub
+  `std::string` through `reply.error()` — compare and log it as text. `qb::redis::error` (`src/qbm/redis/types.h:618-621`) is the pub/sub
   consumer's error event struct (`.what` message + `.raw` reply), routed to a consumer `on_error` callback, not to a
   command `Reply<T>`. The exception classes (`Error`, `ProtoError`, …) live only at the internal parse seam.
 - **Cluster redirects are not automatic.** `MOVED`/`ASK` arrive as `Reply{ok=false}` with the redirect in `error()`;

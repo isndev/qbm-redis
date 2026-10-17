@@ -59,8 +59,9 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    held; a refused handshake (WRONGPASS, NOPERM) is terminal. An armed
    `enable_auto_reconnect(policy)` recovers a peer's loss; an explicit `disconnect()` is
    terminal (`state()` `down`, `down_reason()` `user`). In-flight commands fail once, held ones
-   when the client goes down or at the command timeout: nothing waits for ever. A consumer's
-   subscriptions are not replayed: subscribe again. On a consumer a successful `reset()`
+   when the client goes down or at the command timeout: nothing waits for ever. A consumer
+   replays its CONFIRMED subscriptions and marks the hole: one `message` with `is_gap()` (an
+   empty channel) before the new connection's first message. On a consumer a successful `reset()`
    clears the predicted subscriptions, and Pub/Sub commands fail locally while it is pending.
 5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
    `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
@@ -137,7 +138,7 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   JSON string. `client_kill(..., skipme)` always emits `SKIPME yes` or `no`.
 - **RetryPolicy** (qb-io's `qb::io::reconnect_policy`, shared with qbm-http) drives
   connect-with-retry and auto-reconnect (exponential backoff). A reconnect replays the
-  configured handshake, never an in-flight command nor a consumer's subscriptions.
+  configured handshake and a consumer's confirmed subscriptions, never an in-flight command.
 - **HSCAN preserves `Out` across pages.** The cursor coroutine and automatic callback
   forms use the selected container (default `qb::unordered_map<std::string,std::string>`).
   Automatic scans require owning output: nested standard containers/wrappers of
@@ -289,11 +290,14 @@ co_await pub.connect();
 co_await pub.publish("alerts", "server restarted");      // Reply<long long> (#receivers)
 ```
 
-`co_consumer` buffers messages in a bounded channel (default capacity 8192);
-on overflow `on_message_dropped(cb)` fires or a warning logs. A disconnect — `disconnect()` or a peer
-drop — closes it: `receive()` yields what was already received, then `std::nullopt` while the consumer
-stays disconnected, so the loop ends. After a reconnect `receive()` serves the new connection, unread
-messages first; subscribe again, nothing is replayed.
+`co_consumer` buffers messages in a bounded channel (default capacity 8192). Its stream ends only
+when the consumer is DOWN: `receive()` yields what was queued, then `std::nullopt`, and
+`down_reason()` says why. A loss an armed run recovers from does not end it: the handshake replays
+the subscriptions the server confirmed (RESET forgets them), and ONE gap marker -- `is_gap()`, an
+empty channel, `gap.reason` reconnect -- is queued before the new connection's first message. A full
+queue is a gap too: `on_message_dropped(cb)` fires for each loss (or a warning logs) and one marker
+carries the count (`gap.reason` overflow, `gap.lost`). `cb_consumer` delivers the same marker through
+`on_message`; `on_gap(cb)` is told on both.
 
 ### Transactions (MULTI/EXEC)
 
@@ -601,7 +605,7 @@ auto pol = RetryPolicy{}.with_max_attempts(5).with_initial_delay(200ms).with_max
 ```
 
 ### Transport aliases — `qb::redis::tcp`
-`redis.h:3130` · `struct`. Plaintext-TCP aliases the build always provides:
+`redis.h:3325` · `struct`. Plaintext-TCP aliases the build always provides:
 
 ```cpp
 qb::redis::tcp::client       // detail::Redis<qb::io::transport::tcp>
@@ -610,20 +614,21 @@ qb::redis::tcp::cb_consumer  // detail::RedisCallbackConsumer<...>
 qb::redis::tcp::co_consumer  // detail::RedisCoroConsumer<...>
 template<class D> tcp::consumer = detail::RedisConsumer<..., D>;
 ```
-`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:3142`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
+`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:3337`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
 
-`qb::redis::database<QB_IO_>` (`redis.h:3124`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
-`qb::redis::no_check` (`redis.h:3155`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
+`qb::redis::database<QB_IO_>` (`redis.h:3319`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
+`qb::redis::no_check` (`redis.h:3350`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
 
 ### Pipelining & consumers
 - `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:2204`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
-- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:2260`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`.
-- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:2779`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook. Ctor: `uri` + optional callbacks.
-- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:2872`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` reports overflow; `message_channel_capacity()` reports capacity.
-  - `receive()` (`redis.h:2975`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next message; suspends until one arrives. `nullopt` once the consumer is disconnected and what it had received is read; after a reconnect it serves the new connection (unread messages first; re-subscribe).
+- `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:2260`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`. Keeps the subscriptions the server CONFIRMED (a successful RESET forgets them) and replays them in the handshake of every reconnection; marks the hole with ONE gap marker before the new connection's first message. `on_gap(std::function<void(qb::io::gap_info const&)>)` → `Derived&`: told each time a marker enters the stream.
+- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:2911`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook; `on_message` also receives the gap marker (`msg.is_gap()`). Ctor: `uri` + optional callbacks.
+- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:3029`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` fires for each message a full queue drops, and one coalesced gap marker carries the count (`gap.reason` overflow, `gap.lost`); `message_channel_capacity()` reports capacity.
+  - `receive()` (`redis.h:3170`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next item; suspends until one arrives. An item is a message or a gap marker (`is_gap()`). `nullopt` only once the consumer is DOWN and what it queued is read (`down_reason()` says why); a loss an armed run recovers from keeps the stream open.
 
 ```cpp
-auto m = co_await consumer.receive(); if (!m) co_return;  // channel closed
+auto m = co_await consumer.receive(); if (!m) co_return;  // down: consumer.down_reason() says why
+if (m->is_gap()) { /* resynchronise: m->gap.reason, m->gap.lost */ }
 ```
 
 ---
@@ -1096,28 +1101,28 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:65`; `what()` vali
 
 | Type | Header / kind | Notes |
 |---|---|---|
-| `reply_ptr` | `src/qbm/redis/types.h:45` · `= std::unique_ptr<parser::Value>` | Move-only owning reply pointer. |
-| `status` | `src/qbm/redis/types.h:534` · struct | Simple-string reply wrapper; `operator bool`/`ok()` true iff payload == "OK". |
-| `stream_id` | `src/qbm/redis/types.h:341` · struct | Public `{long long timestamp; long long sequence;}` layout retained for 3.x source compatibility. Redis components are unsigned 64-bit bit patterns: use `timestamp_u64()` / `sequence_u64()` (`src/qbm/redis/types.h:359-366`) to read the full domain and `from_unsigned(uint64_t,uint64_t)` (`src/qbm/redis/types.h:353`) to construct high IDs. Raw signed fields may appear negative above `INT64_MAX`; `to_string()` and `<` use unsigned values. |
-| `stream_entry` / `stream_entry_list` / `map_stream_entry_list` | `src/qbm/redis/types.h:385-392` | `{stream_id id; qb::unordered_map<std::string,std::string> fields;}`; list; per-stream map. |
-| `score` / `score_member` | `src/qbm/redis/types.h:395-412` | `score{double value}`; `score_member{double score; std::string member}` (field order: score then member). |
-| `geo_pos` / `geo_distance` | `src/qbm/redis/types.h:327-338` | `geo_pos{double longitude; double latitude}`; `geo_distance{std::string member; double distance}`. |
-| `subscription` | `src/qbm/redis/types.h:523` · struct | `{std::optional<std::string> channel; long long num;}`. |
-| `message` / `pmessage` | `src/qbm/redis/types.h:512-520` | `message{pattern; channel; payload; reply_ptr raw}`; `pmessage : message`. |
-| `scan<Out=std::vector<std::string>>` | `src/qbm/redis/types.h:592-593` · struct template | `{std::size_t cursor; Out items;}` (cursor 0 = complete). |
-| `json_value` | `src/qbm/redis/types.h:470` · struct | Self-describing JSON-like variant (RedisJSON); RESP big numbers kept as strings. |
-| `pipeline_result` | `src/qbm/redis/types.h:463` · struct | `{size_t size; size_t error_count; bool all_succeeded;}` — MULTI/EXEC summary; per-command replies NOT stored (use `Reply<pipeline_result>.raw()`). |
-| `memory_info` | `src/qbm/redis/types.h:436` · struct | Parsed INFO-memory section (`size_t` fields, 0 fallback). |
-| `cluster_node` | `src/qbm/redis/types.h:422` · struct | One CLUSTER NODES line parsed field-by-field. |
-| `search_result` | `src/qbm/redis/types.h:415` · struct | FT.SEARCH per-document `{key; fields; values}`. |
-| `error` | `src/qbm/redis/types.h:599` · struct | `{std::string what; reply_ptr raw;}`. |
-| `LimitOptions` | `src/qbm/redis/types.h:317` · struct | `{long long offset=0; long long count=-1;}` (count -1 = unbounded). A **negative `offset`** on `zrangebylex`/`zrangebyscore` (and the `zrevrange*` variants) suppresses the `LIMIT` clause entirely (no triplet emitted); the default `{0,-1}` still sends `LIMIT 0 -1` (all). |
+| `reply_ptr` | `src/qbm/redis/types.h:46` · `= std::unique_ptr<parser::Value>` | Move-only owning reply pointer. |
+| `status` | `src/qbm/redis/types.h:553` · struct | Simple-string reply wrapper; `operator bool`/`ok()` true iff payload == "OK". |
+| `stream_id` | `src/qbm/redis/types.h:342` · struct | Public `{long long timestamp; long long sequence;}` layout retained for 3.x source compatibility. Redis components are unsigned 64-bit bit patterns: use `timestamp_u64()` / `sequence_u64()` (`src/qbm/redis/types.h:360-367`) to read the full domain and `from_unsigned(uint64_t,uint64_t)` (`src/qbm/redis/types.h:354`) to construct high IDs. Raw signed fields may appear negative above `INT64_MAX`; `to_string()` and `<` use unsigned values. |
+| `stream_entry` / `stream_entry_list` / `map_stream_entry_list` | `src/qbm/redis/types.h:386-393` | `{stream_id id; qb::unordered_map<std::string,std::string> fields;}`; list; per-stream map. |
+| `score` / `score_member` | `src/qbm/redis/types.h:396-413` | `score{double value}`; `score_member{double score; std::string member}` (field order: score then member). |
+| `geo_pos` / `geo_distance` | `src/qbm/redis/types.h:328-339` | `geo_pos{double longitude; double latitude}`; `geo_distance{std::string member; double distance}`. |
+| `subscription` | `src/qbm/redis/types.h:542` · struct | `{std::optional<std::string> channel; long long num;}`. |
+| `message` / `pmessage` | `src/qbm/redis/types.h:512-536` | `message{pattern; channel; payload; reply_ptr raw; message_kind kind = data; qb::io::gap_info gap}`, `bool is_gap() const noexcept`; `message_kind{data, gap}` (`std::uint8_t`): a gap marker has an empty channel; `pmessage : message`. |
+| `scan<Out=std::vector<std::string>>` | `src/qbm/redis/types.h:611-612` · struct template | `{std::size_t cursor; Out items;}` (cursor 0 = complete). |
+| `json_value` | `src/qbm/redis/types.h:471` · struct | Self-describing JSON-like variant (RedisJSON); RESP big numbers kept as strings. |
+| `pipeline_result` | `src/qbm/redis/types.h:464` · struct | `{size_t size; size_t error_count; bool all_succeeded;}` — MULTI/EXEC summary; per-command replies NOT stored (use `Reply<pipeline_result>.raw()`). |
+| `memory_info` | `src/qbm/redis/types.h:437` · struct | Parsed INFO-memory section (`size_t` fields, 0 fallback). |
+| `cluster_node` | `src/qbm/redis/types.h:423` · struct | One CLUSTER NODES line parsed field-by-field. |
+| `search_result` | `src/qbm/redis/types.h:416` · struct | FT.SEARCH per-document `{key; fields; values}`. |
+| `error` | `src/qbm/redis/types.h:618` · struct | `{std::string what; reply_ptr raw;}`. |
+| `LimitOptions` | `src/qbm/redis/types.h:318` · struct | `{long long offset=0; long long count=-1;}` (count -1 = unbounded). A **negative `offset`** on `zrangebylex`/`zrangebyscore` (and the `zrevrange*` variants) suppresses the `LIMIT` clause entirely (no triplet emitted); the default `{0,-1}` still sends `LIMIT 0 -1` (all). |
 
-### Enums (`src/qbm/redis/types.h:52-85`)
+### Enums (`src/qbm/redis/types.h:53-86`)
 `UpdateType{EXIST,NOT_EXIST,ALWAYS}` (→XX/NX, ALWAYS=no flag) · `InsertPosition{BEFORE,AFTER}` · `ListPosition{LEFT,RIGHT}` · `BoundType{CLOSED,OPEN,LEFT_OPEN,RIGHT_OPEN}` · `Aggregation{SUM,MIN,MAX}` · `BitOp{AND,OR,XOR,NOT}` · `GeoUnit{M,KM,MI,FT}` (default M) · `XtrimStrategy{MAXLEN,MINID}`.
-`to_string(...)` overloads (`src/qbm/redis/types.h:608-619`) render `BitOp/UpdateType/Aggregation/GeoUnit/InsertPosition/ListPosition` to Redis keyword strings.
+`to_string(...)` overloads (`src/qbm/redis/types.h:627-638`) render `BitOp/UpdateType/Aggregation/GeoUnit/InsertPosition/ListPosition` to Redis keyword strings.
 
-### Interval types (`src/qbm/redis/types.h:87-310`)
+### Interval types (`src/qbm/redis/types.h:88-311`)
 `UnboundedInterval<T>` / `BoundedInterval<T>` / `LeftBoundedInterval<T>` / `RightBoundedInterval<T>`; aliases `lex_interval = BoundedInterval<std::string>`, `score_interval = BoundedInterval<double>`. Each exposes `lower()`/`upper()` returning the RESP-encoded bound string (consumed by `zcount`/`zrangebyscore`/`zrangebylex`).
 
 ---

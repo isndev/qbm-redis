@@ -42,15 +42,15 @@ llm/qbm-redis.llm.api.md	redis.h:1450-1450	4ab5c6be2991	class Redis
 llm/qbm-redis.llm.api.md	redis.h:2204-2204	fe3c529f759a	class RedisPipeline {
 llm/qbm-redis.llm.api.md	redis.h:2260-2260	cd678de7f8c1	class RedisConsumer
 llm/qbm-redis.llm.api.md	redis.h:229-229	2a41a928458d	using RetryPolicy = qb::io::reconnect_policy;
-llm/qbm-redis.llm.api.md	redis.h:2779-2779	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
 llm/qbm-redis.llm.api.md	redis.h:283-370	00231e2ed5d8	template <typename QB_IO_, typename Derived>
-llm/qbm-redis.llm.api.md	redis.h:2872-2872	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
-llm/qbm-redis.llm.api.md	redis.h:2975-2975	1d2fe40d4864	receive() {
+llm/qbm-redis.llm.api.md	redis.h:2911-2911	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
 llm/qbm-redis.llm.api.md	redis.h:300-300	94cca6232ff0	using handshake_client = HandshakeClient<Derived>;
-llm/qbm-redis.llm.api.md	redis.h:3124-3124	5b0051a25645	using database = detail::Redis<QB_IO_>;
-llm/qbm-redis.llm.api.md	redis.h:3130-3130	e19a828745ea	struct tcp {
-llm/qbm-redis.llm.api.md	redis.h:3142-3142	97c8e8c3b177	struct ssl {
-llm/qbm-redis.llm.api.md	redis.h:3155-3155	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
+llm/qbm-redis.llm.api.md	redis.h:3029-3029	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
+llm/qbm-redis.llm.api.md	redis.h:3170-3170	1d2fe40d4864	receive() {
+llm/qbm-redis.llm.api.md	redis.h:3319-3319	5b0051a25645	using database = detail::Redis<QB_IO_>;
+llm/qbm-redis.llm.api.md	redis.h:3325-3325	e19a828745ea	struct tcp {
+llm/qbm-redis.llm.api.md	redis.h:3337-3337	97c8e8c3b177	struct ssl {
+llm/qbm-redis.llm.api.md	redis.h:3350-3350	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
 llm/qbm-redis.llm.api.md	redis.h:89-90	fec8f2f5d4ae	template <typename IO_>
 llm/qbm-redis.llm.api.md	reply.cpp:31-40	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
 llm/qbm-redis.llm.api.md	reply.h:105-105	f053ab3c6ce5	class ConnectionError : public Error {
@@ -101,27 +101,27 @@ llm/qbm-redis.llm.api.md	server_reply.h:509-509	5cbe2f518bc8	extract_score_membe
 llm/qbm-redis.llm.api.md	set_commands.h:37-37	abd3bbcd2d8d	class set_commands {
 llm/qbm-redis.llm.api.md	sorted_set_commands.h:39-39	3ca9c8d4c2be	class sorted_set_commands {
 llm/qbm-redis.llm.api.md	src/qbm/redis/parser/types.h:455-455	2cba24c099e9	struct Value : ValueBase {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:317-317	eba0cc43479a	struct LimitOptions {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:327-338	77f4d3ee6f74	struct geo_pos {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:341-341	2a92f06efef1	struct stream_id {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:353-353	dbaccd14a16a	from_unsigned(std::uint64_t timestamp, std::uint64_t sequence) noexce...
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:359-366	9e3385d6a16f	timestamp_u64() const noexcept {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:385-392	e09e5b4c83bc	/** @brief A single stream entry: its ID and the field-value pairs it...
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:395-412	7817667575c0	struct score {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:415-415	17380685742e	struct search_result {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:422-422	c9827bb1714d	struct cluster_node {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:436-436	9194d1e13831	struct memory_info {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:45-45	15c268cec2d4	using reply_ptr = std::unique_ptr<parser::Value>;
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:463-463	d7ff802dabad	struct pipeline_result {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:470-470	ff13c4957700	struct json_value {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:512-520	2d91f3b5901e	struct message {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:52-85	b8f1e4095c62	enum class UpdateType { EXIST, NOT_EXIST, ALWAYS };
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:523-523	6ad047b52bcb	struct subscription {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:534-534	1f2e9d6e5a7d	struct status {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:592-593	1c7654a31db5	template <typename Out = std::vector<std::string>>
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:599-599	bc1deb6d0eaf	struct error {
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:608-619	84691f337c56	/** @brief Render a @ref BitOp as its BITOP operation keyword. */
-llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:87-310	055213becd7e	// ==================================================================...
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:318-318	eba0cc43479a	struct LimitOptions {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:328-339	77f4d3ee6f74	struct geo_pos {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:342-342	2a92f06efef1	struct stream_id {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:354-354	dbaccd14a16a	from_unsigned(std::uint64_t timestamp, std::uint64_t sequence) noexce...
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:360-367	9e3385d6a16f	timestamp_u64() const noexcept {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:386-393	e09e5b4c83bc	/** @brief A single stream entry: its ID and the field-value pairs it...
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:396-413	7817667575c0	struct score {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:416-416	17380685742e	struct search_result {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:423-423	c9827bb1714d	struct cluster_node {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:437-437	9194d1e13831	struct memory_info {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:46-46	15c268cec2d4	using reply_ptr = std::unique_ptr<parser::Value>;
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:464-464	d7ff802dabad	struct pipeline_result {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:471-471	ff13c4957700	struct json_value {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:512-536	db4e2221c9e2	/** @brief What a consumer's stream item is: a published message, or ...
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:53-86	b8f1e4095c62	enum class UpdateType { EXIST, NOT_EXIST, ALWAYS };
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:542-542	6ad047b52bcb	struct subscription {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:553-553	1f2e9d6e5a7d	struct status {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:611-612	1c7654a31db5	template <typename Out = std::vector<std::string>>
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:618-618	bc1deb6d0eaf	struct error {
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:627-638	84691f337c56	/** @brief Render a @ref BitOp as its BITOP operation keyword. */
+llm/qbm-redis.llm.api.md	src/qbm/redis/types.h:88-311	055213becd7e	// ==================================================================...
 llm/qbm-redis.llm.api.md	stream_commands.h:36-36	4816175b91eb	class stream_commands {
 llm/qbm-redis.llm.api.md	stream_commands.h:95-95	20a4409c5b05	parse_stream_id(const std::string &id_str) {
 llm/qbm-redis.llm.api.md	string_commands.h:49-49	c879e6021a5d	class string_commands {

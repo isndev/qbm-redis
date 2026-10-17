@@ -520,7 +520,7 @@ private:
         _ever_ready      = true;
         _live_handshake  = 0;
         const auto epoch = _epoch;
-        derived().on_ready_(); // held work leaves in order; a consumer queues its gap marker first
+        derived().on_ready_(); // held work leaves in order; a consumer then queues its pending gap marker
         if (epoch != _epoch || _state != qb::io::connection_state::ready)
             return; // a marker or a release callback disconnected
         notify_(_on_connected, "on_connected");
@@ -2340,6 +2340,58 @@ private:
     qb::unordered_flat_set<std::string> _pred_patterns;
     bool                                _reset_pending = false;
 
+    /// The subscriptions the SERVER confirmed: what a reconnection replays (R5). A confirmation frame adds or
+    /// removes its name, a successful RESET clears both; a lost connection keeps them.
+    qb::unordered_flat_set<std::string> _confirmed_channels;
+    qb::unordered_flat_set<std::string> _confirmed_patterns;
+
+    std::function<void(qb::io::gap_info const &)> _on_gap;
+
+protected:
+    /// A hole is pending in the stream: the marker goes before the next item, or at the next ready (R5, R7).
+    bool             _gap_pending = false;
+    qb::io::gap_info _gap{};
+
+    /// Coalesce one more loss into the pending gap: a reconnect among them names the gap, drops add up.
+    void
+    mark_gap_(qb::io::gap_reason reason, std::uint64_t lost) noexcept {
+        if (!_gap_pending) {
+            _gap         = qb::io::gap_info{reason, lost};
+            _gap_pending = true;
+            return;
+        }
+        if (reason == qb::io::gap_reason::reconnect)
+            _gap.reason = qb::io::gap_reason::reconnect;
+        _gap.lost += lost;
+    }
+
+    /// The marker of the pending gap: an empty channel, which a published message never has, and `kind` gap.
+    [[nodiscard]] qb::redis::message
+    gap_marker_() const {
+        qb::redis::message marker;
+        marker.kind = qb::redis::message_kind::gap;
+        marker.gap  = _gap;
+        return marker;
+    }
+
+    /// The marker of the pending gap was delivered or queued: the gap is closed, on_gap is told.
+    void
+    gap_flushed_() {
+        const qb::io::gap_info gap = _gap;
+        _gap_pending               = false;
+        _gap                       = qb::io::gap_info{};
+        if (!_on_gap)
+            return;
+        try {
+            _on_gap(gap);
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] on_gap hook error: " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] on_gap hook threw a non-std exception");
+        }
+    }
+
+private:
     template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
     Derived &
@@ -2402,6 +2454,8 @@ private:
             if (reply.ok()) {
                 owner->_pred_channels.clear();
                 owner->_pred_patterns.clear();
+                owner->_confirmed_channels.clear(); // the server forgot them: nothing to replay
+                owner->_confirmed_patterns.clear();
             }
             callback(std::move(reply));
         }
@@ -2567,6 +2621,8 @@ private:
     consumer_down_() {}
     void
     consumer_link_lost_(bool /*was_ready*/) {}
+    void
+    consumer_lifecycle_start_() {}
 
     template <typename Ret, typename... Args>
     Reply<Ret>
@@ -2635,6 +2691,7 @@ private:
                 case MsgType::UNSUBSCRIBE:
                 case MsgType::PSUBSCRIBE:
                 case MsgType::PUNSUBSCRIBE: {
+                    confirm_(type, raw); // the server's word on what this consumer is subscribed to
                     // A subscription confirmation. One (P)SUBSCRIBE/(P)UNSUBSCRIBE
                     // over N channels yields N confirmations but only one handler:
                     // absorb the intermediate confirmations and resolve on the last
@@ -2710,6 +2767,60 @@ private:
         }
     }
 
+    /// Record what a confirmation frame says: a name subscribed or unsubscribed, server-side.
+    void
+    confirm_(MsgType type, const ReplyValue &raw) {
+        auto const *name = reply::get_pubsub_element(raw, 1);
+        if (!name || name->is_null())
+            return; // UNSUBSCRIBE from nothing: no name
+        auto value = std::string{reply::parse<std::string_view>(*name)};
+        switch (type) {
+            case MsgType::SUBSCRIBE:
+                _confirmed_channels.insert(std::move(value));
+                break;
+            case MsgType::UNSUBSCRIBE:
+                _confirmed_channels.erase(value);
+                break;
+            case MsgType::PSUBSCRIBE:
+                _confirmed_patterns.insert(std::move(value));
+                break;
+            case MsgType::PUNSUBSCRIBE:
+                _confirmed_patterns.erase(value);
+                break;
+            default:
+                break;
+        }
+    }
+
+    /// The session a reconnection replays: the confirmed subscriptions (R5).
+    [[nodiscard]] bool
+    has_session_to_replay_() const noexcept {
+        return !_confirmed_channels.empty() || !_confirmed_patterns.empty();
+    }
+
+    /**
+     * @brief Replay the confirmed subscriptions through the handshake's handle (R5).
+     * @details Copied before the first suspension: the confirmations of the replay land in the same sets.
+     *          Messages for a channel confirmed early may arrive before the replay ends; they queue behind the
+     *          gap marker the lost connection left pending.
+     */
+    qb::io::async::task<std::optional<std::string>>
+    replay_session_(typename connector<QB_IO_, RedisConsumer<QB_IO_, Derived>>::handshake_client &hs) {
+        std::vector<std::string> channels(_confirmed_channels.begin(), _confirmed_channels.end());
+        std::vector<std::string> patterns(_confirmed_patterns.begin(), _confirmed_patterns.end());
+        if (!channels.empty()) {
+            auto r = co_await hs.subscribe(channels);
+            if (!r)
+                co_return r.error();
+        }
+        if (!patterns.empty()) {
+            auto r = co_await hs.psubscribe(patterns);
+            if (!r)
+                co_return r.error();
+        }
+        co_return std::nullopt;
+    }
+
     /// The link is gone (the connector's on(disconnected)): what was in flight on it fails once.
     void
     on_link_lost_(bool was_ready) {
@@ -2730,7 +2841,17 @@ private:
                 QB_LOG_WARN("[qbm][redis] consumer callback threw a non-std exception");
             }
         }
+        // Whatever the server publishes until the next connection is ready is lost: a gap (R5). A link that
+        // never carried a message -- the first connection's failed handshake -- leaves none.
+        if (this->ever_ready_())
+            mark_gap_(qb::io::gap_reason::reconnect, 0);
         derived().consumer_link_lost_(was_ready);
+    }
+
+    /// A connect() leaves idle or down: a consumer's stream reopens (R6).
+    void
+    on_lifecycle_start_() {
+        derived().consumer_lifecycle_start_();
     }
 
     void
@@ -2756,6 +2877,17 @@ public:
     [[nodiscard]] std::size_t
     pending_reply_count() const noexcept {
         return _replies.size() + _held.size();
+    }
+
+    /**
+     * @brief Called each time a gap marker enters the stream, with what it carries (R5, R7).
+     * @details A reconnection leaves a gap of unknown size (`gap_reason::reconnect`); a full queue one of
+     *          `lost` dropped messages (`gap_reason::overflow`). Consecutive losses coalesce into one marker.
+     */
+    Derived &
+    on_gap(std::function<void(qb::io::gap_info const &)> hook) {
+        _on_gap = std::move(hook);
+        return derived();
     }
 
     template <typename T, typename Func>
@@ -2797,12 +2929,37 @@ class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallbackConsumer
     };
 
     // Exception safety of the user callable is handled UPSTREAM: RedisConsumer::on wraps the
-    // message/pmessage/disconnected dispatch in try/catch, and qb::protocol::redis::onMessage adds a
+    // message/pmessage dispatch in try/catch, and qb::protocol::redis::onMessage adds a
     // catch(...) backstop before the libev noexcept boundary — so a throwing handler is contained
     // and never terminates. These dispatchers therefore stay branch-free.
     void
     on(qb::redis::message &&msg) {
+        if (this->_gap_pending) [[unlikely]]
+            deliver_gap_();
         _on_message(std::move(msg));
+    }
+
+    /// The pending gap's marker, through on_message, before the next item (R5).
+    QB_NOINLINE void
+    deliver_gap_() {
+        auto marker = this->gap_marker_();
+        this->gap_flushed_();
+        _on_message(std::move(marker));
+    }
+
+    /// Ready: the pending gap's marker goes out even when no message follows yet. This runs from the handshake,
+    /// not from a dispatch that contains a throwing callback, so it contains its own.
+    void
+    consumer_ready_() {
+        if (!this->_gap_pending)
+            return;
+        try {
+            deliver_gap_();
+        } catch (const std::exception &ex) {
+            QB_LOG_WARN("[qbm][redis] cb_consumer on_message error (gap marker): " << ex.what());
+        } catch (...) {
+            QB_LOG_WARN("[qbm][redis] cb_consumer on_message threw a non-std exception (gap marker)");
+        }
     }
 
     void
@@ -2883,39 +3040,80 @@ class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>
     message_drop_callback            _on_message_dropped;
 
     /**
-     * @brief The queue of the current connection.
-     * @details A channel closes for good, and the consumer outlives its connections: the queue a
-     *          disconnect closed is replaced as soon as the consumer is connected again -- observed
-     *          here, by the first receive() or message of the new connection -- carrying over, in
-     *          order, what was received and not yet read. A receiver the close woke and that resumes
-     *          after the swap sees the old channel gone and yields std::nullopt (the channel's own
-     *          liveness guard); what it would have drained is in the new queue.
+     * @brief Queue the pending gap's marker, with room left for the item behind it (R5, R7).
+     * @return Whether it was queued: a full queue keeps the gap pending, and the item is one more loss.
      */
-    message_channel &
-    current_channel() {
-        if (_msg_channel->is_closed() && this->is_connected()) {
-            auto fresh = std::make_unique<message_channel>(_msg_capacity);
-            while (auto unread = _msg_channel->try_recv())
-                (void) fresh->try_send(std::move(*unread)); // never full: same capacity, at most as many
-            _msg_channel = std::move(fresh);
-        }
-        return *_msg_channel;
+    QB_NOINLINE bool
+    queue_gap_() {
+        auto &channel = *_msg_channel;
+        if (channel.is_closed())
+            return false;
+        if (channel.capacity() >= 2 && channel.size() + 2 > channel.capacity())
+            return false; // no room for the marker AND what follows it: keep coalescing
+        if (!channel.try_send(this->gap_marker_()))
+            return false;
+        this->gap_flushed_();
+        return true;
     }
 
-    void
-    enqueue_pubsub_message(qb::redis::message &&msg) {
-        if (current_channel().try_send(std::move(msg))) {
-            return;
-        }
+    /// The queue was full: one more message lost, counted in the pending gap (R7).
+    QB_NOINLINE void
+    drop_message_(qb::redis::message &&msg) {
+        this->mark_gap_(qb::io::gap_reason::overflow, 1);
         if (_on_message_dropped) {
             try {
                 _on_message_dropped(std::move(msg));
             } catch (const std::exception &ex) {
                 QB_LOG_WARN("[qbm][redis] coro consumer on_message_dropped error: " << ex.what());
+            } catch (...) {
+                QB_LOG_WARN("[qbm][redis] coro consumer on_message_dropped threw a non-std exception");
             }
         } else {
             QB_LOG_WARN("[qbm][redis] coro consumer: message dropped (buffer full)");
         }
+    }
+
+    void
+    enqueue_pubsub_message(qb::redis::message &&msg) {
+        if (this->_gap_pending) [[unlikely]] {
+            if (!queue_gap_()) {
+                drop_message_(std::move(msg));
+                return;
+            }
+        }
+        if (_msg_channel->try_send(std::move(msg))) [[likely]]
+            return;
+        drop_message_(std::move(msg));
+    }
+
+    /// Ready: the pending gap's marker joins the stream even when no message follows yet.
+    void
+    consumer_ready_() {
+        if (this->_gap_pending)
+            (void) queue_gap_();
+    }
+
+    /// Down: the stream ends -- receive() delivers what was queued, then std::nullopt (R6).
+    void
+    consumer_down_() {
+        _msg_channel->close();
+    }
+
+    /**
+     * @brief A connect() leaves idle or down: the stream of the new lifecycle.
+     * @details A channel closes for good, and the consumer outlives its lifecycles: the queue `down` closed is
+     *          replaced, carrying over in order what was received and not yet read. A receiver the close woke
+     *          and that resumes after the swap sees the old channel gone and yields std::nullopt (the channel's
+     *          own liveness guard); what it would have drained is in the new queue.
+     */
+    void
+    consumer_lifecycle_start_() {
+        if (!_msg_channel->is_closed())
+            return;
+        auto fresh = std::make_unique<message_channel>(_msg_capacity);
+        while (auto unread = _msg_channel->try_recv())
+            (void) fresh->try_send(std::move(*unread)); // never full: same capacity, at most as many
+        _msg_channel = std::move(fresh);
     }
 
     void
@@ -2928,11 +3126,6 @@ class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsumer<QB_IO_>
         // pmessage inherits from message; store as message (pattern is in base)
         qb::redis::message m = std::move(msg);
         enqueue_pubsub_message(std::move(m));
-    }
-
-    void
-    consumer_link_lost_(bool /*was_ready*/) {
-        _msg_channel->close(); // receive() drains what is buffered, then yields std::nullopt
     }
 
 public:
@@ -2961,9 +3154,11 @@ public:
 
     /**
      * @brief Receive the next pub/sub message (coroutine awaitable).
-     * @return std::optional<message> - has value when a message arrived,
-     *         nullopt once the consumer is disconnected and what it had
-     *         received is read; after a reconnect it serves the new connection.
+     * @return std::optional<message> - has value when a message arrived, or
+     *         a gap marker (`is_gap()`: a reconnection or a full queue left a
+     *         hole there); nullopt only once the consumer is DOWN and what it
+     *         queued is read -- `down_reason()` says why. A loss an armed run
+     *         recovers from does not end it (Huly QB-126b).
      *
      * Direct coroutine member (NOT an immediately-invoked lambda `[this]{...}()`):
      * the lambda closure would be a temporary destroyed at the end of this call,
@@ -2973,7 +3168,7 @@ public:
      */
     [[nodiscard]] qb::io::async::task<std::optional<qb::redis::message>>
     receive() {
-        co_return co_await current_channel().recv();
+        co_return co_await _msg_channel->recv();
     }
 
     ~RedisCoroConsumer() {

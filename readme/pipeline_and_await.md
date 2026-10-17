@@ -144,8 +144,8 @@ while (redis.pending_reply_count() > 0)
 
 ### `qb::redis::tcp::pipeline`
 
-`qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:3133`);
-the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:3141-3144`). It is a thin, optional
+`qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:3328`);
+the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:3336-3339`). It is a thin, optional
 wrapper that holds a reference to a `Redis` client and chains the low-level `command<Ret>(callback, name, args...)` (
 `redis.h:1991-2026`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
 

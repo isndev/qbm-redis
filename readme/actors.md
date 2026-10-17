@@ -186,11 +186,11 @@ draining it, precisely so a failing handler that re-issues a command does not ge
 
 The coroutine consumer is the exception worth knowing. `receive()` does **not** return a `redis_awaiter`; it awaits a
 `qb::io::async::channel<message>` that the consumer fills from its RESP push frames.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2974-2977 (receive() → co_await current_channel().recv()) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3169-3172 (receive() → co_await _msg_channel->recv()) -->
 
 A channel `recv()` is still not cancellation-aware — `cancel()` does nothing to it — but it *is* woken by
-`close()`, and the consumer closes the channel in two places: when the connection drops, and in its own destructor.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2933-2936 (consumer_link_lost_ → _msg_channel->close()), :2979-2981 (destructor closes it) -->
+`close()`, and the consumer closes the channel in two places: when the consumer goes down, and in its own destructor.
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3098-3100 (consumer_down_ → _msg_channel->close()), :3174-3176 (destructor closes it) -->
 
 That makes `receive()` yield `std::nullopt` after buffered messages drain. If the actor can be reaped before a
 scheduled receiver resumes, keep the consumer in the coroutine frame and check actor-scope cancellation before
@@ -200,12 +200,13 @@ using actor state or forwarding a message.
 > handler never ran: it was private, and its class befriended the base that routes the event instead
 > of the detector the route goes through, so the dispatch skipped it in silence. `disconnect()` left a
 > `receive()` loop parked, and so did a peer drop; the loop ended only when `~RedisCoroConsumer` ran.
-> Now any disconnect — `disconnect()` completes the io teardown on the spot
-> (`qb::io::async::io<>::disconnect_now()`), a peer drop on its next pass — closes the queue: `receive()`
-> yields what was already received, then `std::nullopt` for as long as the consumer stays disconnected.
-> After a reconnect it serves the new connection, starting with whatever was received and not yet read
-> (re-subscribe yourself: nothing is replayed).
-> <!-- src: qbm/redis/src/qbm/redis/redis.h:1331-1352 (disconnect()), :2733 (the base calls the handler), :2933-2936 (the link-loss handler), :2895-2903 (the next connection's queue) -->
+> Since the reconnect contract (Huly QB-126b) the queue closes when the consumer goes DOWN —
+> `disconnect()`, which completes the io teardown on the spot (`qb::io::async::io<>::disconnect_now()`),
+> a peer drop with no run armed, a run that gave up: `receive()` yields what was already received, then
+> `std::nullopt`, and `down_reason()` says why. A loss an armed run recovers from leaves the loop parked:
+> the confirmed subscriptions are replayed and one gap marker (`msg->is_gap()`) precedes the new
+> connection's first message.
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:1331-1352 (disconnect()), :2609 (going down ends the stream), :3098-3100 (consumer_down_), :3110-3117 (the next lifecycle's queue) -->
 > In the ordinary actor handler below, `disconnect()` closes the channel before it returns.
 > If called from this consumer's own message callback, teardown waits until that callback
 > returns; no nested loop pass runs. The parked loop resumes on a later scheduler pass.
@@ -260,13 +261,13 @@ public:
 };
 ```
 
-<!-- src: examples/07-applications/02-auction-house/src/actors/websocket_handler.cpp:57-69 (the same consume_loop shape) -->
+<!-- src: examples/07-applications/02-auction-house/src/actors/websocket_handler.cpp:57-74 (the same consume_loop shape) -->
 
 In this `KillEvent` handler, `disconnect()` closes the channel in the call and schedules a parked receiver for a
 later pass. A buffered or already committed message can arrive first; `std::nullopt` follows once the channel is
 drained. If the actor was reaped first, `ctx.cancelled()` stops the loop before it forwards that message. The copied
 `shared_ptr` keeps the consumer alive through the next `receive()`; waiting for `~co_consumer` to close the channel
-would leave that frame parked. `examples/06-modules/redis/04-pubsub.cpp:261-271` follows the same pattern: it
+would leave that frame parked. `examples/06-modules/redis/04-pubsub.cpp:263-277` follows the same pattern: it
 captures the consumer, name and coordinator by value, then checks cancellation before using the context.
 
 ### Making a command interruptible

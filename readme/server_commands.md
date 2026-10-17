@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1453 (public inheritance), qbm/redis/src/qbm/redis/redis.h:3131 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1453 (public inheritance), qbm/redis/src/qbm/redis/redis.h:3326 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -60,7 +60,7 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
 
 - **`qb::redis::status`** — the `OK`-style simple-string reply. It converts implicitly to `std::string` and to `bool`,
   where the `bool`/`ok()` value is `true` **only** when the server string is exactly `"OK"`. Test success with `.ok()` (
-  or the `bool` conversion), not by comparing against arbitrary strings. <!-- src: qbm/redis/src/qbm/redis/types.h:534-585 -->
+  or the `bool` conversion), not by comparing against arbitrary strings. <!-- src: qbm/redis/src/qbm/redis/types.h:553-604 -->
 - **`long long`** — counts and timestamps (`DBSIZE`, `COMMAND COUNT`, `LASTSAVE`, `CLIENT ID`, `MEMORY USAGE`,
   `LATENCY RESET`).
 - **`std::string`** — opaque human-readable blobs (`MEMORY DOCTOR`, `DEBUG OBJECT`, `CLIENT INFO`, `LATENCY DOCTOR`/
@@ -493,7 +493,7 @@ qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
   Restrict these with ACLs (see [acl_commands.md](./acl_commands.md)).
 - **`memory_info` is not reachable here.** The header carries a private INFO-to-`memory_info` parser and a `memory_info`
   struct, but no public command in this group exposes them — `info()` returns `qb::json`. Do not write code against
-  `memory_info` expecting `info()` to populate it. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:56-57, qbm/redis/src/qbm/redis/types.h:436 -->
+  `memory_info` expecting `info()` to populate it. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:56-57, qbm/redis/src/qbm/redis/types.h:437 -->
 
 ---
 

@@ -235,7 +235,9 @@ qb::io::async::task<void> consume() {
 The queue holds `DEFAULT_MSG_CAPACITY` (8192) messages by default. Pass a larger capacity to the URI constructor —
 `co_consumer{uri, capacity}` — if bursty traffic can outpace your `receive()` loop, and register
 `on_message_dropped(cb)` (a `void(qb::redis::message&&)` callback) to observe drops when the queue is full; otherwise a
-full queue logs a warning and discards.
+full queue logs a warning and discards. Either way the stream says so in band: the next item is a gap marker
+(`is_gap()`, `gap.reason == qb::io::gap_reason::overflow`, `gap.lost` the count), queued as soon as there is room for it
+and the message behind it.
 
 ---
 
@@ -280,7 +282,7 @@ remain active.
 After a successful connection-level `RESET`, the consumer's predicted channel and pattern sets are empty too;
 `unsubscribe("")` or `punsubscribe("")` therefore waits for one empty-state confirmation. Pub/Sub calls made before
 `RESET` answers fail locally; await it first. See [Connection commands](./connection_commands.md#reset--reset-connection-state).
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2391-2425,2436-2452,2467-2478 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2443-2479,2490-2506,2521-2532 -->
 
 - **Coroutine, single/all:** `auto unsubscribe(const std::string &channel = "")`
 - **Coroutine, multiple:** `auto unsubscribe(const std::vector<std::string> &channels)`
@@ -410,9 +412,10 @@ that matched. Three things to know before relying on it:
   gone, and nothing replays it. Treat it as a hint to re-read the key, not as a log.
 - **`CONFIG SET` is often refused on a managed Redis.** Hosted offerings usually take `notify-keyspace-events` from
   their own configuration (a parameter group, a console setting) and reject `CONFIG SET`; set it there instead.
-- **A reconnect drops the subscription.** After the connection is lost, the consumer's subscriptions are not
-  re-issued today, and a `co_consumer`'s `receive()` ends — see [connection.md](./connection.md). Subscribe again after
-  reconnecting, and re-read the keys you watch for what happened in between.
+- **A reconnect leaves a gap.** With a reconnection run armed, the consumer replays the subscriptions the server
+  confirmed and puts ONE gap marker -- `msg.is_gap()`, an empty channel -- before the new connection's first message:
+  re-read the keys you watch for what happened in between. Without a run, the loss is terminal and a `co_consumer`'s
+  `receive()` ends -- see [connection.md](./connection.md).
 
 ---
 
@@ -426,10 +429,11 @@ that matched. Three things to know before relying on it:
 - **`subscription` fields are `channel` and `num`.** `channel` is an `std::optional<std::string>` — check
   `channel.has_value()` before dereferencing. There is no `channel_or_pattern` or `num_subscriptions`.
 - **A `co_consumer` queue can overflow.** The default capacity is 8192 messages. If `receive()` cannot keep up, messages
-  are dropped (logged, or routed to `on_message_dropped`). Size the queue for your burst profile via the URI
-  constructor.
-- **`receive()` yielding `std::nullopt` means closed, not "no message yet."** It suspends until a message arrives;
-  `std::nullopt` signals the channel was closed (disconnect). Treat it as the loop's exit condition.
+  are dropped (logged, or routed to `on_message_dropped`), and ONE gap marker carrying the count (`gap.lost`) sits
+  where they were lost. Size the queue for your burst profile via the URI constructor.
+- **`receive()` yielding `std::nullopt` means down, not "no message yet."** It suspends until a message arrives;
+  `std::nullopt` signals the consumer reached its terminal state -- `down_reason()` says why. Treat it as the loop's
+  exit condition, and `is_gap()` as the signal to resynchronise.
 - **A regular `client` is not a subscriber.** Issuing `SUBSCRIBE` on `qb::redis::tcp::client` puts that connection into
   subscribe mode where ordinary commands fail. Use `cb_consumer` or `co_consumer`.
 - **`connect()` returns an awaiter, not a `bool`.** There is no `connect_sync()` or `consume()` on

@@ -48,7 +48,7 @@ actor on it stops with you — silently, because nothing in the framework diagno
 **Building from source:** configure the qb-dev superproject; its qb module loader registers qbm-redis. The module's
 `CMakeLists.txt` is not standalone-configurable because it needs qb's development-time CMake helpers.
 
-<!-- src: qbm/redis/README.md:434-435 -->
+<!-- src: qbm/redis/README.md:439-440 -->
 
 ```cmake
 add_subdirectory(qb)                                   # the framework first
@@ -81,7 +81,7 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
 ## TLS and time
 
 - **TLS** — there is no redis-specific SSL option. Transport security follows the framework-wide `QB_HAS_SSL` (derived
-  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:3141-3147`); with it
+  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:3336-3342`); with it
   off, the build emits a status note and only cleartext TCP is available. For `rediss://`, certificate and hostname
   verification is on by default; `set_verify_peer(false)` disables it and must be set before `connect()`.
 - **Time — framework side.** Connect and command timeouts and the `RetryPolicy` delays are `qb::duration`. Defaults:
@@ -116,8 +116,9 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
   resolves once the connection's handshake ran. The server stays on RESP2 unless the handshake says otherwise:
   `redis.with_resp3()` before connecting (HELLO 3 on every connection), and `with_auth()` / `with_select()` /
   `set_handshake()` for the rest of the session. `hello(3)` sent by hand holds for one connection only
-  (`connection_commands.h:52`). Auto-reconnect and `RetryPolicy` cover a peer's loss and replay the handshake, but
-  in-flight commands and subscriptions are not replayed; `disconnect()` is terminal.
+  (`connection_commands.h:52`). Auto-reconnect and `RetryPolicy` cover a peer's loss and replay the handshake -- a
+  consumer's confirmed subscriptions with it, a gap marker after them -- but in-flight commands are not replayed;
+  `disconnect()` is terminal.
 - **Run a command.** `Reply<T> r = co_await redis.get("key");` suspends without blocking the event loop. The callback
   form is `redis.get([](qb::redis::Reply<std::optional<std::string>>&& r){ ... }, "key");`.
 - **Check the result.** `Reply<T>` carries a status and a typed value: `r.ok()`, `r.result()`, `r.error()`. Redis
@@ -190,8 +191,8 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 ## Pitfalls
 
 - **Auto-reconnect does not replay work.** On disconnect, all pending replies fail and predicted subscription state is
-  cleared. After a reconnect you must re-subscribe and re-issue any in-flight commands yourself; the configured handshake
-  is the only thing replayed (`redis.h:1798-1832,2718-2719,2720-2732`).
+  cleared. After a reconnect you must re-issue any in-flight commands yourself; the configured handshake and a consumer's
+  confirmed subscriptions are what is replayed (`redis.h:1798-1832,2829-2830,2831-2843`).
 - **`set_command_timeout` drops the connection.** It is a health watchdog, not a per-command deadline: because FIFO
   pipelining cannot fail one mid-queue command without desyncing later replies, tripping the deadline disconnects and
   fails every pending command (`redis.h:1697-1713,1798-1832`).

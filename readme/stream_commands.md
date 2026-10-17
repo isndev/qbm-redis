@@ -60,7 +60,7 @@ an explicit `operator bool()`. You read a successful payload through `reply.resu
 
 ### `qb::redis::stream_id`
 
-`stream_id` (`src/qbm/redis/types.h:341-383`) keeps its public `{ long long timestamp; long long sequence; }` layout
+`stream_id` (`src/qbm/redis/types.h:342-384`) keeps its public `{ long long timestamp; long long sequence; }` layout
 for 3.x source compatibility. Redis IDs have two **unsigned** 64-bit components. For an ID above `INT64_MAX`, a raw
 signed field may look negative: read `timestamp_u64()` and `sequence_u64()` for the Redis values, and build high IDs
 with `stream_id::from_unsigned(timestamp, sequence)`. `to_string()` renders the unsigned `"<timestamp>-<sequence>"`
@@ -75,14 +75,14 @@ std::cout << id.to_string() << '\n';     // 1-18446744073709551615
 
 ### `qb::redis::stream_entry` and `stream_entry_list`
 
-`stream_entry` (`src/qbm/redis/types.h:386-389`) is
+`stream_entry` (`src/qbm/redis/types.h:387-390`) is
 `{ stream_id id; qb::unordered_map<std::string, std::string> fields; }`. `stream_entry_list`
-(`src/qbm/redis/types.h:391`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
+(`src/qbm/redis/types.h:392`) is `std::vector<stream_entry>` — the decoded reply of `XRANGE`, `XREVRANGE`, and
 `XCLAIM`. You iterate it directly: `entry.id` is the entry ID and `entry.fields` is the field map.
 
 ### `qb::redis::status`
 
-`status` (`src/qbm/redis/types.h:534-585`) wraps a status string. It converts to `bool` (true when the string is
+`status` (`src/qbm/redis/types.h:553-604`) wraps a status string. It converts to `bool` (true when the string is
 `"OK"`), to `std::string`, and compares against string literals — so `if (reply.result())` reads as "the server said
 OK".
 

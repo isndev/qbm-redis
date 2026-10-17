@@ -35,7 +35,7 @@ llm/qbm-redis.llm.api.md	symbol:with_on_retry	A builder of `qb::io::reconnect_po
 # cites the class template through the state members the sentence lists (`_uri`,
 # `std::optional<RetryPolicy> _reconnect_policy`, the connection state, `_verify_peer`, the `_alive`
 # liveness token -- read the current span in llm/qbm-redis.llm.api.md), and the score row now
-# cites `types.h:337-354`, `struct score` (337-346) through `struct score_member` (349-354).
+# cites the span from `struct score` through `struct score_member`.
 # Note what the deleted rationales asserted: "`struct score` is types.h:336" and "`score_member`
 # is :348".  Both were one line low when they were written — 337 and 349 — so the prose that
 # justified the exception was itself mis-citing the header.  Nothing gates that prose; read it

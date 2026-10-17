@@ -14,7 +14,7 @@ minimal `co_await` and callback snippet.
 ## Summary
 
 The list commands are defined by the `qb::redis::list_commands<Derived>` CRTP mixin (`list_commands.h:36`), which
-`qb::redis::tcp::client` inherits along with every other command group (`redis.h:1456`, `redis.h:3131`). You call these
+`qb::redis::tcp::client` inherits along with every other command group (`redis.h:1456`, `redis.h:3326`). You call these
 methods directly on a connected client. Each command exists in two forms that share one method name: a **coroutine**
 form you `co_await` to get a `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument
 and returns the client for chaining. The dispatch and the `Reply<T>` decoding contract are covered
@@ -57,12 +57,12 @@ See [Command API model](./commands_overview.md) for the full reply surface.
 
 Two enums from `src/qbm/redis/types.h` parameterize this group:
 
-- `qb::redis::InsertPosition` (`src/qbm/redis/types.h:54`) — `BEFORE`, `AFTER` — selects where `linsert` places the
+- `qb::redis::InsertPosition` (`src/qbm/redis/types.h:55`) — `BEFORE`, `AFTER` — selects where `linsert` places the
   element relative to the pivot.
-- `qb::redis::ListPosition` (`src/qbm/redis/types.h:56`) — `LEFT`, `RIGHT` — selects the list end for `lmove`,
+- `qb::redis::ListPosition` (`src/qbm/redis/types.h:57`) — `LEFT`, `RIGHT` — selects the list end for `lmove`,
   `blmove`, `lmpop`, and `blmpop`.
 
-Both are serialized to wire keywords through `to_string(...)` (`src/qbm/redis/types.h:617`, `:619`); you pass the enum,
+Both are serialized to wire keywords through `to_string(...)` (`src/qbm/redis/types.h:636`, `:638`); you pass the enum,
 not a string.
 
 ### Variadic pushes

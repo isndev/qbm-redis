@@ -33,7 +33,16 @@
  *   - what was received before the disconnect is still read, then nullopt -- and a receive()
  *     while disconnected answers at once instead of parking;
  *   - after a reconnect, receive() serves the new connection, starting with what was received
- *     before the disconnect and not yet read.
+ *     before the disconnect and not yet read, then the gap marker, then the new connection's messages.
+ *
+ * And the consumers' side of the reconnect contract (Huly QB-126b), each case failing on the code before it:
+ *   - R5: the CONFIRMED subscriptions are replayed by the handshake of the new connection, before anything
+ *     held; one gap marker (empty channel, `kind` gap) precedes the new connection's first item, and a message
+ *     that arrives during the replay queues behind it;
+ *   - R6: with a run armed, a lost connection does not end the stream: receive() stays parked across the
+ *     reconnection and ends only when the consumer goes down, with down_reason();
+ *   - R7: a full queue drops, on_message_dropped fires for each loss, and ONE marker carrying the count sits
+ *     where the messages were lost.
  */
 
 #include <gtest/gtest.h>
@@ -103,17 +112,78 @@ push(qb::io::tcp::socket &peer, std::string const &payload) {
     ASSERT_EQ(peer.write(frame.data(), frame.size()), static_cast<int>(frame.size()));
 }
 
-/// The documented receive loop: collects payloads until receive() yields nullopt.
+/// The documented receive loop: collects payloads -- a gap marker as "<gap:reason:lost>" -- until receive()
+/// yields nullopt.
 struct Drain {
     std::vector<std::string> got;
     bool                     ended = false;
 };
 
+std::string
+item(qb::redis::message const &msg) {
+    if (msg.is_gap())
+        return "<gap:" + std::string{qb::io::gap_reason_name(msg.gap.reason)} + ":" + std::to_string(msg.gap.lost) + ">";
+    EXPECT_FALSE(msg.channel.empty()) << "a published message always has a channel";
+    return msg.payload;
+}
+
 qb::io::async::task<void>
 drain(qb::redis::tcp::co_consumer *consumer, Drain *out) {
     while (auto msg = co_await consumer->receive())
-        out->got.push_back(msg->payload);
+        out->got.push_back(item(*msg));
     out->ended = true;
+}
+
+/// Read whole RESP commands off the server end, pumping the client's loop until `n` arrived.
+std::vector<std::vector<std::string>>
+read_commands(qb::io::tcp::socket &peer, std::size_t n, std::chrono::milliseconds timeout = 2000ms) {
+    std::string                           buffer;
+    std::vector<std::vector<std::string>> out;
+    std::array<char, 1024>                buf{};
+    run_until(
+        [&] {
+            for (int r; (r = peer.read(buf.data(), buf.size())) > 0;)
+                buffer.append(buf.data(), static_cast<std::size_t>(r));
+            for (;;) {
+                if (buffer.empty() || buffer[0] != '*')
+                    break;
+                auto end = buffer.find("\r\n");
+                if (end == std::string::npos)
+                    break;
+                const int                argc = std::stoi(buffer.substr(1, end - 1));
+                std::size_t              pos  = end + 2;
+                std::vector<std::string> cmd;
+                bool                     whole = true;
+                for (int i = 0; i < argc && whole; ++i) {
+                    end = buffer.find("\r\n", pos);
+                    if (end == std::string::npos) {
+                        whole = false;
+                        break;
+                    }
+                    const auto len = static_cast<std::size_t>(std::stoul(buffer.substr(pos + 1, end - pos - 1)));
+                    pos            = end + 2;
+                    if (buffer.size() < pos + len + 2) {
+                        whole = false;
+                        break;
+                    }
+                    cmd.push_back(buffer.substr(pos, len));
+                    pos += len + 2;
+                }
+                if (!whole)
+                    break;
+                buffer.erase(0, pos);
+                out.push_back(std::move(cmd));
+            }
+            return out.size() >= n;
+        },
+        timeout);
+    return out;
+}
+
+/// A RESP2 subscribe confirmation for `channel`, `count` subscriptions active.
+std::string
+confirmation(std::string const &channel, int count) {
+    return "*3\r\n$9\r\nsubscribe\r\n$" + std::to_string(channel.size()) + "\r\n" + channel + "\r\n:" + std::to_string(count) + "\r\n";
 }
 
 class CoConsumerLifecycle : public ::testing::Test {
@@ -207,10 +277,109 @@ TEST_F(CoConsumerLifecycle, AfterAReconnectReceiveServesTheNewConnection) {
     Drain d;
     qb::io::async::coro_scheduler().spawn(drain(&consumer, &d));
     push(second, "after");
-    ASSERT_TRUE(run_until([&] { return d.got.size() == 2; })) << "receive() must serve the new connection";
-    EXPECT_EQ(d.got, (std::vector<std::string>{"before", "after"})) << "what was unread is carried over, in order";
+    ASSERT_TRUE(run_until([&] { return d.got.size() == 3; })) << "receive() must serve the new connection";
+    EXPECT_EQ(d.got, (std::vector<std::string>{"before", "<gap:reconnect:0>", "after"}))
+        << "what was unread is carried over, in order, then ONE marker where the stream has a hole (Huly QB-126b)";
     EXPECT_FALSE(d.ended) << "connected again: receive() parks for the next message";
 
     consumer.disconnect();
     EXPECT_TRUE(run_until([&] { return d.ended; })) << "and the second disconnect ends it again";
+}
+
+// ---------------------------------------------------------------------------------------- QB-126b
+
+TEST_F(CoConsumerLifecycle, AReconnectionReplaysTheConfirmedSubscriptionsAndMarksTheGap) {
+    LoopbackServer              server;
+    qb::redis::tcp::co_consumer consumer{qb::io::uri{server.uri()}};
+    consumer.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(1ms).with_jitter(false));
+    std::vector<qb::io::gap_info> gaps;
+    consumer.on_gap([&gaps](qb::io::gap_info const &g) { gaps.push_back(g); });
+    ASSERT_TRUE(qb::io::async::run_sync(consumer.connect()));
+    auto first = server.accept_one();
+    first.set_nonblocking(true);
+
+    // "chan" is confirmed by the server; "never" is sent and never confirmed: only the first is replayed.
+    bool confirmed = false;
+    consumer.subscribe([&](qb::redis::Reply<qb::redis::subscription> &&r) { confirmed = r.ok(); }, "chan");
+    consumer.subscribe([](qb::redis::Reply<qb::redis::subscription> &&) {}, "never");
+    ASSERT_EQ(read_commands(first, 2).size(), 2u);
+    const auto conf = confirmation("chan", 1);
+    ASSERT_EQ(first.write(conf.data(), conf.size()), static_cast<int>(conf.size()));
+    ASSERT_TRUE(run_until([&] { return confirmed; }));
+
+    Drain d;
+    qb::io::async::coro_scheduler().spawn(drain(&consumer, &d));
+    push(first, "one");
+    ASSERT_TRUE(run_until([&] { return d.got.size() == 1; }));
+    first.disconnect(); // the peer drops: the run reconnects
+    ASSERT_TRUE(run_until([&] { return consumer.is_reconnecting(); }));
+    EXPECT_FALSE(d.ended) << "a recoverable loss must not end the stream (R6)";
+
+    qb::io::tcp::socket second;
+    server.listener.set_nonblocking(true);
+    ASSERT_TRUE(run_until(
+        [&, accepted = false]() mutable { return accepted || (accepted = server.listener.accept(second) == qb::io::SocketStatus::Done); }));
+    second.set_nonblocking(true);
+    auto replay = read_commands(second, 1);
+    ASSERT_EQ(replay.size(), 1u);
+    EXPECT_EQ(replay[0], (std::vector<std::string>{"SUBSCRIBE", "chan"})) << "only the confirmed subscription is replayed";
+    EXPECT_FALSE(consumer.is_connected()) << "the replay is part of the handshake";
+
+    // A message for the replayed channel arrives before the replay's confirmation: it queues behind the marker.
+    push(second, "during");
+    const auto again = confirmation("chan", 1);
+    ASSERT_EQ(second.write(again.data(), again.size()), static_cast<int>(again.size()));
+    ASSERT_TRUE(run_until([&] { return consumer.is_connected(); }));
+    push(second, "after");
+    ASSERT_TRUE(run_until([&] { return d.got.size() == 4; }));
+    EXPECT_EQ(d.got, (std::vector<std::string>{"one", "<gap:reconnect:0>", "during", "after"}));
+    ASSERT_EQ(gaps.size(), 1u) << "one marker, one on_gap";
+    EXPECT_EQ(gaps[0].reason, qb::io::gap_reason::reconnect);
+    EXPECT_FALSE(d.ended);
+
+    consumer.disconnect();
+    ASSERT_TRUE(run_until([&] { return d.ended; })) << "the stream ends at the terminal state (R6)";
+    EXPECT_EQ(consumer.down_reason(), qb::io::down_reason::user);
+}
+
+TEST_F(CoConsumerLifecycle, AFullQueueLeavesOneMarkerCarryingTheCount) {
+    LoopbackServer              server;
+    qb::redis::tcp::co_consumer consumer{qb::io::uri{server.uri()}, 4};
+    int                         dropped = 0;
+    consumer.on_message_dropped([&dropped](qb::redis::message &&) { ++dropped; });
+    std::vector<qb::io::gap_info> gaps;
+    consumer.on_gap([&gaps](qb::io::gap_info const &g) { gaps.push_back(g); });
+    ASSERT_TRUE(qb::io::async::run_sync(consumer.connect()));
+    auto peer = server.accept_one();
+
+    for (int i = 0; i < 7; ++i)
+        push(peer, "m" + std::to_string(i)); // capacity 4: m4, m5, m6 do not fit
+    settle(100ms);
+    EXPECT_EQ(dropped, 3) << "on_message_dropped still fires for each loss (R7)";
+
+    Drain d;
+    qb::io::async::coro_scheduler().spawn(drain(&consumer, &d));
+    ASSERT_TRUE(run_until([&] { return d.got.size() == 4; }));
+    push(peer, "m7"); // the queue drained: the marker, then m7
+    ASSERT_TRUE(run_until([&] { return d.got.size() == 6; }));
+    EXPECT_EQ(d.got, (std::vector<std::string>{"m0", "m1", "m2", "m3", "<gap:overflow:3>", "m7"}));
+    ASSERT_EQ(gaps.size(), 1u);
+    EXPECT_EQ(gaps[0].lost, 3u);
+    consumer.disconnect();
+}
+
+TEST_F(CoConsumerLifecycle, WithoutARunALostPeerEndsTheStreamWithItsReason) {
+    LoopbackServer              server;
+    qb::redis::tcp::co_consumer consumer{qb::io::uri{server.uri()}};
+    ASSERT_TRUE(qb::io::async::run_sync(consumer.connect()));
+    auto peer = server.accept_one();
+
+    Drain d;
+    qb::io::async::coro_scheduler().spawn(drain(&consumer, &d));
+    push(peer, "last");
+    ASSERT_TRUE(run_until([&] { return d.got.size() == 1; }));
+    peer.disconnect();
+    ASSERT_TRUE(run_until([&] { return d.ended; })) << "no run armed: the loss is terminal, the stream ends";
+    EXPECT_EQ(consumer.state(), qb::io::connection_state::down);
+    EXPECT_EQ(consumer.down_reason(), qb::io::down_reason::peer);
 }

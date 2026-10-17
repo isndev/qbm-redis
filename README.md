@@ -330,10 +330,11 @@ qb::io::async::task<void> chat() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2260-2263 (consumer base), qbm/redis/src/qbm/redis/redis.h:2814-2825 (cb_consumer constructor), subscription_commands.h:63/207, publish_commands.h:57 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2260-2263 (consumer base), qbm/redis/src/qbm/redis/redis.h:2971-2982 (cb_consumer constructor), subscription_commands.h:63/207, publish_commands.h:57 -->
 
-Prefer to receive sequentially? Use `co_consumer` and `co_await receive()`, which yields `std::nullopt` when the channel
-closes on disconnect:
+Prefer to receive sequentially? Use `co_consumer` and `co_await receive()`, which yields `std::nullopt` once the
+consumer is down (`down_reason()` says why) and, across a reconnection, one gap marker (`msg->is_gap()`) where the stream
+has a hole:
 
 ```cpp
 qb::io::async::task<void> notifications() {
@@ -343,12 +344,16 @@ qb::io::async::task<void> notifications() {
     co_await consumer.subscribe("notifications");
 
     while (auto msg = co_await consumer.receive()) {
+        if (msg->is_gap()) {   // a reconnection or a full queue: resynchronise from the source of truth
+            qb::io::cout() << "gap (" << qb::io::gap_reason_name(msg->gap.reason) << ")\n";
+            continue;
+        }
         qb::io::cout() << "Notification: " << msg->payload << '\n';
     }
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2975-2977 (RedisCoroConsumer::receive), qbm/redis/src/qbm/redis/redis.h:2933-2936 (the link-loss handler that closes the channel), qbm/redis/src/qbm/redis/redis.h:2895-2903 (the next connection's queue) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3170-3172 (RedisCoroConsumer::receive), qbm/redis/src/qbm/redis/redis.h:3098-3100 (going down closes the channel), qbm/redis/src/qbm/redis/redis.h:3110-3117 (the next lifecycle's queue) -->
 
 ---
 
@@ -467,7 +472,7 @@ Two build-time conditions are worth knowing:
   TCP-only — the `#ifdef QB_HAS_SSL` block in `redis.h` is excluded, and CMake prints an informational message rather
   than failing.
 
-<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:3141-3152 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
+<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:3336-3347 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
 
 A module **cannot be configured standalone**: it calls `qb_register_module()` and `qb_add_test()`, development-time
 helpers an installed qb does not ship. The repository's own CI configures `.github/ci/superbuild/CMakeLists.txt`, a
@@ -541,7 +546,7 @@ arguments keep native units by design** and are exposed through `std::chrono`-un
 The consumers carry the connection and subscription commands (`connect`, `hello`, `subscribe`, `psubscribe`,
 `unsubscribe`), but not the data or `publish` commands — publish from a `tcp::client`. The full `tcp::client` does not
 subscribe; that surface belongs to the consumers.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3124-3153 (aliases), qbm/redis/src/qbm/redis/redis.h:2260-2263 (consumer mixins), qbm/redis/src/qbm/redis/redis.h:1450-1470 (client mixins) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3319-3348 (aliases), qbm/redis/src/qbm/redis/redis.h:2260-2263 (consumer mixins), qbm/redis/src/qbm/redis/redis.h:1450-1470 (client mixins) -->
 
 ---
 

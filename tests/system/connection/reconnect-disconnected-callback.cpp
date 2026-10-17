@@ -25,6 +25,7 @@
 #include <chrono>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/io/tcp/listener.h>
@@ -123,4 +124,40 @@ TEST(RedisReconnectDisconnectedCallback, CallbackCanDisablePolicyBeforeDecision)
 
 TEST(RedisReconnectDisconnectedCallback, ThrowingCallbackCanDisablePolicyBeforeDecision) {
     exercise_disconnect(1, true);
+}
+
+// Huly QB-126b: across a reconnection the callback consumer's stream has a hole; on_message receives ONE
+// marker (empty channel, kind gap) before the first message of the new connection, and on_gap is told.
+TEST(RedisReconnectDisconnectedCallback, TheNextConnectionsFirstMessageFollowsAGapMarker) {
+    qb::io::async::init();
+    qb::io::tcp::listener listener;
+    ASSERT_EQ(listener.listen_v4(0, "127.0.0.1"), qb::io::SocketStatus::Done);
+    listener.set_nonblocking(true);
+    const auto                  uri = qb::io::uri{"tcp://127.0.0.1:" + std::to_string(listener.local_endpoint().port())};
+    std::vector<std::string>    seen;
+    int                         gaps = 0;
+    qb::redis::tcp::cb_consumer consumer{uri, [&seen](qb::redis::message &&m) {
+                                             seen.push_back(m.is_gap() ? std::string{"<gap>"} : m.payload);
+                                         }};
+    consumer.on_gap([&gaps](qb::io::gap_info const &) { ++gaps; });
+    consumer.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(1ms).with_jitter(false));
+    ASSERT_TRUE(qb::io::async::run_sync(consumer.connect()));
+    qb::io::tcp::socket first;
+    ASSERT_TRUE(
+        run_until([&, accepted = false]() mutable { return accepted || (accepted = listener.accept(first) == qb::io::SocketStatus::Done); }));
+    const std::string one = "*3\r\n$7\r\nmessage\r\n$4\r\nchan\r\n$3\r\none\r\n";
+    ASSERT_EQ(first.write(one.data(), one.size()), static_cast<int>(one.size()));
+    ASSERT_TRUE(run_until([&] { return seen.size() == 1; }));
+    first.disconnect();
+
+    qb::io::tcp::socket second;
+    ASSERT_TRUE(
+        run_until([&, accepted = false]() mutable { return accepted || (accepted = listener.accept(second) == qb::io::SocketStatus::Done); }));
+    ASSERT_TRUE(run_until([&] { return consumer.is_connected(); }));
+    const std::string two = "*3\r\n$7\r\nmessage\r\n$4\r\nchan\r\n$3\r\ntwo\r\n";
+    ASSERT_EQ(second.write(two.data(), two.size()), static_cast<int>(two.size()));
+    ASSERT_TRUE(run_until([&] { return seen.size() == 3; }));
+    EXPECT_EQ(seen, (std::vector<std::string>{"one", "<gap>", "two"}));
+    EXPECT_EQ(gaps, 1);
+    consumer.disconnect();
 }

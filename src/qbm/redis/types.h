@@ -34,6 +34,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <qb/io/reconnect.h>                   // qb::io::gap_info -- what a gap marker carries
 #include <qb/system/container/unordered_map.h> // qb::unordered_map — the map replies below use it
 
 // Native C++20/23 parser (must be outside namespace)
@@ -508,12 +509,30 @@ struct json_value {
     }
 };
 
-/** @brief Pub/Sub message delivered on a subscribed channel. */
+/** @brief What a consumer's stream item is: a published message, or the marker of a gap before the next one. */
+enum class message_kind : std::uint8_t {
+    data, ///< a message the server published
+    gap,  ///< a hole in the stream: `gap` says why and how many messages the client dropped (empty channel)
+};
+
+/**
+ * @brief Pub/Sub message delivered on a subscribed channel -- or, with `kind == message_kind::gap`, the marker of
+ *        a gap in the stream (a reconnection, a full queue): its channel is empty, which a published message's
+ *        never is, and `gap` carries the reason and the count.
+ */
 struct message {
-    std::string pattern; ///< Matching pattern (empty for plain SUBSCRIBE).
-    std::string channel; ///< Channel the message was published to.
-    std::string payload; ///< Message payload.
-    reply_ptr   raw;     ///< Owning handle to the raw reply value.
+    std::string      pattern;                   ///< Matching pattern (empty for plain SUBSCRIBE).
+    std::string      channel;                   ///< Channel the message was published to.
+    std::string      payload;                   ///< Message payload.
+    reply_ptr        raw;                       ///< Owning handle to the raw reply value.
+    message_kind     kind = message_kind::data; ///< data, or the marker of a gap
+    qb::io::gap_info gap{};                     ///< the gap a marker stands for (meaningful when kind is gap)
+
+    /** @return Whether this item is a gap marker rather than a published message. */
+    [[nodiscard]] bool
+    is_gap() const noexcept {
+        return kind == message_kind::gap;
+    }
 };
 
 /** @brief Pattern-matched Pub/Sub message (PSUBSCRIBE); reuses @ref message. */

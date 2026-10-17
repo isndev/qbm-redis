@@ -66,7 +66,7 @@ types. Read the table below rather than assuming either family.
 | `hmset`                                      | `qb::redis::status`                                                                     |
 | `hscan` (cursor form)                        | `qb::redis::scan<Out>`, `Out` defaults to `qb::unordered_map<std::string, std::string>` |
 
-<!-- src: qbm/redis/src/qbm/redis/commands/hash_commands.h:293, 420, 510, 698, 819, 452, 331, 759, 361, 390, 482, 848, 540, 581, 622-624; qbm/redis/src/qbm/redis/types.h:534,592-596 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/hash_commands.h:293, 420, 510, 698, 819, 452, 331, 759, 361, 390, 482, 848, 540, 581, 622-624; qbm/redis/src/qbm/redis/types.h:553,611-615 -->
 
 ---
 
@@ -446,9 +446,9 @@ distinct overload families.
 #### Cursor form (coroutine or callback)
 
 You drive the cursor yourself: start at cursor `0`, and repeat until the returned cursor is `0` again. The reply payload
-is `qb::redis::scan<Out>` (`src/qbm/redis/types.h:592-596`), a struct with `cursor` (`std::size_t`) and `items` (the
+is `qb::redis::scan<Out>` (`src/qbm/redis/types.h:611-615`), a struct with `cursor` (`std::size_t`) and `items` (the
 container `Out`). Note that `Out` defaults differently per call site: the `scan` template's own default is
-`std::vector<std::string>` (`src/qbm/redis/types.h:592`), but **both** `hscan` overloads re-default it to
+`std::vector<std::string>` (`src/qbm/redis/types.h:611`), but **both** `hscan` overloads re-default it to
 `qb::unordered_map<std::string, std::string>` (`hash_commands.h:622`, `:643`), which is what you get here.
 `pattern` defaults to `"*"` and `count` defaults to `10` (a server hint, not a hard limit).
 An explicit `Out` is preserved by both completion styles. Borrowed output such as

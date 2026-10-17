@@ -28,8 +28,9 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    held; a refused handshake (WRONGPASS, NOPERM) is terminal. An armed
    `enable_auto_reconnect(policy)` recovers a peer's loss; an explicit `disconnect()` is
    terminal (`state()` `down`, `down_reason()` `user`). In-flight commands fail once, held ones
-   when the client goes down or at the command timeout: nothing waits for ever. A consumer's
-   subscriptions are not replayed: subscribe again. On a consumer a successful `reset()`
+   when the client goes down or at the command timeout: nothing waits for ever. A consumer
+   replays its CONFIRMED subscriptions and marks the hole: one `message` with `is_gap()` (an
+   empty channel) before the new connection's first message. On a consumer a successful `reset()`
    clears the predicted subscriptions, and Pub/Sub commands fail locally while it is pending.
 5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
    `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and

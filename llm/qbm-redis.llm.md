@@ -44,8 +44,9 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
    held; a refused handshake (WRONGPASS, NOPERM) is terminal. An armed
    `enable_auto_reconnect(policy)` recovers a peer's loss; an explicit `disconnect()` is
    terminal (`state()` `down`, `down_reason()` `user`). In-flight commands fail once, held ones
-   when the client goes down or at the command timeout: nothing waits for ever. A consumer's
-   subscriptions are not replayed: subscribe again. On a consumer a successful `reset()`
+   when the client goes down or at the command timeout: nothing waits for ever. A consumer
+   replays its CONFIRMED subscriptions and marks the hole: one `message` with `is_gap()` (an
+   empty channel) before the new connection's first message. On a consumer a successful `reset()`
    clears the predicted subscriptions, and Pub/Sub commands fail locally while it is pending.
 5. **An empty required argument list is a failed `Reply`, not a bad frame.** `del`, `exists`,
    `sadd`, `hmget`, `geoadd`, `pfcount` and friends with nothing to act on send no frame and
@@ -122,7 +123,7 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   JSON string. `client_kill(..., skipme)` always emits `SKIPME yes` or `no`.
 - **RetryPolicy** (qb-io's `qb::io::reconnect_policy`, shared with qbm-http) drives
   connect-with-retry and auto-reconnect (exponential backoff). A reconnect replays the
-  configured handshake, never an in-flight command nor a consumer's subscriptions.
+  configured handshake and a consumer's confirmed subscriptions, never an in-flight command.
 - **HSCAN preserves `Out` across pages.** The cursor coroutine and automatic callback
   forms use the selected container (default `qb::unordered_map<std::string,std::string>`).
   Automatic scans require owning output: nested standard containers/wrappers of
@@ -274,11 +275,14 @@ co_await pub.connect();
 co_await pub.publish("alerts", "server restarted");      // Reply<long long> (#receivers)
 ```
 
-`co_consumer` buffers messages in a bounded channel (default capacity 8192);
-on overflow `on_message_dropped(cb)` fires or a warning logs. A disconnect — `disconnect()` or a peer
-drop — closes it: `receive()` yields what was already received, then `std::nullopt` while the consumer
-stays disconnected, so the loop ends. After a reconnect `receive()` serves the new connection, unread
-messages first; subscribe again, nothing is replayed.
+`co_consumer` buffers messages in a bounded channel (default capacity 8192). Its stream ends only
+when the consumer is DOWN: `receive()` yields what was queued, then `std::nullopt`, and
+`down_reason()` says why. A loss an armed run recovers from does not end it: the handshake replays
+the subscriptions the server confirmed (RESET forgets them), and ONE gap marker -- `is_gap()`, an
+empty channel, `gap.reason` reconnect -- is queued before the new connection's first message. A full
+queue is a gap too: `on_message_dropped(cb)` fires for each loss (or a warning logs) and one marker
+carries the count (`gap.reason` overflow, `gap.lost`). `cb_consumer` delivers the same marker through
+`on_message`; `on_gap(cb)` is told on both.
 
 ### Transactions (MULTI/EXEC)
 

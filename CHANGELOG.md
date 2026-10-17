@@ -9,6 +9,16 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **The consumers' side of the reconnect contract (Huly QB-126b, QB-1091).** `qb::redis::message` gains
+  `kind` (`message_kind::data` or `message_kind::gap`), `gap` (a `qb::io::gap_info`: `reason`, `lost`) and `is_gap()`;
+  both consumers gain `on_gap(cb)`, told each time a gap marker enters the stream. A consumer keeps the subscriptions the
+  SERVER confirmed (a confirmation frame adds or removes a name; a successful RESET forgets them all) and its handshake
+  replays them on every reconnection; ONE gap marker -- an empty channel, which a published message never has -- is
+  queued before the new connection's first message, and a message that arrives during the replay queues behind it. A
+  full `co_consumer` queue is a gap too: `on_message_dropped` still fires for each loss, and one coalesced marker carries
+  the count. Markers are always on. Pinned by `system/connection/co-consumer-lifecycle.cpp` (replay on the wire, marker
+  order, overflow count, the stream's end) and `reconnect-disconnected-callback.cpp` (the callback consumer's marker).
+
 - **The connector's side of the reconnect contract (Huly QB-126a, QB-1090; `qb/io/reconnect.h`).** Every client and
   consumer reports where it stands and why it went down in qb-io's vocabulary: `state()` (`idle`, `connecting`,
   `handshaking`, `ready`, `reconnecting`, `down`), `down_reason()` (`user`, `peer`, `protocol`, `retries_exhausted`,
@@ -54,6 +64,14 @@ All notable changes to the qbm-redis module are documented here. The format is b
   module from the superproject, refuses an awaiter without it.
 
 ### Changed
+
+- **Behaviour change -- a consumer's stream ends only when the consumer is down, and says where it has holes (Huly
+  QB-126b).** A `co_consumer` closed its queue on every lost connection, so `while (auto m = co_await receive())` ended
+  on a server restart even with a reconnection run armed, and the subscriptions were gone; the receive loop now stays
+  parked across a reconnection, the confirmed subscriptions are replayed, and `receive()` yields `std::nullopt` only once
+  the consumer is `down` (`disconnect()`, a loss with no run, a run that gave up) -- `down_reason()` says why. Both
+  consumers now deliver gap markers: a receive loop or an `on_message` callback must test `is_gap()` (or read an empty
+  channel) before using `channel`.
 
 - **Behaviour change -- an explicit `disconnect()` is terminal, and only a peer's loss is recovered (Huly QB-126a,
   QB-1090).** With a `RetryPolicy` armed, `disconnect()` used to start the reconnection run too -- the opposite of the
@@ -275,8 +293,9 @@ All notable changes to the qbm-redis module are documented here. The format is b
   parked after `disconnect()` and after a peer drop, ending only when the consumer was destroyed -- the README's
   shutdown pattern rests on it. And a queue, once closed, stayed closed. Now a disconnect closes the queue:
   `receive()` yields what was already received, then `std::nullopt` while the consumer stays disconnected; after a
-  reconnect it serves the new connection, starting with what was received and not yet read (subscriptions are not
-  replayed).
+  reconnect it serves the new connection, starting with what was received and not yet read. (Since QB-126b the queue
+  closes when the consumer goes down, a recoverable loss keeps it open, and the subscriptions are replayed: see
+  Changed.)
 - **A command whose arguments cannot be serialized leaves nothing behind (Huly QB-255).** `command()` queued the reply
   handler, then serialized the command, and an argument over 512 MiB (`REDIS_MAX_STRING_SIZE`) throws `SecurityError`
   halfway through the frame: the throw left an orphan handler at the tail of the reply FIFO and a partial RESP frame in
