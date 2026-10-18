@@ -27,15 +27,16 @@ llm/qbm-redis.llm.api.md	symbol:with_on_retry	A builder of `qb::io::reconnect_po
 # The one below is the content rule inferring a citation's subject from the nearest
 # backticked word where that word is not the subject.  The citation is correct.
 #
-# It used to be three.  The other two — the `redis.h` entry on line 242 for the connector class and
-# `types.h:336-336` for `struct score` — are gone because the citations they excused were
-# WIDENED to hold their own subject rather than baselined around it: the connector heading now
-# cites the class template through the state members the sentence lists (`_uri`,
-# `std::optional<RetryPolicy> _reconnect_policy`, the connection state, `_verify_peer`, the `_alive`
-# liveness token -- read the current span in llm/qbm-redis.llm.api.md), and the score row now
-# cites the span from `struct score` through `struct score_member`.
-# Note what the deleted rationales asserted: "`struct score` is types.h:336" and "`score_member`
-# is :348".  Both were one line low when they were written — 337 and 349 — so the prose that
-# justified the exception was itself mis-citing the header.  Nothing gates that prose; read it
+# It used to be three.  The other two -- the connector class and `struct score` -- are gone
+# because the citations they excused were WIDENED to hold their own subject rather than
+# baselined around it: the connector heading's citation runs from the class template through
+# the state members the sentence lists (`_uri`, `std::optional<RetryPolicy> _reconnect_policy`,
+# the connection state, `_verify_peer`, the `_alive` liveness token -- read the current span in
+# llm/qbm-redis.llm.api.md), and the score row's from `struct score` through `struct score_member`.
+# (The lines these notes once carried were true when written and drifted after: a note is not a
+# citation, so nothing moved it.)
+# Note what the deleted rationales asserted: they placed `struct score` and `score_member` each
+# one line low when they were written, so the prose that justified the exception was itself
+# mis-citing the header.  Nothing gates that prose; read it
 # against the source before trusting it, and re-derive it whenever an entry moves.
 llm/qbm-redis.llm.api.md	redis.h:1509-1509	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:1509. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.

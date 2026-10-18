@@ -176,6 +176,13 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **Scheduled tests and documentation checks select their intended inputs (Huly QB-558–560, QB-621).**
+  Nightly uses paired `develop` branches, doc-lint triggers on checker and workflow edits,
+  the pull request template points to the public superbuild recipe, and clang-tidy includes
+  module headers. The qbm-http and qbm-pgsql lanes had these since the same tickets; this
+  repository had been left out. clang-tidy 22 over the module's 53 translation units now shows
+  357 warnings in its own headers that the old filter hid, 353 of them one class (a forwarding
+  reference passed to `std::move`), tracked as Huly QB-1099.
 - **Typed replies accept RESP3 attributes at every generic decode level (Huly QB-136).** Decorated scalars,
   strings, optional values and container elements decode their underlying value; decorated errors preserve the
   server's message. `raw()` retains the complete original reply, and callbacks still complete once even if they
@@ -441,7 +448,7 @@ in lockstep with the qb framework; see the qb CHANGELOG for what makes that rele
   `cmake_minimum_required(VERSION 3.24)` and a guard that names the constraint and points at the
   superproject root and the `package` preset.
 
-- **`qbm/redis/redis.h:1631` broke any `-Werror` consumer**: `RedisCoroConsumer::on(disconnected &&e)`
+- **[`redis.h` L1631](https://github.com/isndev/qbm-redis/blob/cf80b8948ef7eb1aabc941a83bc32e90fbb3788e/src/qbm/redis/redis.h#L1631) broke any `-Werror` consumer**: `RedisCoroConsumer::on(disconnected &&e)`
   never used `e`, so a consumer building with `-Wall -Wextra -Werror` failed on
   `unused parameter 'e' [-Wunused-parameter]`. Nothing here saw it because CMake puts `-isystem` on an
   IMPORTED target, which silences every `-W*` inside the module's headers — for the one configuration
@@ -463,7 +470,7 @@ in lockstep with the qb framework; see the qb CHANGELOG for what makes that rele
   answers with an *integer count of connections killed* in every form this wrapper can send: called
   with no arguments it sends `SKIPME yes`, so the filter form — which is the integer-replying one —
   is the only form reachable. Typing it as `status` mis-decoded that reply. The coroutine overload
-  changed at `src/qbm/redis/commands/server_commands.h:163`
+  changed at [`server_commands.h` L162](https://github.com/isndev/qbm-redis/blob/72f58e74a219354270c3c7e632c48eb5e3050419/src/qbm/redis/commands/server_commands.h#L162)
   (`make_coro_command<status>` → `make_coro_command<long long>`) and the callback overload's SFINAE
   guard moved with it, so **an existing caller does not get a converted value — it gets no matching
   function, a hard compile error.** Migrate by changing the awaited/handled type:
