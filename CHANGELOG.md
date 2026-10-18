@@ -176,6 +176,14 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **Report callback failures while rejecting a malformed consumer reply (Huly QB-1099).**
+  The protocol-error fallback now logs both standard and non-standard callback exceptions
+  before reporting the original protocol error. The failed callback still runs once and the
+  next queued reply remains deliverable. Named-callback lifetime and move-only temporary
+  callback behavior are pinned on the live pipeline; no command-forwarding policy changes.
+  `AsyncResult<void>::error()` is documented to throw `std::bad_optional_access` on success;
+  check `has_error()` first.
+
 - **The reconnect tests assert what happened, not a state that may already be over (Huly QB-1090, with qb's
   QB-1103).** `RECONNECT_THEN_PING` killed the client from a second connection through `run_sync()`, then polled for
   `is_reconnecting() || !is_connected()`. A run's first attempt is immediate, and a RESP2 client with nothing to

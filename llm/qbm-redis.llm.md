@@ -135,7 +135,9 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
 - **`AsyncResult<std::string>` stores string success values.** Construct an error explicitly
   with `AsyncResult<T>::from_error(std::string)` (also on `void`); an empty message still
   means failure. Other supported payload types retain their existing constructors
-  (`server_reply.h:357-389`, `:435-450`).
+  (`server_reply.h:357-389`, `:435-450`). For `AsyncResult<void>`, `error()` throws
+  `std::bad_optional_access` on success; check `has_error()` before accessing its message
+  (`server_reply.h:456-467`).
 
 ### Time / units (critical boundary)
 
@@ -427,6 +429,10 @@ if (!r.ok()) {
   `redis.get("k", cb)`. Callback overloads are SFINAE-gated on
   `std::is_invocable_v<Func, Reply<T>&&>` — a wrong signature silently fails to
   match the overload rather than erroring at the call site.
+- **One-shot command callbacks preserve their value category.** A named callback passed as an
+  lvalue is borrowed and must outlive all its pending replies; its captures and mutable state remain
+  caller-owned. A temporary callback is owned by the pending reply and may hold move-only captures.
+  Auto-iterating scanners and retry wrappers have their own ownership contracts.
 - **Auto-iterating scanners and multi-key `hvals` are callback-only.** The
   no-cursor `sscan`/`zscan`/`hscan` and fan-out `hvals` buffer the whole result
   and fire once; **no coroutine form**, and a throwing callback is caught/logged,

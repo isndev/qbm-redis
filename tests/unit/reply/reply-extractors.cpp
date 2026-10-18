@@ -28,6 +28,7 @@
 #include <gtest/gtest.h>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -614,8 +615,9 @@ TEST(AsyncResult, ArrowOperator) {
 TEST(AsyncResult, VoidSuccessAndError) {
     qb::redis::AsyncResult<void> ok;
     EXPECT_TRUE(ok.is_ok());
-    EXPECT_FALSE(ok.has_error());       // void specialization has_error()
-    EXPECT_TRUE(static_cast<bool>(ok)); // operator bool() success path
+    EXPECT_FALSE(ok.has_error());                              // void specialization has_error()
+    EXPECT_TRUE(static_cast<bool>(ok));                        // operator bool() success path
+    EXPECT_THROW((void) ok.error(), std::bad_optional_access); // checked void error accessor on success
 
     qb::redis::AsyncResult<void> err(std::string("void error"));
     EXPECT_FALSE(err.is_ok());

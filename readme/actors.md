@@ -186,11 +186,11 @@ draining it, precisely so a failing handler that re-issues a command does not ge
 
 The coroutine consumer is the exception worth knowing. `receive()` does **not** return a `redis_awaiter`; it awaits a
 `qb::io::async::channel<message>` that the consumer fills from its RESP push frames.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3567-3570 (receive() → co_await _msg_channel->recv()) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3570-3573 (receive() → co_await _msg_channel->recv()) -->
 
 A channel `recv()` is still not cancellation-aware — `cancel()` does nothing to it — but it *is* woken by
 `close()`, and the consumer closes the channel in two places: when the consumer goes down, and in its own destructor.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3496-3498 (consumer_down_ → _msg_channel->close()), :3572-3574 (destructor closes it) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3499-3501 (consumer_down_ → _msg_channel->close()), :3575-3577 (destructor closes it) -->
 
 That makes `receive()` yield `std::nullopt` after buffered messages drain. If the actor can be reaped before a
 scheduled receiver resumes, keep the consumer in the coroutine frame and check actor-scope cancellation before
@@ -206,7 +206,7 @@ using actor state or forwarding a message.
 > `std::nullopt`, and `down_reason()` says why. A loss an armed run recovers from leaves the loop parked:
 > the confirmed subscriptions are replayed and one gap marker (`msg->is_gap()`) precedes the new
 > connection's first message.
-> <!-- src: qbm/redis/src/qbm/redis/redis.h:1389-1411 (disconnect()), :2978 (going down ends the stream), :3496-3498 (consumer_down_), :3508-3515 (the next lifecycle's queue) -->
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:1389-1411 (disconnect()), :2978 (going down ends the stream), :3499-3501 (consumer_down_), :3511-3518 (the next lifecycle's queue) -->
 > In the ordinary actor handler below, `disconnect()` closes the channel before it returns.
 > If called from this consumer's own message callback, teardown waits until that callback
 > returns; no nested loop pass runs. The parked loop resumes on a later scheduler pass.

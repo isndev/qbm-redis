@@ -457,6 +457,11 @@ public:
     has_error() const noexcept {
         return _error.has_value();
     }
+    /**
+     * @brief Return the stored failure message.
+     * @throws std::bad_optional_access if has_error() is false (a successful result).
+     * @note An empty stored message is still a failure; use has_error() to test for failure.
+     */
     [[nodiscard]] const std::string &
     error() const {
         return _error.value();

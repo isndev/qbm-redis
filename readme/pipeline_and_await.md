@@ -51,7 +51,7 @@ redis.get([&](qb::redis::Reply<std::optional<std::string>> &&r) { if (r.ok()) ++
 redis.await();  // polls the loop until all three callbacks have run; done == 3
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:80-107 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:81-108 -->
 
 ```mermaid
 sequenceDiagram
@@ -93,7 +93,7 @@ redis.await();
 // pending_reply_count() == 0 here
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:80-107 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:81-108 -->
 
 ### Pipelining cuts round trips
 
@@ -111,7 +111,7 @@ redis.await();
 // order == {1, 2, 3}
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:109-145 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:110-146 -->
 
 ### What `await()` does and does not do
 
@@ -140,12 +140,12 @@ while (redis.pending_reply_count() > 0)
     qb::io::async::run(EVRUN_NOWAIT);
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:340-357 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:389-406 -->
 
 ### `qb::redis::tcp::pipeline`
 
-`qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:4011`);
-the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:4019-4022`). It is a thin, optional
+`qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:4014`);
+the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:4022-4025`). It is a thin, optional
 wrapper that holds a reference to a `Redis` client and chains the low-level `command<Ret>(callback, name, args...)` (
 `redis.h:2287-2295`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
 
@@ -171,7 +171,7 @@ pipe
 pipe.flush();  // == client().await(); NOT Redis FLUSHDB/FLUSHALL
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:359-379 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:408-428 -->
 
 Mixing the named wrapper with the client's mixin methods is fine — they share one queue:
 
@@ -182,7 +182,7 @@ pipe.client().get([](qb::redis::Reply<std::optional<std::string>> &&r) { /* ... 
 pipe.flush();  // drains both
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:381-406 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:430-455 -->
 
 ---
 

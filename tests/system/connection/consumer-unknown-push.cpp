@@ -44,15 +44,21 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <initializer_list>
 #include <memory>
+#include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
+#include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/io/system/sys__socket.h>
+#include <qb/system/cpu.h>
 #include <qbm/redis/redis.h>
 
 using namespace qb::io;
@@ -89,6 +95,8 @@ run_until(Pred &&pred, std::chrono::milliseconds timeout = 2000ms) {
 /// The consumer under test with one SUBSCRIBE pending (the server side -- this test -- never
 /// confirms it), a message callback that counts, and a handler that records whether it was
 /// resolved. `sfd` is the accepted server end the frames are written into.
+enum class FailedReplyThrow { none, standard, non_standard };
+
 struct Harness {
     int                                          port = 0;
     socket_type                                  lfd  = qb::io::inet::invalid_socket;
@@ -98,9 +106,13 @@ struct Harness {
     int                                          handler_calls = 0;
     bool                                         handler_ok    = false;
     bool                                         throw_on_message{false};
+    FailedReplyThrow                             failed_reply_throw;
+    std::string                                  handler_error;
+    std::vector<std::string>                     protocol_errors;
 
-    explicit Harness(bool throw_messages = false)
-        : throw_on_message(throw_messages) {
+    explicit Harness(bool throw_messages = false, FailedReplyThrow failure = FailedReplyThrow::none)
+        : throw_on_message(throw_messages)
+        , failed_reply_throw(failure) {
         lfd      = open_loopback_listener(port);
         consumer = std::make_unique<qb::redis::tcp::cb_consumer>(qb::io::uri{"tcp://127.0.0.1:" + std::to_string(port)},
                                                                  [this](qb::redis::message &&) {
@@ -108,13 +120,24 @@ struct Harness {
                                                                      if (throw_on_message)
                                                                          throw std::runtime_error("intentional message callback failure");
                                                                  });
-        EXPECT_TRUE(qb::io::async::run_sync(consumer->connect())) << "the loopback listener completes the handshake";
+        consumer->on_error([this](qb::redis::error &&error) { protocol_errors.push_back(error.what); });
+        const bool connected = qb::io::async::run_sync(consumer->connect());
+        EXPECT_TRUE(connected) << "the loopback listener completes the handshake";
+        if (!connected)
+            return; // never block in accept() after a failed connection
         sfd = ::accept(lfd, nullptr, nullptr);
         EXPECT_NE(sfd, qb::io::inet::invalid_socket) << "the server end of the consumer's connection";
         consumer->subscribe(
             [this](qb::redis::Reply<qb::redis::subscription> &&r) {
                 ++handler_calls;
-                handler_ok = r.ok();
+                handler_ok    = r.ok();
+                handler_error = r.error();
+                if (!r.ok()) {
+                    if (failed_reply_throw == FailedReplyThrow::standard)
+                        throw std::runtime_error("QB1099_PROTOCOL_FAILURE_CALLBACK");
+                    if (failed_reply_throw == FailedReplyThrow::non_standard)
+                        throw 42;
+                }
             },
             "news");
         EXPECT_EQ(consumer->pending_reply_count(), 1u) << "the SUBSCRIBE handler must sit at the FIFO head";
@@ -216,3 +239,88 @@ TEST(ConsumerUnknownPush, ArrayReplyOfAnotherShapeStillResolvesTheHead) {
     EXPECT_EQ(h.handler_calls, 1) << "an array reply that is not a pub/sub kind belongs to the FIFO head";
     EXPECT_EQ(h.consumer->pending_reply_count(), 0u);
 }
+
+#ifdef QB_WITH_LOGGING
+// Reuse engine-io-smoke's real file-logger drain: init() replaces the logger,
+// whose destructor joins its writer and drains queued records before returning.
+TEST(ConsumerUnknownPush, ProtocolFailureCallbackWarningsAndQueueRecovery) {
+    qb::io::async::init();
+    for (const auto failure : {FailedReplyThrow::none, FailedReplyThrow::standard, FailedReplyThrow::non_standard}) {
+        SCOPED_TRACE(static_cast<int>(failure));
+        const auto dir =
+            std::filesystem::temp_directory_path() / (std::string("qbm-redis-protocol-warning-") + std::to_string(std::random_device{}()));
+        const auto      base            = dir / "capture";
+        bool            capture_active  = false;
+        bool            owned_directory = false;
+        const auto      cleanup         = qb::scope_guard([&] {
+            // This binary has no other logger setup. Restore the documented startup
+            // sink, closing the private file before removal on Windows as well.
+            if (capture_active)
+                qb::io::log::init("./qb", 512);
+            std::error_code ec;
+            if (owned_directory)
+                std::filesystem::remove_all(dir, ec);
+            EXPECT_FALSE(ec) << ec.message();
+        });
+        std::error_code ec;
+        owned_directory = std::filesystem::create_directory(dir, ec);
+        ASSERT_FALSE(ec) << ec.message();
+        ASSERT_TRUE(owned_directory) << "capture directory must be exclusively owned";
+        capture_active = true;
+        qb::io::log::init(base.string(), 1);
+        ASSERT_TRUE(nanolog::log_file_opened());
+        ASSERT_TRUE(nanolog::is_logged(qb::io::log::Level::WARN)); // startup INFO/DEBUG both admit WARN
+
+        {
+            // Declared before Harness so these captures outlive client teardown on an assertion failure.
+            int     recovery_calls = 0;
+            bool    recovery_ok    = false;
+            Harness h(false, failure);
+            ASSERT_NE(h.sfd, qb::io::inet::invalid_socket);
+            h.consumer->subscribe(
+                [&](qb::redis::Reply<qb::redis::subscription> &&reply) {
+                    ++recovery_calls;
+                    recovery_ok = reply.ok();
+                    ASSERT_TRUE(reply.ok()) << reply.error();
+                    ASSERT_TRUE(reply.result().channel);
+                    EXPECT_EQ(*reply.result().channel, "recovery");
+                },
+                "recovery");
+            ASSERT_EQ(h.consumer->pending_reply_count(), 2u);
+            const std::string confirmation = ">3\r\n$9\r\nsubscribe\r\n$8\r\nrecovery\r\n:1\r\n";
+            // The empty array reaches the protocol-error fallback. Its failed head
+            // callback may throw; the next confirmation and message must still run.
+            ASSERT_TRUE(h.serve("*0\r\n" + confirmation + kKnownMessage, 1));
+            EXPECT_EQ(h.handler_calls, 1);
+            EXPECT_FALSE(h.handler_ok);
+            EXPECT_EQ(h.handler_error, "disconnected"); // existing nullptr failure representation
+            EXPECT_EQ(h.protocol_errors, (std::vector<std::string>{"Invalid message format"}));
+            EXPECT_EQ(recovery_calls, 1);
+            EXPECT_TRUE(recovery_ok);
+            EXPECT_EQ(h.consumer->pending_reply_count(), 0u);
+            EXPECT_EQ(h.messages_seen, 1);
+        }
+
+        // Close + drain the capture through the existing logger API; no sleep/poll of a file.
+        qb::io::log::init("./qb", 512);
+        capture_active = false;
+        std::ifstream input(base.string() + ".1.log", std::ios::binary);
+        ASSERT_TRUE(input.is_open());
+        std::ostringstream bytes;
+        bytes << input.rdbuf();
+        const auto content = bytes.str();
+        const auto count   = [&](const std::string &needle) {
+            std::size_t total = 0;
+            for (std::size_t pos = 0; (pos = content.find(needle, pos)) != std::string::npos; pos += needle.size())
+                ++total;
+            return total;
+        };
+        EXPECT_EQ(count("[qbm][redis] parse error: Invalid message format"), 1u) << content;
+        const auto std_warning =
+            count("[qbm][redis] consumer callback error while reporting a protocol error: QB1099_PROTOCOL_FAILURE_CALLBACK");
+        const auto nonstd_warning = count("[qbm][redis] consumer callback threw a non-std exception while reporting a protocol error");
+        EXPECT_EQ(std_warning, failure == FailedReplyThrow::standard ? 1u : 0u) << content;
+        EXPECT_EQ(nonstd_warning, failure == FailedReplyThrow::non_standard ? 1u : 0u) << content;
+    }
+}
+#endif // QB_WITH_LOGGING

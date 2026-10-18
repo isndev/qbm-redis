@@ -3142,7 +3142,10 @@ private:
                 _replies.pop();
                 try {
                     (*handler)(nullptr); // Completes awaitable with error
+                } catch (const std::exception &ex) {
+                    QB_LOG_WARN("[qbm][redis] consumer callback error while reporting a protocol error: " << ex.what());
                 } catch (...) {
+                    QB_LOG_WARN("[qbm][redis] consumer callback threw a non-std exception while reporting a protocol error");
                 }
             }
             on(qb::redis::error{e.what(), nullptr});

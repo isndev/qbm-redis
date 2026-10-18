@@ -150,7 +150,9 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
 - **`AsyncResult<std::string>` stores string success values.** Construct an error explicitly
   with `AsyncResult<T>::from_error(std::string)` (also on `void`); an empty message still
   means failure. Other supported payload types retain their existing constructors
-  (`server_reply.h:357-389`, `:435-450`).
+  (`server_reply.h:357-389`, `:435-450`). For `AsyncResult<void>`, `error()` throws
+  `std::bad_optional_access` on success; check `has_error()` before accessing its message
+  (`server_reply.h:456-467`).
 
 ### Time / units (critical boundary)
 
@@ -442,6 +444,10 @@ if (!r.ok()) {
   `redis.get("k", cb)`. Callback overloads are SFINAE-gated on
   `std::is_invocable_v<Func, Reply<T>&&>` — a wrong signature silently fails to
   match the overload rather than erroring at the call site.
+- **One-shot command callbacks preserve their value category.** A named callback passed as an
+  lvalue is borrowed and must outlive all its pending replies; its captures and mutable state remain
+  caller-owned. A temporary callback is owned by the pending reply and may hold move-only captures.
+  Auto-iterating scanners and retry wrappers have their own ownership contracts.
 - **Auto-iterating scanners and multi-key `hvals` are callback-only.** The
   no-cursor `sscan`/`zscan`/`hscan` and fan-out `hvals` buffer the whole result
   and fire once; **no coroutine form**, and a throwing callback is caught/logged,
@@ -629,7 +635,7 @@ auto pol = RetryPolicy{}.with_max_attempts(5).with_initial_delay(200ms).with_max
 ```
 
 ### Transport aliases — `qb::redis::tcp`
-`redis.h:4008` · `struct`. Plaintext-TCP aliases the build always provides:
+`redis.h:4011` · `struct`. Plaintext-TCP aliases the build always provides:
 
 ```cpp
 qb::redis::tcp::client       // detail::Redis<qb::io::transport::tcp>
@@ -638,17 +644,17 @@ qb::redis::tcp::cb_consumer  // detail::RedisCallbackConsumer<...>
 qb::redis::tcp::co_consumer  // detail::RedisCoroConsumer<...>
 template<class D> tcp::consumer = detail::RedisConsumer<..., D>;
 ```
-`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:4020`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
+`qb::redis::tcp::ssl::{client,pipeline,cb_consumer,co_consumer}` (`redis.h:4023`) — TLS variants, compiled **ONLY** when `QB_HAS_SSL` is defined (OpenSSL found). The whole `ssl` struct is `#ifdef`-gated; on a TCP-only build these names do not exist.
 
-`qb::redis::database<QB_IO_>` (`redis.h:4002`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
-`qb::redis::no_check` (`redis.h:4033`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
+`qb::redis::database<QB_IO_>` (`redis.h:4005`) · `alias template` = `detail::Redis<QB_IO_>`. Default-transport client alias.
+`qb::redis::no_check` (`redis.h:4036`) · `inline constexpr auto no_check = [](auto&&){}` — no-op reply callback for fire-and-forget commands.
 
 ### Pipelining & consumers
 - `qb::redis::detail::RedisPipeline<QB_IO_>` (`redis.h:2556`) — callback-pipelining wrapper around a `Redis&`: chains `command<Ret>(cb,name,args...)` and `flush()` (== `client().await()`). `flush()` is **unrelated** to FLUSHDB/FLUSHALL.
 - `qb::redis::detail::RedisConsumer<QB_IO_,Derived>` (`redis.h:2612`) — pub/sub consumer base (CRTP); tracks `(P)SUBSCRIBE/(P)UNSUBSCRIBE` confirmation counts; routes message/pmessage out-of-band; `await()` / `pending_reply_count()` like `Redis`. Keeps the subscriptions the server CONFIRMED (a successful RESET forgets them) and replays them in the handshake of every reconnection; marks the hole with ONE gap marker before the new connection's first message. `on_gap(std::function<void(qb::io::gap_info const&)>)` → `Derived&`: told each time a marker enters the stream.
-- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:3308`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook; `on_message` also receives the gap marker (`msg.is_gap()`). Ctor: `uri` + optional callbacks.
-- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:3426`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` fires for each message a full queue drops, and one coalesced gap marker carries the count (`gap.reason` overflow, `gap.lost`); `message_channel_capacity()` reports capacity.
-  - `receive()` (`redis.h:3568`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next item; suspends until one arrives. An item is a message or a gap marker (`is_gap()`). `nullopt` only once the consumer is DOWN and what it queued is read (`down_reason()` says why); a loss an armed run recovers from keeps the stream open.
+- `qb::redis::detail::RedisCallbackConsumer<QB_IO_>` (`redis.h:3311`) — set `on_message()` / `on_error()` / `on_disconnected()` (each returns `*this`) before subscribing; `on_disconnected` is the connector's `void(qb::io::down_reason)` hook; `on_message` also receives the gap marker (`msg.is_gap()`). Ctor: `uri` + optional callbacks.
+- `qb::redis::detail::RedisCoroConsumer<QB_IO_>` (`redis.h:3429`) — coroutine consumer; internal `qb::io::async::channel` buffers `DEFAULT_MSG_CAPACITY=8192`; `on_message_dropped()` fires for each message a full queue drops, and one coalesced gap marker carries the count (`gap.reason` overflow, `gap.lost`); `message_channel_capacity()` reports capacity.
+  - `receive()` (`redis.h:3571`): `auto receive() -> qb::io::async::task<std::optional<qb::redis::message>>` — pull next item; suspends until one arrives. An item is a message or a gap marker (`is_gap()`). `nullopt` only once the consumer is DOWN and what it queued is read (`down_reason()` says why); a loss an armed run recovers from keeps the stream open.
 
 ```cpp
 auto m = co_await consumer.receive(); if (!m) co_return;  // down: consumer.down_reason() says why
@@ -668,7 +674,7 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 - `struct qb::redis::stats` (`stats.h:562-573`) — `commands`, `errors` (of them, not ok), `failed` (of the errors, no answer), `held`, `std::array<std::uint64_t, 21> by_family`, `reconnects` (ready connections reached after a lost one; `disconnect()` ends the session), `gaps`, `messages_received`, `messages_dropped`. On a client every command is counted once, when it completes: `commands` equals the callbacks called.
 
 ### Per-command retry — `Redis::retrying()` (Huly QB-133)
-`qb::redis::command_retry` (`redis.h:247-257`) · `struct { qb::io::reconnect_policy backoff /* 3 attempts, 50 ms then 100 ms */; bool idempotent_writes = false; }`. `redis.retrying(retry)` returns `qb::redis::detail::RetryingClient<Redis<QB_IO_>>` (`redis.h:3811`), a view of the client: each command through it is retried when its verb is read-only (`command_traits_of(verb).read_only`), or an idempotent write with `idempotent_writes` on, AND it failed with no answer ("disconnected", "command timed out") while the client can still carry it (ready or reconnecting -- a retry during a run is held behind the handshake), or the server answered LOADING, BUSY, TRYAGAIN or MASTERDOWN (the first word: BUSYGROUP is not BUSY). **Never retried**: non-idempotent writes (INCR and DECR families, APPEND, list pushes, pops and moves, SPOP, XADD, a relative EXPIRE, PUBLISH, EVAL, FCALL, ...), SET with NX, XX or GET, ZADD with INCR, blocking commands, anything inside MULTI, and anything on a client that is down or idle. Attempts and waits are `backoff`'s (the first attempt included; `on_retry` told before each wait); every re-issue counts in `stats().retries`. The callback or awaiter sees one outcome, the last, unchanged -- no exception (not `qb::io::async::with_retry`, which throws `retry_exhausted` and loses the last `Reply`). A command the view retries is serialized once, at submission; an ineligible one passes through. The view holds a pointer and the client's liveness token: it must not outlive the client (asserted in debug); a retry pending when the client is destroyed is dropped, never called.
+`qb::redis::command_retry` (`redis.h:247-257`) · `struct { qb::io::reconnect_policy backoff /* 3 attempts, 50 ms then 100 ms */; bool idempotent_writes = false; }`. `redis.retrying(retry)` returns `qb::redis::detail::RetryingClient<Redis<QB_IO_>>` (`redis.h:3814`), a view of the client: each command through it is retried when its verb is read-only (`command_traits_of(verb).read_only`), or an idempotent write with `idempotent_writes` on, AND it failed with no answer ("disconnected", "command timed out") while the client can still carry it (ready or reconnecting -- a retry during a run is held behind the handshake), or the server answered LOADING, BUSY, TRYAGAIN or MASTERDOWN (the first word: BUSYGROUP is not BUSY). **Never retried**: non-idempotent writes (INCR and DECR families, APPEND, list pushes, pops and moves, SPOP, XADD, a relative EXPIRE, PUBLISH, EVAL, FCALL, ...), SET with NX, XX or GET, ZADD with INCR, blocking commands, anything inside MULTI, and anything on a client that is down or idle. Attempts and waits are `backoff`'s (the first attempt included; `on_retry` told before each wait); every re-issue counts in `stats().retries`. The callback or awaiter sees one outcome, the last, unchanged -- no exception (not `qb::io::async::with_retry`, which throws `retry_exhausted` and loses the last `Reply`). A command the view retries is serialized once, at submission; an ineligible one passes through. The view holds a pointer and the client's liveness token: it must not outlive the client (asserted in debug); a retry pending when the client is destroyed is dropped, never called.
 
 ## Connection commands — `connection_commands<Derived>`
 `connection_commands.h:34`. HELLO/AUTH/ECHO/PING/QUIT/SELECT/SWAPDB/RESET.
@@ -1133,8 +1139,10 @@ All derive from `qb::redis::Error : std::exception` (`reply.h:65`; `what()` vali
   `explicit AsyncResult(T&&)` constructs a value. For exact `T=std::string`, a string means success;
   use `[[nodiscard]] static AsyncResult from_error(std::string error)` for failure (`server_reply.h:387`, `:448`).
   The factory also accepts an empty error string. Other supported payload types retain the existing
-  `explicit AsyncResult(std::string&&)` error constructor; `AsyncResult<void>{}` succeeds.
-- `extract_string` / `extract_integer` / `extract_string_array` / `extract_string_map` (`server_reply.h:288-335`), `extract_stream_id` / `extract_score_member` (`server_reply.h:483, :509`) — caller-side templates return `qb::expected` (no exceptions). An address of a helper needs a specialization, e.g. `&extract_integer<>`.
+  `explicit AsyncResult(std::string&&)` error constructor; `AsyncResult<void>{}` succeeds. For `AsyncResult<void>`,
+  `error() const` returns the stored failure message and throws `std::bad_optional_access` on success.
+  Check `has_error()` first; an empty stored message still means failure.
+- `extract_string` / `extract_integer` / `extract_string_array` / `extract_string_map` (`server_reply.h:288-335`), `extract_stream_id` / `extract_score_member` (`server_reply.h:488, :514`) — caller-side templates return `qb::expected` (no exceptions). An address of a helper needs a specialization, e.g. `&extract_integer<>`.
 - Compiled `detail::extract_string_value` through `detail::extract_score_member_value` (`server_reply.h:272-278`) exchange values/errors through references, so C++20 and C++23 may mix.
 
 ---

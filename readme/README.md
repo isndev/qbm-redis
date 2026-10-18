@@ -81,7 +81,7 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
 ## TLS and time
 
 - **TLS** — there is no redis-specific SSL option. Transport security follows the framework-wide `QB_HAS_SSL` (derived
-  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:4019-4025`); with it
+  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:4022-4028`); with it
   off, the build emits a status note and only cleartext TCP is available. For `rediss://`, certificate and hostname
   verification is on by default; `set_verify_peer(false)` disables it and must be set before `connect()`.
 - **Time — framework side.** Connect and command timeouts and the `RetryPolicy` delays are `qb::duration`. Defaults:
@@ -192,7 +192,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 
 - **Auto-reconnect does not replay work.** On disconnect, all pending replies fail and predicted subscription state is
   cleared. After a reconnect you must re-issue any in-flight commands yourself; the configured handshake and a consumer's
-  confirmed subscriptions are what is replayed (`redis.h:2025-2064,3225-3226,3228-3240`).
+  confirmed subscriptions are what is replayed (`redis.h:2025-2064,3228-3229,3231-3243`).
 - **`set_command_timeout` drops the connection.** It is a health watchdog, not a per-command deadline: because FIFO
   pipelining cannot fail one mid-queue command without desyncing later replies, tripping the deadline disconnects and
   fails every pending command (`redis.h:1921-1937,1872-1906`).
@@ -222,7 +222,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 
 The integration tests under [`../tests/`](../tests/) are executable documentation and run in both RESP2 and RESP3 modes.
 When a signature or behavior is unclear, grep a test and read it — for example `integration/connection/pipeline.cpp` drives `connect` /
-`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:355-356`).
+`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:404-405`).
 
 ## See also
 

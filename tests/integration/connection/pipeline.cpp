@@ -21,6 +21,7 @@
 #include <atomic>
 #include <chrono>
 #include <gtest/gtest.h>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -142,6 +143,54 @@ TEST_F(PipelineCallbackTest, CallbacksRunInSendOrder) {
 
     redis.await();
     EXPECT_EQ(order, (std::vector<int>{1, 2, 3}));
+}
+
+// A named callback is borrowed by ordinary command submission. It stays alive
+// until await() has dispatched both replies; its captures and mutable state are
+// the caller's original state throughout that interval.
+TEST_F(PipelineCallbackTest, NamedCallbackKeepsItsStateAcrossQueuedCommands) {
+    std::vector<std::string> replies;
+    std::vector<std::string> captures;
+    std::vector<unsigned>    invocations;
+    auto                     callback = [token = std::make_shared<std::string>("named-callback-state"), calls = 0u, &replies, &captures,
+                                         &invocations](qb::redis::Reply<std::string> &&reply) mutable {
+        EXPECT_TRUE(reply.ok()) << reply.error();
+        replies.push_back(reply.result());
+        captures.push_back(token ? *token : "moved-from");
+        invocations.push_back(++calls);
+    };
+
+    redis.ping(callback, "first");
+    redis.ping(callback, "second");
+    EXPECT_EQ(redis.pending_reply_count(), 2u);
+    EXPECT_TRUE(replies.empty()) << "completion must cross the actual asynchronous reply queue";
+
+    redis.await();
+
+    EXPECT_EQ(replies, (std::vector<std::string>{"first", "second"}));
+    EXPECT_EQ(captures, (std::vector<std::string>{"named-callback-state", "named-callback-state"}));
+    EXPECT_EQ(invocations, (std::vector<unsigned>{1u, 2u})) << "the named callback remains caller-owned";
+    EXPECT_EQ(redis.pending_reply_count(), 0u);
+}
+
+TEST_F(PipelineCallbackTest, RvalueMoveOnlyCallbackSurvivesQueuedSubmission) {
+    unsigned calls = 0;
+    redis.ping(
+        [token = std::make_unique<std::string>("owned-callback-state"), &calls](qb::redis::Reply<std::string> &&reply) {
+            ++calls;
+            ASSERT_TRUE(token);
+            EXPECT_EQ(*token, "owned-callback-state");
+            EXPECT_TRUE(reply.ok()) << reply.error();
+            EXPECT_EQ(reply.result(), "rvalue");
+        },
+        "rvalue");
+    EXPECT_EQ(calls, 0u);
+    EXPECT_EQ(redis.pending_reply_count(), 1u);
+
+    redis.await();
+
+    EXPECT_EQ(calls, 1u);
+    EXPECT_EQ(redis.pending_reply_count(), 0u);
 }
 
 // A reply callback that throws a non-std exception must not cross the noexcept onMessage()

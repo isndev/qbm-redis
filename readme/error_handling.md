@@ -259,6 +259,9 @@ The protocol's `onMessage(std::size_t)` runs under the libev C callback and is d
    `redis.h:2017-2021`).
 3. The disconnect drain (`on(disconnected&&)`) catches both `const std::exception&` and `...`, because a failing
    callback may legitimately re-issue a command and that nested call could throw (`redis.h:2033-2061`).
+4. The consumer's protocol-error fallback also catches and logs both exception kinds when completing
+   its failed head callback. It then reports the original protocol error; later queued replies remain
+   deliverable. This logging is compiled out when logging support is disabled (`redis.h:3139-3153`).
 
 The contract for *your* callbacks: a throw will not crash the process, but it will cause that reply to be dropped with
 only a log line. Handle your own errors inside the callback; do not rely on the backstop as control flow.
@@ -339,7 +342,7 @@ decoders. It does not interact with the client `Reply<T>` flow, but it shares th
   `as_double`, `as_bool`, `as_array`, `as_map`, `as_set`) plus `is_null()` / `is_error()` / `get_error_message()`. A
   type mismatch is `std::nullopt`, never a throw (`server_reply.h:104-261`).
 - The free `extract_*` helpers return `qb::expected<T, std::string>` — a value or an error message, with
-  `unexpected("not a string")`-style diagnostics (`server_reply.h:288-342,483-515`). The compiled Redis functions
+  `unexpected("not a string")`-style diagnostics (`server_reply.h:288-342,488-520`). The compiled Redis functions
   pass values and errors through output references; each caller constructs its own `qb::expected`. This permits a
   C++20 archive with a C++23 consumer, and the reverse. In C++23 `qb::expected` remains an alias of
   `std::expected` when the standard library provides it; in C++20 it uses qb's fallback. Direct calls keep their
@@ -349,6 +352,8 @@ decoders. It does not interact with the client `Reply<T>` flow, but it shares th
   `AsyncResult<T>::from_error(std::string)` to construct an error explicitly. The factory is also available on
   `AsyncResult<void>` and an empty error message still means failure (`server_reply.h:386-389`, `:447-450`).
   Other supported payload types retain their existing string error constructor; the default `void` result succeeds.
+  For `AsyncResult<void>`, check `has_error()` before calling `error()`: the accessor throws
+  `std::bad_optional_access` on a successful result. An empty stored error message remains a failure.
 
 Reach for these when you decode a `reply.raw()` by hand and want an optional/`expected` result instead of the typed
 `parse<T>` path that throws-then-catches.
@@ -475,7 +480,7 @@ The view is a pointer to the client, its liveness token and the policy: make it 
 past the client (a debug build asserts it). A retry still waiting when the client is destroyed is dropped, never
 called -- as the client's own pending replies are.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:247-257 (command_retry), :2505-2508 (retrying), :3726-3799 (what is retried), :3811-3992 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:247-257 (command_retry), :2505-2508 (retrying), :3729-3802 (what is retried), :3814-3995 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
 
 ---
 

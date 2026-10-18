@@ -271,7 +271,7 @@ redis.await();   // drains all three on the current loop
 
 See [readme/pipeline_and_await.md](./readme/pipeline_and_await.md). `RedisPipeline::flush()` is unrelated to the
 `FLUSHDB`/`FLUSHALL` commands.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2287-2307 (command, by name or resolved), qbm/redis/src/qbm/redis/redis.h:2206-2232 (submit_: serialized, then the handler queued -- before any byte leaves), qbm/redis/src/qbm/redis/redis.h:2363-2371 (coroutine command), qbm/redis/src/qbm/redis/redis.h:2586-2590 (RedisPipeline::flush calls await, not FLUSHDB), tests/integration/connection/pipeline.cpp:376 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2287-2307 (command, by name or resolved), qbm/redis/src/qbm/redis/redis.h:2206-2232 (submit_: serialized, then the handler queued -- before any byte leaves), qbm/redis/src/qbm/redis/redis.h:2363-2371 (coroutine command), qbm/redis/src/qbm/redis/redis.h:2586-2590 (RedisPipeline::flush calls await, not FLUSHDB), tests/integration/connection/pipeline.cpp:425 -->
 
 ---
 
@@ -335,7 +335,7 @@ qb::io::async::task<void> chat() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2612-2615 (consumer base), qbm/redis/src/qbm/redis/redis.h:3368-3379 (cb_consumer constructor), subscription_commands.h:63/207, publish_commands.h:58 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2612-2615 (consumer base), qbm/redis/src/qbm/redis/redis.h:3371-3382 (cb_consumer constructor), subscription_commands.h:63/207, publish_commands.h:58 -->
 
 Prefer to receive sequentially? Use `co_consumer` and `co_await receive()`, which yields `std::nullopt` once the
 consumer is down (`down_reason()` says why) and, across a reconnection, one gap marker (`msg->is_gap()`) where the stream
@@ -358,7 +358,7 @@ qb::io::async::task<void> notifications() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3568-3570 (RedisCoroConsumer::receive), qbm/redis/src/qbm/redis/redis.h:3496-3498 (going down closes the channel), qbm/redis/src/qbm/redis/redis.h:3508-3515 (the next lifecycle's queue) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3571-3573 (RedisCoroConsumer::receive), qbm/redis/src/qbm/redis/redis.h:3499-3501 (going down closes the channel), qbm/redis/src/qbm/redis/redis.h:3511-3518 (the next lifecycle's queue) -->
 
 ---
 
@@ -479,7 +479,7 @@ Two build-time conditions are worth knowing:
   TCP-only — the `#ifdef QB_HAS_SSL` block in `redis.h` is excluded, and CMake prints an informational message rather
   than failing.
 
-<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:4019-4030 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
+<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:4022-4033 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
 
 A module **cannot be configured standalone**: it calls `qb_register_module()` and `qb_add_test()`, development-time
 helpers an installed qb does not ship. The repository's own CI configures `.github/ci/superbuild/CMakeLists.txt`, a
@@ -553,7 +553,7 @@ arguments keep native units by design** and are exposed through `std::chrono`-un
 The consumers carry the connection and subscription commands (`connect`, `hello`, `subscribe`, `psubscribe`,
 `unsubscribe`), but not the data or `publish` commands — publish from a `tcp::client`. The full `tcp::client` does not
 subscribe; that surface belongs to the consumers.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:4002-4031 (aliases), qbm/redis/src/qbm/redis/redis.h:2612-2615 (consumer mixins), qbm/redis/src/qbm/redis/redis.h:1509-1529 (client mixins) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:4005-4034 (aliases), qbm/redis/src/qbm/redis/redis.h:2612-2615 (consumer mixins), qbm/redis/src/qbm/redis/redis.h:1509-1529 (client mixins) -->
 
 ---
 
