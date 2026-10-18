@@ -452,11 +452,18 @@ client.enable_auto_reconnect(qb::redis::RetryPolicy{}
 // is true again once an attempt's handshake ran. A command submitted meanwhile is held.
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:196-217 -->
+<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:198-219 -->
 
 `is_reconnecting()` is `true` for the lifetime of the run; `is_connected()` flips back to `true` when an attempt's
 handshake ran. A run that spends its `max_attempts` leaves the client `down` with `retries_exhausted`. The run uses the
 same I/O loop — there is no extra thread.
+
+A run's first attempt is immediate -- `initial_delay` is the wait before the second -- so a run can be over a loop pass
+or two after the loss: a client with nothing to handshake (no `with_resp3()`, `with_auth()`, `with_select()`,
+`set_handshake()` hook or subscription to replay) is ready again as soon as the transport reconnects. Observe a run
+through `on_disconnected` and `on_connected`, or `stats().reconnects`, never by polling `is_reconnecting()` after the
+fact: a poll sees where the client stands when it looks, not what happened before it.
+<!-- src: qb/src/qb/io/reconnect.h:218-228 -->
 
 `state()` and `down_reason()` say where the client stands at any moment, and three hooks report the transitions, each
 empty until set and read only on those transitions: `on_connected()` each time the client becomes ready,

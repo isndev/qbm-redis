@@ -46,7 +46,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <gtest/gtest.h>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -326,22 +328,52 @@ TEST_P(ReconnectProtocolModesTest, COMMANDS_FAIL_GRACEFULLY_ON_DISCONNECT) {
 }
 
 // ============================================================================
-// 6. Reconnect on the shared fixture client, then PING works: a killed connection comes back with its
-//    handshake, and a command submitted meanwhile waits for it instead of failing.
+// 6. On the shared fixture client, a command submitted while the run is in progress is held, then answered
+//    once the killed connection is back with its handshake. It is submitted from on_disconnected, where the
+//    client reads `reconnecting` by contract: the run's first attempt is immediate, so a RESP2 client with
+//    nothing to handshake is ready again a loop pass or two after the loss -- before run_sync() has seen the
+//    kill's own reply. A poll for is_reconnecting() after the kill found that run already over (Huly QB-1090,
+//    with QB-1103's prompt pump): the hooks and the counters say what happened, the state only where it is.
 // ============================================================================
 TEST_P(ReconnectProtocolModesTest, RECONNECT_THEN_PING) {
+    struct observed {
+        int                                     lost      = 0;
+        int                                     connected = 0;
+        std::optional<qb::io::connection_state> state_at_loss;
+        std::uint64_t                           held_at_loss = 0;
+        std::optional<bool>                     ping_ok;
+        std::string                             ping;
+    };
+    // Shared with the hooks and the PING's callback, which may still run if an assertion below returns early.
+    const auto seen = std::make_shared<observed>();
     redis.with_resp3(GetParam() == ProtocolMode::RESP3); // the next handshake applies it
     redis.enable_auto_reconnect(
         qb::redis::RetryPolicy{}.with_initial_delay(50ms).with_max_delay(200ms).with_connect_timeout(2s).with_jitter(false));
+    redis.on_connected([seen] { ++seen->connected; });
+    redis.on_disconnected([this, seen](qb::io::down_reason) {
+        ++seen->lost;
+        seen->state_at_loss = redis.state();
+        seen->held_at_loss  = redis.stats().held;
+        redis.ping([seen](qb::redis::Reply<std::string> &&reply) {
+            seen->ping_ok = reply.ok();
+            seen->ping    = reply.ok() ? reply.result() : reply.error();
+        });
+    });
     const auto id = qb::io::async::run_sync(redis.client_id());
     ASSERT_TRUE(id.ok()) << id.error();
+    const auto before = redis.stats();
     ASSERT_TRUE(qb::io::async::run_sync(kill_from_outside(id.result())));
-    ASSERT_TRUE(run_until([&] { return redis.is_reconnecting() || !redis.is_connected(); }, 2000ms)) << "the client never saw the kill";
+    ASSERT_TRUE(run_until([&] { return seen->ping_ok.has_value(); }, 5000ms))
+        << "the PING submitted at the loss was never answered (losses seen: " << seen->lost << ")";
 
-    // Submitted while the run is in progress: held, then sent once the client is ready again.
-    auto r = qb::io::async::run_sync(redis.ping());
-    EXPECT_TRUE(r.ok()) << r.error();
-    EXPECT_EQ(r.result(), "PONG");
+    EXPECT_EQ(seen->lost, 1) << "the client sees the kill, once";
+    EXPECT_EQ(qb::io::connection_state_name(seen->state_at_loss.value_or(qb::io::connection_state::idle)), "reconnecting")
+        << "a policy is armed: the loss starts a run";
+    EXPECT_EQ(redis.stats().held, seen->held_at_loss + 1) << "submitted while the run is in progress: held";
+    EXPECT_TRUE(*seen->ping_ok) << seen->ping;
+    EXPECT_EQ(seen->ping, "PONG");
+    EXPECT_EQ(seen->connected, 1) << "one reconnection";
+    EXPECT_EQ(redis.stats().reconnects, before.reconnects + 1);
     EXPECT_TRUE(redis.is_connected());
 }
 

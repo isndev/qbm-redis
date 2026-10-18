@@ -176,6 +176,17 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **The reconnect tests assert what happened, not a state that may already be over (Huly QB-1090, with qb's
+  QB-1103).** `RECONNECT_THEN_PING` killed the client from a second connection through `run_sync()`, then polled for
+  `is_reconnecting() || !is_connected()`. A run's first attempt is immediate, and a RESP2 client with nothing to
+  handshake is ready again a loop pass or two after the loss: once qb's `run_sync()` parked in the backend instead of
+  sleeping 1 ms, the client was usually back before the poll began, and the RESP2 case failed 438 runs in 500 (WSL2,
+  g++-14 release, a live Redis 8.0.2) while the hooks and `stats()` recorded the loss, one reconnection and a PING
+  answered. The PING is now submitted from `on_disconnected`, where the client reads `reconnecting`, and the case
+  asserts it was held, then answered after exactly one counted reconnection, in both protocols.
+  `system/connection/reconnect-carries-nothing.cpp` waited on `is_reconnecting() || is_connected()`, already true
+  before the client read the drop, so its pending-reply check counted the command still in flight; it now waits for
+  that command's failure. `readme/connection.md` says to observe a run through its hooks or `stats().reconnects`.
 - **Scheduled tests and documentation checks select their intended inputs (Huly QB-558–560, QB-621).**
   Nightly uses paired `develop` branches, doc-lint triggers on checker and workflow edits,
   the pull request template points to the public superbuild recipe, and clang-tidy includes

@@ -200,10 +200,12 @@ TEST(RedisReconnectCarriesNothing, ACommandAFailingCallbackReissuesLeavesWithThe
     ASSERT_TRUE(qb::io::async::run_sync(client.connect()));
     auto first = server.accept_one();
 
+    int         stale_calls = 0;
     int         fresh_calls = 0;
     std::string fresh_reply;
     client.command<std::string>(
         [&](qb::redis::Reply<std::string> &&r) {
+            ++stale_calls;
             EXPECT_FALSE(r.ok()) << "the command in flight on the dropped link fails";
             client.command<std::string>(
                 [&](qb::redis::Reply<std::string> &&r2) {
@@ -219,8 +221,11 @@ TEST(RedisReconnectCarriesNothing, ACommandAFailingCallbackReissuesLeavesWithThe
     server.listener.set_nonblocking(true); // the second accept is polled while the client's loop runs
     first.disconnect();                    // the peer drops: a loss the armed run recovers from
 
-    ASSERT_TRUE(run_until([&] { return client.is_reconnecting() || client.is_connected(); }));
+    // Wait for the loss itself -- the failure of the command that was in flight -- not for a state: the client is
+    // still is_connected() until it reads the drop, and a check made then counts the stale command, not the re-issue.
+    ASSERT_TRUE(run_until([&] { return stale_calls == 1; })) << "the drop never failed the command in flight";
     EXPECT_EQ(client.pending_reply_count(), 1u) << "only the re-issued command may be waiting, held";
+    EXPECT_EQ(client.stats().held, 1u) << "the re-issued command was held for the next connection";
     qb::io::tcp::socket second;
     bool                accepted = false; // run_until re-evaluates its predicate: accept once, then remember it
     ASSERT_TRUE(run_until([&] { return accepted || (accepted = server.listener.accept(second) == qb::io::SocketStatus::Done); }));
