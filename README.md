@@ -254,7 +254,7 @@ You never block the qb-io thread. Reach completion one of three ways:
 is yours; inside an actor it is the `VirtualCore`, and every other actor on it stops with you — silently, because
 nothing in the framework diagnoses it.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2396-2400 (await), qb/src/qb/io/async/coroutine/utils.h:285 (run_sync) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2396-2400 (await), qb/src/qb/io/async/coroutine/utils.h:293 (run_sync) -->
 
 ### Pipelining
 
@@ -305,7 +305,7 @@ int main() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1116 (connect), string_commands.h:156/528, key_commands.h:139, qb/src/qb/io/async/coroutine/utils.h:285 (run_sync) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1116 (connect), string_commands.h:156/528, key_commands.h:139, qb/src/qb/io/async/coroutine/utils.h:293 (run_sync) -->
 
 Inside a coroutine you `co_await` directly. Pub/sub uses a dedicated consumer plus a separate client to publish, because
 the publishing command lives only on the full client:

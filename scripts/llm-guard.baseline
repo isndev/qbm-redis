@@ -19,7 +19,7 @@
 
 llm/qbm-redis.llm.api.md	symbol:qb_load_modules	qb's own CMake function, defined in qb/cmake/qbFunctions.cmake (and re-exported by qb/cmake/qbConfig.cmake).
 llm/qbm-redis.llm.md	symbol:init	`qb::io::async::init()` — qb-io's per-thread loop initialiser, qb/src/qb/io/async/listener.h:1534. The sentence names it as the thing to call once from synchronous code.
-llm/qbm-redis.llm.md	symbol:run_sync	`qb::io::async::run_sync(...)` — qb-io's synchronous pump, qb/src/qb/io/async/coroutine/utils.h:285. Named in the same sentence, for the same reason.
+llm/qbm-redis.llm.md	symbol:run_sync	`qb::io::async::run_sync(...)` — qb-io's synchronous pump, qb/src/qb/io/async/coroutine/utils.h:293. Named in the same sentence, for the same reason.
 llm/qbm-redis.llm.api.md	symbol:with_multiplier	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
 llm/qbm-redis.llm.api.md	symbol:with_jitter	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
 llm/qbm-redis.llm.api.md	symbol:with_on_retry	A builder of `qb::io::reconnect_policy`, the struct `qb::redis::RetryPolicy` aliases since Huly QB-126 -- declared in qb/src/qb/io/reconnect.h, not in this repo.
