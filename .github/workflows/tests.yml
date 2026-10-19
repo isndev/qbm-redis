@@ -101,7 +101,8 @@ jobs:
 
     services:
       redis:
-        image: redis:7-alpine
+        # redis:7-alpine, immutable ECR mirror; keep the Unix wrapper pin identical.
+        image: public.ecr.aws/docker/library/redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
         ports:
           - 6379:6379
         options: >-
@@ -305,7 +306,7 @@ jobs:
 
       - name: Run the qbm-redis suite
         run: |
-          python3 module/tests/shared/run-with-unix-redis.py --docker-image redis:7-alpine -- \
+          python3 module/tests/shared/run-with-unix-redis.py --docker-image public.ecr.aws/docker/library/redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499 -- \
             ctest --test-dir build -L 'module:qbm-redis' \
                 --output-on-failure \
                 --output-junit "${RUNNER_TEMP}/results.xml"
@@ -357,4 +358,6 @@ jobs:
 
       - name: Redis logs (on failure)
         if: failure()
-        run: docker logs "$(docker ps -aqf 'ancestor=redis:7-alpine' | head -1)" 2>&1 | tail -100 || true
+        env:
+          REDIS_CONTAINER: ${{ job.services.redis.id }}
+        run: docker logs "$REDIS_CONTAINER" 2>&1 | tail -100 || true

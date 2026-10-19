@@ -109,3 +109,15 @@ The current source roster has 14 unit, 6 unconditional system, 1 `REQUIRES ssl` 
 27 integration registrations: 47 without SSL or 48 with SSL. These are roster counts, not
 results from a fresh CI run; report registered / executed / skipped for each run. The CI floor
 remains a minimum, not an exact count. A future capability change needs a matching floor review.
+
+## Immutable service images
+
+The test lane pins its service image through the ECR mirror by OCI digest; the origin
+family remains visible in the workflow. Review this pin during release preparation,
+or earlier for a registry incident. Resolve the index from the actual registry and
+retain the required Linux platform manifests before changing it. Do not replace a
+failed digest with a floating tag.
+
+Update the TCP service and Unix wrapper references together. Validate PING through
+both transports on the exact image, preserve the zero-skip test contract, and clean
+up the owned instances. Failure logs select the current service container identity.
