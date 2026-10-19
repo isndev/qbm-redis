@@ -181,6 +181,10 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **The BITPOS warning note separates history from current source (Huly QB-1102).** Remove
+  an unpinned former line number and retain the verified optional-decoder reference. The
+  command, conversion and emitted arguments are unchanged.
+
 - **Report callback failures while rejecting a malformed consumer reply (Huly QB-1099).**
   The protocol-error fallback now logs both standard and non-standard callback exceptions
   before reporting the original protocol error. The failed callback still runs once and the
