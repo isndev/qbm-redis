@@ -416,10 +416,12 @@ if (!r.ok()) {
   the private out-of-line `dispatch_attributed` member, which invokes `func(decode<true>(raw))`.
   The attributed decoder unwraps before classifying the inner server error. Both decoder
   instantiations retain the original raw owner on failure and use public `parse<T>`, preserving
-  customizations. The callback runs after decoding returns, outside its catches, whether invoked
+  customizations. The private ordinary decoder carries the already-proved non-Attribute fact
+  into the optimizer; it does not assume anything about nested container children. The callback
+  runs after decoding returns, outside its catches, whether invoked
   by the operator or the cold member; a callback exception cannot cause a second completion.
   Attribute traversal is iterative, with no new depth limit beyond the configured wire parser.
-  _(src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1429; src/qbm/redis/reply.cpp:31-40)_
+  _(src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1433; src/qbm/redis/reply.cpp:31-40)_
 
 ---
 

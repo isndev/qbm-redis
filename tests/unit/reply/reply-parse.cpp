@@ -1214,3 +1214,92 @@ TEST(ReplyAttributes, MissingValueIsRejected) {
     EXPECT_THROW(do_parse<long long>(missing), qb::redis::ProtoError);
     EXPECT_THROW(do_parse<std::optional<std::string>>(missing), qb::redis::ProtoError);
 }
+
+// Declared after reply.h, in the result type's associated namespace: only ADL
+// can add this ParseTag overload to the dependent call in reply::parse<T>.
+namespace reply_parse_adl_test {
+struct Probe {
+    long long    value{};
+    const Value *input{};
+};
+unsigned parse_calls = 0;
+
+Probe
+parse(qb::redis::reply::ParseTag<Probe>, const qb::redis::ReplyValue &reply) {
+    ++parse_calls;
+    const auto value = reply.as_integer().value;
+    if (value == -1)
+        throw qb::redis::Error("ADL decode error");
+    return {value ^ 17LL, &reply};
+}
+} // namespace reply_parse_adl_test
+
+TEST(ReplyParseCustomization, AdlNormalizesOnlyTheValueAtEachParseBoundary) {
+    using reply_attribute_parse_test::decorate;
+    using reply_parse_adl_test::Probe;
+    reply_parse_adl_test::parse_calls = 0;
+
+    auto       plain = mk_int(7);
+    const auto root  = qb::redis::parse<Probe>(*plain);
+    EXPECT_EQ(root.value, 7 ^ 17LL);
+    EXPECT_EQ(root.input, plain.get());
+
+    auto        child     = mk_int(9);
+    const auto *inner     = child.get();
+    auto        decorated = decorate(std::move(child));
+    const auto  direct    = qb::redis::reply::parse<Probe>(decorated);
+    EXPECT_EQ(direct.value, 9 ^ 17LL);
+    EXPECT_EQ(direct.input, inner);
+    EXPECT_EQ(reply_parse_adl_test::parse_calls, 2u);
+
+    std::vector<std::unique_ptr<Value>> elements;
+    auto                                first       = mk_int(11);
+    const auto                         *first_inner = first.get();
+    elements.push_back(std::make_unique<Value>(decorate(std::move(first))));
+    auto        second       = mk_int(13);
+    const auto *second_inner = second.get();
+    elements.push_back(std::move(second));
+    auto       array  = decorate(std::make_unique<Value>(make_array(std::move(elements))));
+    const auto nested = qb::redis::reply::parse<std::vector<Probe>>(array);
+    ASSERT_EQ(nested.size(), 2u);
+    EXPECT_EQ(nested[0].value, 11 ^ 17LL);
+    EXPECT_EQ(nested[0].input, first_inner);
+    EXPECT_EQ(nested[1].value, 13 ^ 17LL);
+    EXPECT_EQ(nested[1].input, second_inner);
+    EXPECT_EQ(reply_parse_adl_test::parse_calls, 4u);
+}
+
+TEST(ReplyParseCustomization, AdlDispatchCompletesOnceWithOriginalRawOnSuccessAndError) {
+    using reply_parse_adl_test::Probe;
+    for (bool attributed : {false, true}) {
+        for (long long value : {23LL, -1LL}) {
+            reply_parse_adl_test::parse_calls = 0;
+            auto        raw                   = mk_int(value);
+            const auto *inner                 = raw.get();
+            if (attributed)
+                raw = std::make_unique<Value>(reply_attribute_parse_test::decorate(std::move(raw)));
+            const auto *identity = raw.get();
+            int         calls    = 0;
+            auto        callback = [&](qb::redis::Reply<Probe> &&reply) {
+                ++calls;
+                EXPECT_EQ(reply.raw().get(), identity);
+                EXPECT_EQ(reply.attributes() != nullptr, attributed);
+                if (value == -1) {
+                    EXPECT_FALSE(reply.ok());
+                    EXPECT_EQ(reply.error(), "ADL decode error");
+                    EXPECT_EQ(reply.value().input, nullptr);
+                } else {
+                    ASSERT_TRUE(reply.ok());
+                    EXPECT_EQ(reply.value().value, value ^ 17LL);
+                    EXPECT_EQ(reply.value().input, inner);
+                    EXPECT_TRUE(reply.error().empty());
+                }
+            };
+            qb::redis::TReply<decltype(callback), Probe> handler(std::move(callback));
+            handler(std::move(raw));
+            EXPECT_EQ(calls, 1);
+            EXPECT_EQ(reply_parse_adl_test::parse_calls, 1u);
+            EXPECT_EQ(raw, nullptr);
+        }
+    }
+}

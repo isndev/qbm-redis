@@ -178,12 +178,14 @@ See [cluster_commands.md](./cluster_commands.md).
 
 ### The parse seam: where exceptions live, and why you never see them
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1429 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1433 -->
 
 The private `decode<Attributed>(reply_ptr&)` template handles typed replies. Its default `false` instantiation
 calls `parse<T>(*raw)` for an ordinary value. Its `true` instantiation unwraps attributes, classifies an inner server
 error, and otherwise calls public `parse<T>` on the underlying value. Both instantiations return `Reply<T>` prvalues
-and contain decoding exceptions in the same catch clauses, preserving existing parse customizations.
+and contain decoding exceptions in the same catch clauses, preserving existing parse customizations. The
+ordinary path passes its already-checked non-Attribute fact to the optimizer before invoking
+the public parser; it does not skip public specializations, ADL conversion, or checks on nested values.
 
 Parsing and message construction complete before ownership of the raw reply moves. A decode failure therefore
 retains the original raw value. The operator invokes the callback after ordinary decoding returns; its private
@@ -219,7 +221,7 @@ for `catch` blocks in your code: nothing thrown while decoding a reply escapes t
 failed `Reply`. A user callback that throws is invoked only once; the dispatch boundary contains its exception after
 the handler has left the reply FIFO. In practice the parsers avoid throwing standard exceptions at all anyway (e.g.
 stream-id decoding parses each half with `qb::to_number<std::uint64_t>`, which returns `std::nullopt` rather than throwing
-on an out-of-range or malformed value, and the parser folds that `nullopt` into a `ProtoError`) (`reply.h:1400-1429`, `reply.cpp:178-202`
+on an out-of-range or malformed value, and the parser folds that `nullopt` into a `ProtoError`) (`reply.h:1400-1433`, `reply.cpp:178-202`
 stream-id path).
 
 ### Numeric-parse strictness

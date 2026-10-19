@@ -205,7 +205,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
-  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:161-162`, `reply.h:1447-1451`).
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:161-162`, `reply.h:1451-1455`).
 - **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
   (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
   with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /

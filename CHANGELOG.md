@@ -103,6 +103,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Changed
 
+- **Reuse the ordinary reply's dispatch precondition (Huly QB-1086).** The private decoder exposes the
+  already-checked non-Attribute root to the optimizer, avoiding a redundant attribute branch while retaining
+  public parser customizations, attributed errors, original reply ownership and once-only callback delivery.
+  Nested values still pass through their own attribute checks. No API or object-layout change.
+
 - **Behaviour change -- a consumer's stream ends only when the consumer is down, and says where it has holes (Huly
   QB-126b).** A `co_consumer` closed its queue on every lost connection, so `while (auto m = co_await receive())` ended
   on a server restart even with a reconnection run armed, and the subscriptions were gone; the receive loop now stays

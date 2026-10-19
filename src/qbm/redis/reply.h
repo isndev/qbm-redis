@@ -1409,6 +1409,10 @@ private:
                 }
                 return Reply<T>{true, parse<T>(value), std::move(raw), {}};
             } else {
+                // operator() already excluded attributes before entering this
+                // private path. Keep the public parser customization seam.
+                [[maybe_unused]] const bool not_attributed = !raw->is_attribute();
+                QB_ASSUME(not_attributed);
                 return Reply<T>{true, parse<T>(*raw), std::move(raw), {}};
             }
         } catch (const Error &e) {

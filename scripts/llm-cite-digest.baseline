@@ -68,8 +68,8 @@ llm/qbm-redis.llm.api.md	reply.h:1350-1351	4d349f3ac8e9	template <typename Func,
 llm/qbm-redis.llm.api.md	reply.h:1366-1388	2d688626b716	operator()(std::unique_ptr<ReplyValue> raw) final {
 llm/qbm-redis.llm.api.md	reply.h:137-137	1f4c9e70302c	class CommandError : public Error {
 llm/qbm-redis.llm.api.md	reply.h:1391-1396	03a196c4580b	QB_NOINLINE void
-llm/qbm-redis.llm.api.md	reply.h:1400-1429	a28994ad228f	template <bool Attributed = false>
-llm/qbm-redis.llm.api.md	reply.h:1447-1451	d2914eb92b29	template <typename Ret, typename Func>
+llm/qbm-redis.llm.api.md	reply.h:1400-1433	11c5943c83c9	template <bool Attributed = false>
+llm/qbm-redis.llm.api.md	reply.h:1451-1455	d2914eb92b29	template <typename Ret, typename Func>
 llm/qbm-redis.llm.api.md	reply.h:153-153	3d0bb61a8d05	class TimeoutError : public Error {
 llm/qbm-redis.llm.api.md	reply.h:169-169	71dfda1919a5	class ReplyParseError : public ProtoError {
 llm/qbm-redis.llm.api.md	reply.h:196-196	e097c35dc8d6	struct ParseTag {};
@@ -153,4 +153,4 @@ llm/qbm-redis.llm.md	src/qbm/redis/reply.cpp:31-40	d92ca935c8c4	unwrap_attribute
 llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1292-1306	081505bfa2bb	[[nodiscard]] reply_ptr &
 llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1366-1388	2d688626b716	operator()(std::unique_ptr<ReplyValue> raw) final {
 llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1391-1396	03a196c4580b	QB_NOINLINE void
-llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1400-1429	a28994ad228f	template <bool Attributed = false>
+llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1400-1433	11c5943c83c9	template <bool Attributed = false>
