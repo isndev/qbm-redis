@@ -181,6 +181,12 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **Automatic ZSCAN retains the failed page's error (follow-up to Huly QB-645).**
+  A server error or disconnect now reaches the final callback with its diagnostic and
+  any previously collected member/score pairs. The aggregate still has no single raw
+  reply. The existing command-reply suite covers first-page and later-page failures,
+  successful pagination and an empty intermediate page.
+
 - **The BITPOS warning note separates history from current source (Huly QB-1102).** Remove
   an unpinned former line number and retain the verified optional-decoder reference. The
   command, conversion and emitted arguments are unchanged.

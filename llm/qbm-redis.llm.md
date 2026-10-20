@@ -132,6 +132,10 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   responsibility. Terminal page errors survive aggregation; ordinary page setup or merge
   exceptions fail the automatic scan once. Completion callback exceptions are logged and
   cannot trigger a second completion (`hash_commands.h:50-63`, `:89-102`, `:132-183`, `:677-686`).
+- **Automatic scan failures retain their reason and partial items.** SCAN, SSCAN,
+  HSCAN and ZSCAN deliver a failed terminal page as `ok()==false` with its `error()`;
+  earlier successful pages remain in the result. Aggregated replies have no single
+  `raw()` value.
 - **`AsyncResult<std::string>` stores string success values.** Construct an error explicitly
   with `AsyncResult<T>::from_error(std::string)` (also on `void`); an empty message still
   means failure. Other supported payload types retain their existing constructors
