@@ -181,6 +181,12 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **Wall-clock timing for batched reply dispatch (Huly QB-1116).**
+  `BM_TReply_SuccessDispatchBatch` selects `UseRealTime()` for its 64- and 128-reply batches.
+  Durations and rates use the instrumented wall-clock windows, avoiding rate calculations from
+  CPU fragments rounded to zero. Work, pauses and validation stay unchanged; timing-boundary
+  overhead remains, so this is not a pure callback cost. Historical CPU results remain separate.
+
 - **Automatic ZSCAN retains the failed page's error (follow-up to Huly QB-645).**
   A server error or disconnect now reaches the final callback with its diagnostic and
   any previously collected member/score pairs. The aggregate still has no single raw

@@ -809,7 +809,7 @@ BENCHMARK(BM_ReplyParse_PubSubMessage)->Arg(16)->Arg(256)->ArgNames({"payload_by
 
 BENCHMARK(BM_TReply_SuccessDispatch)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_TReply_TimerBoundaryEmpty)->Arg(1)->Arg(64)->Arg(128)->ArgNames({"replies"})->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_TReply_SuccessDispatchBatch)->Arg(64)->Arg(128)->ArgNames({"replies"})->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_TReply_SuccessDispatchBatch)->Arg(64)->Arg(128)->ArgNames({"replies"})->Unit(benchmark::kNanosecond)->UseRealTime();
 
 BENCHMARK(BM_CommandSuccessfulAggregation)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4)->ArgNames({"command"});
 
