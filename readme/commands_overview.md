@@ -167,7 +167,7 @@ arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the m
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1429 (the TReply operator, cold dispatch member and decoder template), 312-319 (generic dispatch) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1433 (the TReply operator, cold dispatch member and decoder template), 312-319 (generic dispatch) -->
 
 ### Coroutine vs callback
 

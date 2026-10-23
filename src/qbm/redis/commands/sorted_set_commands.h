@@ -103,6 +103,8 @@ private:
         void
         operator()(qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&reply) {
             _reply.ok() = reply.ok();
+            if (!reply.ok())
+                _reply.error() = std::move(reply.error());
             std::move(reply.result().items.begin(), reply.result().items.end(),
                       std::inserter(_reply.result().items, _reply.result().items.end()));
             if (reply.ok() && reply.result().cursor) {

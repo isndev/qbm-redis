@@ -103,6 +103,11 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Changed
 
+- **Reuse the ordinary reply's dispatch precondition (Huly QB-1086).** The private decoder exposes the
+  already-checked non-Attribute root to the optimizer, avoiding a redundant attribute branch while retaining
+  public parser customizations, attributed errors, original reply ownership and once-only callback delivery.
+  Nested values still pass through their own attribute checks. No API or object-layout change.
+
 - **Behaviour change -- a consumer's stream ends only when the consumer is down, and says where it has holes (Huly
   QB-126b).** A `co_consumer` closed its queue on every lost connection, so `while (auto m = co_await receive())` ended
   on a server restart even with a reconnection run armed, and the subscriptions were gone; the receive loop now stays
@@ -175,6 +180,22 @@ All notable changes to the qbm-redis module are documented here. The format is b
   syntax without losing ABI correctness or ordinary-path performance.
 
 ### Fixed
+
+- **Wall-clock timing for batched reply dispatch (Huly QB-1116).**
+  `BM_TReply_SuccessDispatchBatch` selects `UseRealTime()` for its 64- and 128-reply batches.
+  Durations and rates use the instrumented wall-clock windows, avoiding rate calculations from
+  CPU fragments rounded to zero. Work, pauses and validation stay unchanged; timing-boundary
+  overhead remains, so this is not a pure callback cost. Historical CPU results remain separate.
+
+- **Automatic ZSCAN retains the failed page's error (follow-up to Huly QB-645).**
+  A server error or disconnect now reaches the final callback with its diagnostic and
+  any previously collected member/score pairs. The aggregate still has no single raw
+  reply. The existing command-reply suite covers first-page and later-page failures,
+  successful pagination and an empty intermediate page.
+
+- **The BITPOS warning note separates history from current source (Huly QB-1102).** Remove
+  an unpinned former line number and retain the verified optional-decoder reference. The
+  command, conversion and emitted arguments are unchanged.
 
 - **Report callback failures while rejecting a malformed consumer reply (Huly QB-1099).**
   The protocol-error fallback now logs both standard and non-standard callback exceptions

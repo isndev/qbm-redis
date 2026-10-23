@@ -32,7 +32,7 @@ the client inherits, so you call them directly on a connected `qb::redis::tcp::c
 selects the calling style. Calling the mixin in isolation is not supported; it relies on the host client supplying
 `command<T>(...)` and `make_coro_command<T>(...)`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:39-40,257,566-567 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:39-40,259,568-569 -->
 
 Each command exposes two overloads:
 
@@ -42,7 +42,7 @@ Each command exposes two overloads:
   must accept exactly `Reply<T>&&` for the command's `T`; the callback overload is SFINAE-gated on
   `std::is_invocable_v<Func, Reply<T>&&>`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:254-258, 271-283 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:256-260, 273-285 -->
 
 One operation is **callback-only** with no coroutine form: the pattern-only auto-iterating `zscan(func, key, pattern)`.
 It is covered below alongside the cursor form.
@@ -102,7 +102,7 @@ the wire `LIMIT offset count` clause is emitted only when `offset >= 0`, and a n
 `offset == 0`, so `LIMIT 0 -1` — offset 0 with `count == -1`, meaning *all* — **is** emitted by default; pass a negative
 offset to suppress the clause. The reverse variants differ from their forward siblings only in bound order on the wire.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:605, 650, 873, 912 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:607, 652, 875, 914 -->
 
 ### `UpdateType` — the NX/XX flag for `zadd`
 
@@ -115,7 +115,7 @@ enum class UpdateType { EXIST, NOT_EXIST, ALWAYS };
 only add new members), `ALWAYS` (the default) → no flag. There is **no GT/LT or INCR option** on this `zadd` overload —
 use `zincrby` to add-or-increment a single member.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.cpp:328-338; qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:275-282 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.cpp:328-338; qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:277-284 -->
 
 ### `Aggregation` — score combination for store/intersect commands
 
@@ -144,7 +144,7 @@ redis.bzpopmax(keys, 0);                          // block forever
 Scores and increments stay native (`double`); ranks, counts, and cardinalities are integers (`long long`). Connect and
 command deadlines remain `qb::duration` at the client level — see [connection.md](./connection.md).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:140-141,169-170,197-198,226-227,1437-1438 (bzpopmax raw then chrono, bzpopmin raw then chrono, bzmpop raw long long only) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:142-143,171-172,199-200,228-229,1439-1440 (bzpopmax raw then chrono, bzpopmin raw then chrono, bzmpop raw long long only) -->
 
 ---
 
@@ -174,10 +174,10 @@ Seven of the score-bearing reads return `std::vector<score_member>` because the 
 the wire command unconditionally: `zrange`, `zrangebyscore`, `zrevrange`, `zrevrangebyscore`, `zdiffWithScores`,
 `zinterWithScores`, `zrandmemberWithScores`. **`zpopmax`/`zpopmin` are not among them** — they decode to the same
 `std::vector<score_member>` while sending only `key` and `count`, because `ZPOPMAX`/`ZPOPMIN` return member/score pairs
-natively (`sorted_set_commands.h:508`, `:536`). The non-scored siblings (`zrangebylex`, `zinter`, `zdiff`,
+natively (`sorted_set_commands.h:510`, `:538`). The non-scored siblings (`zrangebylex`, `zinter`, `zdiff`,
 `zrandmemberCount`) deliberately omit `WITHSCORES` and return `std::vector<std::string>`.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:566-567, 654-656, 836-837, 917, 1092-1093, 1202, 1383-1384; qbm/redis/src/qbm/redis/types.h:408 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:568-569, 656-658, 838-839, 919, 1094-1095, 1204, 1385-1386; qbm/redis/src/qbm/redis/types.h:408 -->
 
 ---
 
@@ -197,11 +197,11 @@ Adds members with their scores. Returns the number of **new** members added; pas
 of members **added or updated** instead (the `CH` flag).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:255-256
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:257-258
 auto zadd(const std::string &key, const std::vector<score_member> &members,
           UpdateType type = UpdateType::ALWAYS, bool changed = false);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:272-274
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:274-276
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zadd(Func &&func, const std::string &key, const std::vector<score_member> &members,
@@ -229,10 +229,10 @@ redis.zadd([](qb::redis::Reply<long long> &&r) {
 Returns the number of members in the sorted set (`0` for a missing key).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:292-293
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:294-295
 auto zcard(const std::string &key);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:305-307
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:307-309
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zcard(Func &&func, const std::string &key);
@@ -250,11 +250,11 @@ if (r.ok()) qb::io::cout() << r.result() << " members\n";
 Counts members whose score falls inside a score interval.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:320-322
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:322-324
 template <typename Interval>
 auto zcount(const std::string &key, const Interval &interval);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:337-339
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:339-341
 template <typename Func, typename Interval>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zcount(Func &&func, const std::string &key, const Interval &interval);
@@ -270,11 +270,11 @@ auto r = co_await redis.zcount("board", i);
 Counts members within a lexicographical interval. Use only when all members share the same score.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:459-461
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:461-463
 template <typename Interval>
 auto zlexcount(const std::string &key, const Interval &interval);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:476-478
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:478-480
 template <typename Func, typename Interval>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zlexcount(Func &&func, const std::string &key, const Interval &interval);
@@ -292,10 +292,10 @@ auto r = co_await redis.zlexcount("board", i);
 Returns the score of `member`, or an empty optional when the member or key is absent.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1019-1020
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1021-1022
 auto zscore(const std::string &key, const std::string &member);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1034-1036
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1036-1038
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<double>> &&>, Derived &>
 zscore(Func &&func, const std::string &key, const std::string &member);
@@ -315,10 +315,10 @@ Returns one optional score per requested member, in request order. Missing membe
 length always matches the member count.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1291-1292
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1293-1294
 auto zmscore(const std::string &key, const std::vector<std::string> &members);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1306-1308
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1308-1310
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::optional<double>>> &&>, Derived &>
 zmscore(Func &&func, const std::string &key, const std::vector<std::string> &members);
@@ -337,10 +337,10 @@ Adds `increment` (may be negative) to the score of `member`, creating the member
 the new score.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:351-352
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:353-354
 auto zincrby(const std::string &key, double increment, const std::string &member);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:367-369
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:369-371
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<double> &&>, Derived &>
 zincrby(Func &&func, const std::string &key, double increment, const std::string &member);
@@ -359,11 +359,11 @@ Returns the 0-based rank of `member`: `zrank` orders low score → high, `zrevra
 when the member is absent.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:666-667 / :928-929
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:668-669 / :930-931
 auto zrank(const std::string &key, const std::string &member);
 auto zrevrank(const std::string &key, const std::string &member);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:681-683 / :943-945
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:683-685 / :945-947
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::optional<long long>> &&>, Derived &>
 zrank(Func &&func, const std::string &key, const std::string &member);
@@ -384,11 +384,11 @@ Returns members by **index** range (`start`/`stop` are 0-based, negatives count 
 high → low.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:547-548 / :817-818
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:549-550 / :819-820
 auto zrange(const std::string &key, long long start, long long stop);
 auto zrevrange(const std::string &key, long long start, long long stop);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:563-565 / :833-835
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:565-567 / :835-837
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
 zrange(Func &&func, const std::string &key, long long start, long long stop);
@@ -409,14 +409,14 @@ Returns members within a **score** interval, with scores. `zrevrangebyscore` wal
 `upper()`/`lower()` are swapped on the wire for the reverse form, so pass the interval in natural low→high order).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:623-625 / :890-892
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:625-627 / :892-894
 template <typename Interval>
 auto zrangebyscore(const std::string &key, Interval const &interval,
                    const LimitOptions &opts = {});
 auto zrevrangebyscore(const std::string &key, Interval const &interval,
                       const LimitOptions &opt = {});
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:645-647 / :908-910
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:647-649 / :910-912
 template <typename Func, typename Interval>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
 zrangebyscore(Func &&func, const std::string &key, Interval const &interval,
@@ -437,14 +437,14 @@ Returns members within a **lexicographical** interval, **without** scores (`std:
 all members share one score.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:579-581 / :850-852
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:581-583 / :852-854
 template <typename Interval>
 auto zrangebylex(const std::string &key, Interval const &interval,
                  const LimitOptions &opts = {});
 auto zrevrangebylex(const std::string &key, Interval const &interval,
                     const LimitOptions &opt = {});
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:597-599 / :868-870
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:599-601 / :870-872
 template <typename Func, typename Interval>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<std::string>> &&>, Derived &>
 zrangebylex(Func &&func, const std::string &key, Interval const &interval,
@@ -465,12 +465,12 @@ Stores the result of a range query from `src` into `dst`. Bounds and trailing op
 number of members stored.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1399-1400
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1401-1402
 auto zrangestore(const std::string &dst, const std::string &src,
                  const std::string &min, const std::string &max,
                  const std::vector<std::string> &options = {});
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1418-1420
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1420-1422
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zrangestore(Func &&func, const std::string &dst, const std::string &src,
@@ -489,10 +489,10 @@ auto r = co_await redis.zrangestore("dst", "src", "1", "3", {"BYSCORE"});
 Removes the listed members. Returns the number actually removed.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:694-695
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:696-697
 auto zrem(const std::string &key, const std::vector<std::string> &members);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:709-711
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:711-713
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zrem(Func &&func, const std::string &key, const std::vector<std::string> &members);
@@ -509,14 +509,14 @@ auto r = co_await redis.zrem("board", {"b", "d"});
 Bulk-remove by index range, score interval, or lex interval. Each returns the number of members removed.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:755-756 / :785-787 / :723-725
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:757-758 / :787-789 / :725-727
 auto zremrangebyrank(const std::string &key, long long start, long long stop);
 template <typename Interval>
 auto zremrangebyscore(const std::string &key, Interval const &interval);
 template <typename Interval>
 auto zremrangebylex(const std::string &key, Interval const &interval);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:771-773 / :802-804 / :740-742
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:773-775 / :804-806 / :742-744
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zremrangebyrank(Func &&func, const std::string &key, long long start, long long stop);
@@ -536,11 +536,11 @@ Removes and returns the `count` lowest- (`zpopmin`) or highest- (`zpopmax`) scor
 defaults to `1`).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:518-519 / :490-491
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:520-521 / :492-493
 auto zpopmin(const std::string &key, long long count = 1);
 auto zpopmax(const std::string &key, long long count = 1);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:533-535 / :505-507
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:535-537 / :507-509
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<score_member>> &&>, Derived &>
 zpopmax(Func &&func, const std::string &key, long long count = 1);
@@ -564,11 +564,11 @@ command reaches the wire, and your callback (or the awaiting coroutine) is resol
 `error() == "ZMPOP requires at least one key"`.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1250-1251
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1252-1253
 auto zmpop(const std::vector<std::string> &keys, const std::string &min_or_max,
            long long count = 1);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1266-1268
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1268-1270
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func,
     Reply<std::optional<std::pair<std::string, std::vector<score_member>>>> &&>, Derived &>
@@ -593,17 +593,17 @@ time-unit note above). `bzpopmin`/`bzpopmax` return `std::optional<std::tuple<ke
 `zmpop`'s reply.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:197-198 / :140-141 / :1437-1438
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:199-200 / :142-143 / :1439-1440
 auto bzpopmin(const std::vector<std::string> &keys, long long timeout);
 auto bzpopmax(const std::vector<std::string> &keys, long long timeout);
 auto bzmpop(const std::vector<std::string> &keys, long long timeout,
             const std::string &min_or_max, long long count = 1);
 
-// std::chrono::seconds convenience overloads — sorted_set_commands.h:169-170,226-227
+// std::chrono::seconds convenience overloads — sorted_set_commands.h:171-172,228-229
 auto bzpopmax(const std::vector<std::string> &keys,
               const std::chrono::seconds &timeout = std::chrono::seconds{0});
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:155-157 / :212-214
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:157-159 / :214-216
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func,
     Reply<std::optional<std::tuple<std::string, std::string, double>>> &&>, Derived &>
@@ -625,7 +625,7 @@ if (m.ok() && m.result().has_value())
 <!-- src: qbm/redis/tests/integration/sorted-set/sorted-set-commands.cpp:713-721, 740-746; qbm/redis/tests/integration/resilience/coro-cancel-and-connection-loss.cpp:370-386 -->
 
 > `bzmpop` (like `zmpop`) rejects an empty `keys` list client-side: no frame is sent and the reply resolves at once with
-`ok() == false` and `error() == "BZMPOP requires at least one key"` (`sorted_set_commands.h:1456-1460`). It never blocks
+`ok() == false` and `error() == "BZMPOP requires at least one key"` (`sorted_set_commands.h:1458-1462`). It never blocks
 on an empty list, so the mistake surfaces as an immediate failed reply rather than as a timeout.
 
 ### `ZRANDMEMBER key [count]` — `zrandmember`, `zrandmemberCount`, `zrandmemberWithScores`
@@ -638,7 +638,7 @@ diverge from the snake_case norm):
 - `zrandmemberWithScores(key, count)` → `std::vector<score_member>`.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1319-1320 / :1347-1348 / :1360-1361
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1321-1322 / :1349-1350 / :1362-1363
 auto zrandmember(const std::string &key);
 auto zrandmemberCount(const std::string &key, long long count);
 auto zrandmemberWithScores(const std::string &key, long long count);
@@ -659,7 +659,7 @@ cardinality of the stored set. `zunionstore`/`zinterstore` accept optional per-s
 `zdiffstore` takes neither.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:382-383 / :421-422 / :1104-1105
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:384-385 / :423-424 / :1106-1107
 auto zunionstore(const std::string &destination, const std::vector<std::string> &keys,
                  const std::vector<double> &weights = {},
                  Aggregation type = Aggregation::SUM);
@@ -668,7 +668,7 @@ auto zinterstore(const std::string &destination, const std::vector<std::string> 
                  Aggregation type = Aggregation::SUM);
 auto zdiffstore(const std::string &destination, const std::vector<std::string> &keys);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:401-403 / :440-442 / :1119-1121
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:403-405 / :442-444 / :1121-1123
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zunionstore(Func &&func, const std::string &destination,
@@ -692,7 +692,7 @@ Return the intersection or difference **without** storing it. The plain forms re
 `zdiff` takes only keys.
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1134-1135 / :1148-1149 / :1049-1050 / :1061-1062
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1136-1137 / :1150-1151 / :1051-1052 / :1063-1064
 auto zinter(const std::vector<std::string> &keys,
             const std::vector<double> &weights = {},
             Aggregation type = Aggregation::SUM);
@@ -716,11 +716,11 @@ Returns the cardinality of the intersection without materializing it. The option
 counts (`LIMIT` is emitted only when set).
 
 ```cpp
-// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1214-1215
+// Coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1216-1217
 auto zintercard(const std::vector<std::string> &keys,
                 std::optional<long long> limit = std::nullopt);
 
-// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1229-1231
+// Callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1231-1233
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func, Reply<long long> &&>, Derived &>
 zintercard(Func &&func, const std::vector<std::string> &keys,
@@ -742,11 +742,11 @@ the wire and the reply resolves at once with `ok() == false`; the cursor form al
 `error() == "ZSCAN requires a non-empty key"`, while the auto-iterating form below forwards only the failed status.
 
 ```cpp
-// Cursor form, coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:958-959
+// Cursor form, coroutine — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:960-961
 auto zscan(const std::string &key, long long cursor, const std::string &pattern = "*",
            long long count = 10);
 
-// Cursor form, callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:975-977
+// Cursor form, callback — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:977-979
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func,
     Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>, Derived &>
@@ -774,7 +774,7 @@ allocates a `shared_ptr`-managed scanner that keeps itself alive across the asyn
 **no coroutine equivalent** of this overload.
 
 ```cpp
-// Callback only — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1001-1003
+// Callback only — qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:1003-1005
 template <typename Func>
 std::enable_if_t<std::is_invocable_v<Func,
     Reply<qb::redis::scan<qb::unordered_map<std::string, double>>> &&>, Derived &>
@@ -788,7 +788,11 @@ redis.zscan([](qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, d
 }, "board", "*");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:51-129, 1000-1009 -->
+If a page fails, the final reply keeps that page's error message and the member/score
+pairs already collected. Check `ok()` before treating the collection as complete.
+The aggregate has no single `raw()` reply.
+
+<!-- src: qbm/redis/src/qbm/redis/commands/sorted_set_commands.h:51-131, 1002-1011 -->
 
 ---
 
@@ -808,7 +812,7 @@ redis.zscan([](qb::redis::Reply<qb::redis::scan<qb::unordered_map<std::string, d
   indistinguishable from a server error (the auto-iterating `zscan` forwards only the failed status — `error()` is left
   empty, because its scanner copies `ok()` alone out of the underlying cursor reply).
 - **Auto-iterating `zscan` swallows callback exceptions.** An exception thrown from your callback inside the no-cursor
-  `zscan` scanner is caught and logged through `QB_LOG_WARN` (`sorted_set_commands.h:116`), never propagated. Don't
+  `zscan` scanner is caught and logged through `QB_LOG_WARN` (`sorted_set_commands.h:118`), never propagated. Don't
   rely on it surfacing.
 - **camelCase outliers.** `zdiffWithScores`, `zinterWithScores`, `zrandmemberCount`, and `zrandmemberWithScores` break
   the snake_case convention — easy to miss when grepping. Their plain siblings (`zdiff`, `zinter`, `zrandmember`) are

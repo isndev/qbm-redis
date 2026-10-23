@@ -42,6 +42,7 @@ class ScriptedClient
     , public qb::redis::list_commands<ScriptedClient>
     , public qb::redis::hash_commands<ScriptedClient>
     , public qb::redis::set_commands<ScriptedClient>
+    , public qb::redis::sorted_set_commands<ScriptedClient>
     , public qb::redis::server_commands<ScriptedClient> {
 public:
     using Responses = std::vector<std::optional<std::string_view>>;
@@ -317,6 +318,52 @@ TEST(CommandReplyFailures, AutomaticScansKeepEverySuccessfulPageWithoutInventing
         EXPECT_FALSE(result.reply.raw());
         EXPECT_EQ(client.completed, 2);
     }
+}
+
+TEST(CommandReplyFailures, AutomaticSortedSetScanKeepsPageErrorsAndPartialItems) {
+    using Scores = qb::unordered_map<std::string, double>;
+    for (bool last_page : {false, true}) {
+        const std::pair<std::optional<std::string_view>, std::string_view> failures[] = {
+            {"-WRONGTYPE wrong kind\r\n", "WRONGTYPE wrong kind"}, {std::nullopt, "disconnected"}
+        };
+        for (const auto &[wire, reason] : failures) {
+            SCOPED_TRACE(last_page ? "last page" : "first page");
+            SCOPED_TRACE(reason);
+            ScriptedClient::Responses responses;
+            if (last_page)
+                responses.push_back("*2\r\n$1\r\n7\r\n*2\r\n$4\r\nkept\r\n$3\r\n1.5\r\n");
+            responses.push_back(wire);
+            ScriptedClient                    client(std::move(responses));
+            Captured<qb::redis::scan<Scores>> result;
+            client.zscan(result.sink(), "sorted", "*");
+            EXPECT_EQ(result.calls, 1);
+            EXPECT_FALSE(result.reply.ok());
+            EXPECT_EQ(result.reply.error(), reason);
+            EXPECT_EQ(result.reply.result().items, last_page ? (Scores{{"kept", 1.5}}) : Scores{});
+            EXPECT_FALSE(result.reply.raw());
+            EXPECT_EQ(client.completed, last_page ? 2 : 1);
+            EXPECT_EQ(client.frames.size(), last_page ? 2u : 1u);
+            ASSERT_FALSE(client.frames.empty());
+            EXPECT_EQ(client.frames.front(),
+                      "*7\r\n$5\r\nZSCAN\r\n$6\r\nsorted\r\n$1\r\n0\r\n$5\r\nMATCH\r\n$1\r\n*\r\n$5\r\nCOUNT\r\n$3\r\n100\r\n");
+        }
+    }
+}
+
+TEST(CommandReplyFailures, AutomaticSortedSetScanKeepsSuccessfulPagesWithoutInventingRaw) {
+    using Scores = qb::unordered_map<std::string, double>;
+    ScriptedClient                    client(ScriptedClient::Responses{
+        "*2\r\n$1\r\n7\r\n*0\r\n", "*2\r\n$1\r\n9\r\n*2\r\n$4\r\nkept\r\n$3\r\n1.5\r\n", "*2\r\n$1\r\n0\r\n*2\r\n$4\r\nlast\r\n$2\r\n-2\r\n"
+    });
+    Captured<qb::redis::scan<Scores>> result;
+    client.zscan(result.sink(), "sorted", "*");
+    EXPECT_EQ(result.calls, 1);
+    ASSERT_TRUE(result.reply.ok()) << result.reply.error();
+    EXPECT_TRUE(result.reply.error().empty());
+    EXPECT_EQ(result.reply.result().items, (Scores{{"kept", 1.5}, {"last", -2.0}}));
+    EXPECT_FALSE(result.reply.raw());
+    EXPECT_EQ(client.completed, 3);
+    EXPECT_EQ(client.frames.size(), 3u);
 }
 
 TEST(CommandReplyFailures, MultiHvalsKeepsFirstObservedFailureAndSuccessfulValues) {

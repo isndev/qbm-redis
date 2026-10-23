@@ -450,3 +450,62 @@ TEST(ReplyWrapper, EmptyAttributeMapIsPresentEvenOnFailure) {
     ASSERT_EQ(reply.attributes(), metadata);
     EXPECT_TRUE(reply.attributes()->empty());
 }
+
+// The root facade remains specialized above. This separate type protects the
+// other public customization seam, reply::parse<T>, through the same handler.
+namespace reply_wrapper_test {
+struct FacadeProbe {
+    long long    value{};
+    const Value *input{};
+};
+unsigned facade_parse_calls = 0;
+} // namespace reply_wrapper_test
+
+namespace qb::redis::reply {
+template <>
+reply_wrapper_test::FacadeProbe
+parse<reply_wrapper_test::FacadeProbe>(const ReplyValue &reply) {
+    ++reply_wrapper_test::facade_parse_calls;
+    return {reply.as_integer().value ^ 17LL, &reply};
+}
+} // namespace qb::redis::reply
+
+TEST(ReplyWrapperCustomization, ReplyFacadeSpecializationIsCalledByBothPublicFacades) {
+    using reply_wrapper_test::FacadeProbe;
+    reply_wrapper_test::facade_parse_calls = 0;
+    auto raw                               = mk_int(42);
+
+    const auto direct = qb::redis::reply::parse<FacadeProbe>(*raw);
+    EXPECT_EQ(direct.value, 42 ^ 17LL);
+    EXPECT_EQ(direct.input, raw.get());
+    const auto root = qb::redis::parse<FacadeProbe>(*raw);
+    EXPECT_EQ(root.value, 42 ^ 17LL);
+    EXPECT_EQ(root.input, raw.get());
+    EXPECT_EQ(reply_wrapper_test::facade_parse_calls, 2u);
+}
+
+TEST(ReplyTReply, ReplyFacadeSpecializationPreservesPlainAndDecoratedOwnership) {
+    using reply_wrapper_test::FacadeProbe;
+    for (unsigned depth : {0u, 2u}) {
+        reply_wrapper_test::facade_parse_calls = 0;
+        auto        raw                        = mk_int(42);
+        const auto *inner                      = raw.get();
+        raw                                    = reply_wrapper_test::decorate(std::move(raw), depth);
+        const auto *identity                   = raw.get();
+        int         calls                      = 0;
+        auto        callback                   = [&](qb::redis::Reply<FacadeProbe> &&reply) {
+            ++calls;
+            ASSERT_TRUE(reply.ok());
+            EXPECT_EQ(reply.value().value, 42 ^ 17LL);
+            EXPECT_EQ(reply.value().input, inner);
+            EXPECT_EQ(reply.raw().get(), identity);
+            EXPECT_EQ(reply.attributes() != nullptr, depth != 0);
+            EXPECT_TRUE(reply.error().empty());
+        };
+        qb::redis::TReply<decltype(callback), FacadeProbe> handler(std::move(callback));
+        handler(std::move(raw));
+        EXPECT_EQ(calls, 1);
+        EXPECT_EQ(reply_wrapper_test::facade_parse_calls, 1u);
+        EXPECT_EQ(raw, nullptr);
+    }
+}
