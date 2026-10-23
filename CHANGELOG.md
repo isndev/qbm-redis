@@ -9,6 +9,12 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **Explicit Redis metrics adapters (Huly QB-154).** Include `<qbm/redis/metrics.h>`
+  to describe lifetime counters and a separate bounded command-family breakdown.
+  An additional overload exports an explicitly enabled latency histogram with 31 exact
+  inclusive finite bounds, an unbounded final bucket and no invented duration sum.
+  Registration enables no clocks or hooks; disabling client latency discards its distribution.
+
 - **Per-command retry: `redis.retrying(qb::redis::command_retry{...})` (Huly QB-133).** A view of the client -- its
   whole command surface but the transaction commands, coroutine and callback -- whose commands are retried when they
   are safe to send twice (a read-only verb, or an idempotent write with `idempotent_writes` on) and another attempt

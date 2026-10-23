@@ -411,6 +411,17 @@ if (!r.ok()) {
   completed command (`command_info`: verb, family, outcome, error, duration) before its
   callback. Off, both cost one branch. To feed a metrics actor, push a COPY from the hook:
   its `std::string_view`s die with the call; never drive the client from it.
+- **Snapshot metrics export** (Huly QB-154): explicitly include `<qbm/redis/metrics.h>`;
+  `qb::metrics::describe(snapshot, client.stats(), labels)` emits nine exact integer
+  totals and separate `qb_redis_commands_by_family_total{family}`. `failed` is contained
+  in `errors`, contained in `commands`; do not sum these subsets. A separate overload
+  takes `(snapshot, latency_histogram, command_family, labels)`: call it only when
+  `latency_stats()` is true. It exports 31 finite inclusive nanosecond bounds in seconds
+  and 32 buckets (last unbounded), with no `_sum`; disabling timing discards this
+  distribution. Neither overload installs hooks or enables timing. Give sources stable
+  connection/core labels, no user keys/credentials; reserve `family` and histogram `le`.
+  Keep registry handles after their client members, destroyed first on the owner core.
+  _(metrics.h:21,31)_
 - RESP3 `PUSH` frames must not pop a command handler; the plain client discards
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,

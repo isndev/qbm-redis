@@ -67,6 +67,7 @@ qb_register_module(
         src/qbm/redis/redis.cpp
         src/qbm/redis/reply.cpp
         src/qbm/redis/server_reply.cpp
+        src/qbm/redis/metrics.cpp
         DEFINES
         QBM_REDIS_VERSION="${PROJECT_VERSION}"
         QBM_REDIS_USE_NATIVE_PARSER=1

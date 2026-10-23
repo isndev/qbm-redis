@@ -426,6 +426,17 @@ if (!r.ok()) {
   completed command (`command_info`: verb, family, outcome, error, duration) before its
   callback. Off, both cost one branch. To feed a metrics actor, push a COPY from the hook:
   its `std::string_view`s die with the call; never drive the client from it.
+- **Snapshot metrics export** (Huly QB-154): explicitly include `<qbm/redis/metrics.h>`;
+  `qb::metrics::describe(snapshot, client.stats(), labels)` emits nine exact integer
+  totals and separate `qb_redis_commands_by_family_total{family}`. `failed` is contained
+  in `errors`, contained in `commands`; do not sum these subsets. A separate overload
+  takes `(snapshot, latency_histogram, command_family, labels)`: call it only when
+  `latency_stats()` is true. It exports 31 finite inclusive nanosecond bounds in seconds
+  and 32 buckets (last unbounded), with no `_sum`; disabling timing discards this
+  distribution. Neither overload installs hooks or enables timing. Give sources stable
+  connection/core labels, no user keys/credentials; reserve `family` and histogram `le`.
+  Keep registry handles after their client members, destroyed first on the owner core.
+  _(metrics.h:21,31)_
 - RESP3 `PUSH` frames must not pop a command handler; the plain client discards
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,
@@ -678,6 +689,23 @@ The mirror of qbm-pgsql's `qb::pg::stats` / `qb::pg::query_info`. Counts are pla
 - `struct qb::redis::command_info` (`stats.h:489-503`) — `{command_family family; std::string_view name; qb::duration duration; bool ok; command_outcome outcome; std::string_view error;}`; views valid during the call only; arguments never reported.
 - `struct qb::redis::latency_histogram` (`stats.h:509-553`) — 32 log2 buckets in microseconds; `record(span)`, `count()`, `percentile(p)` (the upper bound of the bucket holding the p-th quantile).
 - `struct qb::redis::stats` (`stats.h:562-573`) — `commands`, `errors` (of them, not ok), `failed` (of the errors, no answer), `held`, `std::array<std::uint64_t, 21> by_family`, `reconnects` (ready connections reached after a lost one; `disconnect()` ends the session), `gaps`, `messages_received`, `messages_dropped`. On a client every command is counted once, when it completes: `commands` equals the callbacks called.
+
+### Metrics adapters (`<qbm/redis/metrics.h>`, Huly QB-154)
+
+- `void qb::metrics::describe(qb::metrics::snapshot&, qb::redis::stats const&, qb::metrics::label_set labels)`:
+  nine `qb_redis_<field>_total` counters plus `qb_redis_commands_by_family_total{family}`
+  (21 bounded family names). Counters preserve uint64 precision. _(metrics.h:21)_
+- `void qb::metrics::describe(qb::metrics::snapshot&, qb::redis::latency_histogram const&, qb::redis::command_family, qb::metrics::label_set labels)`:
+  `qb_redis_command_duration_seconds{family}` histogram, 31 finite inclusive bounds
+  `(2^(i+1)*1000 - 1)` ns converted to seconds for i=0..30; 32 raw buckets, last `+Inf`.
+  `_count` is exact and `_sum` absent (not stored). Invalid family/duplicate labels throw
+  `std::invalid_argument`; caller labels must not contain `family` or histogram `le`.
+  Call only when `latency_stats()` is enabled; turning it off resets the distribution.
+  _(metrics.h:31)_
+
+Explicit include, out-of-line definitions in `qbm::redis`, no HTTP dependency, hook or
+clock activation. Neither adapter accesses a client: read its snapshot on its owner thread.
+Use stable connection/core labels; canonicalize sums sources with equal label sets.
 
 ### Per-command retry — `Redis::retrying()` (Huly QB-133)
 `qb::redis::command_retry` (`redis.h:247-257`) · `struct { qb::io::reconnect_policy backoff /* 3 attempts, 50 ms then 100 ms */; bool idempotent_writes = false; }`. `redis.retrying(retry)` returns `qb::redis::detail::RetryingClient<Redis<QB_IO_>>` (`redis.h:3814`), a view of the client: each command through it is retried when its verb is read-only (`command_traits_of(verb).read_only`), or an idempotent write with `idempotent_writes` on, AND it failed with no answer ("disconnected", "command timed out") while the client can still carry it (ready or reconnecting -- a retry during a run is held behind the handshake), or the server answered LOADING, BUSY, TRYAGAIN or MASTERDOWN (the first word: BUSYGROUP is not BUSY). **Never retried**: non-idempotent writes (INCR and DECR families, APPEND, list pushes, pops and moves, SPOP, XADD, a relative EXPIRE, PUBLISH, EVAL, FCALL, ...), SET with NX, XX or GET, ZADD with INCR, blocking commands, anything inside MULTI, and anything on a client that is down or idle. Attempts and waits are `backoff`'s (the first attempt included; `on_retry` told before each wait); every re-issue counts in `stats().retries`. The callback or awaiter sees one outcome, the last, unchanged -- no exception (not `qb::io::async::with_retry`, which throws `retry_exhausted` and loses the last `Reply`). A command the view retries is serialized once, at submission; an ineligible one passes through. The view holds a pointer and the client's liveness token: it must not outlive the client (asserted in debug); a retry pending when the client is destroyed is dropped, never called.

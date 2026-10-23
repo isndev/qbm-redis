@@ -22,6 +22,8 @@ llm/qbm-redis.llm.api.md	hash_commands.h:41-41	ccdadcdf88ba	class hash_commands 
 llm/qbm-redis.llm.api.md	hyperloglog_commands.h:40-40	2b36cc8752b2	class hyperloglog_commands {
 llm/qbm-redis.llm.api.md	key_commands.h:40-40	b028456ff379	class key_commands {
 llm/qbm-redis.llm.api.md	list_commands.h:37-37	2bc003d3c0ef	class list_commands {
+llm/qbm-redis.llm.api.md	metrics.h:21-21	da76fd793f7f	void describe(snapshot &snap, qb::redis::stats const &stats, label_se...
+llm/qbm-redis.llm.api.md	metrics.h:31-31	a8efc5382f23	void describe(snapshot &snap, qb::redis::latency_histogram const &lat...
 llm/qbm-redis.llm.api.md	module_commands.h:35-35	d8e23f3ea583	class module_commands {
 llm/qbm-redis.llm.api.md	parser/parser.h:191-191	cddb703b2663	parse() {
 llm/qbm-redis.llm.api.md	parser/parser.h:216-216	58348934494b	parse_all() {
@@ -146,6 +148,8 @@ llm/qbm-redis.llm.md	hash_commands.h:132-183	f656c86197cb	start() {
 llm/qbm-redis.llm.md	hash_commands.h:50-63	f57257594da9	contains_borrowed_scan_view() {
 llm/qbm-redis.llm.md	hash_commands.h:677-686	df0349de74fb	template <typename Func, typename Out = qb::unordered_map<std::string...
 llm/qbm-redis.llm.md	hash_commands.h:89-102	23fd81169bc6	finish() {
+llm/qbm-redis.llm.md	metrics.h:21-21	da76fd793f7f	void describe(snapshot &snap, qb::redis::stats const &stats, label_se...
+llm/qbm-redis.llm.md	metrics.h:31-31	a8efc5382f23	void describe(snapshot &snap, qb::redis::latency_histogram const &lat...
 llm/qbm-redis.llm.md	server_reply.h:357-389	bb231bafc716	class AsyncResult {
 llm/qbm-redis.llm.md	server_reply.h:435-450	a4739270dd02	class AsyncResult<void> {
 llm/qbm-redis.llm.md	server_reply.h:456-467	d632a814f9c9	[[nodiscard]] bool

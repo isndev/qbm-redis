@@ -599,6 +599,38 @@ _redis.on_command_complete([this, metrics = _metrics_id](qb::redis::command_info
 
 ---
 
+
+### Prometheus snapshot adapters
+
+Explicitly include `<qbm/redis/metrics.h>`; on the client's owner thread:
+
+```cpp
+qb::metrics::snapshot snapshot;
+const qb::metrics::label_set labels{{"connection", "cache"}, {"core", "1"}};
+qb::metrics::describe(snapshot, client.stats(), labels);
+if (client.latency_stats()) {
+    for (std::size_t i = 0; i < qb::redis::command_families; ++i) {
+        const auto family = static_cast<qb::redis::command_family>(i);
+        qb::metrics::describe(snapshot, client.latency(family), family, labels);
+    }
+}
+```
+<!-- src: qbm/redis/src/qbm/redis/metrics.h:21,31 -->
+
+The nine totals are exact `qb_redis_<field>_total` counters; the 21-family breakdown is
+`qb_redis_commands_by_family_total{family}`. `failed` is a subset of `errors`, itself a
+subset of `commands`: adding them double-counts failures. Latency produces
+`qb_redis_command_duration_seconds`: 31 inclusive finite bounds `(2^(i+1)*1000 - 1)` ns
+converted to seconds, then an unbounded `+Inf` bucket, covering all 32 stored buckets.
+There is a count but no sum, because the client stores none. Do not export the empty
+histograms returned while timing is off as if they were observations. Disabling timing
+discards the distribution; it does not reset the lifetime command counters.
+
+Neither adapter enables timing, installs a callback or accesses a client. Retain a registry
+`source_handle` after its client member and remove it on the same core before client teardown.
+Use stable connection/core labels; `family` is added by the adapter and `le` is reserved for
+histograms. No Redis keys, credentials or user paths in labels.
+
 ## Pitfalls
 
 - **`connect()` does nothing on its own.** It returns an awaiter. Forgetting to `co_await` it (or pass it to `run_sync`)

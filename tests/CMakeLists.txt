@@ -144,6 +144,7 @@ qredis_test(system client-stats system/connection/client-stats.cpp EXTRA_LABELS 
 
 # UNIT -- the command table of stats.h against the command groups' own sources (Huly QB-134).
 qredis_test(unit command-traits unit/stats/command-traits.cpp)
+qredis_test(unit metrics unit/stats/metrics.cpp EXTRA_LABELS metrics)
 
 # INTEGRATION -- sharded pub/sub against the server under test: SSUBSCRIBE, SPUBLISH, SUNSUBSCRIBE (Huly QB-127).
 qredis_itest(pubsub-sharded integration/pubsub/pubsub-sharded.cpp)

@@ -402,7 +402,7 @@ header pulls in everything an application needs:
 #include <qbm/redis/redis.h>   // brings in <qb/io/async.h> transitively
 ```
 
-`qbm-redis` is a **compiled library** (sources `redis.cpp`, `reply.cpp`, and `server_reply.cpp`), aliased `qbm::redis`.
+`qbm-redis` is a **compiled library** (sources `redis.cpp`, `reply.cpp`, `server_reply.cpp`, and `metrics.cpp`), aliased `qbm::redis`.
 It is **not** header-only — link the target; including the header alone will not resolve the reply-parsing and protocol
 symbols.
 
@@ -413,7 +413,7 @@ brings in `qb::io`. At the API level you use qb-io types: a client is driven by 
 You can use it from a plain executable that calls `qb::io::async::init()` and drives the loop yourself, or hold a client
 inside a `qb::Actor` and let the actor's `VirtualCore` tick drive the same loop. The client does not require actors —
 but inside `qb::Main` it is what most deployments do, which is why this page opens with it.
-<!-- src: qbm/redis/CMakeLists.txt:62-73 (qb_register_module, DEPENDS qb-core), qbm/redis/src/qbm/redis/redis.h:320 (the connector is a qb-io tcp client) -->
+<!-- src: qbm/redis/CMakeLists.txt:62-74 (qb_register_module, DEPENDS qb-core), qbm/redis/src/qbm/redis/redis.h:320 (the connector is a qb-io tcp client) -->
 
 ---
 
@@ -463,7 +463,7 @@ Headers land under `<prefix>/include/qbm/redis/...` and the CMake files under `<
 both modes. `qbm-redisConfig.cmake` fails at configure time if the installed qb is a different version than the one
 this module was compiled against, or disagrees with it about `QB_HAS_SSL`.
 
-<!-- src: qbm/redis/CMakeLists.txt:62-73, qb/cmake/qbFunctions.cmake (qb_register_module / qb_load_modules) -->
+<!-- src: qbm/redis/CMakeLists.txt:62-74, qb/cmake/qbFunctions.cmake (qb_register_module / qb_load_modules) -->
 
 Linking `qbm::redis` is the supported way to get the `<qbm/redis/...>` headers — the include directory is attached `PUBLIC`
 by `qb_register_module`, so you do not add it by hand. Because the target propagates `cxx_std_${QB_CXX_STANDARD}` as a
