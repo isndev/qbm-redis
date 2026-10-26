@@ -88,6 +88,7 @@ on:
 
 permissions:
   contents: read
+  packages: read # the service image is this repository's GHCR mirror (mirror-service-image.yml)
 
 concurrency:
   group: tests-${{ github.ref }}
@@ -101,8 +102,14 @@ jobs:
 
     services:
       redis:
-        # redis:7-alpine, immutable ECR mirror; keep the Unix wrapper pin identical.
-        image: public.ecr.aws/docker/library/redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+        # redis:7-alpine by digest, from this repository's GHCR mirror (mirror-service-image.yml
+        # copies Docker Hub's manifest list, digest preserved): a hosted runner's anonymous pull from
+        # ECR Public shares its IP's data quota with all of GitHub and ran dry four times in a week
+        # (Huly QB-1142). Pulled with the job's token. Keep the Unix wrapper pin identical.
+        image: ghcr.io/isndev/qbm-redis/redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         ports:
           - 6379:6379
         options: >-
@@ -306,7 +313,7 @@ jobs:
 
       - name: Run the qbm-redis suite
         run: |
-          python3 module/tests/shared/run-with-unix-redis.py --docker-image public.ecr.aws/docker/library/redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499 -- \
+          python3 module/tests/shared/run-with-unix-redis.py --docker-image ghcr.io/isndev/qbm-redis/redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499 -- \
             ctest --test-dir build -L 'module:qbm-redis' \
                 --output-on-failure \
                 --output-junit "${RUNNER_TEMP}/results.xml"
