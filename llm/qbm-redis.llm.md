@@ -93,11 +93,13 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   `qb::redis::status` (OK strings), `long long`, `double`, `bool`,
   `std::optional<std::string>`, `std::vector<...>`, qb-core containers
   (`qb::unordered_map`, `qb::unordered_set`), `qb::json`, domain structs.
-  RESP3 attributes are unwrapped for typed values and nested generic container elements;
+  RESP3 attributes are accepted on every typed value and nested generic container element: the
+  module's own parsers take a decorated value themselves (`reply::attribute_aware_v`), the
+  `parse<T>` facade unwraps it for any other target type, a user's `ParseTag` overload included;
   decorated errors keep the server message. `raw()` owns the complete original value,
   and `attributes()` borrows its outermost `const parser::Map *` (null when absent).
   Metadata blocks are not merged; moving or releasing `raw()` transfers their lifetime
-  (`src/qbm/redis/reply.h:1292-1306`).
+  (`src/qbm/redis/reply.h:1316-1330`).
 - **Command groups are CRTP mixins** (`key_commands<Derived>`,
   `string_commands<Derived>`, …) composed into the client. You never
   instantiate them directly. Method names are lowercase Redis verbs, with
@@ -436,7 +438,7 @@ if (!r.ok()) {
   runs after decoding returns, outside its catches, whether invoked
   by the operator or the cold member; a callback exception cannot cause a second completion.
   Attribute traversal is iterative, with no new depth limit beyond the configured wire parser.
-  _(src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1433; src/qbm/redis/reply.cpp:31-40)_
+  _(src/qbm/redis/reply.h:1390-1412,1415-1420,1424-1457; src/qbm/redis/reply.cpp:31-40)_
 
 ---
 

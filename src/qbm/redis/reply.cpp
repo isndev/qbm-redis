@@ -39,6 +39,63 @@ unwrap_attributes(const ReplyValue &reply) noexcept {
     return *value;
 }
 
+namespace {
+
+// The value behind a decoration that reached an attribute-aware parser directly: nullptr when `reply` is not
+// decorated, or when the decoration carries no value -- the parser then applies its own mismatch policy to the
+// decoration, as before.
+const ReplyValue *
+decorated_value(const ReplyValue &reply) noexcept {
+    if (!reply.is_attribute())
+        return nullptr;
+    const auto &value = unwrap_attributes(reply);
+    return value.is_attribute() ? nullptr : &value;
+}
+
+// An aware parser re-enters itself on the value behind the decoration through this helper, never directly, so its
+// own body is not recursive (a shape g++ 14 does not inline).
+template <typename T>
+[[nodiscard]] QB_NOINLINE QB_COLD T
+reparse(const ReplyValue &value) {
+    return parse(ParseTag<T>{}, value);
+}
+
+} // namespace
+
+std::string_view
+parse_string_view_mismatch(const ReplyValue &reply) {
+    if (const auto *value = decorated_value(reply))
+        return parse(ParseTag<std::string_view>{}, *value);
+    throw ReplyParseError("STRING or STATUS", reply);
+}
+
+std::string
+parse_string_mismatch(const ReplyValue &reply) {
+    if (is_integer(reply))
+        return std::to_string(reply.as_integer().value);
+    // Commands like GEORADIUS with WITHDIST/WITHCOORD return nested arrays
+    // [name, distance, ...] per element. Extract the first string sub-element.
+    if (is_array(reply) && !reply.as_array().empty() && reply.as_array()[0]->is_string())
+        return std::string(reply.as_array()[0]->as_string_view());
+    if (const auto *value = decorated_value(reply))
+        return parse(ParseTag<std::string>{}, *value);
+    throw ReplyParseError("STRING or STATUS", reply);
+}
+
+long long
+parse_integer_mismatch(const ReplyValue &reply) {
+    if (const auto *value = decorated_value(reply))
+        return parse(ParseTag<long long>{}, *value);
+    throw ReplyParseError("INTEGER", reply);
+}
+
+double
+parse_double_mismatch(const ReplyValue &reply) {
+    if (const auto *value = decorated_value(reply))
+        return parse(ParseTag<double>{}, *value);
+    throw ProtoError("not a double reply");
+}
+
 // ============================================================================
 // Type to string conversion
 // ============================================================================
@@ -137,7 +194,9 @@ parse(ParseTag<qb::redis::subscription>, const ReplyValue &reply) {
 
 std::vector<char>
 parse(ParseTag<std::vector<char>>, const ReplyValue &reply) {
-    if (!is_string(reply)) {
+    if (!is_string(reply)) [[unlikely]] {
+        if (const auto *value = decorated_value(reply))
+            return reparse<std::vector<char>>(*value);
         throw ReplyParseError("STRING", reply);
     }
 
@@ -204,7 +263,9 @@ parse(ParseTag<qb::redis::stream_id>, const ReplyValue &reply) {
 
 qb::redis::stream_entry
 parse(ParseTag<qb::redis::stream_entry>, const ReplyValue &reply) {
-    if (!is_array(reply) || reply.as_array().size() < 2) {
+    if (!is_array(reply) || reply.as_array().size() < 2) [[unlikely]] {
+        if (const auto *value = decorated_value(reply))
+            return reparse<qb::redis::stream_entry>(*value);
         throw ProtoError("Invalid stream entry format");
     }
 
@@ -217,7 +278,9 @@ parse(ParseTag<qb::redis::stream_entry>, const ReplyValue &reply) {
 
 stream_entry_list
 parse(ParseTag<stream_entry_list>, const ReplyValue &reply) {
-    if (!is_array(reply)) {
+    if (!is_array(reply)) [[unlikely]] {
+        if (const auto *value = decorated_value(reply))
+            return reparse<stream_entry_list>(*value);
         throw ReplyParseError("ARRAY", reply);
     }
 
@@ -233,7 +296,9 @@ parse(ParseTag<stream_entry_list>, const ReplyValue &reply) {
 
 map_stream_entry_list
 parse(ParseTag<map_stream_entry_list>, const ReplyValue &reply) {
-    if (!is_array(reply)) {
+    if (!is_array(reply)) [[unlikely]] {
+        if (const auto *value = decorated_value(reply))
+            return reparse<map_stream_entry_list>(*value);
         throw ReplyParseError("ARRAY", reply);
     }
 
@@ -269,7 +334,9 @@ parse(ParseTag<qb::redis::score>, const ReplyValue &reply) {
 
 qb::redis::score_member
 parse(ParseTag<qb::redis::score_member>, const ReplyValue &reply) {
-    if (!is_array(reply) || reply.as_array().size() < 2) {
+    if (!is_array(reply) || reply.as_array().size() < 2) [[unlikely]] {
+        if (const auto *value = decorated_value(reply))
+            return reparse<qb::redis::score_member>(*value);
         throw ProtoError("Invalid score-member format");
     }
 
@@ -282,7 +349,9 @@ parse(ParseTag<qb::redis::score_member>, const ReplyValue &reply) {
 
 std::vector<qb::redis::score_member>
 parse(ParseTag<std::vector<qb::redis::score_member>>, const ReplyValue &reply) {
-    if (!is_array(reply)) {
+    if (!is_array(reply)) [[unlikely]] {
+        if (const auto *value = decorated_value(reply))
+            return reparse<std::vector<qb::redis::score_member>>(*value);
         throw ReplyParseError("ARRAY", reply);
     }
 

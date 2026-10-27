@@ -68,7 +68,7 @@ see [Pipelining and `await()`](./pipeline_and_await.md).
 
 A numeric `qb::json` or `json_value` passed to a generic command emits its number as one decimal bulk string, not a
 JSON document. Floating values use the same round-trip formatting as a direct `double` argument; `1e-7` stays nonzero
-for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:1000-1001`, `reply.h:1027-1038`).
+for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:1024-1025`, `reply.h:1051-1062`).
 Numeric `qb::json` integers preserve their signed or unsigned decimal value through the full 64-bit domain.
 A value above `INT64_MAX` remains a positive unsigned decimal argument; it is not cast to a signed value first.
 
@@ -95,7 +95,7 @@ resumes your coroutine when the reply lands (`redis.h:2510-2514`, `redis.h:1461-
 
 ### The reply type: `qb::redis::Reply<T>`
 
-Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1227`), where `T` is the **expected successful result type**
+Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1251`), where `T` is the **expected successful result type**
 for that command — fixed per command, never chosen by you for the wrapped methods. Examples:
 
 | Command                 | Result type `T`                           |
@@ -110,7 +110,7 @@ for that command — fixed per command, never chosen by you for the wrapped meth
 | `SCAN`                  | `qb::redis::scan<Out>`                    |
 
 `Reply<T>` carries four things: a success flag, the parsed result, the raw owning `parser::Value`, and an owned error
-string (`reply.h:1227`). Its surface:
+string (`reply.h:1251`). Its surface:
 
 - `reply.ok()` / `if (reply)` — `true` when the command was sent, a reply arrived, and it was **not** a Redis error.
 - `reply.result()` / `reply.value()` — the decoded `T` (aliases; `value()` is preferred in new code).
@@ -136,7 +136,7 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1227-1309 (Reply<T>) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1251-1333 (Reply<T>) -->
 
 #### `qb::redis::status` — the "OK" reply
 
@@ -148,7 +148,7 @@ fail at the protocol level, and `reply.value().ok()` confirms the server replied
 ### How replies are decoded
 
 Decoding lives in `reply.h` and runs inside the reply handler (`TReply<Func, T>`), which takes ownership of the parsed
-RESP node and produces the `Reply<T>` (`reply.h:1351`). The handler distinguishes three cases:
+RESP node and produces the `Reply<T>` (`reply.h:1375`). The handler distinguishes three cases:
 
 1. **Disconnect / failure** — a null reply yields `Reply{ ok = false, error = "disconnected" }` (or the explicit
    `fail()` reason, e.g. `"command timed out"`).
@@ -160,14 +160,15 @@ RESP node and produces the `Reply<T>` (`reply.h:1351`). The handler distinguishe
    return a `Reply<T>` prvalue. The application callback runs after decoding returns, outside its catches, so a
    throwing callback does not receive a second reply.
 
-`parse<T>` selects the original or unwrapped value, including on nested generic container elements, then uses
-one `ParseTag<T>` dispatch site to select the overload, so each
-target type supplies its own decoder (`reply.h`). The parsers handle both wire shapes transparently — key/value data may
+`parse<T>` enters the module's own attribute-aware parsers directly -- they take a decorated value as one more
+case of their own type test, on their cold mismatch path -- and hands any other target type, a user's `ParseTag`
+overload included, the original or unwrapped value, nested generic container elements included, through one
+`ParseTag<T>` dispatch site, so each target type supplies its own decoder (`reply.h`). The parsers handle both wire shapes transparently — key/value data may
 arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the map/pair parsers normalize both.
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1433 (the TReply operator, cold dispatch member and decoder template), 312-319 (generic dispatch) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1390-1412,1415-1420,1424-1457 (the TReply operator, cold dispatch member and decoder template), 312-319 (generic dispatch) -->
 
 ### Coroutine vs callback
 

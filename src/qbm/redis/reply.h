@@ -298,11 +298,40 @@ is_status(const ReplyValue &reply) noexcept {
 // a type error for non-JSON). Wire nesting limits belong to ParserConfig.
 [[nodiscard]] const ReplyValue &unwrap_attributes(const ReplyValue &reply) noexcept;
 
+// The mismatch tails of the primitive parsers, out of line and cold: the rare shapes a parser still
+// accepts (an integer or a GEORADIUS array for a string), a decorated value re-entered on what it
+// carries, otherwise the parser's own error. Kept out of the parsers' bodies so that the common case
+// stays as small as in 3.3.0 and g++ keeps inlining it into the container parsers that call it (the
+// string and double parsers inside the score-member parser, read under callgrind). Bodies in reply.cpp.
+[[nodiscard]] QB_NOINLINE QB_COLD std::string_view parse_string_view_mismatch(const ReplyValue &reply);
+[[nodiscard]] QB_NOINLINE QB_COLD std::string parse_string_mismatch(const ReplyValue &reply);
+[[nodiscard]] QB_NOINLINE QB_COLD long long   parse_integer_mismatch(const ReplyValue &reply);
+[[nodiscard]] QB_NOINLINE QB_COLD double      parse_double_mismatch(const ReplyValue &reply);
+
+/**
+ * @brief The parsers of this module that take an attribute-decorated value THEMSELVES.
+ *
+ * `parse<T>` enters such a `parse(ParseTag<T>{}, ...)` directly -- a plain forward, inlined,
+ * so a container loop calls the tagged parser with no test and no unwrap site per element --
+ * because the overload handles the decoration as one more case of its own type test, on its
+ * mismatch path. Every other overload, a user's included, receives the decorated value
+ * unwrapped by the facade first, exactly as before. The set is named, never derived from a
+ * trait: a type listed here without the retry in its overload would turn a decorated reply
+ * into a parse error, so the two move together.
+ */
+template <typename T>
+inline constexpr bool attribute_aware_v =
+    std::is_same_v<T, std::string_view> || std::is_same_v<T, std::string> || std::is_same_v<T, long long> || std::is_same_v<T, double>
+    || std::is_same_v<T, qb::json> || std::is_same_v<T, qb::redis::json_value> || std::is_same_v<T, qb::redis::score_member>
+    || std::is_same_v<T, std::vector<qb::redis::score_member>> || std::is_same_v<T, qb::redis::stream_entry>
+    || std::is_same_v<T, stream_entry_list> || std::is_same_v<T, map_stream_entry_list> || std::is_same_v<T, std::vector<char>>;
+
 /**
  * @brief Parses a reply value into the requested C++ type @p T.
  *
  * Dispatches to the matching `parse(ParseTag<T>{}, ...)` overload via
- * tag-based overload resolution.
+ * tag-based overload resolution. An attribute-aware @p T (`attribute_aware_v`)
+ * is entered directly; any other receives a decorated value unwrapped.
  *
  * @tparam T Target C++ type to convert the reply into.
  * @param reply The native reply value to parse.
@@ -312,10 +341,14 @@ is_status(const ReplyValue &reply) noexcept {
 template <typename T>
 [[nodiscard]] inline T
 parse(const ReplyValue &reply) {
-    const ReplyValue *value = &reply;
-    if (reply.is_attribute()) [[unlikely]]
-        value = &unwrap_attributes(reply);
-    return parse(ParseTag<T>{}, *value);
+    if constexpr (attribute_aware_v<T>) {
+        return parse(ParseTag<T>{}, reply);
+    } else {
+        const ReplyValue *value = &reply;
+        if (reply.is_attribute()) [[unlikely]]
+            value = &unwrap_attributes(reply);
+        return parse(ParseTag<T>{}, *value);
+    }
 }
 
 // ============================================================================
@@ -324,31 +357,22 @@ parse(const ReplyValue &reply) {
 
 [[nodiscard]] inline std::string_view
 parse(ParseTag<std::string_view>, const ReplyValue &reply) {
-    if (!is_string(reply) && !is_status(reply)) {
-        throw ReplyParseError("STRING or STATUS", reply);
-    }
+    if (!is_string(reply) && !is_status(reply)) [[unlikely]]
+        return parse_string_view_mismatch(reply);
     return reply.as_string_view();
 }
 
 [[nodiscard]] inline std::string
 parse(ParseTag<std::string>, const ReplyValue &reply) {
-    if (is_integer(reply)) {
-        return std::to_string(reply.as_integer().value);
-    }
-    // Commands like GEORADIUS with WITHDIST/WITHCOORD return nested arrays
-    // [name, distance, ...] per element. Extract the first string sub-element.
-    if (is_array(reply) && !reply.as_array().empty() && reply.as_array()[0]->is_string()) {
-        return std::string(reply.as_array()[0]->as_string_view());
-    }
-    auto sv = parse(ParseTag<std::string_view>{}, reply);
-    return std::string(sv);
+    if (is_string(reply) || is_status(reply)) [[likely]]
+        return std::string(reply.as_string_view());
+    return parse_string_mismatch(reply); // an integer, a GEORADIUS array, a decorated value, or the error
 }
 
 [[nodiscard]] inline long long
 parse(ParseTag<long long>, const ReplyValue &reply) {
-    if (!is_integer(reply)) {
-        throw ReplyParseError("INTEGER", reply);
-    }
+    if (!is_integer(reply)) [[unlikely]]
+        return parse_integer_mismatch(reply);
     return reply.as_integer().value;
 }
 
@@ -376,7 +400,7 @@ parse(ParseTag<double>, const ReplyValue &reply) {
         if (ec == std::errc{} && ptr == sv.data() + sv.size())
             return value;
     }
-    throw ProtoError("not a double reply");
+    return parse_double_mismatch(reply);
 }
 
 [[nodiscard]] inline bool

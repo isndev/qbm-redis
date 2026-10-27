@@ -75,7 +75,7 @@ pointers and `std::string_view` still borrow their data until command serializat
 
 ### Reading a `Reply<T>`
 
-Every command resolves to `qb::redis::Reply<T>` (`reply.h:1234`):
+Every command resolves to `qb::redis::Reply<T>` (`reply.h:1258`):
 
 - `reply.ok()` / `explicit operator bool` — `true` when the command round-tripped successfully.
 - `reply.result()` (or its alias `reply.value()`) — the typed payload `T`.
@@ -296,7 +296,7 @@ see [connection.md](./connection.md)).
 
 - **`MODULE` may be unsupported.** A server compiled without the modules API rejects the whole family with an
   `unknown command 'MODULE'` error. That surfaces as `!reply.ok()` with the server text in `reply.error()`: the reply
-  dispatcher turns a RESP error frame into a failed `Reply` and never throws it at your call site (`reply.h:1377-1383`),
+  dispatcher turns a RESP error frame into a failed `Reply` and never throws it at your call site (`reply.h:1401-1407`),
   so there is nothing to `catch`. Always handle the not-supported branch the way the tests do — by asserting
   `!reply.ok()` and matching the error text (`integration/admin/module-commands.cpp:90-106`).
 - **Two-layer success check for `status` replies.** For `module_load`/`module_unload`, `reply.ok()` only tells you the
@@ -325,4 +325,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified-against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:563 (status), qbm/redis/src/qbm/redis/reply.h:1234 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.3.0 -->
+<!-- Verified-against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:563 (status), qbm/redis/src/qbm/redis/reply.h:1258 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.3.0 -->

@@ -75,7 +75,7 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
   `is_string()` before
   indexing. `role()` uses a command-specific conversion that keeps native positional arrays; `command_stats()`
   parses its INFO section into an object of raw text values. These exceptions do not change generic JSON
-  conversion. <!-- src: qbm/redis/src/qbm/redis/reply.cpp:558-597 (qb::json parse), qbm/redis/tests/integration/server/server-introspection.cpp:65-88 -->
+  conversion. <!-- src: qbm/redis/src/qbm/redis/reply.cpp:627-666 (qb::json parse), qbm/redis/tests/integration/server/server-introspection.cpp:65-88 -->
 - **`std::vector<std::pair<std::string, std::string>>`** — `CONFIG GET` (parameter/value pairs).
 - **`qb::json` from `command_info()`** — `COMMAND INFO` as an array with one entry per requested name: an object whose
   positions are named (`name`, `arity`, `flags`, `first_key`, `last_key`, `step`, then `acl_categories`, `tips`,
@@ -186,7 +186,7 @@ Notes:
 - `client_list()` yields a `qb::json` **string** holding the raw `CLIENT LIST` text block (one client per line), not a
   parsed array — the payload is line-delimited text, not JSON, so the wrapper boxes it verbatim. Parse the lines
   yourself, or call `client_info()` for the current connection. `client_tracking_info()`, by contrast, is a RESP map and
-  comes back as a JSON object. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1340-1356 (client_list), qbm/redis/src/qbm/redis/reply.cpp:558-597 (qb::json string boxing) -->
+  comes back as a JSON object. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1340-1356 (client_list), qbm/redis/src/qbm/redis/reply.cpp:627-666 (qb::json string boxing) -->
 
 ```cpp
 // <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:93-117,145-153 -->
@@ -426,7 +426,7 @@ heuristic to these arrays. <!-- src: qbm/redis/src/qbm/redis/commands/server_com
 
 `info()` returns the textual `INFO` payload boxed as a `qb::json` **string** (`result().is_string()` is `true`) —
 like `CLIENT LIST`. Use `result().get<std::string>()` and parse the lines yourself; pass a section name (`"memory"`,
-`"replication"`, ...) to narrow the text through `info()`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1260-1281 (info), qbm/redis/src/qbm/redis/reply.cpp:558-597 (qb::json string boxing) -->
+`"replication"`, ...) to narrow the text through `info()`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1260-1281 (info), qbm/redis/src/qbm/redis/reply.cpp:627-666 (qb::json string boxing) -->
 `time()`'s two overloads return **different** types — see the [
 `TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only).
 

@@ -237,7 +237,7 @@ does not decode into `T` and a lost connection (`"disconnected"`). So does a usa
 throws `SecurityError` while the command is serialized, and the client turns it into that command's failed `Reply`
 (`"String too large"`), leaving no handler queued and no partial frame in the outbound pipe (Huly QB-255; until 3.3 the
 throw reached the caller and left both behind).
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1234-1316 (Reply), 1361-1362,1366-1388,1391-1396,1400-1429 (failure dispatch and decoding), 789 (the limit), 813-833 (the throw); qbm/redis/src/qbm/redis/redis.h:1015-1039 (caught where the command is serialized, the pipe rolled back) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1258-1340 (Reply), 1385-1386,1390-1412,1415-1420,1424-1453 (failure dispatch and decoding), 813 (the limit), 837-857 (the throw); qbm/redis/src/qbm/redis/redis.h:1015-1039 (caught where the command is serialized, the pipe rolled back) -->
 
 ### Driving the loop
 

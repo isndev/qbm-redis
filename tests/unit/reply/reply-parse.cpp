@@ -1215,6 +1215,113 @@ TEST(ReplyAttributes, MissingValueIsRejected) {
     EXPECT_THROW(do_parse<std::optional<std::string>>(missing), qb::redis::ProtoError);
 }
 
+// The attribute-aware parsers (reply::attribute_aware_v): the facade enters them directly, so each
+// one must take a decorated value itself -- as an element of a container, as the container, as a
+// member of a pair -- and keep its own policy for a decoration that carries no value.
+TEST(ReplyAttributes, DecoratedScoreMembersUnwrapInsideTheVector) {
+    using reply_attribute_parse_test::decorate;
+    // RESP3 pairs: a member and a score decorated inside the first pair, the second pair decorated
+    // as a whole, the vector decorated as a whole.
+    std::vector<std::unique_ptr<Value>> pair0;
+    pair0.push_back(std::make_unique<Value>(decorate(mk_bulk("alice"))));
+    pair0.push_back(std::make_unique<Value>(decorate(mk_dbl(1.5))));
+    std::vector<std::unique_ptr<Value>> pair1;
+    pair1.push_back(mk_bulk("bob"));
+    pair1.push_back(mk_bulk("2.5"));
+    std::vector<std::unique_ptr<Value>> pairs;
+    pairs.push_back(std::make_unique<Value>(make_array(std::move(pair0))));
+    pairs.push_back(std::make_unique<Value>(decorate(std::make_unique<Value>(make_array(std::move(pair1))))));
+    auto       value = decorate(std::make_unique<Value>(make_array(std::move(pairs))));
+    const auto out   = do_parse<std::vector<qb::redis::score_member>>(value);
+    ASSERT_EQ(out.size(), 2u);
+    EXPECT_EQ(out[0].member, "alice");
+    EXPECT_DOUBLE_EQ(out[0].score, 1.5);
+    EXPECT_EQ(out[1].member, "bob");
+    EXPECT_DOUBLE_EQ(out[1].score, 2.5);
+}
+
+TEST(ReplyAttributes, DecoratedScoreMembersUnwrapInsideTheFlatArray) {
+    using reply_attribute_parse_test::decorate;
+    // RESP2 flat [member, score, ...]: a member decorated, a score decorated.
+    std::vector<std::unique_ptr<Value>> elems;
+    elems.push_back(std::make_unique<Value>(decorate(mk_bulk("alice"))));
+    elems.push_back(mk_bulk("1.5"));
+    elems.push_back(mk_bulk("bob"));
+    elems.push_back(std::make_unique<Value>(decorate(mk_bulk("2.5"))));
+    const Value value = make_array(std::move(elems));
+    const auto  out   = do_parse<std::vector<qb::redis::score_member>>(value);
+    ASSERT_EQ(out.size(), 2u);
+    EXPECT_EQ(out[0].member, "alice");
+    EXPECT_DOUBLE_EQ(out[0].score, 1.5);
+    EXPECT_EQ(out[1].member, "bob");
+    EXPECT_DOUBLE_EQ(out[1].score, 2.5);
+}
+
+TEST(ReplyAttributes, DecoratedStreamEntriesUnwrapInsideTheList) {
+    using reply_attribute_parse_test::decorate;
+    // [[id, [field, value]], [id, [field, value]]]: an id decorated, a field name decorated, the
+    // second entry decorated as a whole, the list decorated as a whole.
+    std::vector<std::unique_ptr<Value>> fields0;
+    fields0.push_back(std::make_unique<Value>(decorate(mk_bulk("f"))));
+    fields0.push_back(mk_bulk("v0"));
+    std::vector<std::unique_ptr<Value>> entry0;
+    entry0.push_back(std::make_unique<Value>(decorate(mk_bulk("1-0"))));
+    entry0.push_back(std::make_unique<Value>(make_array(std::move(fields0))));
+    std::vector<std::unique_ptr<Value>> fields1;
+    fields1.push_back(mk_bulk("f"));
+    fields1.push_back(std::make_unique<Value>(decorate(mk_bulk("v1"))));
+    std::vector<std::unique_ptr<Value>> entry1;
+    entry1.push_back(mk_bulk("2-0"));
+    entry1.push_back(std::make_unique<Value>(make_array(std::move(fields1))));
+    std::vector<std::unique_ptr<Value>> entries;
+    entries.push_back(std::make_unique<Value>(make_array(std::move(entry0))));
+    entries.push_back(std::make_unique<Value>(decorate(std::make_unique<Value>(make_array(std::move(entry1))))));
+    auto       value = decorate(std::make_unique<Value>(make_array(std::move(entries))));
+    const auto out   = do_parse<qb::redis::stream_entry_list>(value);
+    ASSERT_EQ(out.size(), 2u);
+    EXPECT_EQ(out[0].id.timestamp, 1);
+    EXPECT_EQ(out[0].id.sequence, 0);
+    EXPECT_EQ(out[0].fields.at("f"), "v0");
+    EXPECT_EQ(out[1].id.timestamp, 2);
+    EXPECT_EQ(out[1].fields.at("f"), "v1");
+}
+
+TEST(ReplyAttributes, DecoratedJsonMapKeysAndValuesUnwrap) {
+    using reply_attribute_parse_test::decorate;
+    std::vector<std::pair<std::unique_ptr<Value>, std::unique_ptr<Value>>> entries;
+    entries.emplace_back(std::make_unique<Value>(decorate(mk_bulk("answer"))), std::make_unique<Value>(decorate(mk_int(42))));
+    entries.emplace_back(mk_bulk("plain"), mk_bulk("text"));
+    auto       value = decorate(std::make_unique<Value>(make_map(std::move(entries))));
+    const auto json  = do_parse<qb::json>(value);
+    ASSERT_TRUE(json.is_object());
+    EXPECT_EQ(json.size(), 2u);
+    EXPECT_EQ(json.at("answer"), 42);
+    EXPECT_EQ(json.at("plain"), "text");
+}
+
+TEST(ReplyAttributes, DecoratedBinaryStringUnwrapsToBytes) {
+    auto value = reply_attribute_parse_test::decorate(mk_bulk("ab"));
+    EXPECT_EQ(do_parse<std::vector<char>>(value), (std::vector<char>{'a', 'b'}));
+}
+
+TEST(ReplyAttributes, DecoratedDoubleCarriedAsStringUnwraps) {
+    auto value = reply_attribute_parse_test::decorate(mk_bulk("1.5"));
+    EXPECT_DOUBLE_EQ(do_parse<double>(value), 1.5);
+}
+
+TEST(ReplyAttributes, MissingValueIsRejectedByEveryAwareParser) {
+    Value missing(qb::redis::parser::Attribute{});
+    EXPECT_THROW(do_parse<std::string>(missing), qb::redis::ReplyParseError);
+    EXPECT_THROW(do_parse<std::string_view>(missing), qb::redis::ReplyParseError);
+    EXPECT_THROW(do_parse<double>(missing), qb::redis::ProtoError);
+    EXPECT_THROW(do_parse<std::vector<char>>(missing), qb::redis::ReplyParseError);
+    EXPECT_THROW(do_parse<qb::redis::score_member>(missing), qb::redis::ProtoError);
+    EXPECT_THROW(do_parse<std::vector<qb::redis::score_member>>(missing), qb::redis::ReplyParseError);
+    EXPECT_THROW(do_parse<qb::redis::stream_entry>(missing), qb::redis::ProtoError);
+    EXPECT_THROW(do_parse<qb::redis::stream_entry_list>(missing), qb::redis::ReplyParseError);
+    EXPECT_THROW(do_parse<qb::redis::map_stream_entry_list>(missing), qb::redis::ReplyParseError);
+}
+
 // Declared after reply.h, in the result type's associated namespace: only ADL
 // can add this ParseTag overload to the dependent call in reply::parse<T>.
 namespace reply_parse_adl_test {

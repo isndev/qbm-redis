@@ -68,7 +68,7 @@ reply.
 
 ### The reply model: `Reply<T>`
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1227-1309 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1251-1333 -->
 
 Every command returns a `Reply<T>`, where `T` is the decoded result type (`long long` for `INCR`,
 `std::optional<std::string>` for `GET`, `std::vector<std::string>` for `LRANGE`, and so on).
@@ -96,7 +96,7 @@ The accessors you use:
 
 `Reply<T>` is the *only* outcome channel. `reply.error()` is a `std::string` that the dispatch layer copies before any
 internal buffer is moved or freed, so it is always safe to read and store — it is never a view into reclaimed storage (
-`reply.h:1238`, `reply.h:1380`).
+`reply.h:1262`, `reply.h:1404`).
 
 RESP3 attributes decorate the underlying value without changing its typed result. The dispatcher unwraps
 attributes before error classification, and generic nested decoders unwrap them for container elements too.
@@ -149,7 +149,7 @@ redis.incr([](qb::redis::Reply<long long> &&reply) {
 
 ### RESP error replies become `ok() == false`, not exceptions
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1366-1383,1391-1396,1400-1410 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1390-1407,1415-1420,1424-1434 -->
 
 When the server returns a RESP error frame, the reply dispatcher (`TReply::operator()`) recognizes it, copies the
 message, and constructs `Reply{ok=false}` — it does *not* throw. A decorated reply is routed through the private
@@ -167,7 +167,7 @@ if (raw->is_error()) {
 
 So a `WRONGTYPE` against a key, a `NOAUTH` before authentication, or a script syntax error all surface as
 `reply.ok() == false` with the server's text in `reply.error()`. This is a documented, deliberate contract: callers
-branch on `ok()`, never on a caught exception (`reply.h:1381`).
+branch on `ok()`, never on a caught exception (`reply.h:1405`).
 
 `reply.h:59` declares `ReplyErrorType` — `ERR`, `MOVED`, `ASK` — but no `Reply` carries one today: every error frame,
 a Redis Cluster redirect included, surfaces as `ok() == false` with the server's text in `reply.error()`, and nothing
@@ -178,7 +178,7 @@ See [cluster_commands.md](./cluster_commands.md).
 
 ### The parse seam: where exceptions live, and why you never see them
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1366-1388,1391-1396,1400-1433 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1390-1412,1415-1420,1424-1457 -->
 
 The private `decode<Attributed>(reply_ptr&)` template handles typed replies. Its default `false` instantiation
 calls `parse<T>(*raw)` for an ordinary value. Its `true` instantiation unwraps attributes, classifies an inner server
@@ -209,10 +209,10 @@ The exception hierarchy (all in `reply.h`, all deriving from `qb::redis::Error :
 
 | Class                                          | Thrown by                                                                                  | Meaning                                                                                                                                                                                                    |
 |------------------------------------------------|--------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ProtoError`                                   | `parse<double>` (`reply.h:355-379`), `parse_scan_reply` (`reply.h:609-633`), container parsers | reply shape is wrong (e.g. "not a double reply", odd-length flat array)                                                                                                                                    |
-| `ReplyParseError` (: `ProtoError`)             | the typed `parse()` overloads (`reply.h:328,350,472,…`)                                    | reply type does not match the expected type; the message names both                                                                                                                                        |
-| `CommandError`                                 | the JSON parsers, `parse<json_value>` / `parse<qb::json>` (`reply.cpp:483,561`)            | a JSON command's reply was a server error                                                                                                                                                                  |
-| `SecurityError`                                | `to_redis_string` (`reply.h:820,830`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB); caught where the command is serialized (`redis.h:1015-1039`), so the command fails with `"String too large"` and nothing reaches your call site (Huly QB-255) |
+| `ProtoError`                                   | `parse<double>` (`reply.h:379-404`; its error raised by `parse_double_mismatch`, `reply.cpp:93-97`), `parse_scan_reply` (`reply.h:633-680`), container parsers | reply shape is wrong (e.g. "not a double reply", odd-length flat array)                                                                                                                                    |
+| `ReplyParseError` (: `ProtoError`)             | the typed `parse()` overloads: the primitives through their cold mismatch tails (`reply.cpp:66-90`), the containers in place (`reply.h:496,…`) | reply type does not match the expected type; the message names both                                                                                                                                        |
+| `CommandError`                                 | the JSON parsers, `parse<json_value>` / `parse<qb::json>` (`reply.cpp:552,630`)            | a JSON command's reply was a server error                                                                                                                                                                  |
+| `SecurityError`                                | `to_redis_string` (`reply.h:844,854`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB); caught where the command is serialized (`redis.h:1015-1039`), so the command fails with `"String too large"` and nothing reaches your call site (Huly QB-255) |
 | `ConnectionError`, `AuthError`, `TimeoutError` | nothing (declared, currently unthrown)                                                     | reserved lifecycle types; connect/auth/deadline failures reach you as `reply.error()` strings (`"disconnected"`, `"command timed out"`), never as these exceptions — do not write `catch` clauses for them |
 
 Because the dispatcher catches `const Error&` — and, as a backstop, any other `std::exception` (e.g. a `std::bad_alloc`
@@ -221,12 +221,12 @@ for `catch` blocks in your code: nothing thrown while decoding a reply escapes t
 failed `Reply`. A user callback that throws is invoked only once; the dispatch boundary contains its exception after
 the handler has left the reply FIFO. In practice the parsers avoid throwing standard exceptions at all anyway (e.g.
 stream-id decoding parses each half with `qb::to_number<std::uint64_t>`, which returns `std::nullopt` rather than throwing
-on an out-of-range or malformed value, and the parser folds that `nullopt` into a `ProtoError`) (`reply.h:1400-1433`, `reply.cpp:178-202`
+on an out-of-range or malformed value, and the parser folds that `nullopt` into a `ProtoError`) (`reply.h:1424-1457`, `reply.cpp:237-261`
 stream-id path).
 
 ### Numeric-parse strictness
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:355-379,609-633; qbm/redis/src/qbm/redis/parser/parser.h:821-888 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:379-404,633-680; qbm/redis/src/qbm/redis/parser/parser.h:821-888 -->
 
 Numeric decoding is strict on purpose, at two layers. The RESP parser validates integers and doubles as it reads the
 wire, and the typed `parse()` overloads re-validate when converting a string reply to a number.
@@ -236,11 +236,11 @@ wire, and the typed `parse()` overloads re-validate when converting a string rep
   -line is `INVALID_INTEGER`, a fatal protocol error.
 - **Doubles** use `std::from_chars` and require the *whole* string to be consumed. A reply like `"1.5junk"` is rejected,
   not silently read as `1.5`. The literals `inf`, `+inf`, `-inf`, and `nan` are accepted (`src/qbm/redis/parser/parser.h:866-888`).
-  The reply-side `parse<double>` applies the same full-consume rule (`reply.h:371-377`) and falls back to
+  The reply-side `parse<double>` applies the same full-consume rule (`reply.h:395-401`) and falls back to
   `ProtoError("not a double reply")`.
 - **SCAN cursors** are unsigned 64-bit reverse-binary bucket indices that can legitimately set the high bit. The scan
   parser uses `std::from_chars` over the full unsigned range — a cursor above `INT64_MAX` is valid, not an error — and
-  rejects any non-numeric cursor with `ProtoError("Invalid cursor")` (`reply.h:620-633`).
+  rejects any non-numeric cursor with `ProtoError("Invalid cursor")` (`reply.h:644-657`).
 
 The practical consequence: a reply that is *almost* a number is treated as corrupt, not coerced. You get a clear
 `Reply{ok=false}` rather than a plausible-looking wrong value.
@@ -366,7 +366,7 @@ Reach for these when you decode a `reply.raw()` by hand and want an optional/`ex
 
 ### Distinguishing nil, error, and value on a `GET`
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:460-465 (optional parser) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:484-489 (optional parser) -->
 
 `GET` decodes to `std::optional<std::string>`: a missing key is a RESP nil that parses to `std::nullopt` with
 `ok() == true`. Do not confuse "key absent" with "command failed":
@@ -428,7 +428,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
 
 - **Do not `try`/`catch` a `co_await` to handle Redis errors.** Command and parse failures arrive as `Reply{ok=false}`;
   a `catch` block will never fire for them. Check `reply.ok()` or `if (reply)`.
-- **Read `result()` only after checking `ok()`.** On failure, `_result` is default-constructed (`reply.h:1236`); reading
+- **Read `result()` only after checking `ok()`.** On failure, `_result` is default-constructed (`reply.h:1260`); reading
   it is meaningless, not undefined, but still a bug.
 - **`std::optional<T>` results have two falsy states.** `!reply.ok()` means the command failed;
   `reply.ok() && !reply.result().has_value()` means it succeeded with a nil (absent key). `value_or(fallback)` collapses

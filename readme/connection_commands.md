@@ -140,7 +140,7 @@ if (resp2.ok() && resp2.result().is_object())
     qb::io::cout() << resp2.result()["proto"].get<int>() << std::endl;     // 2
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.cpp:602-636; qbm/redis/tests/unit/reply/reply-json-decode.cpp:255-271 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.cpp:671-705; qbm/redis/tests/unit/reply/reply-json-decode.cpp:255-271 -->
 
 ### `auth` — authentication
 

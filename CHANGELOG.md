@@ -7,7 +7,29 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ## [Unreleased]
 
-Nothing yet. Entries land here as they are merged, and move under a version heading when that version is tagged.
+### Changed
+
+- **The reply parsers take RESP3 attributes themselves; `reply::parse<T>` is a plain forward for them (Huly QB-1086).**
+  Since 3.3.0 the facade tested `is_attribute()` and kept a cold unwrap site at every element of every container, and
+  MSVC no longer inlined it: the JSON parser called it out of line at each map entry. The module's own parsers -- the
+  primitives (`std::string_view`, `std::string`, `long long`, `double`), `qb::json` and `json_value`, `score_member`
+  and its vector, `stream_entry` and its lists, `std::vector<char>` -- now handle a decorated value as one more case
+  of their own type test, on a cold out-of-line mismatch path (`parse_*_mismatch` in `reply.cpp`), and
+  `attribute_aware_v<T>` names them so the facade enters them directly; every other `parse(ParseTag<T>{}, ...)`
+  overload, a user's included, still receives the decorated value unwrapped first. Same results on every input,
+  pinned by seven new `ReplyAttributes` cases in `unit/reply/reply-parse.cpp` that also pass on 3.3.0. Read on
+  MSVC 19.51: the JSON parser's six out-of-line facade calls and every per-element unwrap site are gone
+  (`stream_entry_list` 219 -> 113 instructions, `score_member` 118 -> 82, the string parser 40 instructions and
+  inlined into its callers); counted on g++ 14 under callgrind, per reply: JSON map of 100 fields 143 118 -> 141 545
+  instructions (-1.1 %), score-member vector of 100 36 272 -> 35 365 (-2.5 %), four stream lists 77 811 -> 75 181
+  (-3.4 %). The +6.3 % of `BM_ReplyParse_JsonWideMap/fields:100` between 3.2.1 and 3.3.0 on MSVC that opened the
+  ticket is not this code's: the same 3.3.0 library objects linked with the 3.2.1 benchmark TU measure at the 3.2.1
+  level (`dev/bench/LAYOUT-FAMILIES.md`, second application). Measured against the frozen 3.3.0 in one quiet
+  session per host (three physical copies a side, seeded order, four rounds, 95 % bootstrap interval of the ratio
+  of medians): MSVC 19.51 `ReplyParse_JsonWideMap/100` -1.5 %, `MapStreamEntryList/4` -1.6 %,
+  `ScoreMemberVector/100` -7.0 %, `PubSubMessage/16` -13.1 %, `TReply_SuccessDispatch` -1.1 %, the untouched
+  `ReplySerialize_MultiBulk/100` witness level; g++ 14 `JsonWideMap/100` -2.4 %, `MapStreamEntryList/4` -4.3 %,
+  `ScoreMemberVector/100` and `PubSubMessage/16` level.
 
 ## [3.3.0] - 2026-10-26
 

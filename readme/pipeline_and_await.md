@@ -127,7 +127,7 @@ redis.await();
   or a disconnect, never on `set_command_timeout()`. Nor does a command held there ever leave: the connection, its
   handshake and the reconnection run are coroutines too — from a coroutine, `co_await` the command instead.
 - On **disconnect**, the queue is failed: every pending handler runs with `ok() == false` and
-  `error() == "disconnected"` (`reply.h:1366-1369`). If an opt-in command deadline tripped first, the failure reason is
+  `error() == "disconnected"` (`reply.h:1390-1393`). If an opt-in command deadline tripped first, the failure reason is
   `"command timed out"` instead (`redis.h:1921-1937,2051-2052`). See [error_handling.md](./error_handling.md).
 
 ```cpp
