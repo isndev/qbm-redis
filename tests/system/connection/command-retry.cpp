@@ -387,11 +387,13 @@ TEST_F(CommandRetry, ARetryPendingWhenTheClientIsDestroyedIsDropped) {
 
     Outcomes                 out;
     qb::redis::command_retry slow;
-    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(3).with_initial_delay(50ms).with_jitter(false);
+    int                      scheduled = 0;
+    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(3).with_initial_delay(50ms).with_jitter(false).with_on_retry(
+        [&scheduled](int, qb::duration) { ++scheduled; });
     client->retrying(slow).get(out.get_sink(), "k");
     ASSERT_EQ(peer->expect(1).size(), 1u);
     peer->send("-BUSY Redis is busy running a script\r\n");
-    ASSERT_TRUE(run_until([&] { return client->stats().retries == 1; })) << "the retry is scheduled, 50 ms out";
+    ASSERT_TRUE(run_until([&] { return scheduled == 1; })) << "the retry is scheduled, 50 ms out";
     client.reset();
     settle(100ms); // past the retry's time
     EXPECT_TRUE(out.seen.empty()) << "a client gone discards its pending work uninvoked, the retry included";
@@ -405,13 +407,15 @@ TEST_F(CommandRetry, ARetryWaitingForItsBackoffIsPendingOnTheClient) {
     auto      peer = connect(client, server);
     ASSERT_TRUE(peer);
     qb::redis::command_retry slow;
-    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(2).with_initial_delay(300ms).with_jitter(false);
+    int                      scheduled = 0;
+    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(2).with_initial_delay(300ms).with_jitter(false).with_on_retry(
+        [&scheduled](int, qb::duration) { ++scheduled; });
 
     Outcomes out;
     client.retrying(slow).get(out.get_sink(), "k");
     ASSERT_EQ(peer->expect(1).size(), 1u);
     peer->send("-LOADING Redis is loading the dataset in memory\r\n");
-    ASSERT_TRUE(run_until([&] { return client.stats().retries == 1; }));
+    ASSERT_TRUE(run_until([&] { return scheduled == 1; }));
     EXPECT_EQ(client.pending_reply_count(), 1u) << "waiting for its backoff, still the client's";
     ASSERT_EQ(peer->expect(1, 2000ms).size(), 1u) << "the second attempt";
     peer->send(bulk("v"));
@@ -444,13 +448,15 @@ TEST_F(CommandRetry, ARetryPendingAcrossAMultiIsNotIssuedInsideIt) {
     auto      peer = connect(client, server);
     ASSERT_TRUE(peer);
     qb::redis::command_retry slow;
-    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(3).with_initial_delay(100ms).with_jitter(false);
+    int                      scheduled = 0;
+    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(3).with_initial_delay(400ms).with_jitter(false).with_on_retry(
+        [&scheduled](int, qb::duration) { ++scheduled; });
 
     Outcomes out;
     client.retrying(slow).get(out.get_sink(), "k");
     ASSERT_EQ(peer->expect(1).size(), 1u);
     peer->send("-LOADING Redis is loading the dataset in memory\r\n");
-    ASSERT_TRUE(run_until([&] { return client.stats().retries == 1; }));
+    ASSERT_TRUE(run_until([&] { return scheduled == 1; }));
     client.multi(out.status_sink());
     EXPECT_EQ(peer->expect(1), (std::vector<Command>{{"MULTI"}}));
     peer->send("+OK\r\n");
@@ -459,6 +465,35 @@ TEST_F(CommandRetry, ARetryPendingAcrossAMultiIsNotIssuedInsideIt) {
         << "the last failure is the outcome, once";
     EXPECT_TRUE(peer->expect(1, 250ms).empty()) << "nothing sent inside the transaction";
     EXPECT_EQ(client.pending_reply_count(), 0u);
+    EXPECT_EQ(client.stats().retries, 0u) << "a retry not issued again is not counted";
+}
+
+TEST_F(CommandRetry, ARetryPendingAcrossAClosedMultiIsIssued) {
+    // The negative direction: a multi() and its exec() both submitted during the backoff leave no transaction open,
+    // and the retry goes out.
+    FakeRedis server;
+    Client    client{server.uri()};
+    auto      peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    qb::redis::command_retry slow;
+    int                      scheduled = 0;
+    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(3).with_initial_delay(400ms).with_jitter(false).with_on_retry(
+        [&scheduled](int, qb::duration) { ++scheduled; });
+
+    Outcomes out;
+    client.retrying(slow).get(out.get_sink(), "k");
+    ASSERT_EQ(peer->expect(1).size(), 1u);
+    peer->send("-LOADING Redis is loading the dataset in memory\r\n");
+    ASSERT_TRUE(run_until([&] { return scheduled == 1; }));
+    client.multi(out.status_sink());
+    client.exec<std::string>([&out](qb::redis::Reply<std::vector<std::string>> &&r) { out.seen.push_back(r.ok() ? "exec" : "exec error"); });
+    EXPECT_EQ(peer->expect(2), (std::vector<Command>{{"MULTI"}, {"EXEC"}}));
+    peer->send("+OK\r\n*0\r\n");
+    EXPECT_EQ(peer->expect(1, 2000ms), (std::vector<Command>{{"GET", "k"}})) << "issued again: the transaction was closed";
+    peer->send(bulk("v"));
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 3; }));
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"ok", "exec", "ok:v"}));
+    EXPECT_EQ(client.stats().retries, 1u);
 }
 
 TEST_F(CommandRetry, AwaitReturnsOnlyOnceTheRetriedCommandIsDone) {
@@ -467,13 +502,15 @@ TEST_F(CommandRetry, AwaitReturnsOnlyOnceTheRetriedCommandIsDone) {
     auto      peer = connect(client, server);
     ASSERT_TRUE(peer);
     qb::redis::command_retry slow;
-    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(2).with_initial_delay(50ms).with_jitter(false);
+    int                      scheduled = 0;
+    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(2).with_initial_delay(50ms).with_jitter(false).with_on_retry(
+        [&scheduled](int, qb::duration) { ++scheduled; });
 
     Outcomes out;
     client.retrying(slow).get(out.get_sink(), "k");
     ASSERT_EQ(peer->expect(1).size(), 1u);
     peer->send("-LOADING Redis is loading the dataset in memory\r\n");
-    ASSERT_TRUE(run_until([&] { return client.stats().retries == 1; }));
+    ASSERT_TRUE(run_until([&] { return scheduled == 1; }));
     // The second attempt leaves 50 ms from now; the peer answers it at 150 ms, while await() spins.
     qb::io::async::callback([&peer] { peer->send(bulk("v")); }, 150ms);
     client.await();

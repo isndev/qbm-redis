@@ -4292,8 +4292,7 @@ class RetryingClient<Redis<QB_IO_>>
             }
             static thread_local std::mt19937 rng{std::random_device{}()};
             const qb::duration               wait = retry.backoff.next_delay(attempts, &rng);
-            client->count_retry_();
-            if (retry.backoff.on_retry) {
+            if (retry.backoff.on_retry) { // a retry scheduled, before its wait
                 try {
                     retry.backoff.on_retry(attempts, wait);
                 } catch (...) {
@@ -4312,6 +4311,7 @@ class RetryingClient<Redis<QB_IO_>>
                     self->callback(std::move(*self->last));
                     return;
                 }
+                self->client->count_retry_(); // stats().retries counts what is issued again
                 self->issue();
             };
             if (wait > qb::duration::zero())
@@ -4352,7 +4352,8 @@ public:
     /// `reset()` through the view discards the client's open transaction, as the client's own `reset()` records.
     void
     reset_transaction_state() noexcept {
-        _client->reset_transaction_state();
+        if (*_alive) // as every entry point of the view: never a client gone
+            _client->reset_transaction_state();
     }
 
 private:
@@ -4615,7 +4616,8 @@ public:
     /// `reset()` through the view discards the client's open transaction, as the client's own `reset()` records.
     void
     reset_transaction_state() noexcept {
-        _client->reset_transaction_state();
+        if (*_alive) // as every entry point of the view: never a client gone
+            _client->reset_transaction_state();
     }
 
     /** @brief The policy this view follows redirections with. */

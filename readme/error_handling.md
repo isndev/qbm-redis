@@ -469,7 +469,8 @@ retried when two things hold:
 
 **Never retried:** non-idempotent writes (INCR and DECR families, APPEND, list pushes, pops and moves, SPOP, XADD, a relative EXPIRE, PUBLISH, EVAL, FCALL, ...), SET with NX, XX or GET, ZADD with INCR, blocking commands, anything inside MULTI, and anything on a client that is down or idle. The attempts and the waits between them are `command_retry::backoff`'s
 (three attempts by default, the first included). The callback or the awaiter sees ONE outcome: the last, unchanged.
-Every re-issue counts in `stats().retries`. "Inside MULTI" is what was submitted: a command behind a `multi()` is never
+Every re-issue counts in `stats().retries`; `command_retry::backoff.on_retry` is called when one is scheduled, before
+its wait. "Inside MULTI" is what was submitted: a command behind a `multi()` is never
 retried, even before the MULTI is answered, and a retry waiting for its backoff when a `multi()` is submitted is not
 issued -- its last failure is the outcome. `await()` and `pending_reply_count()` count a retry waiting for its
 backoff.
@@ -490,7 +491,7 @@ called -- as the client's own pending replies are. While it waits for its backof
 "Inside MULTI" is read from what was submitted: a command sent behind a `multi()` whose `+OK` has not arrived yet is
 inside the transaction already, and passes through.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:249-259 (command_retry), :2861-2864 (retrying), :4117-4190 (what is retried), :4202-4421 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:249-259 (command_retry), :2861-2864 (retrying), :4117-4190 (what is retried), :4202-4422 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
 
 ## Following cluster redirections: `following_redirects()`
 
@@ -538,7 +539,7 @@ its own pending replies; when the pool is destroyed instead, its node clients ar
 fails with `"disconnected"` rather than vanishing. A node pool is not thread-safe and keeps the clients it created for
 its lifetime: one pool per client, on that client's thread.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:269-273 (redirect_policy), :2881-2896 (following_redirects), :4433-4662 (the view), :4726-4798 (node_pool); qbm/redis/tests/system/connection/cluster-redirects.cpp -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:269-273 (redirect_policy), :2881-2896 (following_redirects), :4434-4664 (the view), :4728-4800 (node_pool); qbm/redis/tests/system/connection/cluster-redirects.cpp -->
 
 ---
 

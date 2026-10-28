@@ -114,8 +114,9 @@ All notable changes to the qbm-redis module are documented here. The format is b
   not issued at all -- it would be queued inside that transaction, `+QUEUED` coming back as its value -- and its last
   failure is the outcome; a retry dropped with the loop ends its hold; and `reset()` through either view clears the
   client's transaction marker, as the client's own `reset()` does. `is_in_multi()` is set by a MULTI's `+OK` only when
-  no EXEC, DISCARD or RESET was submitted after it (`multi(); reset();` pipelined left it `true`). Five loopback cases
-  (`qbm-redis-test-system-command-retry`, 11), each caught by its mutant.
+  no EXEC, DISCARD or RESET was submitted after it (`multi(); reset();` pipelined left it `true`). `stats().retries`
+  counts the commands issued again -- a retry a `multi()` cancels is not one -- and `on_retry` announces each one
+  scheduled. Six loopback cases (`qbm-redis-test-system-command-retry`, 12), each caught by its mutant.
 
 ## [3.3.0] - 2026-10-26
 
