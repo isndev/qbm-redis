@@ -315,6 +315,8 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     reset(Func &&func) {
+        if constexpr (requires { derived().reset_transaction_state(); })
+            derived().reset_transaction_state(); // RESET discards an open MULTI: what follows it is no longer queued
         if constexpr (requires { derived().reset_session_command(std::forward<Func>(func)); })
             return derived().reset_session_command(std::forward<Func>(func));
         else

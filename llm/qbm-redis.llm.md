@@ -419,8 +419,9 @@ if (!r.ok()) {
   server ran every command, and their errors were never sent. Never `client_reply("OFF")` (it
   fails locally) nor a raw `command("CLIENT", "REPLY", ...)`: the replies would desync. Refused:
   connection-state verbs (HELLO, AUTH, SELECT, RESET, QUIT, CLIENT, ...), MULTI/EXEC/WATCH,
-  subscriptions, blocking commands; a batch after a submitted `multi()` until its
-  `exec()`/`discard()`, and under MONITOR.
+  subscriptions, blocking commands, ACL; a batch while a submitted `multi()` is open, and under
+  MONITOR. Set `set_command_timeout()` on a connection that sends batches: an ON rejected
+  after the OFF applied (`-BUSY` mid-batch) leaves the link silent until the watchdog drops it.
 - **Observability** (`<qbm/redis/stats.h>`, Huly QB-134): `stats()` is a snapshot of
   monotonic counts -- a client's `commands` / `errors` / `failed` / `held` / `by_family`,
   `retries` / `redirects` / `oneway`, `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.
@@ -454,7 +455,7 @@ if (!r.ok()) {
   runs after decoding returns, outside its catches, whether invoked
   by the operator or the cold member; a callback exception cannot cause a second completion.
   Attribute traversal is iterative, with no new depth limit beyond the configured wire parser.
-  _(src/qbm/redis/reply.h:1422-1444,1447-1452,1456-1489; src/qbm/redis/reply.cpp:60-69)_
+  _(src/qbm/redis/reply.h:1422-1444,1447-1452,1456-1489; src/qbm/redis/reply.cpp:67-76)_
 
 ---
 

@@ -396,3 +396,42 @@ TEST_F(CommandRetry, ARetryPendingWhenTheClientIsDestroyedIsDropped) {
     settle(100ms); // past the retry's time
     EXPECT_TRUE(out.seen.empty()) << "a client gone discards its pending work uninvoked, the retry included";
 }
+
+TEST_F(CommandRetry, ARetryWaitingForItsBackoffIsPendingOnTheClient) {
+    // The retry sat outside the client's queues during its backoff: await() returned and pending_reply_count() said
+    // 0 with the command not done (the QB-129 lot's review).
+    FakeRedis server;
+    Client    client{server.uri()};
+    auto      peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    qb::redis::command_retry slow;
+    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(2).with_initial_delay(300ms).with_jitter(false);
+
+    Outcomes out;
+    client.retrying(slow).get(out.get_sink(), "k");
+    ASSERT_EQ(peer->expect(1).size(), 1u);
+    peer->send("-LOADING Redis is loading the dataset in memory\r\n");
+    ASSERT_TRUE(run_until([&] { return client.stats().retries == 1; }));
+    EXPECT_EQ(client.pending_reply_count(), 1u) << "waiting for its backoff, still the client's";
+    ASSERT_EQ(peer->expect(1, 2000ms).size(), 1u) << "the second attempt";
+    peer->send(bulk("v"));
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 1; }));
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"ok:v"}));
+    EXPECT_EQ(client.pending_reply_count(), 0u);
+}
+
+TEST_F(CommandRetry, ACommandBehindASubmittedMultiIsNeverRetried) {
+    FakeRedis server;
+    Client    client{server.uri()};
+    auto      peer = connect(client, server);
+    ASSERT_TRUE(peer);
+
+    Outcomes out;
+    client.multi([](qb::redis::Reply<qb::redis::status> &&) {});
+    client.retrying(quick()).get(out.get_sink(), "k"); // behind the MULTI, before its +OK
+    ASSERT_EQ(peer->expect(2).size(), 2u);
+    peer->send("+OK\r\n-LOADING Redis is loading the dataset in memory\r\n");
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 1; }));
+    EXPECT_TRUE(peer->expect(1, 50ms).empty()) << "inside the transaction: not retried";
+    EXPECT_EQ(client.stats().retries, 0u);
+}

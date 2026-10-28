@@ -62,6 +62,7 @@ TEST(OnewayBatch, CommandsJoinInOrderAsTheClientWouldSerializeThem) {
 
 TEST(OnewayBatch, EveryVerbThatActsPastTheSuppressedReplyIsRefused) {
     const std::vector<std::pair<std::string, std::string_view>> refused{
+        {"ACL", "connection's state"},
         {"ASKING", "connection's state"},
         {"AUTH", "connection's state"},
         {"client", "connection's state"},

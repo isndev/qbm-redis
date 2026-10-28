@@ -26,7 +26,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <vector>
+#include <qb/io/tcp/socket.h>
 #include "shared/redis_integration_fixture.h"
 
 using namespace std::chrono_literals;
@@ -40,6 +43,36 @@ run_until(Pred &&pred, std::chrono::milliseconds timeout = 5000ms) {
     while (!pred() && std::chrono::steady_clock::now() < deadline)
         qb::io::async::run(EVRUN_NOWAIT);
     return pred();
+}
+
+/// What the server sends one raw connection for `commands` within `wait`: the server's side, no client in between.
+std::string
+raw_exchange(std::string const &commands, std::chrono::milliseconds wait) {
+    const qb::io::uri   uri{qb::redis::test::redis_test_uri()};
+    qb::io::tcp::socket sock;
+    if (sock.connect_v4(std::string{uri.host()}, uri.u_port()) != 0)
+        return {};
+    if (sock.write(commands.data(), commands.size()) != static_cast<int>(commands.size()))
+        return {};
+    sock.set_nonblocking(true);
+    std::string got;
+    char        buf[4096];
+    for (const auto until = std::chrono::steady_clock::now() + wait; std::chrono::steady_clock::now() < until;) {
+        const int n = sock.read(buf, sizeof(buf));
+        if (n > 0)
+            got.append(buf, static_cast<std::size_t>(n));
+        else
+            std::this_thread::sleep_for(5ms);
+    }
+    return got;
+}
+
+std::string
+resp(std::initializer_list<std::string_view> words) {
+    std::string out = "*" + std::to_string(words.size()) + "\r\n";
+    for (auto const w : words)
+        out += "$" + std::to_string(w.size()) + "\r\n" + std::string{w} + "\r\n";
+    return out;
 }
 
 /// CLIENT KILL from another connection: a loss the client did not ask for, which an armed reconnection recovers from.
@@ -240,6 +273,16 @@ TEST_F(OnewayBatchResp3, AnInvalidationPushedWhileRepliesAreOffIsNotTakenForARep
     const auto tracking = qb::io::async::run_sync(redis.client_tracking(true));
     ASSERT_TRUE(tracking.ok()) << tracking.error();
     ASSERT_EQ(qb::io::async::run_sync(redis.get(key)).result().value_or(""), "old"); // now tracked
+
+    // The positive control, on a raw connection: this server does push the invalidation while replies are off.
+    const auto raw = raw_exchange(resp({"HELLO", "3"}) + resp({"CLIENT", "TRACKING", "ON"}) + resp({"GET", key})
+                                      + resp({"CLIENT", "REPLY", "OFF"}) + resp({"SET", key, "raw"}) + resp({"CLIENT", "REPLY", "ON"}),
+                                  300ms);
+    ASSERT_NE(raw.find("invalidate"), std::string::npos) << "no invalidation pushed under CLIENT REPLY OFF: the case below would prove "
+                                                            "nothing; bytes: "
+                                                         << raw;
+    ASSERT_TRUE(qb::io::async::run_sync(redis.set(key, "old")).ok());
+    ASSERT_EQ(qb::io::async::run_sync(redis.get(key)).result().value_or(""), "old"); // tracked again on `redis`
 
     Seen                    seen;
     qb::redis::oneway_batch batch;

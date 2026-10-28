@@ -37,36 +37,36 @@ llm/qbm-redis.llm.api.md	parser/types.h:66-66	1f85eaa019e5	class ParseError {
 llm/qbm-redis.llm.api.md	publish_commands.h:38-38	3c65ae0990bb	class publish_commands {
 llm/qbm-redis.llm.api.md	publish_commands.h:91-91	a7fc816d80c4	spublish(const std::string &channel, const std::string &message) {
 llm/qbm-redis.llm.api.md	redis.h:108-110	39cb75f31c29	struct message {
-llm/qbm-redis.llm.api.md	redis.h:1229-1275	f5b4440bc420	* @struct connect_awaiter
-llm/qbm-redis.llm.api.md	redis.h:1604-1604	0657b2a52a29	class redis_awaiter {
-llm/qbm-redis.llm.api.md	redis.h:1625-1626	20f77c2202ca	await_suspend(std::coroutine_handle<> h) {
-llm/qbm-redis.llm.api.md	redis.h:1646-1646	351bb30df879	make_redis_awaiter(Func &&operation) {
-llm/qbm-redis.llm.api.md	redis.h:1672-1672	4ab5c6be2991	class Redis
+llm/qbm-redis.llm.api.md	redis.h:1230-1276	f5b4440bc420	* @struct connect_awaiter
+llm/qbm-redis.llm.api.md	redis.h:1605-1605	0657b2a52a29	class redis_awaiter {
+llm/qbm-redis.llm.api.md	redis.h:1626-1627	20f77c2202ca	await_suspend(std::coroutine_handle<> h) {
+llm/qbm-redis.llm.api.md	redis.h:1647-1647	351bb30df879	make_redis_awaiter(Func &&operation) {
+llm/qbm-redis.llm.api.md	redis.h:1673-1673	4ab5c6be2991	class Redis
 llm/qbm-redis.llm.api.md	redis.h:233-233	2a41a928458d	using RetryPolicy = qb::io::reconnect_policy;
 llm/qbm-redis.llm.api.md	redis.h:249-259	e871084531fb	struct command_retry {
-llm/qbm-redis.llm.api.md	redis.h:2674-2693	d5ce3abcfd86	send_oneway(oneway_batch batch, Func &&func) {
 llm/qbm-redis.llm.api.md	redis.h:269-273	604b2e2f3c3d	struct redirect_policy {
-llm/qbm-redis.llm.api.md	redis.h:2827-2830	c7c1f4cef1e7	[[nodiscard]] RetryingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:2847-2862	814f9f2a5f11	[[nodiscard]] RedirectingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:2910-2910	fe3c529f759a	class RedisPipeline {
-llm/qbm-redis.llm.api.md	redis.h:2966-2966	cd678de7f8c1	class RedisConsumer
+llm/qbm-redis.llm.api.md	redis.h:2706-2725	d5ce3abcfd86	send_oneway(oneway_batch batch, Func &&func) {
+llm/qbm-redis.llm.api.md	redis.h:2860-2863	c7c1f4cef1e7	[[nodiscard]] RetryingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:2880-2895	814f9f2a5f11	[[nodiscard]] RedirectingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:2943-2943	fe3c529f759a	class RedisPipeline {
+llm/qbm-redis.llm.api.md	redis.h:2999-2999	cd678de7f8c1	class RedisConsumer
 llm/qbm-redis.llm.api.md	redis.h:317-320	ff4a342df8e4	struct oneway_result {
-llm/qbm-redis.llm.api.md	redis.h:338-408	31392922891d	class oneway_batch {
-llm/qbm-redis.llm.api.md	redis.h:3665-3665	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
-llm/qbm-redis.llm.api.md	redis.h:3783-3783	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
-llm/qbm-redis.llm.api.md	redis.h:3925-3925	1d2fe40d4864	receive() {
-llm/qbm-redis.llm.api.md	redis.h:4168-4168	77fd328b928f	class RetryingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:4361-4539	3b94cef0234a	class RedirectingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:4549-4549	5b0051a25645	using database = detail::Redis<QB_IO_>;
-llm/qbm-redis.llm.api.md	redis.h:4555-4555	e19a828745ea	struct tcp {
-llm/qbm-redis.llm.api.md	redis.h:4567-4567	97c8e8c3b177	struct ssl {
-llm/qbm-redis.llm.api.md	redis.h:4603-4670	1d7aebfb5580	class node_pool {
-llm/qbm-redis.llm.api.md	redis.h:4672-4672	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
-llm/qbm-redis.llm.api.md	redis.h:482-571	4be94e4b27da	template <typename QB_IO_, typename Derived>
-llm/qbm-redis.llm.api.md	redis.h:499-499	94cca6232ff0	using handshake_client = HandshakeClient<Derived>;
+llm/qbm-redis.llm.api.md	redis.h:339-409	31392922891d	class oneway_batch {
+llm/qbm-redis.llm.api.md	redis.h:3698-3698	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
+llm/qbm-redis.llm.api.md	redis.h:3816-3816	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
+llm/qbm-redis.llm.api.md	redis.h:3958-3958	1d2fe40d4864	receive() {
+llm/qbm-redis.llm.api.md	redis.h:4201-4201	77fd328b928f	class RetryingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:4397-4599	aa7b432e3ea8	class RedirectingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:4609-4609	5b0051a25645	using database = detail::Redis<QB_IO_>;
+llm/qbm-redis.llm.api.md	redis.h:4615-4615	e19a828745ea	struct tcp {
+llm/qbm-redis.llm.api.md	redis.h:4627-4627	97c8e8c3b177	struct ssl {
+llm/qbm-redis.llm.api.md	redis.h:4663-4735	8169523bd0c5	class node_pool {
+llm/qbm-redis.llm.api.md	redis.h:4737-4737	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
+llm/qbm-redis.llm.api.md	redis.h:483-572	4be94e4b27da	template <typename QB_IO_, typename Derived>
+llm/qbm-redis.llm.api.md	redis.h:500-500	94cca6232ff0	using handshake_client = HandshakeClient<Derived>;
 llm/qbm-redis.llm.api.md	redis.h:93-94	fec8f2f5d4ae	template <typename IO_>
-llm/qbm-redis.llm.api.md	reply.cpp:60-69	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
-llm/qbm-redis.llm.api.md	reply.cpp:95-126	beeec2051461	parse_string_view_mismatch(const ReplyValue &reply) {
+llm/qbm-redis.llm.api.md	reply.cpp:102-133	beeec2051461	parse_string_view_mismatch(const ReplyValue &reply) {
+llm/qbm-redis.llm.api.md	reply.cpp:67-76	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
 llm/qbm-redis.llm.api.md	reply.h:1116-1253	6f172527538f	redis_count(qb::redis::score const &) {
 llm/qbm-redis.llm.api.md	reply.h:121-121	8fb3eba7b399	class ProtoError : public Error {
 llm/qbm-redis.llm.api.md	reply.h:1262-1262	1a5512b24cb3	put_in_pipe(qb::allocator::pipe<char> &pipe, Args &&...args) {
@@ -165,7 +165,7 @@ llm/qbm-redis.llm.md	metrics.h:31-31	a8efc5382f23	void describe(snapshot &snap, 
 llm/qbm-redis.llm.md	server_reply.h:357-389	bb231bafc716	class AsyncResult {
 llm/qbm-redis.llm.md	server_reply.h:435-450	a4739270dd02	class AsyncResult<void> {
 llm/qbm-redis.llm.md	server_reply.h:456-467	d632a814f9c9	[[nodiscard]] bool
-llm/qbm-redis.llm.md	src/qbm/redis/reply.cpp:60-69	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
+llm/qbm-redis.llm.md	src/qbm/redis/reply.cpp:67-76	d92ca935c8c4	unwrap_attributes(const ReplyValue &reply) noexcept {
 llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1348-1362	081505bfa2bb	[[nodiscard]] reply_ptr &
 llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1422-1444	2d688626b716	operator()(std::unique_ptr<ReplyValue> raw) final {
 llm/qbm-redis.llm.md	src/qbm/redis/reply.h:1447-1452	03a196c4580b	QB_NOINLINE void

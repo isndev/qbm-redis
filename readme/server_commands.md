@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1675 (public inheritance), qbm/redis/src/qbm/redis/redis.h:4556 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1676 (public inheritance), qbm/redis/src/qbm/redis/redis.h:4616 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -75,7 +75,7 @@ qb::io::async::task<void> admin_demo(qb::redis::tcp::client &redis) {
   `is_string()` before
   indexing. `role()` uses a command-specific conversion that keeps native positional arrays; `command_stats()`
   parses its INFO section into an object of raw text values. These exceptions do not change generic JSON
-  conversion. <!-- src: qbm/redis/src/qbm/redis/reply.cpp:656-695 (qb::json parse), qbm/redis/tests/integration/server/server-introspection.cpp:65-88 -->
+  conversion. <!-- src: qbm/redis/src/qbm/redis/reply.cpp:663-702 (qb::json parse), qbm/redis/tests/integration/server/server-introspection.cpp:65-88 -->
 - **`std::vector<std::pair<std::string, std::string>>`** — `CONFIG GET` (parameter/value pairs).
 - **`qb::json` from `command_info()`** — `COMMAND INFO` as an array with one entry per requested name: an object whose
   positions are named (`name`, `arity`, `flags`, `first_key`, `last_key`, `step`, then `acl_categories`, `tips`,
@@ -122,7 +122,7 @@ empty error string. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h
 `QUIT` ends monitoring, or when the connection drops. While the stream is active, other commands fail locally; the
 `RESET`/`QUIT` reply goes to its own callback. If you disconnect from a line callback while either is pending, its
 callback fails with `"disconnected"`; later frames from that read batch are discarded. Reconnect does not restart
-monitoring. <!-- src: qbm/redis/src/qbm/redis/redis.h:2584-2629,2116-2167,2201-2219,2370-2415,2872-2883 -->
+monitoring. <!-- src: qbm/redis/src/qbm/redis/redis.h:2610-2655,2117-2168,2204-2222,2381-2426,2905-2916 -->
 
 ### `COMMAND`'s named overload actually issues `COMMAND INFO`
 
@@ -187,7 +187,7 @@ Notes:
 - `client_list()` yields a `qb::json` **string** holding the raw `CLIENT LIST` text block (one client per line), not a
   parsed array — the payload is line-delimited text, not JSON, so the wrapper boxes it verbatim. Parse the lines
   yourself, or call `client_info()` for the current connection. `client_tracking_info()`, by contrast, is a RESP map and
-  comes back as a JSON object. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1340-1356 (client_list), qbm/redis/src/qbm/redis/reply.cpp:656-695 (qb::json string boxing) -->
+  comes back as a JSON object. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1340-1356 (client_list), qbm/redis/src/qbm/redis/reply.cpp:663-702 (qb::json string boxing) -->
 
 ```cpp
 // <!-- src: qbm/redis/tests/integration/server/server-admin-commands.cpp:93-117,145-153 -->
@@ -219,7 +219,7 @@ redis.client_id([](qb::redis::Reply<long long> &&r) {
 `MONITOR` (callback-only, streaming):
 
 ```cpp
-// <!-- src: qbm/redis/src/qbm/redis/redis.h:2584-2629 -->
+// <!-- src: qbm/redis/src/qbm/redis/redis.h:2610-2655 -->
 // The callback receives +OK, each command line, and one terminal failure.
 redis.monitor([](qb::redis::Reply<std::string> &&line) {
     if (line.ok())
@@ -427,7 +427,7 @@ heuristic to these arrays. <!-- src: qbm/redis/src/qbm/redis/commands/server_com
 
 `info()` returns the textual `INFO` payload boxed as a `qb::json` **string** (`result().is_string()` is `true`) —
 like `CLIENT LIST`. Use `result().get<std::string>()` and parse the lines yourself; pass a section name (`"memory"`,
-`"replication"`, ...) to narrow the text through `info()`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1260-1281 (info), qbm/redis/src/qbm/redis/reply.cpp:656-695 (qb::json string boxing) -->
+`"replication"`, ...) to narrow the text through `info()`. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1260-1281 (info), qbm/redis/src/qbm/redis/reply.cpp:663-702 (qb::json string boxing) -->
 `time()`'s two overloads return **different** types — see the [
 `TIME` note](#time-reshapes-its-reply-in-the-coroutine-form-only).
 

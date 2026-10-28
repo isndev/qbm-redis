@@ -44,16 +44,37 @@ private:
     }
     /// True after successful MULTI until EXEC or DISCARD completes (client-side hint only).
     bool in_multi_ = false;
-    /// True from a MULTI's submission until an EXEC's or a DISCARD's: what is sent in between is queued by the
-    /// server. The submissions' view, where `in_multi_` is the replies'; a one-way batch is refused while it holds
-    /// (Huly QB-902).
+    /// True from a MULTI's submission until an EXEC's, a DISCARD's or a RESET's, or until the MULTI fails without
+    /// a transaction open: what is sent in between is queued by the server. The submissions' view, where
+    /// `in_multi_` is the replies'; a one-way batch is refused while it holds, and the retrying and
+    /// redirect-following views pass a command through (Huly QB-902).
     bool multi_sent_ = false;
+    /// Bumped by every boundary submitted (MULTI, EXEC, DISCARD) and by a reset: a MULTI's failure clears
+    /// `multi_sent_` only when nothing came after it.
+    std::uint64_t multi_epoch_ = 0;
+
+    /// The server's refusal of a nested MULTI, which leaves the transaction already open as it was.
+    [[nodiscard]] static bool
+    nested_multi_error_(std::string_view const error) noexcept {
+        return error.find("MULTI calls can not be nested") != std::string_view::npos;
+    }
 
 protected:
-    /// Whether the last transaction boundary this client submitted is a MULTI (`multi_sent_`).
+    /// Whether a MULTI this client submitted may still be open on the server (`multi_sent_`).
     [[nodiscard]] bool
     multi_submitted_() const noexcept {
         return multi_sent_;
+    }
+
+    /// The link the transaction lived on is lost: the server forgot it. A boundary still held for the next link
+    /// (`boundary_held`) keeps `multi_sent_` as that boundary set it.
+    void
+    transaction_link_lost_(bool const boundary_held) noexcept {
+        in_multi_ = false;
+        if (!boundary_held) {
+            multi_sent_ = false;
+            ++multi_epoch_;
+        }
     }
 
 public:
@@ -81,9 +102,10 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     multi(Func &&func) {
-        multi_sent_ = true;
+        multi_sent_      = true;
+        const auto epoch = ++multi_epoch_;
         return derived().template command<status>(
-            [this, func = std::forward<Func>(func)](auto &&reply) mutable {
+            [this, epoch, func = std::forward<Func>(func)](auto &&reply) mutable {
                 // Only a SUCCESSFUL MULTI opens a transaction. A failed MULTI must NOT
                 // clear the hint: the dominant failure mode is a *nested* MULTI ("ERR
                 // MULTI calls can not be nested"), which Redis rejects while leaving the
@@ -92,6 +114,8 @@ public:
                 // from the server, falsely reporting the connection as out of MULTI.
                 if (reply.ok())
                     in_multi_ = true;
+                else if (epoch == multi_epoch_ && !nested_multi_error_(reply.error()))
+                    multi_sent_ = false; // refused, failed or never sent: no transaction was opened
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
             detail::verb<"MULTI">);
@@ -127,6 +151,7 @@ public:
     exec(Func &&func) {
         in_multi_   = false;
         multi_sent_ = false;
+        ++multi_epoch_;
         return derived().template command<std::vector<Result>>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
                 in_multi_ = false;
@@ -161,6 +186,7 @@ public:
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     discard(Func &&func) {
         multi_sent_ = false;
+        ++multi_epoch_;
         return derived().template command<status>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
                 in_multi_ = false;
@@ -288,6 +314,7 @@ public:
     reset_transaction_state() noexcept {
         in_multi_   = false;
         multi_sent_ = false;
+        ++multi_epoch_;
     }
 };
 

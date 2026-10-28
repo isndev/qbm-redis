@@ -474,3 +474,129 @@ TEST_F(OnewayBatch, TheCoroutineFormCompletesTheSameWay) {
     ASSERT_TRUE(run_until([&] { return !refused.empty(); })) << "a refused batch resumes its awaiter";
     EXPECT_EQ(refused.rfind("error:a MULTI is open", 0), 0u) << refused;
 }
+
+// ---- The MULTI marker never sticks (the QB-902 lot's review) -------------------------------------------------
+
+TEST_F(OnewayBatch, AMultiThatNeverLeftDoesNotKeepTheGateClosed) {
+    Client   client{qb::io::uri{"tcp://127.0.0.1:1"}}; // idle: the MULTI fails on the next loop pass, unsent
+    Outcomes out;
+    client.multi(out.status_sink("multi"));
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 1; }));
+    client.send_oneway(batch_of({{"k", "v"}}), out.oneway_sink("batch"));
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 2; }));
+    EXPECT_EQ(out.seen[1].find("a MULTI is open"), std::string::npos) << "refused as idle, not as inside a MULTI: " << out.seen[1];
+}
+
+TEST_F(OnewayBatch, AMultiTheServerRefusesOpensNoTransaction) {
+    FakeServer server;
+    Client     client{server.uri()};
+    auto       peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    Outcomes out;
+
+    client.multi(out.status_sink("multi"));
+    EXPECT_EQ(peer->expect(1), (std::vector<Command>{{"MULTI"}}));
+    peer->send("-NOAUTH Authentication required.\r\n");
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 1; }));
+    client.send_oneway(batch_of({{"k", "v"}}), out.oneway_sink("batch"));
+    EXPECT_EQ(peer->expect(3), (std::vector<Command>{off, {"SET", "k", "v"}, on})) << "the gate is open again";
+}
+
+TEST_F(OnewayBatch, ANestedMultiErrorLeavesTheTransactionOpen) {
+    FakeServer server;
+    Client     client{server.uri()};
+    auto       peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    Outcomes out;
+
+    client.multi(out.status_sink("first"));
+    client.multi(out.status_sink("nested"));
+    EXPECT_EQ(peer->expect(2).size(), 2u);
+    peer->send("+OK\r\n-ERR MULTI calls can not be nested\r\n");
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 2; }));
+    client.send_oneway(batch_of({{"k", "v"}}), out.oneway_sink("inside"));
+    ASSERT_EQ(out.seen.size(), 3u);
+    EXPECT_EQ(out.seen[2].rfind("inside error:a MULTI is open", 0), 0u) << "the first MULTI is still open: " << out.seen[2];
+}
+
+TEST_F(OnewayBatch, AResetClosesAMulti) {
+    FakeServer server;
+    Client     client{server.uri()};
+    auto       peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    Outcomes out;
+
+    client.multi(out.status_sink("multi"));
+    client.reset(out.status_sink("reset"));
+    client.send_oneway(batch_of({{"k", "v"}}), out.oneway_sink("after"));
+    EXPECT_EQ(peer->expect(5), (std::vector<Command>{{"MULTI"}, {"RESET"}, off, {"SET", "k", "v"}, on}))
+        << "RESET discards the transaction: the batch goes behind it";
+}
+
+TEST_F(OnewayBatch, AMultiHeldForTheNextLinkKeepsTheGateClosed) {
+    FakeServer server;
+    Client     client{server.uri()};
+    client.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(50ms).with_max_delay(100ms).with_jitter(false));
+    auto first = connect(client, server);
+    ASSERT_TRUE(first);
+    Outcomes out;
+
+    // A failure callback submits the MULTI again while the lost link is torn down: it is held for the next link.
+    client.get(
+        [&](qb::redis::Reply<std::optional<std::string>> &&) {
+            out.seen.push_back("get failed");
+            client.multi(out.status_sink("multi again"));
+        },
+        "k");
+    EXPECT_EQ(first->expect(1).size(), 1u);
+    first->sock.disconnect();
+    ASSERT_TRUE(run_until([&] { return !out.seen.empty(); }));
+    client.send_oneway(batch_of({{"k", "v"}}), out.oneway_sink("batch"));
+    ASSERT_EQ(out.seen.size(), 2u);
+    EXPECT_EQ(out.seen[1].rfind("batch error:a MULTI is open", 0), 0u) << "the held MULTI goes first on the next link: " << out.seen[1];
+}
+
+TEST_F(OnewayBatch, AnEarlierMultisFailureDoesNotCloseALaterOne) {
+    FakeServer server;
+    Client     client{server.uri()};
+    auto       peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    Outcomes out;
+
+    client.multi(out.status_sink("first"));
+    client.discard(out.status_sink("discard"));
+    client.multi(out.status_sink("second")); // pipelined: the first MULTI's failure arrives after this one was sent
+    EXPECT_EQ(peer->expect(3).size(), 3u);
+    peer->send("-NOAUTH Authentication required.\r\n-ERR DISCARD without MULTI\r\n+OK\r\n");
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 3; }));
+    client.send_oneway(batch_of({{"k", "v"}}), out.oneway_sink("inside"));
+    ASSERT_EQ(out.seen.size(), 4u);
+    EXPECT_EQ(out.seen[3].rfind("inside error:a MULTI is open", 0), 0u) << "the second MULTI is open: " << out.seen[3];
+}
+
+TEST_F(OnewayBatch, AHandshakeLinkLostWhileAMultiIsHeldKeepsTheGateClosed) {
+    FakeServer server;
+    Client     client{server.uri()};
+    client.with_auth("s3cret");
+    client.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_initial_delay(20ms).with_max_delay(50ms).with_jitter(false));
+    auto done = std::make_shared<bool>(false);
+    client.connect([done](bool) { *done = true; }, client.uri());
+    auto first = server.accept();
+    ASSERT_TRUE(first);
+    EXPECT_EQ(first->expect(1), (std::vector<Command>{{"AUTH", "s3cret"}}));
+    first->send("+OK\r\n");
+    ASSERT_TRUE(run_until([&] { return *done && client.is_connected(); }));
+    Outcomes out;
+
+    first->sock.disconnect();
+    ASSERT_TRUE(run_until([&] { return client.is_reconnecting(); }));
+    client.multi(out.status_sink("multi")); // held for the next link
+    auto second = server.accept();
+    ASSERT_TRUE(second);
+    EXPECT_EQ(second->expect(1), (std::vector<Command>{{"AUTH", "s3cret"}}));
+    second->sock.disconnect(); // that link is lost in its handshake: the MULTI never left, it is still held
+    run_until([] { return false; }, 30ms);
+    client.send_oneway(batch_of({{"k", "v"}}), out.oneway_sink("batch"));
+    ASSERT_FALSE(out.seen.empty());
+    EXPECT_EQ(out.seen.back().rfind("batch error:a MULTI is open", 0), 0u) << "the held MULTI goes first on a later link: " << out.seen.back();
+}

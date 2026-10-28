@@ -66,12 +66,16 @@ TEST(RedisRedirection, TheHostFormsAreKeptAsSent) {
     const auto unknown = parse_redirection("ASK 1 ?:7002");
     ASSERT_TRUE(unknown);
     EXPECT_EQ(unknown->host, "?") << "unknown endpoint: parsed, and not followed by the view";
+    const auto bracketed = parse_redirection("MOVED 2 [::1]:7003");
+    ASSERT_TRUE(bracketed);
+    EXPECT_EQ(bracketed->host, "::1") << "read inside its brackets, so a node pool brackets it once";
+    EXPECT_EQ(bracketed->port, 7003);
 }
 
 TEST(RedisRedirection, AMalformedOneIsNoRedirection) {
     for (const char *bad :
          {"MOVED", "MOVED 3999", "MOVED 3999 127.0.0.1", "MOVED 16384 127.0.0.1:1", "MOVED -1 127.0.0.1:1", "MOVED x 127.0.0.1:1",
           "MOVED 1 127.0.0.1:0", "MOVED 1 127.0.0.1:65536", "MOVED 1 127.0.0.1:port", "MOVED 1 127.0.0.1:1 extra", "MOVED 1 h:1 x:2",
-          "ERR 1 h:1", "MOVED  1 h:1"})
+          "ERR 1 h:1", "MOVED  1 h:1", "MOVED 1 ::1", "MOVED 1 :::7000", "MOVED 1 [::1:7000", "MOVED 1 [::1]x:7000", "MOVED 99999 127.0.0.1:1"})
         EXPECT_FALSE(parse_redirection(bad)) << bad;
 }

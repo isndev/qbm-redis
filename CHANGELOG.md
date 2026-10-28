@@ -20,24 +20,33 @@ All notable changes to the qbm-redis module are documented here. The format is b
   one command). A redirection means the node did NOT run the command, so every command is followed, a non-idempotent
   write and a blocking command included, at most `max_redirects` times (5): a command that missed its ASKING is
   answered MOVED back to the source by the importing node, and the bound ends such a loop with the last MOVED as the
-  error. A command inside MULTI, an ordinary error, a failure without an answer, a `?` endpoint and a node the resolver
-  does not have reach the caller unchanged; an empty host is the answering node's. A resolver of one's own may take the
-  pool's place. The view keeps no slot map: the client is asked first every time, so a key served by another node costs
-  one MOVED round trip per command (a client that routes by slot is Huly QB-130). Every redirection followed counts in
-  `stats().redirects` (`qb_redis_redirects_total`). `qb::redis::error_type(error)` now produces `ReplyErrorType`, and
-  `qb::redis::parse_redirection(error)` reads the slot, the host and the port of a redirection (an unbracketed IPv6
-  host, an empty one, `?`; a slot past 16383, a port 0 or a trailing word are no redirection). Proven against a local
-  Redis 8.10.2 cluster of three nodes, a slot migrating between two of them (a key on the seed: no redirection; on
-  another node: one MOVED per command; in the migrating slot: MOVED then ASK, and the value landed on the importing
-  node), by `qbm-redis-test-system-cluster-redirects` (9 cases on loopback nodes) and `qbm-redis-test-unit-redirection`,
-  green under ASan+UBSan and TSan, and by twelve mutants of the view, the pool and the parser, all caught.
+  error. A command inside MULTI, an ordinary error, a failure without an answer, a `?` endpoint and a node the
+  resolver does not have reach the caller unchanged; an empty host is the answering node's. A resolver of one's own
+  may take the pool's place. The view keeps no slot map: the client is asked first every time, so a key served by
+  another node costs one MOVED round trip per command (a client that routes by slot is Huly QB-130). Every redirection
+  followed counts in `stats().redirects` (`qb_redis_redirects_total`). `qb::redis::error_type(error)` now produces
+  `ReplyErrorType`, and `qb::redis::parse_redirection(error)` reads the slot, the host and the port of a redirection
+  (an unbracketed IPv6 host, an empty one, `?`; a slot past 16383, a port 0 or a trailing word are no redirection).
+  Proven against a local Redis 8.10.2 cluster of three nodes, a slot migrating between two of them (a key on the seed:
+  no redirection; on another node: one MOVED per command; in the migrating slot: MOVED then ASK, and the value landed
+  on the importing node), by `qbm-redis-test-system-cluster-redirects` (9 cases on loopback nodes) and
+  `qbm-redis-test-unit-redirection`, green under ASan+UBSan and TSan, and by twelve mutants of the view, the pool and
+  the parser, all caught. An independent review then found five defects, fixed before the lot landed: a callback
+  delivered after the seed was destroyed, where every other path of the client drops it; a node pool destroyed with a
+  command in flight on one of its nodes, the command then vanishing uncalled; `await()` returning while a command
+  waited on another node; a resolver that throws losing the callback; and a command pipelined behind a `multi()` not
+  yet answered followed out of the transaction. A command on another node is now the seed's for `await()` and
+  `pending_reply_count()`, a destroyed seed drops it, a destroyed pool disconnects its nodes first (the command fails
+  `"disconnected"`), a throwing resolver hands the redirection to the caller, and "inside MULTI" is read from what was
+  submitted; `parse_redirection` reads a bracketed IPv6 host inside its brackets and refuses a port-less one. Eight
+  more loopback cases (17) and three parser ones, each fix with its mutant caught.
 - **Commands sent without their replies: `qb::redis::oneway_batch` and `redis.send_oneway(std::move(batch))` (Huly
   QB-902).** `client_reply("OFF")` and `"SKIP"` fail locally since 3.3.0 -- Redis answers nothing to them, not even to
   the mode command, and a `Reply<status>` could prove nothing -- which left no way to send a command without paying
   for its reply. A batch now serializes its commands as they are added, apart from any client, and `add()` says why
   one was refused, keeping nothing of it: the verbs the server answers, or acts on, past a suppressed reply (measured
   on Redis 8.10.2: a `CLIENT REPLY` after `MULTI` is queued, `HELLO 3` and `RESET` change the connection unseen, a
-  `SUBSCRIBE` confirmation is pushed regardless) -- ASKING, AUTH, CLIENT, HELLO, MONITOR, PSYNC, QUIT, READONLY,
+  `SUBSCRIBE` confirmation is pushed regardless) -- ACL, ASKING, AUTH, CLIENT, HELLO, MONITOR, PSYNC, QUIT, READONLY,
   READWRITE, REPLCONF, RESET, SELECT, SYNC, the transaction and subscription commands --, every blocking command, and
   an argument that cannot be serialized. `send_oneway` writes `CLIENT REPLY OFF`, the batch and `CLIENT REPLY ON` in
   one piece, behind every command submitted before it and ahead of every one after, and completes at the ON's `+OK`
@@ -52,12 +61,19 @@ All notable changes to the qbm-redis module are documented here. The format is b
   0.30--0.31 s between OFF and ON, and 0.55--0.56 s each behind its own SKIP (Redis 8.10.2, Apple M4, three runs each,
   the host not quiet). On the client, `qbm-redis-bench-oneway-batch` (client + loopback + an in-process peer) counts
   2.07--2.31 allocations per SET sent the usual way and 0.03--0.25 per SET of a batch (256 and 16 SETs: the batch's
-  completion handler and buffers, once). Proven by `qbm-redis-test-unit-oneway-batch` (4 cases),
-  `qbm-redis-test-system-oneway-batch` (13, a scripted loopback server) and `qbm-redis-test-integration-oneway-batch`
+  completion handler and buffers, once). An independent review then found the MULTI marker able to stick -- a MULTI
+  that never left, one the server refused, a `reset()` -- and to be wiped under a MULTI held for the next link; it now
+  clears on the MULTI's own failure (never the nested-MULTI error, never for a MULTI submitted after it), on RESET and
+  on the loss of the link it was sent on, and ACL joined the refused verbs, an `ACL SETUSER` in a batch being able to
+  revoke its own `CLIENT REPLY ON`. Proven by `qbm-redis-test-unit-oneway-batch` (4 cases),
+  `qbm-redis-test-system-oneway-batch` (20, a scripted loopback server) and `qbm-redis-test-integration-oneway-batch`
   (9 against the server, RESP2 and RESP3: a thousand INCRs and the commands around them each answered once, rejected
   commands inside the batch desynchronizing nothing, the same commands sent the usual way leaving the same data, a
-  batch inside MULTI refused, a reconnection, a RESP3 invalidation pushed while replies are off), green under
-  ASan+UBSan and TSan, and by 23 mutants of the batch, the gates, the framing and the transaction marker, all caught.
+  batch inside MULTI refused, a reconnection, a RESP3 invalidation pushed while replies are off, with a raw-connection
+  witness that the server does push it), green under ASan+UBSan and TSan, and by 23 mutants of the batch, the gates,
+  the framing and the transaction marker, then sixteen of the review's fixes, all caught. A server that rejects the ON
+  after applying the OFF (`-BUSY` while another client's script outlasts `lua-time-limit`) sends that rejection under
+  replies off: only `set_command_timeout()` recovers the silent link, which the docs say.
 
 ### Changed
 
@@ -82,6 +98,15 @@ All notable changes to the qbm-redis module are documented here. The format is b
   `ScoreMemberVector/100` -7.0 %, `PubSubMessage/16` -13.1 %, `TReply_SuccessDispatch` -1.1 %, the untouched
   `ReplySerialize_MultiBulk/100` witness level; g++ 14 `JsonWideMap/100` -2.4 %, `MapStreamEntryList/4` -4.3 %,
   `ScoreMemberVector/100` and `PubSubMessage/16` level.
+
+### Fixed
+
+- **The retrying view: `await()` waits for a retry in its backoff, and a command behind an unanswered `multi()` is
+  never retried (Huly QB-129 review).** A retry waiting for its backoff sat outside the client's queues, so `await()`
+  returned before the command was done and `pending_reply_count()` said 0; it is the client's now, for both. "Inside
+  MULTI" was read from MULTI's reply, so a read pipelined behind `multi()` before its `+OK` was retried outside the
+  transaction; it is read from what was submitted. Two loopback cases (`qbm-redis-test-system-command-retry`, 8), each
+  caught by its mutant.
 
 ## [3.3.0] - 2026-10-26
 

@@ -284,8 +284,8 @@ namespace detail {
 /// regardless.
 [[nodiscard]] inline char const *
 oneway_refusal(std::string_view const verb) noexcept {
-    static constexpr std::array<std::string_view, 13> connection_state{"ASKING",   "AUTH",      "CLIENT",   "HELLO", "MONITOR", "PSYNC", "QUIT",
-                                                                       "READONLY", "READWRITE", "REPLCONF", "RESET", "SELECT",  "SYNC"};
+    static constexpr std::array<std::string_view, 14> connection_state{"ACL",  "ASKING",   "AUTH",      "CLIENT",   "HELLO", "MONITOR", "PSYNC",
+                                                                       "QUIT", "READONLY", "READWRITE", "REPLCONF", "RESET", "SELECT",  "SYNC"};
     if (verb.empty())
         return "a command needs a verb";
     std::array<char, 16> upper{};
@@ -327,8 +327,9 @@ struct oneway_result {
  *        replies, an error included.
  * @details The batch serializes each command as it is added, apart from any client. `add()` says why a command was
  *          refused, and keeps nothing of it then:
- *          - a command the server would answer, or act on, past the reply it suppresses: ASKING, AUTH, CLIENT,
- *            HELLO, MONITOR, PSYNC, QUIT, READONLY, READWRITE, REPLCONF, RESET, SELECT and SYNC; the transaction
+ *          - a command the server would answer, or act on, past the reply it suppresses: ACL (one could revoke the
+ *            batch's own CLIENT REPLY), ASKING, AUTH, CLIENT, HELLO, MONITOR, PSYNC, QUIT, READONLY, READWRITE,
+ *            REPLCONF, RESET, SELECT and SYNC; the transaction
  *            commands (MULTI, EXEC, DISCARD, WATCH, UNWATCH) and the subscription commands; every blocking command
  *            (BLPOP, WAIT, XREAD -- refused even without BLOCK -- ...);
  *          - a command that cannot be serialized (an argument over `REDIS_MAX_STRING_SIZE`).
@@ -2188,6 +2189,8 @@ private:
     /// The link is gone (the connector's on(disconnected)): what was in flight on it fails once.
     void
     on_link_lost_(bool /*was_ready*/) {
+        // First, so that a failure callback below that submits a MULTI again keeps its marker.
+        transaction_commands<Redis<QB_IO_>>::transaction_link_lost_(transaction_boundary_held_());
         _inflight_blocking = 0;
         cancel_deadline();
         // If the command deadline tripped, report it as a timeout rather than a
@@ -2224,7 +2227,15 @@ private:
                 QB_LOG_WARN("[qbm][redis] callback threw a non-std exception");
             }
         }
-        transaction_commands<Redis<QB_IO_>>::reset_transaction_state();
+    }
+
+    /// Whether a MULTI, an EXEC or a DISCARD is held for the next link: the last boundary submitted then is one.
+    [[nodiscard]] bool
+    transaction_boundary_held_() const noexcept {
+        for (auto const &entry : _held)
+            if (entry.verb == detail::verb<"MULTI">.row || entry.verb == detail::verb<"EXEC">.row || entry.verb == detail::verb<"DISCARD">.row)
+                return true;
+        return false;
     }
 
     /// Ready: the held work leaves, in submission order, behind the handshake's.
@@ -2524,6 +2535,21 @@ private:
         return *this;
     }
 
+    /// Commands a view (`retrying()`, `following_redirects()`) holds outside this client's queues -- a retry
+    /// waiting for its backoff, a command redirected to another node: `await()` waits for them and
+    /// `pending_reply_count()` counts them.
+    std::size_t _view_held = 0;
+
+    void
+    view_hold_() noexcept {
+        ++_view_held;
+    }
+
+    void
+    view_release_() noexcept {
+        --_view_held;
+    }
+
     /// A retrying view re-issued a command (stats().retries).
     void
     count_retry_() noexcept {
@@ -2651,10 +2677,12 @@ public:
      * Writes `CLIENT REPLY OFF`, the batch's commands and `CLIENT REPLY ON` in one piece, behind every command sent
      * before and ahead of every command sent after, so no other command's reply is ever suppressed; then @p func
      * receives one `Reply<oneway_result>`:
-     *   - `ok()` at the server's `+OK` to the ON: the server processed every command of the batch. Their replies
-     *     were never sent, errors included -- a command of the batch that fails, fails silently;
-     *   - not `ok()` when it is refused -- a MONITOR stream owns the connection, or a MULTI was submitted and its
-     *     EXEC or DISCARD not yet (the server would queue the batch inside the transaction) --, when the client is
+     *   - `ok()` at the server's `+OK` to the ON: the server processed every command of the batch -- ran it or
+     *     rejected it. Their replies were never sent, errors included -- a command of the batch that fails, fails
+     *     silently;
+     *   - not `ok()` when it is refused -- a MONITOR stream owns the connection, or a submitted MULTI is still open
+     *     (its EXEC, DISCARD or RESET not submitted, the MULTI neither refused nor lost with its link: the server
+     *     would queue the batch inside the transaction) --, when the client is
      *     down or the link is lost first (how much of the batch ran is then unknown), at the command timeout, or
      *     when the server answers the ON otherwise than `+OK` (it did not honour `CLIENT REPLY OFF`: the link is
      *     dropped, see the error).
@@ -2662,7 +2690,11 @@ public:
      * command, and leaves once it is; a reconnected link starts with replies on. The batch is one command for the
      * command timeout and the counts: its ON completes in `stats().commands` (family `server`), and `stats().oneway`
      * counts the commands of the batches the server confirmed. A raw `command("MULTI")` or `command("CLIENT",
-     * "REPLY", ...)` is not tracked: send neither on a connection that sends one-way batches.
+     * "REPLY", ...)` is not tracked: send neither on a connection that sends one-way batches. Set a command timeout
+     * (`set_command_timeout()`) on such a connection: a server that rejects the ON after it applied the OFF -- a
+     * `-BUSY` while another client's script outlasts `lua-time-limit` -- sends that rejection under replies off,
+     * and only the watchdog recovers the silent link. A proxy that answers OFF with `+OK` without suppressing the
+     * replies cannot be detected.
      *
      * @param batch The commands (see `oneway_batch` for what it refuses).
      * @param func  Called once with `Reply<oneway_result>&&`.
@@ -2716,18 +2748,19 @@ public:
      */
     Redis &
     await() {
-        while (!_replies.empty() || !_held.empty() || this->_failing_soon != 0)
+        while (!_replies.empty() || !_held.empty() || this->_failing_soon != 0 || _view_held != 0)
             qb::io::async::listener::current.run(EVRUN_NOWAIT);
         return *this;
     }
 
     /**
      * @brief Number of commands awaiting their reply (for pipeline debugging): those sent on the link, and
-     *        those held while the client is not ready.
+     *        those held while the client is not ready, and those a view holds (a retry waiting for its backoff, a
+     *        command redirected to another node).
      */
     [[nodiscard]] std::size_t
     pending_reply_count() const noexcept {
-        return _replies.size() + _held.size();
+        return _replies.size() + _held.size() + _view_held;
     }
 
     /**
@@ -4244,9 +4277,12 @@ class RetryingClient<Redis<QB_IO_>>
                     QB_LOG_WARN("[qbm][redis] command_retry on_retry threw");
                 }
             }
+            client->view_hold_(); // outside the client's queues until it is issued again: await() waits for it
             auto again = [self = this->shared_from_this()] {
-                if (*self->alive) // the client is gone: the retry is dropped, never called
+                if (*self->alive) { // the client is gone: the retry is dropped, never called
+                    self->client->view_release_();
                     self->issue();
+                }
             };
             if (wait > qb::duration::zero())
                 qb::io::async::callback(std::move(again), wait);
@@ -4259,7 +4295,7 @@ class RetryingClient<Redis<QB_IO_>>
     template <typename... Args>
     [[nodiscard]] bool
     eligible_(std::string_view const name, command_traits const traits, std::vector<std::string> &parts, Args const &...args) const {
-        if (traits.blocking || _client->is_in_multi())
+        if (traits.blocking || _client->multi_submitted_())
             return false;
         if (!traits.read_only && !(traits.idempotent && _retry.idempotent_writes))
             return false;
@@ -4402,6 +4438,7 @@ private:
         Client                    *current;
         std::shared_ptr<bool>      current_alive;
         int                        redirects = 0;
+        bool                       held      = false; ///< counted in the origin's view-held commands
 
         hop_state(Client *c, std::shared_ptr<bool> a, resolver r, qb::redis::redirect_policy p, std::string n, std::vector<std::string> args,
                   Func f)
@@ -4423,34 +4460,57 @@ private:
             current->template command<Ret>([self](Reply<Ret> &&reply) { self->settle(std::move(reply)); }, name, parts);
         }
 
+        /// The outcome reaches the caller, once: the origin's hold on the command ends with it.
+        void
+        deliver(Reply<Ret> &&reply) {
+            if (std::exchange(held, false))
+                origin->view_release_();
+            callback(std::move(reply));
+        }
+
         void
         settle(Reply<Ret> &&reply) {
+            if (!*origin_alive)
+                return; // the client the command was sent through is gone: dropped, never called, as on that client
             // Only a server's answer redirects: a failure without one (no link, a timeout) is the caller's as it is.
-            if (reply.ok() || reply.raw() == nullptr || redirects >= policy.max_redirects || !*origin_alive) {
-                callback(std::move(reply));
+            if (reply.ok() || reply.raw() == nullptr || redirects >= policy.max_redirects) {
+                deliver(std::move(reply));
                 return;
             }
             const auto to = parse_redirection(reply.error());
             if (!to || to->host == "?") {
-                callback(std::move(reply));
+                deliver(std::move(reply));
                 return;
             }
             const std::string host = to->host.empty() && *current_alive ? std::string{current->uri().host()} : to->host;
-            Client *const     next = host.empty() || !resolve ? nullptr : resolve(host, to->port);
+            Client           *next = nullptr;
+            if (!host.empty() && resolve) {
+                try {
+                    next = resolve(host, to->port);
+                } catch (std::exception const &ex) { // a resolver that throws: the redirection is the caller's
+                    QB_LOG_WARN("[qbm][redis] redirect resolver threw: " << ex.what());
+                } catch (...) {
+                    QB_LOG_WARN("[qbm][redis] redirect resolver threw a non-std exception");
+                }
+            }
             if (next == nullptr) {
-                callback(std::move(reply));
+                deliver(std::move(reply));
                 return;
             }
             ++redirects;
             origin->count_redirect_();
+            if (!std::exchange(held, true))
+                origin->view_hold_(); // on another node's queue from now on: the origin's await() waits for it
             current       = next;
             current_alive = next->connector_alive();
             // Never inside the reply callback that redirected: the next node may be the client dispatching it.
             qb::io::async::defer([self = this->shared_from_this(), asking = to->kind == ReplyErrorType::ASK] {
+                if (!*self->origin_alive)
+                    return;
                 if (*self->current_alive)
                     self->issue(asking);
                 else
-                    TReply<Func, Ret>{std::move(self->callback)}.fail("the redirection's node is gone");
+                    self->deliver(Reply<Ret>{false, {}, nullptr, "the redirection's node is gone"});
             });
         }
     };
@@ -4464,7 +4524,7 @@ private:
             return *this;
         }
         std::vector<std::string> parts;
-        bool                     serialized = !_client->is_in_multi();
+        bool                     serialized = !_client->multi_submitted_();
         if (serialized) {
             qb::allocator::pipe<char> frame;
             try {
@@ -4626,6 +4686,11 @@ public:
 
     ~node_pool() {
         *_alive = false;
+        // A command redirected to a node and still in flight fails, as on a lost link, instead of vanishing with its
+        // client: the view's caller hears from it, and the origin's await() returns.
+        for (auto &node : _nodes)
+            if (node.second)
+                node.second->disconnect();
     }
 
     /**

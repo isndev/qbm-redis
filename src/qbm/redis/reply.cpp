@@ -46,7 +46,14 @@ parse_redirection(std::string_view const error) {
     const auto port = qb::to_number<std::uint16_t>(endpoint.substr(colon + 1));
     if (!slot || *slot > 16383 || !port || *port == 0)
         return std::nullopt;
-    return redirection{kind, *slot, std::string{endpoint.substr(0, colon)}, *port};
+    // Redis writes an IPv6 host unbracketed, split here at its last colon; a bracketed one is read inside its
+    // brackets. A host made of colons only is an IPv6 address that lost its port (`::1`), not a host.
+    auto host = endpoint.substr(0, colon);
+    if (host.size() >= 2 && host.front() == '[' && host.back() == ']')
+        host = host.substr(1, host.size() - 2);
+    if (host.find_first_of("[]") != std::string_view::npos || (!host.empty() && host.find_first_not_of(':') == std::string_view::npos))
+        return std::nullopt;
+    return redirection{kind, *slot, std::string{host}, *port};
 }
 
 std::string

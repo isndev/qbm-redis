@@ -160,7 +160,7 @@ Every one of the 200-plus command methods returns a `redis_awaiter`, and **it is
 no `on_cancel` hook and consults no token, so `cancel()` — and therefore `kill()` — neither wakes nor unwinds a
 coroutine parked on one. It is a callback bridge carrying a `shared_ptr<bool>` that its destructor clears, so a reply
 landing after the awaiter is gone is a silent no-op rather than a use-after-free.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1614-1635 (the destructor clears the shared flag; await_ready false; await_suspend stores the handle and launches the operation — no token, no hook) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1615-1636 (the destructor clears the shared flag; await_ready false; await_suspend stores the handle and launches the operation — no token, no hook) -->
 
 A parked command therefore ends in exactly four ways: the server replies; the link drops (`disconnect()`, a dead peer,
 or the command deadline tripping) and `on(disconnected)` fails **every** queued handler in order, so the `co_await`
@@ -237,7 +237,7 @@ does not decode into `T` and a lost connection (`"disconnected"`). So does a usa
 throws `SecurityError` while the command is serialized, and the client turns it into that command's failed `Reply`
 (`"String too large"`), leaving no handler queued and no partial frame in the outbound pipe (Huly QB-255; until 3.3 the
 throw reached the caller and left both behind).
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1290-1372 (Reply), 1417-1418,1422-1444,1447-1452,1456-1485 (failure dispatch and decoding), 845 (the limit), 869-889 (the throw); qbm/redis/src/qbm/redis/redis.h:1178-1202 (caught where the command is serialized, the pipe rolled back) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1290-1372 (Reply), 1417-1418,1422-1444,1447-1452,1456-1485 (failure dispatch and decoding), 845 (the limit), 869-889 (the throw); qbm/redis/src/qbm/redis/redis.h:1179-1203 (caught where the command is serialized, the pipe rolled back) -->
 
 ### Driving the loop
 
@@ -254,7 +254,7 @@ You never block the qb-io thread. Reach completion one of three ways:
 is yours; inside an actor it is the `VirtualCore`, and every other actor on it stops with you — silently, because
 nothing in the framework diagnoses it.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2718-2722 (await), qb/src/qb/io/async/coroutine/utils.h:293 (run_sync) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2750-2754 (await), qb/src/qb/io/async/coroutine/utils.h:293 (run_sync) -->
 
 ### Pipelining
 
@@ -271,7 +271,7 @@ redis.await();   // drains all three on the current loop
 
 See [readme/pipeline_and_await.md](./readme/pipeline_and_await.md). `RedisPipeline::flush()` is unrelated to the
 `FLUSHDB`/`FLUSHALL` commands.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2562-2582 (command, by name or resolved), qbm/redis/src/qbm/redis/redis.h:2370-2396 (submit_: serialized, then the handler queued -- before any byte leaves), qbm/redis/src/qbm/redis/redis.h:2638-2646 (coroutine command), qbm/redis/src/qbm/redis/redis.h:2940-2944 (RedisPipeline::flush calls await, not FLUSHDB), tests/integration/connection/pipeline.cpp:425 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2588-2608 (command, by name or resolved), qbm/redis/src/qbm/redis/redis.h:2381-2407 (submit_: serialized, then the handler queued -- before any byte leaves), qbm/redis/src/qbm/redis/redis.h:2664-2672 (coroutine command), qbm/redis/src/qbm/redis/redis.h:2973-2977 (RedisPipeline::flush calls await, not FLUSHDB), tests/integration/connection/pipeline.cpp:425 -->
 
 ---
 
@@ -305,7 +305,7 @@ int main() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1279 (connect), string_commands.h:156/528, key_commands.h:139, qb/src/qb/io/async/coroutine/utils.h:293 (run_sync) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1280 (connect), string_commands.h:156/528, key_commands.h:139, qb/src/qb/io/async/coroutine/utils.h:293 (run_sync) -->
 
 Inside a coroutine you `co_await` directly. Pub/sub uses a dedicated consumer plus a separate client to publish, because
 the publishing command lives only on the full client:
@@ -335,7 +335,7 @@ qb::io::async::task<void> chat() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2966-2969 (consumer base), qbm/redis/src/qbm/redis/redis.h:3725-3736 (cb_consumer constructor), subscription_commands.h:63/207, publish_commands.h:58 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2999-3002 (consumer base), qbm/redis/src/qbm/redis/redis.h:3758-3769 (cb_consumer constructor), subscription_commands.h:63/207, publish_commands.h:58 -->
 
 Prefer to receive sequentially? Use `co_consumer` and `co_await receive()`, which yields `std::nullopt` once the
 consumer is down (`down_reason()` says why) and, across a reconnection, one gap marker (`msg->is_gap()`) where the stream
@@ -358,7 +358,7 @@ qb::io::async::task<void> notifications() {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3925-3927 (RedisCoroConsumer::receive), qbm/redis/src/qbm/redis/redis.h:3853-3855 (going down closes the channel), qbm/redis/src/qbm/redis/redis.h:3865-3872 (the next lifecycle's queue) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3958-3960 (RedisCoroConsumer::receive), qbm/redis/src/qbm/redis/redis.h:3886-3888 (going down closes the channel), qbm/redis/src/qbm/redis/redis.h:3898-3905 (the next lifecycle's queue) -->
 
 ---
 
@@ -413,7 +413,7 @@ brings in `qb::io`. At the API level you use qb-io types: a client is driven by 
 You can use it from a plain executable that calls `qb::io::async::init()` and drives the loop yourself, or hold a client
 inside a `qb::Actor` and let the actor's `VirtualCore` tick drive the same loop. The client does not require actors —
 but inside `qb::Main` it is what most deployments do, which is why this page opens with it.
-<!-- src: qbm/redis/CMakeLists.txt:62-74 (qb_register_module, DEPENDS qb-core), qbm/redis/src/qbm/redis/redis.h:483 (the connector is a qb-io tcp client) -->
+<!-- src: qbm/redis/CMakeLists.txt:62-74 (qb_register_module, DEPENDS qb-core), qbm/redis/src/qbm/redis/redis.h:484 (the connector is a qb-io tcp client) -->
 
 ---
 
@@ -481,7 +481,7 @@ Two build-time conditions are worth knowing:
   TCP-only — the `#ifdef QB_HAS_SSL` block in `redis.h` is excluded, and CMake prints an informational message rather
   than failing.
 
-<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:4566-4577 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
+<!-- src: qbm/redis/CMakeLists.txt:50-53 (the NOT QB_FOUND early return), :56-58 (the TCP-only status message), qbm/redis/src/qbm/redis/redis.h:4626-4637 (the #ifdef QB_HAS_SSL ssl:: alias block) -->
 
 A module **cannot be configured standalone**: it calls `qb_register_module()` and `qb_add_test()`, development-time
 helpers an installed qb does not ship. The repository's own CI configures `.github/ci/superbuild/CMakeLists.txt`, a
@@ -521,7 +521,7 @@ redis.with_resp3();   // part of the handshake every connection runs, reconnecti
 // it starts no run, policy or not.
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:233 (RetryPolicy), qbm/redis/src/qbm/redis/redis.h:1426-1429 (enable_auto_reconnect); qb/src/qb/io/reconnect.h:218-228 (reconnect_policy) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:233 (RetryPolicy), qbm/redis/src/qbm/redis/redis.h:1427-1430 (enable_auto_reconnect); qb/src/qb/io/reconnect.h:218-228 (reconnect_policy) -->
 
 `set_command_timeout(qb::duration)` is a separate mechanism: a per-connection health watchdog. If no reply arrives
 within the window for an in-flight **non-blocking** command, the whole connection is dropped (a FIFO pipelined protocol
@@ -529,7 +529,7 @@ cannot fail one mid-queue command without desynchronizing later replies) and pen
 `"command timed out"`; auto-reconnect resumes if enabled. Blocking commands (`BLPOP`, `WAIT`, `XREAD`, …) suspend the
 deadline so their own server-side timeout governs. The same window bounds how long a command HELD while the client is
 not ready waits. The default is `qb::duration::zero()` (disabled).
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2747-2757 (set_command_timeout), qbm/redis/src/qbm/redis/redis.h:2039-2048 (arm_deadline), qbm/redis/src/qbm/redis/redis.h:2050-2076 (deadline_watch), qbm/redis/src/qbm/redis/redis.h:2085-2101 (on_command_deadline) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2780-2790 (set_command_timeout), qbm/redis/src/qbm/redis/redis.h:2040-2049 (arm_deadline), qbm/redis/src/qbm/redis/redis.h:2051-2077 (deadline_watch), qbm/redis/src/qbm/redis/redis.h:2086-2102 (on_command_deadline) -->
 
 > **Time-unit boundary.** Connect/command timeouts and `RetryPolicy` delays are `qb::duration`. **Redis command
 arguments keep native units by design** and are exposed through `std::chrono`-unit overloads, not `qb::duration`:
@@ -555,7 +555,7 @@ arguments keep native units by design** and are exposed through `std::chrono`-un
 The consumers carry the connection and subscription commands (`connect`, `hello`, `subscribe`, `psubscribe`,
 `unsubscribe`), but not the data or `publish` commands — publish from a `tcp::client`. The full `tcp::client` does not
 subscribe; that surface belongs to the consumers.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:4549-4578 (aliases), qbm/redis/src/qbm/redis/redis.h:2966-2969 (consumer mixins), qbm/redis/src/qbm/redis/redis.h:1672-1692 (client mixins) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:4609-4638 (aliases), qbm/redis/src/qbm/redis/redis.h:2999-3002 (consumer mixins), qbm/redis/src/qbm/redis/redis.h:1673-1693 (client mixins) -->
 
 ---
 
@@ -571,7 +571,7 @@ each command awaiter carries its own validity flag, so a reply landing after it 
 PUSH frames are treated as out-of-band — the plain client discards them so they never desynchronize the reply FIFO;
 consumers route them to pub/sub. A throwing reply/user callback is caught and logged rather than crossing the libev
 `noexcept` boundary.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1661-1662 (not thread-safe), qbm/redis/src/qbm/redis/redis.h:1078-1088 (liveness token), qbm/redis/src/qbm/redis/redis.h:1607-1617 (the awaiter's flag), qbm/redis/src/qbm/redis/redis.h:2104-2186 (PUSH + catch) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1662-1663 (not thread-safe), qbm/redis/src/qbm/redis/redis.h:1079-1089 (liveness token), qbm/redis/src/qbm/redis/redis.h:1608-1618 (the awaiter's flag), qbm/redis/src/qbm/redis/redis.h:2105-2187 (PUSH + catch) -->
 
 ---
 
@@ -585,7 +585,7 @@ auto keys = co_await redis.command<std::vector<std::string>>(
     "COMMAND", "GETKEYS", "SET", "mykey", "value");
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2640-2646 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2666-2672 -->
 
 ---
 

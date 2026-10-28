@@ -140,7 +140,7 @@ if (resp2.ok() && resp2.result().is_object())
     qb::io::cout() << resp2.result()["proto"].get<int>() << std::endl;     // 2
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.cpp:700-734; qbm/redis/tests/unit/reply/reply-json-decode.cpp:255-271 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.cpp:707-741; qbm/redis/tests/unit/reply/reply-json-decode.cpp:255-271 -->
 
 ### `auth` — authentication
 
@@ -339,12 +339,12 @@ instead of guessing how many confirmations the server will send. Await `reset()`
 After success, an unsubscribe-all from the empty state resolves on Redis's single empty-state confirmation; re-authenticate
 if the server requires it, and call `hello(3)` again to regain RESP3. The connection itself remains open. The live
 RESP2/RESP3 tests cover channels, patterns, a pipelined command after the barrier and a command rejected during it.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3161-3199,3242-3253; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3194-3232,3275-3286; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
 
 
 
 > Three unrelated APIs share the name `reset`/`reset_*` in this module — the protocol parser's `redis<IO_>::reset()` (
-`redis.h:209`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:288`), and this user-facing
+`redis.h:209`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:314`), and this user-facing
 `RESET` command. This page documents only the last one.
 
 ---

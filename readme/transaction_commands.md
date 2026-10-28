@@ -36,7 +36,7 @@ Every method in this group exists in two forms, like the rest of the client:
 The client also exposes `is_in_multi()`, a **client-side** boolean it sets on a successful `MULTI` and clears on `EXEC`/
 `DISCARD`. It is a local hint, not a server query — see [Client-side MULTI state](#client-side-multi-state).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:60-291 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:81-318 -->
 
 ---
 
@@ -128,7 +128,7 @@ template <typename Func> Derived &multi(Func &&func);
 A successful `multi()` sets the client-side `is_in_multi()` flag. The callback overload sets the flag from `reply.ok()`
 *before* invoking your callback.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:69-98 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:90-122 -->
 
 ### `EXEC`
 
@@ -181,7 +181,7 @@ qb::io::async::task<void> run_tx(qb::redis::tcp::client &redis) {
 > prefer the pipeline path and read the raw EXEC array through `Reply<pipeline_result>.raw()`: per-command
 `parser::Value`
 > results are move-only and are not cloned into a typed vector. See [pipeline_and_await.md](./pipeline_and_await.md). (
-`qbm/redis/src/qbm/redis/types.h:457-467`, `qbm/redis/src/qbm/redis/reply.cpp:554-572`.)
+`qbm/redis/src/qbm/redis/types.h:457-467`, `qbm/redis/src/qbm/redis/reply.cpp:561-579`.)
 
 ### `DISCARD`
 
@@ -236,7 +236,7 @@ auto bad = co_await redis.watch("");
 // bad.ok() == false; bad.error() == "Key cannot be empty"
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:172-242, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:149-193 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:198-268, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:149-193 -->
 
 The full CAS loop — watch, read, transact, retry on abort:
 
@@ -275,7 +275,7 @@ auto w = co_await redis.watch("balance");
 auto u = co_await redis.unwatch();             // Reply<status>; "balance" no longer watched
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:244-269, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:293-342 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:270-295, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:293-342 -->
 
 ### Callback form
 
@@ -297,7 +297,7 @@ redis.exec<std::string>([](qb::redis::Reply<std::vector<std::string>> &&r) {
 redis.await();   // main/test/script only: spins the loop until every handler has fired
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:81-98,125-136 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:102-122,149-161 -->
 
 ---
 
@@ -312,16 +312,16 @@ void reset_transaction_state() noexcept;  // force-clear the hint
 ```
 
 `is_in_multi()` is a **local hint**, not a round-trip to the server. The client sets it from the `MULTI` reply's `ok()`
-and clears it when `EXEC`/`DISCARD` is issued; it does not re-query Redis. On disconnect the client drains pending reply
-handlers and calls `reset_transaction_state()` so the flag does not linger as stale `true` after the server-side
-transaction is gone. After a reconnect, treat the connection as having **no** transaction open — re-issue `MULTI` if you
-need one.
+and clears it when `EXEC`/`DISCARD` is issued; it does not re-query Redis. When the link is lost the client clears it
+before it fails the pending reply handlers, so the flag does not linger as stale `true` after the server-side transaction
+is gone, and a `RESET` command clears it too, since the server discards an open transaction on `RESET`. After a
+reconnect, treat the connection as having **no** transaction open — re-issue `MULTI` if you need one.
 
 > `reset_transaction_state()` is one of three same-named `reset` surfaces in the client; do not confuse it with the
 > others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:208-211`) and the server-facing `RESET` command
-> in [connection.md](./connection.md) (`connection_commands.h:303-321`). This one only clears the client-side MULTI flag.
+> in [connection.md](./connection.md) (`connection_commands.h:303-323`). This one only clears the client-side MULTI flag.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:282-291, qbm/redis/src/qbm/redis/redis.h:2227 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:69-78,308-318, qbm/redis/src/qbm/redis/redis.h:2192-2193 -->
 
 ---
 

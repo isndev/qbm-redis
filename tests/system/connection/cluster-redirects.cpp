@@ -38,6 +38,7 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <memory>
+#include <stdexcept>
 #include <optional>
 #include <string>
 #include <vector>
@@ -420,4 +421,164 @@ TEST_F(ClusterRedirects, TheCoroutineFormFollowsTheSameWay) {
     pb->send("+OK\r\n" + bulk("co"));
     ASSERT_TRUE(run_until([&] { return !got.empty(); }));
     EXPECT_EQ(got, "ok:co");
+}
+
+// ---- What an independent review found (the QB-129 lot's review) ----------------------------------------------
+
+TEST_F(ClusterRedirects, ARedirectedCommandIsPendingOnTheOriginAndItsCallbackIsCalledOnce) {
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Nodes    nodes;
+    Outcomes out;
+
+    client.following_redirects(nodes).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1), (std::vector<Command>{{"GET", "k"}}));
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    auto pb = b.accept();
+    ASSERT_TRUE(pb);
+    EXPECT_EQ(pb->expect(1), (std::vector<Command>{{"GET", "k"}}));
+    EXPECT_EQ(client.pending_reply_count(), 1u) << "on b's queue, held by the view: the origin's await() waits for it";
+    pb->send(bulk("v"));
+    ASSERT_TRUE(run_until([&] { return !out.seen.empty(); }));
+    EXPECT_EQ(client.pending_reply_count(), 0u);
+    run_until([] { return false; }, 150ms);
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"ok:v"})) << "once, and not again";
+}
+
+TEST_F(ClusterRedirects, AnOriginGoneWithAHopInFlightDropsTheCallbackAsTheClientDoes) {
+    FakeNode a, b;
+    auto     client = std::make_unique<Client>(a.uri());
+    auto     pa     = connect(*client, a);
+    ASSERT_TRUE(pa);
+    Nodes nodes;
+    auto  calls = std::make_shared<int>(0);
+
+    client->following_redirects(nodes).get([calls](qb::redis::Reply<std::optional<std::string>> &&) { ++*calls; }, "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    auto pb = b.accept();
+    ASSERT_TRUE(pb);
+    EXPECT_EQ(pb->expect(1), (std::vector<Command>{{"GET", "k"}}));
+    client.reset(); // the client the command was sent through is gone while it waits on b
+    pb->send(bulk("v"));
+    run_until([] { return false; }, 200ms);
+    EXPECT_EQ(*calls, 0) << "dropped, never called: what a destroyed client does with its own pending commands";
+}
+
+TEST_F(ClusterRedirects, ANodePoolGoneWithAHopInFlightFailsIt) {
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    auto     nodes = std::make_unique<Nodes>();
+    Outcomes out;
+
+    client.following_redirects(*nodes).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    auto pb = b.accept();
+    ASSERT_TRUE(pb);
+    EXPECT_EQ(pb->expect(1).size(), 1u);
+    nodes.reset(); // its node client is destroyed with the GET in flight
+    ASSERT_TRUE(run_until([&] { return !out.seen.empty(); })) << "it vanished with the node's client before";
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"error:disconnected"}));
+    EXPECT_EQ(client.pending_reply_count(), 0u);
+}
+
+TEST_F(ClusterRedirects, AResolverThatThrowsHandsTheRedirectionToTheCaller) {
+    FakeNode a;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Outcomes out;
+
+    client.following_redirects([](std::string const &, std::uint16_t) -> Client * { throw std::runtime_error("no such node"); })
+        .get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 10.0.0.9:7000\r\n");
+    ASSERT_TRUE(run_until([&] { return !out.seen.empty(); })) << "the callback was lost with the throw before";
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"error:MOVED 3999 10.0.0.9:7000"}));
+    EXPECT_EQ(client.stats().redirects, 0u);
+}
+
+TEST_F(ClusterRedirects, NoRedirectionIsFollowedWithMaxRedirectsZero) {
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Nodes    nodes;
+    Outcomes out;
+
+    client.following_redirects(nodes, qb::redis::redirect_policy{.max_redirects = 0}).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    ASSERT_TRUE(run_until([&] { return !out.seen.empty(); }));
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"error:MOVED 3999 " + b.endpoint()}));
+    EXPECT_FALSE(b.accept(200ms));
+}
+
+TEST_F(ClusterRedirects, AnAskToANodeAlreadyConnectedSendsAskingAndTheCommandBackToBack) {
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Nodes    nodes;
+    Outcomes out;
+
+    client.following_redirects(nodes).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    auto pb = b.accept();
+    ASSERT_TRUE(pb);
+    EXPECT_EQ(pb->expect(1).size(), 1u);
+    pb->send(bulk("v"));
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 1; }));
+
+    client.following_redirects(nodes).get(out.get_sink(), "k2"); // b's client is ready now: the pair goes on its link
+    EXPECT_EQ(pa->expect(1), (std::vector<Command>{{"GET", "k2"}}));
+    pa->send("-ASK 15495 " + b.endpoint() + "\r\n");
+    EXPECT_EQ(pb->expect(2), (std::vector<Command>{{"ASKING"}, {"GET", "k2"}}));
+    pb->send("+OK\r\n" + bulk("w"));
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 2; }));
+    EXPECT_EQ(out.seen.back(), "ok:w");
+}
+
+TEST_F(ClusterRedirects, TheCoroutineFormFollowsAMoved) {
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Nodes       nodes;
+    std::string got;
+
+    qb::io::async::coro_scheduler().spawn(co_get(client.following_redirects(nodes), &got));
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    auto pb = b.accept();
+    ASSERT_TRUE(pb);
+    EXPECT_EQ(pb->expect(1), (std::vector<Command>{{"GET", "k"}}));
+    pb->send(bulk("co"));
+    ASSERT_TRUE(run_until([&] { return !got.empty(); }));
+    EXPECT_EQ(got, "ok:co");
+}
+
+TEST_F(ClusterRedirects, ACommandBehindASubmittedMultiIsPassedThroughBeforeTheMultiIsAnswered) {
+    // is_in_multi() turns true only at MULTI's reply: a command pipelined behind it before that was followed out of
+    // the transaction. The view now reads the MULTI submitted (Huly QB-902's marker).
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Nodes    nodes;
+    Outcomes out;
+
+    client.multi(out.status_sink());
+    client.following_redirects(nodes).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(2), (std::vector<Command>{{"MULTI"}, {"GET", "k"}}));
+    pa->send("+OK\r\n-MOVED 3999 " + b.endpoint() + "\r\n");
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 2; }));
+    EXPECT_EQ(out.seen[1], "error:MOVED 3999 " + b.endpoint());
+    EXPECT_FALSE(b.accept(200ms));
 }
