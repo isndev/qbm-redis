@@ -582,3 +582,116 @@ TEST_F(ClusterRedirects, ACommandBehindASubmittedMultiIsPassedThroughBeforeTheMu
     EXPECT_EQ(out.seen[1], "error:MOVED 3999 " + b.endpoint());
     EXPECT_FALSE(b.accept(200ms));
 }
+
+TEST_F(ClusterRedirects, AwaitReturnsOnlyOnceACommandOnAnotherNodeIsDone) {
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Nodes    nodes;
+    Outcomes out;
+
+    client.following_redirects(nodes).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    auto pb = b.accept();
+    ASSERT_TRUE(pb);
+    EXPECT_EQ(pb->expect(1), (std::vector<Command>{{"GET", "k"}}));
+    qb::io::async::callback([&pb] { pb->send(bulk("v")); }, 100ms); // b answers while await() spins
+    client.await();
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"ok:v"})) << "await() returned with the command still on b";
+}
+
+TEST_F(ClusterRedirects, PastMaxRedirectsNothingIsLeftPending) {
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Nodes    nodes;
+    Outcomes out;
+
+    client.following_redirects(nodes, qb::redis::redirect_policy{.max_redirects = 1}).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    auto pb = b.accept();
+    ASSERT_TRUE(pb);
+    EXPECT_EQ(pb->expect(1).size(), 1u);
+    pb->send("-MOVED 3999 " + a.endpoint() + "\r\n"); // past the bound, from another node
+    ASSERT_TRUE(run_until([&] { return !out.seen.empty(); }));
+    EXPECT_EQ(client.pending_reply_count(), 0u) << "the hold ends with the outcome";
+}
+
+TEST_F(ClusterRedirects, ANodeClientOfOnesOwnGoneWithAHopInFlightLeavesNothingToAwait) {
+    // A resolver of one's own may hand out a client the application destroys: the command is dropped with it, as
+    // that client's destructor drops its own, and the origin's await() no longer waits for it.
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    auto node = std::make_unique<Client>(b.uri());
+    auto pb   = connect(*node, b);
+    ASSERT_TRUE(pb);
+    Client  *raw = node.get();
+    Outcomes out;
+
+    client.following_redirects([&raw](std::string const &, std::uint16_t) { return raw; }).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    EXPECT_EQ(pb->expect(1), (std::vector<Command>{{"GET", "k"}}));
+    EXPECT_EQ(client.pending_reply_count(), 1u);
+    node.reset();
+    raw = nullptr;
+    EXPECT_EQ(client.pending_reply_count(), 0u) << "the hold went with the command";
+    if (client.pending_reply_count() == 0)
+        client.await(); // returns: nothing left to wait for
+    EXPECT_TRUE(out.seen.empty());
+}
+
+TEST_F(ClusterRedirects, ARedirectionToAClientInsideATransactionIsTheCallers) {
+    FakeNode a, b;
+    Client   client{a.uri()};
+    auto     pa = connect(client, a);
+    ASSERT_TRUE(pa);
+    Client node{b.uri()};
+    auto   pb = connect(node, b);
+    ASSERT_TRUE(pb);
+    node.multi([](qb::redis::Reply<qb::redis::status> &&) {});
+    EXPECT_EQ(pb->expect(1), (std::vector<Command>{{"MULTI"}}));
+    Outcomes out;
+
+    client.following_redirects([&node](std::string const &, std::uint16_t) { return &node; }).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + b.endpoint() + "\r\n");
+    ASSERT_TRUE(run_until([&] { return !out.seen.empty(); }));
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"error:MOVED 3999 " + b.endpoint()}));
+    EXPECT_TRUE(pb->expect(1, 150ms).empty()) << "nothing queued inside the node client's transaction";
+    EXPECT_EQ(client.pending_reply_count(), 0u);
+}
+
+TEST_F(ClusterRedirects, ARedirectionBackToTheOriginIsCountedOnce) {
+    FakeNode a;
+    auto     client = std::make_unique<Client>(a.uri());
+    auto     pa     = connect(*client, a);
+    ASSERT_TRUE(pa);
+    Outcomes out;
+    Client  *self = client.get();
+
+    client->following_redirects([&self](std::string const &, std::uint16_t) { return self; }).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + a.endpoint() + "\r\n");
+    EXPECT_EQ(pa->expect(1), (std::vector<Command>{{"GET", "k"}})) << "sent again, on the origin itself";
+    EXPECT_EQ(client->pending_reply_count(), 1u) << "on the origin's own queue: no hold on top of it";
+    pa->send(bulk("v"));
+    ASSERT_TRUE(run_until([&] { return !out.seen.empty(); }));
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"ok:v"}));
+    EXPECT_EQ(client->pending_reply_count(), 0u);
+
+    // The origin destroyed with such a hop in flight: dropped with its own queue, nothing touched after (ASan).
+    client->following_redirects([&self](std::string const &, std::uint16_t) { return self; }).get(out.get_sink(), "k");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    pa->send("-MOVED 3999 " + a.endpoint() + "\r\n");
+    EXPECT_EQ(pa->expect(1).size(), 1u);
+    client.reset();
+    run_until([] { return false; }, 50ms);
+    EXPECT_EQ(out.seen.size(), 1u);
+}

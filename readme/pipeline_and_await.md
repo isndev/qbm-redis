@@ -28,7 +28,7 @@ run the loop until every handler has fired.
 
 `await()` is a non-blocking drain: it spins `qb::io::async::listener::current.run(EVRUN_NOWAIT)` while the reply queue
 is non-empty -- or a command is held, or a failure is still due from the loop -- and returns the client by reference
-(`redis.h:2749-2754`). It does not block the thread in the kernel; each iteration is a single poll. The calling stack
+(`redis.h:2750-2755`). It does not block the thread in the kernel; each iteration is a single poll. The calling stack
 runs synchronously until every enqueued callback has been invoked — with a success, a Redis error, or a failure:
 the link lost, the client down, the command timeout. A command submitted while the client is connecting,
 handshaking or reconnecting is held and counts: `await()` waits for the client to be ready and the reply to arrive.
@@ -84,7 +84,7 @@ handler nor a partial frame behind: the pipe is rolled back and the callback rec
 matches the next reply on the wire.
 
 `pending_reply_count()` returns the current queue depth -- the commands awaiting their reply on the link plus those held
-while the client is not ready (`redis.h:2761-2764`) — useful for tests and for confirming a drain completed:
+while the client is not ready (`redis.h:2762-2765`) — useful for tests and for confirming a drain completed:
 
 ```cpp
 redis.set(cb, "k", "v");
@@ -116,12 +116,12 @@ redis.await();
 ### What `await()` does and does not do
 
 - **Implements:** `while (!reply_queue.empty() || !held.empty() || failures_due) listener::current.run(EVRUN_NOWAIT);`
-  (`redis.h:2751-2752`).
+  (`redis.h:2752-2753`).
 - **Not** a blocking `recv()`: it polls the libev loop. The thread is never parked in the kernel waiting on a single
   socket.
 - It uses `listener::current.run(EVRUN_NOWAIT)`, **not** `qb::io::async::run()`. That distinction is deliberate:
   `async::run` rejects being called from inside a coroutine body, but a non-blocking drain is safe there, so a coroutine
-  may still call `await()` on a second client (`redis.h:2741-2747`). Safe since 3.3: that nested pass re-entered the
+  may still call `await()` on a second client (`redis.h:2742-2748`). Safe since 3.3: that nested pass re-entered the
   coroutine scheduler and aborted a debug build (Huly QB-253). Now the coroutines it makes ready wait for the calling
   coroutine to yield — the command deadline's watcher among them, so from a coroutine `await()` returns on the replies
   or a disconnect, never on `set_command_timeout()`. Nor does a command held there ever leave: the connection, its
@@ -144,18 +144,18 @@ while (redis.pending_reply_count() > 0)
 
 ### `qb::redis::tcp::pipeline`
 
-`qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:4618`);
-the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:4626-4629`). It is a thin, optional
+`qb::redis::tcp::pipeline` is an alias for `qb::redis::detail::RedisPipeline<qb::io::transport::tcp>` (`redis.h:4681`);
+the SSL transport exposes `qb::redis::tcp::ssl::pipeline` under `QB_HAS_SSL` (`redis.h:4689-4692`). It is a thin, optional
 wrapper that holds a reference to a `Redis` client and chains the low-level `command<Ret>(callback, name, args...)` (
 `redis.h:2588-2596`). The reply queue and ordering belong to the client; the wrapper only gives the call site a name.
 
-- Construct it with `pipeline pipe{redis}` over an existing client (`redis.h:2947-2948`).
-- `pipe.command<Ret>(cb, name, args...)` returns the pipeline for fluent chaining (`redis.h:2967-2970`).
-- For the typed mixin methods (`set`, `get`, …), reach the client with `pipe.client()` (`redis.h:2950-2957`); the wrapper
+- Construct it with `pipeline pipe{redis}` over an existing client (`redis.h:2948-2949`).
+- `pipe.command<Ret>(cb, name, args...)` returns the pipeline for fluent chaining (`redis.h:2968-2971`).
+- For the typed mixin methods (`set`, `get`, …), reach the client with `pipe.client()` (`redis.h:2951-2958`); the wrapper
   itself only exposes `command<Ret>`.
 - `pipe.flush()` drains by calling `client().await()` — it is **unrelated** to the Redis `FLUSHDB`/`FLUSHALL` commands (
-  `redis.h:2973-2977`).
-- `pipe.pending_reply_count()` forwards to the client's queue depth (`redis.h:2961-2962`).
+  `redis.h:2974-2978`).
+- `pipe.pending_reply_count()` forwards to the client's queue depth (`redis.h:2962-2963`).
 
 ```cpp
 #include <qbm/redis/redis.h>
@@ -227,8 +227,9 @@ auto done = co_await redis.send_oneway(std::move(batch)); // or send_oneway(std:
 - **A server that does not honour OFF** -- a proxy without `CLIENT REPLY`, an ACL that denies it -- answers the batch's
   commands, and the replies behind them would complete the wrong commands. The client sees it at the batch's first
   reply, which is not `+OK`: it drops the link, the batch fails with the server's answer, and every command sent
-  behind it fails as on a lost connection. The raw escape hatch is not tracked: a `command("MULTI")` or a
-  `command("CLIENT", "REPLY", ...)` sent by hand on a connection that sends batches ends the same way.
+  behind it fails as on a lost connection. The raw escape hatch is not tracked: a `command("MULTI")`, a
+  `command("RESET")` or a `command("CLIENT", "REPLY", ...)` sent by hand on a connection that sends batches is
+  unknown to the gate -- use `multi()` and `reset()`, on the client or through a view.
 - **Use it with a command timeout.** A server that rejects the batch's `ON` after it applied the `OFF` -- `-BUSY`
   while another client's script runs past `lua-time-limit` in the middle of a large batch -- sends that rejection
   under replies off, that is not at all, and the connection stays silent: every later command waits. Only the
@@ -254,11 +255,11 @@ auto done = co_await redis.send_oneway(std::move(batch)); // or send_oneway(std:
 - **Do not call `await()` from another thread.** Drain from the same thread / loop that drives the client's I/O. The
   reply queue and outbound pipe are unsynchronized (`redis.h:1662-1663,1725`).
 - **`flush()` is not a Redis command.** It runs the event loop until pending replies land; it never sends `FLUSHDB` or
-  `FLUSHALL` (`redis.h:2938-2939,2973-2977`).
+  `FLUSHALL` (`redis.h:2939-2940,2974-2978`).
 - **A one-way batch hides its commands' errors.** Send through `send_oneway` only what may fail silently, and check
   the data afterwards if it matters; `ok()` says the batch ran, not that each command succeeded.
 - **`await()` on an empty queue returns immediately.** It is safe to call with nothing pending — the `while` loop body
-  never runs (`redis.h:2751`).
+  never runs (`redis.h:2752`).
 - **Coroutine commands do not need `await()`.** A `co_await redis.get(...)` suspends the coroutine until its reply
   arrives; calling `await()` for it is unnecessary. Use `await()` only for the callback form, or
   `qb::io::async::run_sync(...)` to drive a coroutine from synchronous code.

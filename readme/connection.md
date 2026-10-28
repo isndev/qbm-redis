@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:4611-4637 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:4674-4700 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -472,7 +472,7 @@ empty until set and read only on those transitions: `on_connected()` each time t
 `on_disconnected` runs after the work in flight failed and before the connector decides whether to start the run: if it
 throws, the connector logs the error and still checks the current policy, so a hook that calls
 `disable_auto_reconnect()` prevents the run even if it later throws.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:779-841 (link-loss order, exception containment, reconnect decision), :3612-3636 (consumer pending-reply drain before notification) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:779-841 (link-loss order, exception containment, reconnect decision), :3613-3637 (consumer pending-reply drain before notification) -->
 
 > **Auto-reconnect replays the handshake, never a request.** Every reconnection runs the configured handshake --
 > RESP3, credentials, database, the hook, and a consumer's CONFIRMED subscriptions -- before anything else, so nothing
@@ -551,7 +551,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2766-2796 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2767-2797 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,
@@ -595,7 +595,7 @@ _redis.on_command_complete([this, metrics = _metrics_id](qb::redis::command_info
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/stats.h:489-503 (command_info), :562-575 (stats), :509-553 (latency_histogram); qbm/redis/src/qbm/redis/redis.h:2805-2848 (set_latency_stats, latency, on_command_complete), qbm/redis/src/qbm/redis/redis.h:1847-1919 (each command counted once, inline at the dispatch; latency and the hook out of line) -->
+<!-- src: qbm/redis/src/qbm/redis/stats.h:489-503 (command_info), :562-575 (stats), :509-553 (latency_histogram); qbm/redis/src/qbm/redis/redis.h:2806-2849 (set_latency_stats, latency, on_command_complete), qbm/redis/src/qbm/redis/redis.h:1847-1919 (each command counted once, inline at the dispatch; latency and the hook out of line) -->
 
 ---
 

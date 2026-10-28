@@ -404,13 +404,16 @@ if (!r.ok()) {
   writes) are retried on a lost link the run recovers or on LOADING / BUSY / TRYAGAIN /
   MASTERDOWN, within `command_retry::backoff`; one outcome, the last. Never retried:
   non-idempotent writes, SET NX/XX/GET, ZADD INCR, blocking commands, anything inside
-  MULTI, a client that is down. Never wrap commands in `qb::io::async::with_retry`: a
+  MULTI (what was submitted: a retry waiting when a `multi()` is submitted is not issued,
+  its last failure the outcome), a client that is down. Never wrap commands in `qb::io::async::with_retry`: a
   `Reply` failure is a value, not an exception, so it never retries.
 - **Cluster redirections** (Huly QB-129): `qb::redis::node_pool<qb::redis::tcp::client>
   nodes{configure};` then `co_await seed.following_redirects(nodes).get(k)` -- MOVED re-sent
   to the node it names, ASK there after `ASKING`, every command (a redirection means it did
   not run), at most `redirect_policy::max_redirects` (5); MULTI, ordinary errors, failures
-  without an answer and `?` endpoints are not followed. `configure` sets the node clients'
+  without an answer, `?` endpoints and a node client with a `multi()` submitted are not
+  followed. A command on another node counts in the seed's `await()` and
+  `pending_reply_count()` until its outcome. `configure` sets the node clients'
   session (auth, RESP3, TLS). No slot map: one MOVED round trip per command for a key on
   another node. `qb::redis::parse_redirection(reply.error())` reads one by hand.
 - **Commands without their replies** (Huly QB-902): `qb::redis::oneway_batch b; b.add("INCRBY",

@@ -265,7 +265,7 @@ The protocol's `onMessage(std::size_t)` runs under the libev C callback and is d
    callback may legitimately re-issue a command and that nested call could throw (`redis.h:2200-2228`).
 4. The consumer's protocol-error fallback also catches and logs both exception kinds when completing
    its failed head callback. It then reports the original protocol error; later queued replies remain
-   deliverable. This logging is compiled out when logging support is disabled (`redis.h:3526-3540`).
+   deliverable. This logging is compiled out when logging support is disabled (`redis.h:3527-3541`).
 
 The contract for *your* callbacks: a throw will not crash the process, but it will cause that reply to be dropped with
 only a log line. Handle your own errors inside the callback; do not rely on the backstop as control flow.
@@ -401,7 +401,7 @@ if (!r)
 
 ### A command timeout surfaces as a failed reply
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2035-2038 (is_blocking_command), :2190-2230 (link-loss drain), :2779-2796 (set_command_timeout/getter) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2035-2038 (is_blocking_command), :2190-2230 (link-loss drain), :2780-2797 (set_command_timeout/getter) -->
 
 `command_timeout` defaults to `qb::duration::zero()` (disabled). It is a connection-health watchdog, not a per-command
 timer: when the deadline trips, the client drops the whole connection and fails **every** pending reply with
@@ -469,7 +469,10 @@ retried when two things hold:
 
 **Never retried:** non-idempotent writes (INCR and DECR families, APPEND, list pushes, pops and moves, SPOP, XADD, a relative EXPIRE, PUBLISH, EVAL, FCALL, ...), SET with NX, XX or GET, ZADD with INCR, blocking commands, anything inside MULTI, and anything on a client that is down or idle. The attempts and the waits between them are `command_retry::backoff`'s
 (three attempts by default, the first included). The callback or the awaiter sees ONE outcome: the last, unchanged.
-Every re-issue counts in `stats().retries`.
+Every re-issue counts in `stats().retries`. "Inside MULTI" is what was submitted: a command behind a `multi()` is never
+retried, even before the MULTI is answered, and a retry waiting for its backoff when a `multi()` is submitted is not
+issued -- its last failure is the outcome. `await()` and `pending_reply_count()` count a retry waiting for its
+backoff.
 
 ```cpp
 auto r = co_await redis.retrying().get("session:42");           // read-only: retried by default
@@ -487,7 +490,7 @@ called -- as the client's own pending replies are. While it waits for its backof
 "Inside MULTI" is read from what was submitted: a command sent behind a `multi()` whose `+OK` has not arrived yet is
 inside the transaction already, and passes through.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:249-259 (command_retry), :2860-2863 (retrying), :4116-4189 (what is retried), :4201-4385 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:249-259 (command_retry), :2861-2864 (retrying), :4117-4190 (what is retried), :4202-4421 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
 
 ## Following cluster redirections: `following_redirects()`
 
@@ -504,7 +507,11 @@ transaction commands, that follows both (Huly QB-129):
   the source by the node importing the slot, and the bound ends such a loop: the last MOVED reaches the caller;
 - **the caller's, unchanged**: a command inside MULTI (a submitted `multi()` not yet closed, its reply arrived or
   not), an ordinary error, a failure without an answer, a `?` endpoint (unknown to the server), a node the resolver
-  does not have, and a resolver that throws. An empty host is the host of the node that answered.
+  does not have, a resolver that throws, and a node client with a `multi()` submitted (the command would be queued
+  inside its transaction). An empty host is the host of the node that answered.
+
+A command on another node is the seed's for `await()` and `pending_reply_count()`, until its outcome; a node client
+destroyed with the command on it drops it, as that client's destructor drops its own, and the seed stops waiting.
 
 The other nodes' clients come from a `qb::redis::node_pool<Client>`: it creates one on first use, hands it to its
 `configure` callback — where the session a node needs is set, as on the seed: `with_auth`, `with_resp3`,
@@ -531,7 +538,7 @@ its own pending replies; when the pool is destroyed instead, its node clients ar
 fails with `"disconnected"` rather than vanishing. A node pool is not thread-safe and keeps the clients it created for
 its lifetime: one pool per client, on that client's thread.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:269-273 (redirect_policy), :2880-2895 (following_redirects), :4397-4599 (the view), :4663-4735 (node_pool); qbm/redis/tests/system/connection/cluster-redirects.cpp -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:269-273 (redirect_policy), :2881-2896 (following_redirects), :4433-4662 (the view), :4726-4798 (node_pool); qbm/redis/tests/system/connection/cluster-redirects.cpp -->
 
 ---
 

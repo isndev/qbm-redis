@@ -52,6 +52,9 @@ private:
     /// Bumped by every boundary submitted (MULTI, EXEC, DISCARD) and by a reset: a MULTI's failure clears
     /// `multi_sent_` only when nothing came after it.
     std::uint64_t multi_epoch_ = 0;
+    /// Bumped by every EXEC, DISCARD and reset submitted: a MULTI's `+OK` sets `in_multi_` only when none came
+    /// after it (`multi(); reset();` pipelined leaves no transaction open). A later MULTI does not close one.
+    std::uint64_t close_epoch_ = 0;
 
     /// The server's refusal of a nested MULTI, which leaves the transaction already open as it was.
     [[nodiscard]] static bool
@@ -102,19 +105,21 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     multi(Func &&func) {
-        multi_sent_      = true;
-        const auto epoch = ++multi_epoch_;
+        multi_sent_       = true;
+        const auto epoch  = ++multi_epoch_;
+        const auto closes = close_epoch_;
         return derived().template command<status>(
-            [this, epoch, func = std::forward<Func>(func)](auto &&reply) mutable {
+            [this, epoch, closes, func = std::forward<Func>(func)](auto &&reply) mutable {
                 // Only a SUCCESSFUL MULTI opens a transaction. A failed MULTI must NOT
                 // clear the hint: the dominant failure mode is a *nested* MULTI ("ERR
                 // MULTI calls can not be nested"), which Redis rejects while leaving the
                 // already-open transaction intact (the queue survives and EXEC still
                 // runs it). Clobbering in_multi_ to false here would desync the hint
                 // from the server, falsely reporting the connection as out of MULTI.
-                if (reply.ok())
-                    in_multi_ = true;
-                else if (epoch == multi_epoch_ && !nested_multi_error_(reply.error()))
+                if (reply.ok()) {
+                    if (closes == close_epoch_) // an EXEC, a DISCARD or a RESET submitted since closed it
+                        in_multi_ = true;
+                } else if (epoch == multi_epoch_ && !nested_multi_error_(reply.error()))
                     multi_sent_ = false; // refused, failed or never sent: no transaction was opened
                 std::move(func)(std::forward<decltype(reply)>(reply));
             },
@@ -152,6 +157,7 @@ public:
         in_multi_   = false;
         multi_sent_ = false;
         ++multi_epoch_;
+        ++close_epoch_;
         return derived().template command<std::vector<Result>>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
                 in_multi_ = false;
@@ -187,6 +193,7 @@ public:
     discard(Func &&func) {
         multi_sent_ = false;
         ++multi_epoch_;
+        ++close_epoch_;
         return derived().template command<status>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
                 in_multi_ = false;
@@ -315,6 +322,7 @@ public:
         in_multi_   = false;
         multi_sent_ = false;
         ++multi_epoch_;
+        ++close_epoch_;
     }
 };
 

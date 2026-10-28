@@ -46,22 +46,22 @@ llm/qbm-redis.llm.api.md	redis.h:233-233	2a41a928458d	using RetryPolicy = qb::io
 llm/qbm-redis.llm.api.md	redis.h:249-259	e871084531fb	struct command_retry {
 llm/qbm-redis.llm.api.md	redis.h:269-273	604b2e2f3c3d	struct redirect_policy {
 llm/qbm-redis.llm.api.md	redis.h:2706-2725	d5ce3abcfd86	send_oneway(oneway_batch batch, Func &&func) {
-llm/qbm-redis.llm.api.md	redis.h:2860-2863	c7c1f4cef1e7	[[nodiscard]] RetryingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:2880-2895	814f9f2a5f11	[[nodiscard]] RedirectingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:2943-2943	fe3c529f759a	class RedisPipeline {
-llm/qbm-redis.llm.api.md	redis.h:2999-2999	cd678de7f8c1	class RedisConsumer
+llm/qbm-redis.llm.api.md	redis.h:2861-2864	c7c1f4cef1e7	[[nodiscard]] RetryingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:2881-2896	814f9f2a5f11	[[nodiscard]] RedirectingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:2944-2944	fe3c529f759a	class RedisPipeline {
+llm/qbm-redis.llm.api.md	redis.h:3000-3000	cd678de7f8c1	class RedisConsumer
 llm/qbm-redis.llm.api.md	redis.h:317-320	ff4a342df8e4	struct oneway_result {
 llm/qbm-redis.llm.api.md	redis.h:339-409	31392922891d	class oneway_batch {
-llm/qbm-redis.llm.api.md	redis.h:3698-3698	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
-llm/qbm-redis.llm.api.md	redis.h:3816-3816	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
-llm/qbm-redis.llm.api.md	redis.h:3958-3958	1d2fe40d4864	receive() {
-llm/qbm-redis.llm.api.md	redis.h:4201-4201	77fd328b928f	class RetryingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:4397-4599	aa7b432e3ea8	class RedirectingClient<Redis<QB_IO_>>
-llm/qbm-redis.llm.api.md	redis.h:4609-4609	5b0051a25645	using database = detail::Redis<QB_IO_>;
-llm/qbm-redis.llm.api.md	redis.h:4615-4615	e19a828745ea	struct tcp {
-llm/qbm-redis.llm.api.md	redis.h:4627-4627	97c8e8c3b177	struct ssl {
-llm/qbm-redis.llm.api.md	redis.h:4663-4735	8169523bd0c5	class node_pool {
-llm/qbm-redis.llm.api.md	redis.h:4737-4737	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
+llm/qbm-redis.llm.api.md	redis.h:3699-3699	fa35672aa0ac	class RedisCallbackConsumer : public RedisConsumer<QB_IO_, RedisCallb...
+llm/qbm-redis.llm.api.md	redis.h:3817-3817	73ee968f9466	class RedisCoroConsumer : public RedisConsumer<QB_IO_, RedisCoroConsu...
+llm/qbm-redis.llm.api.md	redis.h:3959-3959	1d2fe40d4864	receive() {
+llm/qbm-redis.llm.api.md	redis.h:4202-4202	77fd328b928f	class RetryingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:4433-4662	97cbfb300f22	class RedirectingClient<Redis<QB_IO_>>
+llm/qbm-redis.llm.api.md	redis.h:4672-4672	5b0051a25645	using database = detail::Redis<QB_IO_>;
+llm/qbm-redis.llm.api.md	redis.h:4678-4678	e19a828745ea	struct tcp {
+llm/qbm-redis.llm.api.md	redis.h:4690-4690	97c8e8c3b177	struct ssl {
+llm/qbm-redis.llm.api.md	redis.h:4726-4798	8169523bd0c5	class node_pool {
+llm/qbm-redis.llm.api.md	redis.h:4800-4800	5162a55f7775	inline constexpr auto no_check = [](auto &&) {
 llm/qbm-redis.llm.api.md	redis.h:483-572	4be94e4b27da	template <typename QB_IO_, typename Derived>
 llm/qbm-redis.llm.api.md	redis.h:500-500	94cca6232ff0	using handshake_client = HandshakeClient<Derived>;
 llm/qbm-redis.llm.api.md	redis.h:93-94	fec8f2f5d4ae	template <typename IO_>

@@ -435,3 +435,65 @@ TEST_F(CommandRetry, ACommandBehindASubmittedMultiIsNeverRetried) {
     EXPECT_TRUE(peer->expect(1, 50ms).empty()) << "inside the transaction: not retried";
     EXPECT_EQ(client.stats().retries, 0u);
 }
+
+TEST_F(CommandRetry, ARetryPendingAcrossAMultiIsNotIssuedInsideIt) {
+    // A multi() submitted while a retry waited for its backoff: the retry went out behind the MULTI, was queued
+    // (+QUEUED came back as the value) and joined the EXEC (Huly QB-129 lot, second review).
+    FakeRedis server;
+    Client    client{server.uri()};
+    auto      peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    qb::redis::command_retry slow;
+    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(3).with_initial_delay(100ms).with_jitter(false);
+
+    Outcomes out;
+    client.retrying(slow).get(out.get_sink(), "k");
+    ASSERT_EQ(peer->expect(1).size(), 1u);
+    peer->send("-LOADING Redis is loading the dataset in memory\r\n");
+    ASSERT_TRUE(run_until([&] { return client.stats().retries == 1; }));
+    client.multi(out.status_sink());
+    EXPECT_EQ(peer->expect(1), (std::vector<Command>{{"MULTI"}}));
+    peer->send("+OK\r\n");
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 2; }, 1000ms));
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"ok", "error:LOADING Redis is loading the dataset in memory"}))
+        << "the last failure is the outcome, once";
+    EXPECT_TRUE(peer->expect(1, 250ms).empty()) << "nothing sent inside the transaction";
+    EXPECT_EQ(client.pending_reply_count(), 0u);
+}
+
+TEST_F(CommandRetry, AwaitReturnsOnlyOnceTheRetriedCommandIsDone) {
+    FakeRedis server;
+    Client    client{server.uri()};
+    auto      peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    qb::redis::command_retry slow;
+    slow.backoff = qb::io::reconnect_policy{}.with_max_attempts(2).with_initial_delay(50ms).with_jitter(false);
+
+    Outcomes out;
+    client.retrying(slow).get(out.get_sink(), "k");
+    ASSERT_EQ(peer->expect(1).size(), 1u);
+    peer->send("-LOADING Redis is loading the dataset in memory\r\n");
+    ASSERT_TRUE(run_until([&] { return client.stats().retries == 1; }));
+    // The second attempt leaves 50 ms from now; the peer answers it at 150 ms, while await() spins.
+    qb::io::async::callback([&peer] { peer->send(bulk("v")); }, 150ms);
+    client.await();
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"ok:v"})) << "await() returned with the retry still to come";
+}
+
+TEST_F(CommandRetry, AResetThroughTheViewEndsTheTransactionItWasWaitingBehind) {
+    FakeRedis server;
+    Client    client{server.uri()};
+    auto      peer = connect(client, server);
+    ASSERT_TRUE(peer);
+
+    Outcomes out;
+    client.multi(out.status_sink());
+    client.retrying(quick()).reset(out.status_sink());
+    client.retrying(quick()).get(out.get_sink(), "k"); // after the RESET: retried again
+    ASSERT_EQ(peer->expect(3), (std::vector<Command>{{"MULTI"}, {"RESET"}, {"GET", "k"}}));
+    peer->send("+OK\r\n+RESET\r\n-LOADING Redis is loading the dataset in memory\r\n");
+    ASSERT_EQ(peer->expect(1), (std::vector<Command>{{"GET", "k"}})) << "retried: the RESET closed the transaction";
+    peer->send(bulk("v"));
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 3; }));
+    EXPECT_EQ(out.seen.back(), "ok:v");
+}

@@ -36,7 +36,7 @@ Every method in this group exists in two forms, like the rest of the client:
 The client also exposes `is_in_multi()`, a **client-side** boolean it sets on a successful `MULTI` and clears on `EXEC`/
 `DISCARD`. It is a local hint, not a server query — see [Client-side MULTI state](#client-side-multi-state).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:81-318 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:84-326 -->
 
 ---
 
@@ -128,7 +128,7 @@ template <typename Func> Derived &multi(Func &&func);
 A successful `multi()` sets the client-side `is_in_multi()` flag. The callback overload sets the flag from `reply.ok()`
 *before* invoking your callback.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:90-122 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:93-127 -->
 
 ### `EXEC`
 
@@ -236,7 +236,7 @@ auto bad = co_await redis.watch("");
 // bad.ok() == false; bad.error() == "Key cannot be empty"
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:198-268, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:149-193 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:205-275, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:149-193 -->
 
 The full CAS loop — watch, read, transact, retry on abort:
 
@@ -275,7 +275,7 @@ auto w = co_await redis.watch("balance");
 auto u = co_await redis.unwatch();             // Reply<status>; "balance" no longer watched
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:270-295, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:293-342 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:277-302, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:293-342 -->
 
 ### Callback form
 
@@ -297,7 +297,7 @@ redis.exec<std::string>([](qb::redis::Reply<std::vector<std::string>> &&r) {
 redis.await();   // main/test/script only: spins the loop until every handler has fired
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:102-122,149-161 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:105-127,154-167 -->
 
 ---
 
@@ -312,16 +312,18 @@ void reset_transaction_state() noexcept;  // force-clear the hint
 ```
 
 `is_in_multi()` is a **local hint**, not a round-trip to the server. The client sets it from the `MULTI` reply's `ok()`
-and clears it when `EXEC`/`DISCARD` is issued; it does not re-query Redis. When the link is lost the client clears it
-before it fails the pending reply handlers, so the flag does not linger as stale `true` after the server-side transaction
-is gone, and a `RESET` command clears it too, since the server discards an open transaction on `RESET`. After a
-reconnect, treat the connection as having **no** transaction open — re-issue `MULTI` if you need one.
+-- unless an `EXEC`, a `DISCARD` or a `reset()` was submitted after that `MULTI` -- and clears it when `EXEC`/`DISCARD`
+is issued; it does not re-query Redis. When the link is lost the client clears it before it fails the pending reply
+handlers, so the flag does not linger as stale `true` after the server-side transaction is gone, and `reset()` clears it
+too -- on the client or through `retrying()` / `following_redirects()` -- since the server discards an open transaction
+on `RESET`. After a reconnect, treat the connection as having **no** transaction open — re-issue `MULTI` if you need
+one.
 
 > `reset_transaction_state()` is one of three same-named `reset` surfaces in the client; do not confuse it with the
 > others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:208-211`) and the server-facing `RESET` command
 > in [connection.md](./connection.md) (`connection_commands.h:303-323`). This one only clears the client-side MULTI flag.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:69-78,308-318, qbm/redis/src/qbm/redis/redis.h:2192-2193 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:72-81,315-326, qbm/redis/src/qbm/redis/redis.h:2192-2193 -->
 
 ---
 
@@ -330,9 +332,8 @@ reconnect, treat the connection as having **no** transaction open — re-issue `
 - **An aborted `EXEC` is not an exception.** When a watched key changed, `exec<Result>()` returns a `Reply` with
   `ok() == false`, not a thrown error. Branch on `reply.ok()` and retry the whole watch/multi/exec block; do not assume
   success.
-- **`is_in_multi()` can lie after a drop.** It is a client-side hint. The client clears it on disconnect via
-  `reset_transaction_state()`, but never assume the *server* still holds a transaction after a reconnect — re-issue
-  `MULTI`.
+- **`is_in_multi()` can lie after a drop.** It is a client-side hint. The client clears it when the link is lost, but
+  never assume the *server* still holds a transaction after a reconnect — re-issue `MULTI`.
 - **`exec<Result>()` is homogeneous.** It decodes every sub-reply as `Result`. If your queued commands return mixed
   types, that single `Result` will not fit them all; use the raw reply through `Reply<pipeline_result>.raw()` (
   see [pipeline_and_await.md](./pipeline_and_await.md)) instead.

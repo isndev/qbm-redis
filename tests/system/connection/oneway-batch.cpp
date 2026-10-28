@@ -600,3 +600,48 @@ TEST_F(OnewayBatch, AHandshakeLinkLostWhileAMultiIsHeldKeepsTheGateClosed) {
     ASSERT_FALSE(out.seen.empty());
     EXPECT_EQ(out.seen.back().rfind("batch error:a MULTI is open", 0), 0u) << "the held MULTI goes first on a later link: " << out.seen.back();
 }
+
+TEST_F(OnewayBatch, AResetThroughAViewClosesAMulti) {
+    // reset() through retrying() or following_redirects() went to the client as a plain command: the marker stayed,
+    // every later batch refused until the link was lost (Huly QB-902, second review).
+    FakeServer server;
+    Client     client{server.uri()};
+    auto       peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    Outcomes                     out;
+    qb::redis::node_pool<Client> nodes;
+
+    client.multi(out.status_sink("multi"));
+    client.retrying().reset(out.status_sink("reset"));
+    client.send_oneway(batch_of({{"k", "v"}}), out.oneway_sink("after"));
+    EXPECT_EQ(peer->expect(5), (std::vector<Command>{{"MULTI"}, {"RESET"}, off, {"SET", "k", "v"}, on}));
+
+    client.multi(out.status_sink("multi 2"));
+    client.following_redirects(nodes).reset(out.status_sink("reset 2"));
+    client.send_oneway(batch_of({{"k", "w"}}), out.oneway_sink("after 2"));
+    EXPECT_EQ(peer->expect(5), (std::vector<Command>{{"MULTI"}, {"RESET"}, off, {"SET", "k", "w"}, on}));
+}
+
+TEST_F(OnewayBatch, IsInMultiIsOpenedOnlyByAMultiNothingClosedSince) {
+    // A MULTI's +OK set is_in_multi() even when a RESET pipelined behind it had already closed the transaction.
+    FakeServer server;
+    Client     client{server.uri()};
+    auto       peer = connect(client, server);
+    ASSERT_TRUE(peer);
+    Outcomes out;
+
+    client.multi(out.status_sink("multi"));
+    client.reset(out.status_sink("reset"));
+    EXPECT_EQ(peer->expect(2), (std::vector<Command>{{"MULTI"}, {"RESET"}}));
+    peer->send("+OK\r\n+RESET\r\n");
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 2; }));
+    EXPECT_FALSE(client.is_in_multi()) << "the RESET submitted after the MULTI closed it";
+
+    // The control: a nested MULTI pipelined behind the first does not close it, and the first one's +OK opens it.
+    client.multi(out.status_sink("multi a"));
+    client.multi(out.status_sink("multi b"));
+    EXPECT_EQ(peer->expect(2), (std::vector<Command>{{"MULTI"}, {"MULTI"}}));
+    peer->send("+OK\r\n-ERR MULTI calls can not be nested\r\n");
+    ASSERT_TRUE(run_until([&] { return out.seen.size() == 4; }));
+    EXPECT_TRUE(client.is_in_multi());
+}

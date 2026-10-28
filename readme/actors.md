@@ -186,11 +186,11 @@ draining it, precisely so a failing handler that re-issues a command does not ge
 
 The coroutine consumer is the exception worth knowing. `receive()` does **not** return a `redis_awaiter`; it awaits a
 `qb::io::async::channel<message>` that the consumer fills from its RESP push frames.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3957-3960 (receive() → co_await _msg_channel->recv()) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3958-3961 (receive() → co_await _msg_channel->recv()) -->
 
 A channel `recv()` is still not cancellation-aware — `cancel()` does nothing to it — but it *is* woken by
 `close()`, and the consumer closes the channel in two places: when the consumer goes down, and in its own destructor.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:3886-3888 (consumer_down_ → _msg_channel->close()), :3962-3964 (destructor closes it) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3887-3889 (consumer_down_ → _msg_channel->close()), :3963-3965 (destructor closes it) -->
 
 That makes `receive()` yield `std::nullopt` after buffered messages drain. If the actor can be reaped before a
 scheduled receiver resumes, keep the consumer in the coroutine frame and check actor-scope cancellation before
@@ -206,7 +206,7 @@ using actor state or forwarding a message.
 > `std::nullopt`, and `down_reason()` says why. A loss an armed run recovers from leaves the loop parked:
 > the confirmed subscriptions are replayed and one gap marker (`msg->is_gap()`) precedes the new
 > connection's first message.
-> <!-- src: qbm/redis/src/qbm/redis/redis.h:1553-1575 (disconnect()), :3365 (going down ends the stream), :3886-3888 (consumer_down_), :3898-3905 (the next lifecycle's queue) -->
+> <!-- src: qbm/redis/src/qbm/redis/redis.h:1553-1575 (disconnect()), :3366 (going down ends the stream), :3887-3889 (consumer_down_), :3899-3906 (the next lifecycle's queue) -->
 > In the ordinary actor handler below, `disconnect()` closes the channel before it returns.
 > If called from this consumer's own message callback, teardown waits until that callback
 > returns; no nested loop pass runs. The parked loop resumes on a later scheduler pass.
@@ -332,7 +332,7 @@ void on(TouchSession const &ev) {
 a kernel block, but a spin *on the `VirtualCore` thread* that does not return until every pending reply has landed. For the duration this core dispatches no actor events, ticks no `ICallback` and reaps nothing, and there is
 no diagnostic: the guard those calls carry only fires inside the coroutine scheduler's ready-drain, which an actor
 handler is not running under.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2749-2754 (await: spin the loop until no reply is awaited, sent or held) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2750-2755 (await: spin the loop until no reply is awaited, sent or held) -->
 
 Inside an actor, that call has no job to do anyway — the loop pass already drains the queue.
 See [pipeline_and_await.md](./pipeline_and_await.md) for what `await()` is for, which is a thread you own.

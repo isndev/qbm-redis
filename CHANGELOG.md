@@ -38,8 +38,13 @@ All notable changes to the qbm-redis module are documented here. The format is b
   yet answered followed out of the transaction. A command on another node is now the seed's for `await()` and
   `pending_reply_count()`, a destroyed seed drops it, a destroyed pool disconnects its nodes first (the command fails
   `"disconnected"`), a throwing resolver hands the redirection to the caller, and "inside MULTI" is read from what was
-  submitted; `parse_redirection` reads a bracketed IPv6 host inside its brackets and refuses a port-less one. Eight
-  more loopback cases (17) and three parser ones, each fix with its mutant caught.
+  submitted; `parse_redirection` reads a bracketed IPv6 host inside its brackets and refuses a host made only of
+  colons. Eight more loopback cases (17) and three parser ones, each fix with its mutant caught. A second review found
+  three more, fixed too: a node client of one's own resolver destroyed with a command on it left the seed's `await()`
+  waiting forever -- the hold now ends with the command, however it ends; a redirection to a client with a `multi()`
+  submitted was queued inside that transaction -- it is the caller's now, as is a command inside the seed's own; and
+  a redirection back to the seed itself counted its command twice. Five more loopback cases (22), `await()` itself
+  exercised, each with its mutant caught.
 - **Commands sent without their replies: `qb::redis::oneway_batch` and `redis.send_oneway(std::move(batch))` (Huly
   QB-902).** `client_reply("OFF")` and `"SKIP"` fail locally since 3.3.0 -- Redis answers nothing to them, not even to
   the mode command, and a `Reply<status>` could prove nothing -- which left no way to send a command without paying
@@ -66,7 +71,7 @@ All notable changes to the qbm-redis module are documented here. The format is b
   clears on the MULTI's own failure (never the nested-MULTI error, never for a MULTI submitted after it), on RESET and
   on the loss of the link it was sent on, and ACL joined the refused verbs, an `ACL SETUSER` in a batch being able to
   revoke its own `CLIENT REPLY ON`. Proven by `qbm-redis-test-unit-oneway-batch` (4 cases),
-  `qbm-redis-test-system-oneway-batch` (20, a scripted loopback server) and `qbm-redis-test-integration-oneway-batch`
+  `qbm-redis-test-system-oneway-batch` (22, a scripted loopback server) and `qbm-redis-test-integration-oneway-batch`
   (9 against the server, RESP2 and RESP3: a thousand INCRs and the commands around them each answered once, rejected
   commands inside the batch desynchronizing nothing, the same commands sent the usual way leaving the same data, a
   batch inside MULTI refused, a reconnection, a RESP3 invalidation pushed while replies are off, with a raw-connection
@@ -105,8 +110,12 @@ All notable changes to the qbm-redis module are documented here. The format is b
   never retried (Huly QB-129 review).** A retry waiting for its backoff sat outside the client's queues, so `await()`
   returned before the command was done and `pending_reply_count()` said 0; it is the client's now, for both. "Inside
   MULTI" was read from MULTI's reply, so a read pipelined behind `multi()` before its `+OK` was retried outside the
-  transaction; it is read from what was submitted. Two loopback cases (`qbm-redis-test-system-command-retry`, 8), each
-  caught by its mutant.
+  transaction; it is read from what was submitted. A retry waiting for its backoff when a `multi()` is submitted is
+  not issued at all -- it would be queued inside that transaction, `+QUEUED` coming back as its value -- and its last
+  failure is the outcome; a retry dropped with the loop ends its hold; and `reset()` through either view clears the
+  client's transaction marker, as the client's own `reset()` does. `is_in_multi()` is set by a MULTI's `+OK` only when
+  no EXEC, DISCARD or RESET was submitted after it (`multi(); reset();` pipelined left it `true`). Five loopback cases
+  (`qbm-redis-test-system-command-retry`, 11), each caught by its mutant.
 
 ## [3.3.0] - 2026-10-26
 

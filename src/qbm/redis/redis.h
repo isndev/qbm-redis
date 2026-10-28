@@ -2729,7 +2729,8 @@ public:
      *
      * Runs @c qb::io::async::listener::current.run(EVRUN_NOWAIT) until no command
      * waits for its reply: none sent and unanswered, none held while the client is not
-     * ready, no failure still due from the loop. This does **not** block the thread in
+     * ready, none a view holds (a retry waiting for its backoff, a command redirected to
+     * another node), no failure still due from the loop. This does **not** block the thread in
      * the kernel; each iteration is a non-blocking poll. The **caller** still runs
      * synchronously until every enqueued callback has been invoked (success, Redis
      * error, or failure: the link lost, the client down, the command timeout).
@@ -4226,13 +4227,15 @@ class RetryingClient<Redis<QB_IO_>>
     /// One command being retried: the arguments it was serialized with, the attempts made, its callback.
     template <typename Ret, typename Func>
     struct attempt_state : std::enable_shared_from_this<attempt_state<Ret, Func>> {
-        Client                  *client;
-        std::shared_ptr<bool>    alive;
-        qb::redis::command_retry retry;
-        std::string              name;
-        std::vector<std::string> parts;
-        Func                     callback;
-        int                      attempts = 0;
+        Client                   *client;
+        std::shared_ptr<bool>     alive;
+        qb::redis::command_retry  retry;
+        std::string               name;
+        std::vector<std::string>  parts;
+        Func                      callback;
+        std::optional<Reply<Ret>> last; ///< the failure a retry waits behind: the outcome if it is not issued again
+        int                       attempts = 0;
+        bool                      held     = false; ///< counted in the client's view-held commands
 
         attempt_state(Client *c, std::shared_ptr<bool> a, qb::redis::command_retry r, std::string n, std::vector<std::string> p, Func f)
             : client(c)
@@ -4241,6 +4244,26 @@ class RetryingClient<Redis<QB_IO_>>
             , name(std::move(n))
             , parts(std::move(p))
             , callback(std::move(f)) {}
+
+        attempt_state(attempt_state const &)            = delete;
+        attempt_state &operator=(attempt_state const &) = delete;
+
+        /// A retry dropped unissued (the loop cleared with its timer pending) leaves await() nothing to wait for.
+        ~attempt_state() {
+            release();
+        }
+
+        void
+        hold() noexcept {
+            if (!std::exchange(held, true))
+                client->view_hold_();
+        }
+
+        void
+        release() noexcept {
+            if (std::exchange(held, false) && *alive)
+                client->view_release_();
+        }
 
         void
         issue() {
@@ -4277,12 +4300,19 @@ class RetryingClient<Redis<QB_IO_>>
                     QB_LOG_WARN("[qbm][redis] command_retry on_retry threw");
                 }
             }
-            client->view_hold_(); // outside the client's queues until it is issued again: await() waits for it
+            last = std::move(reply);
+            hold(); // outside the client's queues until it is issued again: await() waits for it
             auto again = [self = this->shared_from_this()] {
-                if (*self->alive) { // the client is gone: the retry is dropped, never called
-                    self->client->view_release_();
-                    self->issue();
+                if (!*self->alive)
+                    return; // the client is gone: the retry is dropped, never called
+                self->release();
+                // A multi() submitted during the backoff: issued now, the command would be queued inside that
+                // transaction. Its last failure is the outcome.
+                if (self->client->multi_submitted_()) {
+                    self->callback(std::move(*self->last));
+                    return;
                 }
+                self->issue();
             };
             if (wait > qb::duration::zero())
                 qb::io::async::callback(std::move(again), wait);
@@ -4318,6 +4348,12 @@ public:
 
     using publish_commands<RetryingClient<Redis<QB_IO_>>>::publish;
     using server_commands<RetryingClient<Redis<QB_IO_>>>::command;
+
+    /// `reset()` through the view discards the client's open transaction, as the client's own `reset()` records.
+    void
+    reset_transaction_state() noexcept {
+        _client->reset_transaction_state();
+    }
 
 private:
     /// Retried when eligible, else passed to the client as it came (`verb`: the name, or the resolved verb).
@@ -4437,6 +4473,7 @@ private:
         Func                       callback;
         Client                    *current;
         std::shared_ptr<bool>      current_alive;
+        std::optional<Reply<Ret>>  last; ///< the redirection being followed: the outcome if it is not sent on
         int                        redirects = 0;
         bool                       held      = false; ///< counted in the origin's view-held commands
 
@@ -4451,6 +4488,24 @@ private:
             , callback(std::move(f))
             , current(c)
             , current_alive(std::move(a)) {}
+
+        hop_state(hop_state const &)            = delete;
+        hop_state &operator=(hop_state const &) = delete;
+
+        /// A command dropped on another node (its client destroyed, a resolver of one's own) leaves the origin's
+        /// await() nothing to wait for. On the origin's own queue there is no hold: the origin counts it there.
+        ~hop_state() {
+            if (std::exchange(held, false) && *origin_alive)
+                origin->view_release_();
+        }
+
+        /// Counted in the origin's view-held commands while it sits on another client's queue (Huly QB-129).
+        void
+        hold_while_elsewhere() noexcept {
+            const bool elsewhere = current != origin;
+            if (std::exchange(held, elsewhere) != elsewhere)
+                elsewhere ? origin->view_hold_() : origin->view_release_();
+        }
 
         void
         issue(bool asking) {
@@ -4499,18 +4554,20 @@ private:
             }
             ++redirects;
             origin->count_redirect_();
-            if (!std::exchange(held, true))
-                origin->view_hold_(); // on another node's queue from now on: the origin's await() waits for it
             current       = next;
             current_alive = next->connector_alive();
+            last          = std::move(reply);
+            hold_while_elsewhere(); // the origin's await() waits for a command on another node's queue
             // Never inside the reply callback that redirected: the next node may be the client dispatching it.
             qb::io::async::defer([self = this->shared_from_this(), asking = to->kind == ReplyErrorType::ASK] {
                 if (!*self->origin_alive)
                     return;
-                if (*self->current_alive)
-                    self->issue(asking);
-                else
+                if (!*self->current_alive)
                     self->deliver(Reply<Ret>{false, {}, nullptr, "the redirection's node is gone"});
+                else if (self->current->multi_submitted_()) // sent on, it would be queued inside that transaction
+                    self->deliver(std::move(*self->last));
+                else
+                    self->issue(asking);
             });
         }
     };
@@ -4554,6 +4611,12 @@ public:
 
     using publish_commands<RedirectingClient<Redis<QB_IO_>>>::publish;
     using server_commands<RedirectingClient<Redis<QB_IO_>>>::command;
+
+    /// `reset()` through the view discards the client's open transaction, as the client's own `reset()` records.
+    void
+    reset_transaction_state() noexcept {
+        _client->reset_transaction_state();
+    }
 
     /** @brief The policy this view follows redirections with. */
     [[nodiscard]] qb::redis::redirect_policy const &
