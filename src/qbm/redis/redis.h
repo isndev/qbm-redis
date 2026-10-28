@@ -31,6 +31,7 @@
 #ifndef QBM_REDIS_H
 #define QBM_REDIS_H
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -41,6 +42,7 @@
 #include <queue>
 #include <random>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 #include <qb/io/async.h>
@@ -268,6 +270,141 @@ struct redirect_policy {
     /// The redirections one command may follow (a node importing a slot answers MOVED back to the source to a
     /// command that missed its ASKING: the bound ends such a loop).
     int max_redirects = 5;
+};
+
+// ============================================================================
+// One-way batches
+// ============================================================================
+
+namespace detail {
+
+/// Why `verb` cannot be sent one-way; null when it can (Huly QB-902). Refused: what the server would answer, or
+/// act on, past the reply it suppresses -- measured on Redis 8.10: `MULTI` queues the `CLIENT REPLY` that follows
+/// it, `HELLO 3` and `RESET` change the connection's protocol and state unseen, a `SUBSCRIBE` confirmation is pushed
+/// regardless.
+[[nodiscard]] inline char const *
+oneway_refusal(std::string_view const verb) noexcept {
+    static constexpr std::array<std::string_view, 13> connection_state{"ASKING",   "AUTH",      "CLIENT",   "HELLO", "MONITOR", "PSYNC", "QUIT",
+                                                                       "READONLY", "READWRITE", "REPLCONF", "RESET", "SELECT",  "SYNC"};
+    if (verb.empty())
+        return "a command needs a verb";
+    std::array<char, 16> upper{};
+    if (verb.size() <= upper.size()) {
+        for (std::size_t i = 0; i < verb.size(); ++i) {
+            const char c = verb[i];
+            upper[i]     = (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
+        }
+        const std::string_view folded{upper.data(), verb.size()};
+        for (auto const name : connection_state)
+            if (name == folded)
+                return "it changes or reads the connection's state: it cannot run one-way";
+    }
+    const auto traits = command_traits_of(verb);
+    if (traits.blocking)
+        return "a blocking command cannot run one-way";
+    if (traits.family == command_family::transaction)
+        return "a transaction command cannot run one-way";
+    if (traits.family == command_family::subscription)
+        return "a subscription command cannot run one-way";
+    return nullptr;
+}
+
+} // namespace detail
+
+/**
+ * @brief What a one-way batch's completion carries (`redis.send_oneway(...)`, Huly QB-902).
+ */
+struct oneway_result {
+    /// The commands the batch carried.
+    std::size_t commands = 0;
+};
+
+/**
+ * @class oneway_batch
+ * @brief Commands sent WITHOUT their replies (Huly QB-902): `redis.send_oneway(std::move(batch))` writes
+ *        `CLIENT REPLY OFF`, the batch's commands and `CLIENT REPLY ON` in one piece, and completes at the server's
+ *        `+OK` to that ON -- by then the server has processed every command of the batch and sent none of their
+ *        replies, an error included.
+ * @details The batch serializes each command as it is added, apart from any client. `add()` says why a command was
+ *          refused, and keeps nothing of it then:
+ *          - a command the server would answer, or act on, past the reply it suppresses: ASKING, AUTH, CLIENT,
+ *            HELLO, MONITOR, PSYNC, QUIT, READONLY, READWRITE, REPLCONF, RESET, SELECT and SYNC; the transaction
+ *            commands (MULTI, EXEC, DISCARD, WATCH, UNWATCH) and the subscription commands; every blocking command
+ *            (BLPOP, WAIT, XREAD -- refused even without BLOCK -- ...);
+ *          - a command that cannot be serialized (an argument over `REDIS_MAX_STRING_SIZE`).
+ *          A verb the client does not know -- a module command -- is accepted: it must neither block nor change the
+ *          connection's state. One batch is sent once: `send_oneway` takes it by value.
+ */
+class oneway_batch {
+    qb::allocator::pipe<char> _bytes;
+    std::size_t               _commands = 0;
+
+public:
+    oneway_batch() = default;
+    /// The moved-from batch is empty.
+    oneway_batch(oneway_batch &&other) noexcept
+        : _bytes(std::move(other._bytes))
+        , _commands(std::exchange(other._commands, 0)) {
+        other._bytes.reset();
+    }
+    oneway_batch &
+    operator=(oneway_batch &&other) noexcept {
+        if (this != &other) {
+            _bytes    = std::move(other._bytes);
+            _commands = std::exchange(other._commands, 0);
+            other._bytes.reset();
+        }
+        return *this;
+    }
+    oneway_batch(oneway_batch const &)            = delete;
+    oneway_batch &operator=(oneway_batch const &) = delete;
+
+    /**
+     * @brief Add one command -- `add("SET", key, value)`, the verb in any letter case.
+     * @return Why it was refused; empty when it joined the batch.
+     */
+    template <typename... Args>
+    [[nodiscard]] std::optional<std::string>
+    add(std::string_view const verb, Args &&...args) {
+        if (char const *refused = detail::oneway_refusal(verb))
+            return std::string{refused};
+        const std::size_t before = _bytes.size();
+        try {
+            put_in_pipe(_bytes, verb, std::forward<Args>(args)...);
+        } catch (std::exception const &e) {
+            _bytes.free_back(_bytes.size() - before);
+            return std::string{e.what()};
+        } catch (...) {
+            _bytes.free_back(_bytes.size() - before);
+            return std::string{"the command could not be serialized"};
+        }
+        ++_commands;
+        return std::nullopt;
+    }
+
+    /// The commands added.
+    [[nodiscard]] std::size_t
+    size() const noexcept {
+        return _commands;
+    }
+
+    [[nodiscard]] bool
+    empty() const noexcept {
+        return _commands == 0;
+    }
+
+    /// The commands as they go on the wire (RESP arrays, in the order added).
+    [[nodiscard]] std::string_view
+    wire() const noexcept {
+        return {_bytes.begin(), _bytes.size()};
+    }
+
+    /// Forget every command added.
+    void
+    clear() noexcept {
+        _bytes.reset();
+        _commands = 0;
+    }
 };
 
 template <typename Client>
@@ -2277,6 +2414,111 @@ private:
         return resetting ? PendingReply::Kind::monitor_reset : PendingReply::Kind::monitor_quit;
     }
 
+    /**
+     * @brief The completion of a one-way batch: the server's reply to the `CLIENT REPLY ON` that closes it (Huly
+     *        QB-902).
+     * @details `+OK` means the server processed the whole batch. Any other reply means it did not honour the
+     *          `CLIENT REPLY OFF` that opened it -- a proxy without the command, an ACL that denies it: then the
+     *          batch's own replies follow, unclaimed, and every later reply would complete the wrong command. The
+     *          link is dropped first, so what was sent behind the batch fails as on a lost connection and none of
+     *          those replies is read.
+     */
+    template <typename Func>
+    class OnewayReply final : public IReply {
+        Func                  _func;
+        std::size_t           _commands;
+        Redis                *_client;
+        std::shared_ptr<bool> _alive;
+
+    public:
+        template <typename F>
+        OnewayReply(F &&func, std::size_t const commands, Redis *client, std::shared_ptr<bool> alive)
+            : _func(std::forward<F>(func))
+            , _commands(commands)
+            , _client(client)
+            , _alive(std::move(alive)) {}
+
+        void
+        fail(const std::string &reason) final {
+            _func(Reply<oneway_result>{false, oneway_result{_commands}, nullptr, reason});
+        }
+
+        void
+        operator()(std::unique_ptr<ReplyValue> raw) final {
+            if (raw == nullptr) {
+                fail("disconnected");
+                return;
+            }
+            const ReplyValue *value = raw.get();
+            if (value->is_attribute()) [[unlikely]]
+                value = &reply::unwrap_attributes(*value);
+            if (value->is_simple_string() && value->as_string_view() == "OK") {
+                if (*_alive)
+                    _client->stats_mut_().oneway += _commands;
+                _func(Reply<oneway_result>{true, oneway_result{_commands}, std::move(raw), {}});
+                return;
+            }
+            std::string reason{"the server did not honour CLIENT REPLY OFF: "};
+            if (value->is_error())
+                reason += value->get_error_message();
+            else
+                reason += "it answered the batch's CLIENT REPLY ON with something else than +OK";
+            QB_LOG_WARN("[qbm][redis] " << reason << "; dropping connection");
+            if (*_alive)
+                _client->drop_unresponsive_link_();
+            _func(Reply<oneway_result>{false, oneway_result{_commands}, std::move(raw), std::move(reason)});
+        }
+    };
+
+    /// `CLIENT REPLY OFF`, the batch, `CLIENT REPLY ON`: one frame of bytes, written at once (Huly QB-902).
+    static void
+    write_oneway_(qb::allocator::pipe<char> &pipe, oneway_batch const &batch) {
+        static constexpr std::string_view off      = "*3\r\n$6\r\nCLIENT\r\n$5\r\nREPLY\r\n$3\r\nOFF\r\n";
+        static constexpr std::string_view on       = "*3\r\n$6\r\nCLIENT\r\n$5\r\nREPLY\r\n$2\r\nON\r\n";
+        const auto                        commands = batch.wire();
+        char                             *at       = pipe.allocate_back(off.size() + commands.size() + on.size());
+        std::memcpy(at, off.data(), off.size());
+        if (!commands.empty())
+            std::memcpy(at + off.size(), commands.data(), commands.size());
+        std::memcpy(at + off.size() + commands.size(), on.data(), on.size());
+    }
+
+    /**
+     * @brief Submit a one-way batch: refused while a MONITOR stream owns the connection or a submitted MULTI is not
+     *        closed (the server would queue the batch's CLIENT REPLY), held while the client is not ready, written
+     *        otherwise; its completion joins the reply FIFO as one command.
+     */
+    QB_NOINLINE void
+    submit_oneway_(std::unique_ptr<IReply> handler, oneway_batch const &batch) {
+        const std::uint16_t verb = detail::verb<"CLIENT">.row;
+        if (_monitor) {
+            refuse_(*handler, verb, "MONITOR owns this connection; only RESET or QUIT may end it");
+            return;
+        }
+        if (this->multi_submitted_()) {
+            refuse_(*handler, verb, "a MULTI is open: the server would queue the one-way batch inside the transaction");
+            return;
+        }
+        if (!this->ready_()) {
+            if (!this->holding_()) {
+                auto reason = this->refusal_text_();
+                complete_failed_(verb, verb_family_(verb), qb::mono_time{}, reason);
+                this->fail_soon_(std::move(handler), std::move(reason));
+                return;
+            }
+            const std::size_t before = _held_out.size();
+            write_oneway_(_held_out, batch);
+            ++this->stats_mut_().held;
+            _held.push_back(HeldReply{std::move(handler), false, PendingReply::Kind::command, _held_out.size() - before, qb::mono_now(), verb});
+            arm_held_deadline_();
+            return;
+        }
+        write_oneway_(this->out(), batch);
+        this->arm_write_();
+        queue_reply_(std::move(handler), verb, false, PendingReply::Kind::command);
+        arm_deadline();
+    }
+
     Redis &
     self_() noexcept {
         return *this;
@@ -2401,6 +2643,53 @@ public:
                 [this, &callback, &name](auto &&...a) { this->command<Ret>(std::move(callback), name, std::forward<decltype(a)>(a)...); },
                 std::move(args_tuple));
         });
+    }
+
+    /**
+     * @brief Send a one-way batch: its commands without their replies (Huly QB-902).
+     *
+     * Writes `CLIENT REPLY OFF`, the batch's commands and `CLIENT REPLY ON` in one piece, behind every command sent
+     * before and ahead of every command sent after, so no other command's reply is ever suppressed; then @p func
+     * receives one `Reply<oneway_result>`:
+     *   - `ok()` at the server's `+OK` to the ON: the server processed every command of the batch. Their replies
+     *     were never sent, errors included -- a command of the batch that fails, fails silently;
+     *   - not `ok()` when it is refused -- a MONITOR stream owns the connection, or a MULTI was submitted and its
+     *     EXEC or DISCARD not yet (the server would queue the batch inside the transaction) --, when the client is
+     *     down or the link is lost first (how much of the batch ran is then unknown), at the command timeout, or
+     *     when the server answers the ON otherwise than `+OK` (it did not honour `CLIENT REPLY OFF`: the link is
+     *     dropped, see the error).
+     * An empty batch sends nothing and succeeds at once. While the client is not ready the batch is held like any
+     * command, and leaves once it is; a reconnected link starts with replies on. The batch is one command for the
+     * command timeout and the counts: its ON completes in `stats().commands` (family `server`), and `stats().oneway`
+     * counts the commands of the batches the server confirmed. A raw `command("MULTI")` or `command("CLIENT",
+     * "REPLY", ...)` is not tracked: send neither on a connection that sends one-way batches.
+     *
+     * @param batch The commands (see `oneway_batch` for what it refuses).
+     * @param func  Called once with `Reply<oneway_result>&&`.
+     * @return *this, for fluent chaining.
+     */
+    template <typename Func>
+    requires std::invocable<Func, Reply<oneway_result> &&>
+    Redis &
+    send_oneway(oneway_batch batch, Func &&func) {
+        if (batch.empty()) {
+            std::forward<Func>(func)(Reply<oneway_result>{true, oneway_result{0}, nullptr, {}});
+            return *this;
+        }
+        const std::size_t commands = batch.size();
+        submit_oneway_(std::make_unique<OnewayReply<std::decay_t<Func>>>(std::forward<Func>(func), commands, this, this->connector_alive()),
+                       batch);
+        return *this;
+    }
+
+    /**
+     * @brief Send a one-way batch and await its completion as a coroutine (co_await API): the callback form's
+     *        `Reply<oneway_result>`.
+     */
+    [[nodiscard]] auto
+    send_oneway(oneway_batch batch) {
+        return make_coro_command<oneway_result>(
+            [this, batch = std::move(batch)](auto &&callback) mutable { this->send_oneway(std::move(batch), std::move(callback)); });
     }
 
     /**

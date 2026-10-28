@@ -413,9 +413,17 @@ if (!r.ok()) {
   without an answer and `?` endpoints are not followed. `configure` sets the node clients'
   session (auth, RESP3, TLS). No slot map: one MOVED round trip per command for a key on
   another node. `qb::redis::parse_redirection(reply.error())` reads one by hand.
+- **Commands without their replies** (Huly QB-902): `qb::redis::oneway_batch b; b.add("INCRBY",
+  k, n);` (returns why a command is refused) then `co_await redis.send_oneway(std::move(b))`
+  -- `CLIENT REPLY OFF`, the batch, `ON`, in one piece; `ok()` at the ON's `+OK` means the
+  server ran every command, and their errors were never sent. Never `client_reply("OFF")` (it
+  fails locally) nor a raw `command("CLIENT", "REPLY", ...)`: the replies would desync. Refused:
+  connection-state verbs (HELLO, AUTH, SELECT, RESET, QUIT, CLIENT, ...), MULTI/EXEC/WATCH,
+  subscriptions, blocking commands; a batch after a submitted `multi()` until its
+  `exec()`/`discard()`, and under MONITOR.
 - **Observability** (`<qbm/redis/stats.h>`, Huly QB-134): `stats()` is a snapshot of
   monotonic counts -- a client's `commands` / `errors` / `failed` / `held` / `by_family`,
-  `retries` / `redirects`, `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.
+  `retries` / `redirects` / `oneway`, `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.
   `set_latency_stats(true)` turns on per-family histograms (`latency(family)`,
   p50/p95/p99 = `percentile(0.50/0.95/0.99)`); `on_command_complete(fn)` sees every
   completed command (`command_info`: verb, family, outcome, error, duration) before its

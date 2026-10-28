@@ -44,6 +44,17 @@ private:
     }
     /// True after successful MULTI until EXEC or DISCARD completes (client-side hint only).
     bool in_multi_ = false;
+    /// True from a MULTI's submission until an EXEC's or a DISCARD's: what is sent in between is queued by the
+    /// server. The submissions' view, where `in_multi_` is the replies'; a one-way batch is refused while it holds
+    /// (Huly QB-902).
+    bool multi_sent_ = false;
+
+protected:
+    /// Whether the last transaction boundary this client submitted is a MULTI (`multi_sent_`).
+    [[nodiscard]] bool
+    multi_submitted_() const noexcept {
+        return multi_sent_;
+    }
 
 public:
     /**
@@ -70,6 +81,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     multi(Func &&func) {
+        multi_sent_ = true;
         return derived().template command<status>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
                 // Only a SUCCESSFUL MULTI opens a transaction. A failed MULTI must NOT
@@ -113,7 +125,8 @@ public:
     template <typename Result, typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<std::vector<Result>> &&>, Derived &>
     exec(Func &&func) {
-        in_multi_ = false;
+        in_multi_   = false;
+        multi_sent_ = false;
         return derived().template command<std::vector<Result>>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
                 in_multi_ = false;
@@ -147,6 +160,7 @@ public:
     template <typename Func>
     std::enable_if_t<std::is_invocable_v<Func, Reply<status> &&>, Derived &>
     discard(Func &&func) {
+        multi_sent_ = false;
         return derived().template command<status>(
             [this, func = std::forward<Func>(func)](auto &&reply) mutable {
                 in_multi_ = false;
@@ -272,7 +286,8 @@ public:
      */
     void
     reset_transaction_state() noexcept {
-        in_multi_ = false;
+        in_multi_   = false;
+        multi_sent_ = false;
     }
 };
 

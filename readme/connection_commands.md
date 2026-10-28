@@ -339,12 +339,12 @@ instead of guessing how many confirmations the server will send. Await `reset()`
 After success, an unsubscribe-all from the empty state resolves on Redis's single empty-state confirmation; re-authenticate
 if the server requires it, and call `hello(3)` again to regain RESP3. The connection itself remains open. The live
 RESP2/RESP3 tests cover channels, patterns, a pipelined command after the barrier and a command rejected during it.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2872-2910,2953-2964; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:3161-3199,3242-3253; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
 
 
 
 > Three unrelated APIs share the name `reset`/`reset_*` in this module — the protocol parser's `redis<IO_>::reset()` (
-`redis.h:207`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:274`), and this user-facing
+`redis.h:209`), the transaction mixin's internal `reset_transaction_state()` (`transaction_commands.h:288`), and this user-facing
 `RESET` command. This page documents only the last one.
 
 ---

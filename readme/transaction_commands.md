@@ -36,7 +36,7 @@ Every method in this group exists in two forms, like the rest of the client:
 The client also exposes `is_in_multi()`, a **client-side** boolean it sets on a successful `MULTI` and clears on `EXEC`/
 `DISCARD`. It is a local hint, not a server query — see [Client-side MULTI state](#client-side-multi-state).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:49-276 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:60-291 -->
 
 ---
 
@@ -128,7 +128,7 @@ template <typename Func> Derived &multi(Func &&func);
 A successful `multi()` sets the client-side `is_in_multi()` flag. The callback overload sets the flag from `reply.ok()`
 *before* invoking your callback.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:58-86 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:69-98 -->
 
 ### `EXEC`
 
@@ -236,7 +236,7 @@ auto bad = co_await redis.watch("");
 // bad.ok() == false; bad.error() == "Key cannot be empty"
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:158-228, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:149-193 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:172-242, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:149-193 -->
 
 The full CAS loop — watch, read, transact, retry on abort:
 
@@ -275,7 +275,7 @@ auto w = co_await redis.watch("balance");
 auto u = co_await redis.unwatch();             // Reply<status>; "balance" no longer watched
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:230-255, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:293-342 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:244-269, qbm/redis/tests/integration/transaction/transaction-multi-exec.cpp:293-342 -->
 
 ### Callback form
 
@@ -297,7 +297,7 @@ redis.exec<std::string>([](qb::redis::Reply<std::vector<std::string>> &&r) {
 redis.await();   // main/test/script only: spins the loop until every handler has fired
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:70-86,113-123 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:81-98,125-136 -->
 
 ---
 
@@ -318,10 +318,10 @@ transaction is gone. After a reconnect, treat the connection as having **no** tr
 need one.
 
 > `reset_transaction_state()` is one of three same-named `reset` surfaces in the client; do not confuse it with the
-> others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:206-209`) and the server-facing `RESET` command
+> others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:208-211`) and the server-facing `RESET` command
 > in [connection.md](./connection.md) (`connection_commands.h:303-321`). This one only clears the client-side MULTI flag.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:268-276, qbm/redis/src/qbm/redis/redis.h:2090 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:282-291, qbm/redis/src/qbm/redis/redis.h:2227 -->
 
 ---
 

@@ -128,6 +128,13 @@ qb_register_module_benchmark(
         INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
         LABELS module:qbm-redis bench client loopback)
 
+# The same SETs sent the usual way and in one one-way batch (Huly QB-902); no external Redis or background thread.
+qb_register_module_benchmark(
+        MODULE_NAME redis BENCH_NAME oneway-batch
+        SOURCES benchmark/client/oneway-batch.bench.cpp
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        LABELS module:qbm-redis bench client loopback)
+
 
 # UNIT -- a command that cannot be serialized leaves no handler and no bytes behind (Huly QB-255).
 qredis_test(unit serialization-failure unit/commands/serialization-failure.cpp EXTRA_LABELS commands)
@@ -156,3 +163,9 @@ qredis_test(system command-retry system/connection/command-retry.cpp EXTRA_LABEL
 # SYSTEM -- the redirect-following view: MOVED and ASK followed through a node pool, bounded, and what never is
 # (Huly QB-129). Loopback peers as the cluster's nodes, no daemon.
 qredis_test(system cluster-redirects system/connection/cluster-redirects.cpp EXTRA_LABELS coroutine)
+
+# UNIT, SYSTEM, INTEGRATION -- one-way batches: CLIENT REPLY OFF, the commands, ON, completed at the ON's +OK
+# (Huly QB-902). What a batch refuses; the client's side against a scripted loopback server; the real server.
+qredis_test(unit oneway-batch unit/commands/oneway-batch.cpp EXTRA_LABELS commands)
+qredis_test(system oneway-batch system/connection/oneway-batch.cpp EXTRA_LABELS coroutine)
+qredis_itest(oneway-batch integration/connection/oneway-batch.cpp)

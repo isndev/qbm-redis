@@ -42,6 +42,21 @@ its timing. A write is bounded to 16 × (256 + 8 RESP framing) = 4224 bytes per 
 conversion is guarded by that bound, and even the four-peer total is statically below INT_MAX.
 No baseline or performance claim is created by adding this instrument.
 
+## `oneway-batch`: the same SETs with and without their replies (Huly QB-902)
+
+Target/binary: `qbm-redis-bench-oneway-batch`, the same harness shape as `client-roundtrip`: one persistent
+connection, an in-process nonblocking peer on the same thread, no Redis daemon. One iteration sends N SETs
+(`commands` = 16 or 256, a 32-byte value) and waits for their completion. `oneway = 0` issues N typed
+`set(callback, key, value)`; the peer answers N `+OK`. `oneway = 1` adds the N SETs to a `qb::redis::oneway_batch`
+and calls `send_oneway`; the peer answers the single `+OK` of the batch's `CLIENT REPLY ON`. The serialization of the
+commands is inside the timed region in both modes. The peer matches every byte against independently spelled RESP
+(`CLIENT REPLY OFF`, each SET, `CLIENT REPLY ON`) and sends a reply only once the request it answers is matched,
+everything unlocked in one send in both modes. Outside timing, after every batch: the exact wire bytes, one callback
+per SET or one per batch and each `ok()`, an empty reply FIFO, and the `stats().oneway` delta.
+`allocations_per_command` counts the process's global `operator new` calls (this binary replaces it) during one more
+batch run after the measured loop, outside timing, divided by N. `items_per_second` counts SETs. It is client +
+loopback + fixture, like `client-roundtrip`, and no baseline or performance claim is created by adding it.
+
 ## Build and smoke
 
 From the qb-dev superproject, using an isolated build directory:

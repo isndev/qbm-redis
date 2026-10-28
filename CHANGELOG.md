@@ -31,6 +31,33 @@ All notable changes to the qbm-redis module are documented here. The format is b
   another node: one MOVED per command; in the migrating slot: MOVED then ASK, and the value landed on the importing
   node), by `qbm-redis-test-system-cluster-redirects` (9 cases on loopback nodes) and `qbm-redis-test-unit-redirection`,
   green under ASan+UBSan and TSan, and by twelve mutants of the view, the pool and the parser, all caught.
+- **Commands sent without their replies: `qb::redis::oneway_batch` and `redis.send_oneway(std::move(batch))` (Huly
+  QB-902).** `client_reply("OFF")` and `"SKIP"` fail locally since 3.3.0 -- Redis answers nothing to them, not even to
+  the mode command, and a `Reply<status>` could prove nothing -- which left no way to send a command without paying
+  for its reply. A batch now serializes its commands as they are added, apart from any client, and `add()` says why
+  one was refused, keeping nothing of it: the verbs the server answers, or acts on, past a suppressed reply (measured
+  on Redis 8.10.2: a `CLIENT REPLY` after `MULTI` is queued, `HELLO 3` and `RESET` change the connection unseen, a
+  `SUBSCRIBE` confirmation is pushed regardless) -- ASKING, AUTH, CLIENT, HELLO, MONITOR, PSYNC, QUIT, READONLY,
+  READWRITE, REPLCONF, RESET, SELECT, SYNC, the transaction and subscription commands --, every blocking command, and
+  an argument that cannot be serialized. `send_oneway` writes `CLIENT REPLY OFF`, the batch and `CLIENT REPLY ON` in
+  one piece, behind every command submitted before it and ahead of every one after, and completes at the ON's `+OK`
+  with a `Reply<oneway_result>`: the server processed every command, and sent none of their replies -- errors
+  included. It is refused while MONITOR owns the connection and after a `multi()` whose `exec()` or `discard()` has
+  not been submitted (the transaction commands now track a submitted MULTI, which a lost link clears); held while the
+  client connects; failed when the link is lost first, at the command timeout, or when the server answers the ON
+  otherwise than `+OK` -- it did not honour OFF (a proxy, an ACL, a raw `command("MULTI")`), so the link is dropped
+  and the commands behind the batch fail as on a lost connection instead of taking its replies. `stats().oneway`
+  (`qb_redis_oneway_total`) counts the commands of the batches the server confirmed. A `CLIENT REPLY SKIP` per command
+  was measured and set aside: one million `SET`s through `redis-cli --pipe` took 0.34--0.36 s with their replies,
+  0.30--0.31 s between OFF and ON, and 0.55--0.56 s each behind its own SKIP (Redis 8.10.2, Apple M4, three runs each,
+  the host not quiet). On the client, `qbm-redis-bench-oneway-batch` (client + loopback + an in-process peer) counts
+  2.07--2.31 allocations per SET sent the usual way and 0.03--0.25 per SET of a batch (256 and 16 SETs: the batch's
+  completion handler and buffers, once). Proven by `qbm-redis-test-unit-oneway-batch` (4 cases),
+  `qbm-redis-test-system-oneway-batch` (13, a scripted loopback server) and `qbm-redis-test-integration-oneway-batch`
+  (9 against the server, RESP2 and RESP3: a thousand INCRs and the commands around them each answered once, rejected
+  commands inside the batch desynchronizing nothing, the same commands sent the usual way leaving the same data, a
+  batch inside MULTI refused, a reconnection, a RESP3 invalidation pushed while replies are off), green under
+  ASan+UBSan and TSan, and by 23 mutants of the batch, the gates, the framing and the transaction marker, all caught.
 
 ### Changed
 

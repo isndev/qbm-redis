@@ -23,15 +23,15 @@ how the command surface is organized.
 ### Where the methods come from
 
 The client class composes a stack of CRTP mixins, one per Redis command group. `qb::redis::tcp::client` is an alias for
-`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:4267`), and that class inherits — in this order — from
+`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:4556`), and that class inherits — in this order — from
 `connection_commands`, `server_commands`, `key_commands`, `string_commands`, `list_commands`, `hash_commands`,
 `set_commands`, `sorted_set_commands`, `hyperloglog_commands`, `geo_commands`, `scripting_commands`, `publish_commands`,
 `stream_commands`, `bitmap_commands`, `transaction_commands`, `cluster_commands`, `acl_commands`, `module_commands`, and
-`function_commands` (`redis.h:1535-1555`). Each mixin is a `template <typename Derived>` that injects its command methods
+`function_commands` (`redis.h:1672-1692`). Each mixin is a `template <typename Derived>` that injects its command methods
 and routes I/O through `static_cast<Derived&>(*this)` — they are never instantiated standalone. The practical
 consequence: every Redis command appears as a flat method on the client, regardless of which group header defines it.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1535-1555 (Redis<QB_IO_> base list) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1672-1692 (Redis<QB_IO_> base list) -->
 
 For commands that are not yet wrapped (or that you want to issue by name), the client exposes a generic dispatcher:
 
@@ -47,16 +47,16 @@ Both forms end in the same place. The callback form serializes the command name 
 then pushes one reply handler onto a FIFO queue:
 
 ```cpp
-// redis.h:2320-2328 — the callback dispatcher, simplified
+// redis.h:2562-2570 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);
 ```
 
 A command group passes its verb resolved at compile time -- `detail::verb<"GET">`, a verb with no row in the command
-table does not compile -- to the same dispatcher's other overload (`redis.h:2334-2340`): the verb's family and flags
+table does not compile -- to the same dispatcher's other overload (`redis.h:2576-2582`): the verb's family and flags
 are read at its row, with no lookup (`stats.h:373-434`). A verb named at run time, as above, is looked up once
-(`redis.h:1652-1660`). Both forms then share one path (`redis.h:2233-2259`).
+(`redis.h:1789-1797`). Both forms then share one path (`redis.h:2370-2396`).
 
 Arguments are converted to RESP bulk strings in order, then the reply handler is enqueued — still **before** a byte is
 sent: writing to the pipe sends nothing, so no reply can run ahead of its handler. A command that cannot be serialized
@@ -91,7 +91,7 @@ sequenceDiagram
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
-resumes your coroutine when the reply lands (`redis.h:2575-2579`, `redis.h:1487-1498`).
+resumes your coroutine when the reply lands (`redis.h:2864-2868`, `redis.h:1624-1635`).
 
 ### The reply type: `qb::redis::Reply<T>`
 
@@ -260,7 +260,7 @@ co_await redis.pexpire("k", 1500);       // milliseconds
 This unit split is intentional and matches the Redis command semantics; do **not** treat it as a bug to "fix" by
 funneling these onto `qb::duration`. Reply-side TTL values (from `TTL`/`PTTL`) arrive as RESP integers and are surfaced
 as value types, not durations. The framework `qb::duration` type *is* used elsewhere in the client — for `connect()` and
-command timeouts and the `RetryPolicy` delays (`redis.h:231`) — but those are transport-level deadlines, not Redis
+command timeouts and the `RetryPolicy` delays (`redis.h:233`) — but those are transport-level deadlines, not Redis
 command arguments. See [Connection](./connection.md).
 
 <!-- src: qbm/redis/src/qbm/redis/commands/key_commands.h:216-252,372-408 (expire/pexpire native-unit overloads) -->

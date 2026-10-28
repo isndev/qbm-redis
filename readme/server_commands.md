@@ -26,7 +26,7 @@ The `server_commands<Derived>` mixin is one of the command groups inherited by t
 `qb::redis::tcp::client` (and `qb::redis::tcp::ssl::client`). You never instantiate the mixin directly; you call these
 methods on a client instance.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1538 (public inheritance), qbm/redis/src/qbm/redis/redis.h:4267 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1675 (public inheritance), qbm/redis/src/qbm/redis/redis.h:4556 (tcp::client alias) -->
 
 Every command is exposed in two fully asynchronous forms, both shown throughout this page:
 
@@ -122,7 +122,7 @@ empty error string. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h
 `QUIT` ends monitoring, or when the connection drops. While the stream is active, other commands fail locally; the
 `RESET`/`QUIT` reply goes to its own callback. If you disconnect from a line callback while either is pending, its
 callback fails with `"disconnected"`; later frames from that read batch are discarded. Reconnect does not restart
-monitoring. <!-- src: qbm/redis/src/qbm/redis/redis.h:2342-2387,1979-2030,2064-2082,2233-2278,2583-2594 -->
+monitoring. <!-- src: qbm/redis/src/qbm/redis/redis.h:2584-2629,2116-2167,2201-2219,2370-2415,2872-2883 -->
 
 ### `COMMAND`'s named overload actually issues `COMMAND INFO`
 
@@ -181,8 +181,9 @@ Notes:
 - `client_reply("ON")` waits for Redis's `+OK`. `"OFF"` and `"SKIP"` fail locally, before a byte is sent, in both
   callback and coroutine forms: Redis sends **no reply even for the mode command**, so a `Reply<status>` could not
   complete or prove server acceptance. The generic raw `command()` escape hatch does not manage no-reply mode; do not
-  send these modes through it on a connection used for ordinary replies. A dedicated one-way API would need a distinct
-  local-acceptance result and explicit reply-mode state. <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1793-1827 -->
+  send these modes through it on a connection used for ordinary replies. Commands that want no reply go in a one-way
+  batch: `redis.send_oneway(std::move(batch))` sends `OFF`, the batch and `ON` together and completes at the `ON`'s
+  `+OK` ([pipeline_and_await.md](./pipeline_and_await.md#one-way-batches-commands-without-their-replies)). <!-- src: qbm/redis/src/qbm/redis/commands/server_commands.h:1793-1827 -->
 - `client_list()` yields a `qb::json` **string** holding the raw `CLIENT LIST` text block (one client per line), not a
   parsed array — the payload is line-delimited text, not JSON, so the wrapper boxes it verbatim. Parse the lines
   yourself, or call `client_info()` for the current connection. `client_tracking_info()`, by contrast, is a RESP map and
@@ -218,7 +219,7 @@ redis.client_id([](qb::redis::Reply<long long> &&r) {
 `MONITOR` (callback-only, streaming):
 
 ```cpp
-// <!-- src: qbm/redis/src/qbm/redis/redis.h:2342-2387 -->
+// <!-- src: qbm/redis/src/qbm/redis/redis.h:2584-2629 -->
 // The callback receives +OK, each command line, and one terminal failure.
 redis.monitor([](qb::redis::Reply<std::string> &&line) {
     if (line.ok())
@@ -489,7 +490,7 @@ qb::io::async::task<void> replication(qb::redis::tcp::client &redis) {
 - **Destructive admin has no guard rails.** `flushall`, `flushdb`, `shutdown`, `debug_segfault`, `config_set`, and the
   replication commands all do exactly what they say with no confirmation. Most wrappers do not validate subcommand
   strings (`client_kill` type, `shutdown` save-option) — invalid values fail only on the server. The typed
-  `client_reply` wrapper rejects no-reply modes locally, as explained above.
+  `client_reply` wrapper rejects no-reply modes locally, as explained above; `send_oneway` is the no-reply path.
   Restrict these with ACLs (see [acl_commands.md](./acl_commands.md)).
 - **`memory_info` is not reachable here.** The header carries a private INFO-to-`memory_info` parser and a `memory_info`
   struct, but no public command in this group exposes them — `info()` returns `qb::json`. Do not write code against
