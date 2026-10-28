@@ -59,7 +59,7 @@ seconds-versus-milliseconds boundary documented for key-expiry commands does not
 ### Where these methods come from
 
 `module_commands<Derived>` is a header-only CRTP mixin (`module_commands.h:35`). It is one of the bases of
-`qb::redis::detail::Redis<QB_IO_>` (`redis.h:1528`), so `qb::redis::tcp::client` and `qb::redis::tcp::ssl::client` expose
+`qb::redis::detail::Redis<QB_IO_>` (`redis.h:1554`), so `qb::redis::tcp::client` and `qb::redis::tcp::ssl::client` expose
 these four methods directly. The pub/sub consumers (`tcp::cb_consumer` / `tcp::co_consumer`) do **not** — they inherit
 only `connection_commands` and `subscription_commands`. Each method forwards to the inherited command machinery:
 
@@ -75,7 +75,7 @@ pointers and `std::string_view` still borrow their data until command serializat
 
 ### Reading a `Reply<T>`
 
-Every command resolves to `qb::redis::Reply<T>` (`reply.h:1258`):
+Every command resolves to `qb::redis::Reply<T>` (`reply.h:1290`):
 
 - `reply.ok()` / `explicit operator bool` — `true` when the command round-tripped successfully.
 - `reply.result()` (or its alias `reply.value()`) — the typed payload `T`.
@@ -296,7 +296,7 @@ see [connection.md](./connection.md)).
 
 - **`MODULE` may be unsupported.** A server compiled without the modules API rejects the whole family with an
   `unknown command 'MODULE'` error. That surfaces as `!reply.ok()` with the server text in `reply.error()`: the reply
-  dispatcher turns a RESP error frame into a failed `Reply` and never throws it at your call site (`reply.h:1401-1407`),
+  dispatcher turns a RESP error frame into a failed `Reply` and never throws it at your call site (`reply.h:1433-1439`),
   so there is nothing to `catch`. Always handle the not-supported branch the way the tests do — by asserting
   `!reply.ok()` and matching the error text (`integration/admin/module-commands.cpp:90-106`).
 - **Two-layer success check for `status` replies.** For `module_load`/`module_unload`, `reply.ok()` only tells you the
@@ -325,4 +325,4 @@ see [connection.md](./connection.md)).
 - [connection.md](./connection.md) — opening a connection, `qb_load_modules`, linking `qbm::redis`, and the
   `qb::duration` connect/command deadlines.
 
-<!-- Verified-against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:563 (status), qbm/redis/src/qbm/redis/reply.h:1258 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.3.0 -->
+<!-- Verified-against: qbm/redis/src/qbm/redis/commands/module_commands.h, qbm/redis/src/qbm/redis/types.h:563 (status), qbm/redis/src/qbm/redis/reply.h:1290 (Reply), qbm/redis/tests/integration/admin/module-commands.cpp; FACTBOOK.json module_commands @ qb 3.3.0 -->

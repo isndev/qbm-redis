@@ -20,6 +20,35 @@
 
 namespace qb::redis {
 
+ReplyErrorType
+error_type(std::string_view const error) noexcept {
+    const auto word = error.substr(0, error.find(' '));
+    if (word == "MOVED")
+        return ReplyErrorType::MOVED;
+    if (word == "ASK")
+        return ReplyErrorType::ASK;
+    return ReplyErrorType::ERR;
+}
+
+std::optional<redirection>
+parse_redirection(std::string_view const error) {
+    const auto kind = error_type(error);
+    if (kind == ReplyErrorType::ERR)
+        return std::nullopt;
+    // "<KIND> <slot> <host>:<port>" -- exactly three words; the host may be empty, `?`, or an unbracketed IPv6.
+    const auto rest     = error.substr(error.find(' ') + 1);
+    const auto gap      = rest.find(' ');
+    const auto endpoint = gap == std::string_view::npos ? std::string_view{} : rest.substr(gap + 1);
+    const auto colon    = endpoint.rfind(':');
+    if (gap == std::string_view::npos || colon == std::string_view::npos || endpoint.find(' ') != std::string_view::npos)
+        return std::nullopt;
+    const auto slot = qb::to_number<std::uint16_t>(rest.substr(0, gap));
+    const auto port = qb::to_number<std::uint16_t>(endpoint.substr(colon + 1));
+    if (!slot || *slot > 16383 || !port || *port == 0)
+        return std::nullopt;
+    return redirection{kind, *slot, std::string{endpoint.substr(0, colon)}, *port};
+}
+
 std::string
 ReplyParseError::_err_info(const std::string &type, const ReplyValue &reply) {
     return "expect " + type + " reply, but got " + reply::type_to_string(reply) + " reply";

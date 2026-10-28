@@ -46,7 +46,7 @@ In both forms `T` is the command's reply payload. Read it through `qb::redis::Re
 - `reply.result()` (alias `reply.value()`) — the decoded payload of type `T`.
 - `reply.error()` — the error message string when `!reply.ok()`.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1251-1333 (ok/result/value/error) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1283-1365 (ok/result/value/error) -->
 
 ---
 

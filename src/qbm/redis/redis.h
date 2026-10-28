@@ -256,6 +256,23 @@ struct command_retry {
     bool idempotent_writes = false;
 };
 
+/**
+ * @brief How a redirect-following view follows a cluster's redirections (`redis.following_redirects(...)`,
+ *        Huly QB-129).
+ * @details A `MOVED` or `ASK` reply means the node did NOT run the command, so following one is always safe --
+ *          a non-idempotent write and a blocking command included. Each command follows at most
+ *          `max_redirects` of them; past that, or when the next node cannot be had, the last redirection
+ *          reaches the callback or the awaiter as the error it is. A command inside MULTI is never followed.
+ */
+struct redirect_policy {
+    /// The redirections one command may follow (a node importing a slot answers MOVED back to the source to a
+    /// command that missed its ASKING: the bound ends such a loop).
+    int max_redirects = 5;
+};
+
+template <typename Client>
+class node_pool;
+
 // ============================================================================
 // Connector base class
 // ============================================================================
@@ -291,6 +308,15 @@ class HandshakeClient;
  */
 template <typename Client>
 class RetryingClient;
+
+/**
+ * @class RedirectingClient
+ * @brief A view of a client that follows a cluster's `MOVED` / `ASK` redirections (`redis.following_redirects(...)`,
+ *        Huly QB-129).
+ * @tparam Client the client class (`Redis<QB_IO_>`); defined after it.
+ */
+template <typename Client>
+class RedirectingClient;
 
 /// The write path every `HandshakeClient` shares (see it below).
 template <typename Owner, typename Self>
@@ -1529,6 +1555,7 @@ class Redis
     , public function_commands<Redis<QB_IO_>> {
     friend class connector<QB_IO_, Redis<QB_IO_>>;
     friend class RetryingClient<Redis<QB_IO_>>;
+    friend class RedirectingClient<Redis<QB_IO_>>;
     template <typename, typename>
     friend class handshake_writer;
 
@@ -2261,6 +2288,12 @@ private:
         ++this->stats_mut_().retries;
     }
 
+    /// A redirect-following view followed a MOVED or an ASK (stats().redirects).
+    void
+    count_redirect_() noexcept {
+        ++this->stats_mut_().redirects;
+    }
+
 public:
     Redis() = default;
     explicit Redis(qb::io::uri uri)
@@ -2505,6 +2538,38 @@ public:
     [[nodiscard]] RetryingClient<Redis<QB_IO_>>
     retrying(qb::redis::command_retry retry = {}) {
         return RetryingClient<Redis<QB_IO_>>{*this, this->connector_alive(), std::move(retry)};
+    }
+
+    /**
+     * @brief A view of this client that follows a cluster's redirections (Huly QB-129): the whole command
+     *        surface (MULTI and the transaction commands excepted), coroutine and callback forms.
+     * @details `co_await redis.following_redirects(nodes).get("k")`. A command answered `MOVED <slot> <host>:<port>`
+     *          is sent again to that node, one answered `ASK` too, preceded by `ASKING` on the same connection --
+     *          the node's client comes from @p nodes, which creates, configures and connects it on first use. A
+     *          redirection means the command did not run, so every command is followed, a write included, at
+     *          most `policy.max_redirects` times (`redirect_policy`); the callback or the awaiter sees one
+     *          outcome, the last. This client is asked first every time: the view keeps no slot map (a cluster
+     *          client that routes by slot is Huly QB-130), so a key served by another node costs one MOVED round
+     *          trip per command. Every redirection followed counts in this client's `stats().redirects`. Cheap to
+     *          make; it must not outlive this client or @p nodes.
+     * @param nodes The clients of the other nodes, by host and port
+     * @param policy How many redirections a command may follow
+     */
+    [[nodiscard]] RedirectingClient<Redis<QB_IO_>>
+    following_redirects(qb::redis::node_pool<Redis<QB_IO_>> &nodes, qb::redis::redirect_policy policy = {}) {
+        return RedirectingClient<Redis<QB_IO_>>{*this, this->connector_alive(), nodes.resolver(), std::move(policy)};
+    }
+
+    /**
+     * @brief `following_redirects` with the nodes resolved by @p resolve: the client for a host and a port, or
+     *        nullptr when there is none (the redirection then reaches the caller as the error it is).
+     * @param resolve The resolver; it is called on this client's thread, from a reply callback
+     * @param policy How many redirections a command may follow
+     */
+    [[nodiscard]] RedirectingClient<Redis<QB_IO_>>
+    following_redirects(std::function<Redis<QB_IO_> *(std::string const &host, std::uint16_t port)> resolve,
+                        qb::redis::redirect_policy                                                  policy = {}) {
+        return RedirectingClient<Redis<QB_IO_>>{*this, this->connector_alive(), std::move(resolve), std::move(policy)};
     }
 
     template <typename T, typename Func>
@@ -3994,6 +4059,196 @@ public:
     }
 };
 
+/**
+ * @brief The plain client's redirect-following view: its command surface, each command's `MOVED` / `ASK`
+ *        followed to the node that serves the slot (`Redis::following_redirects()`, `qb::redis::redirect_policy`).
+ * @details The transaction commands are left out, as on the retrying view. A command is serialized once, when it
+ *          is submitted, and every node it is sent to gets the same arguments; one submitted inside MULTI passes
+ *          through to the client unchanged. An `ASK` is followed by `ASKING` then the command, back to back on the
+ *          node's connection -- `ASKING` holds for one command -- and a `MOVED` by the command alone. The client
+ *          that answered a redirection names the host of one with an empty host; a `?` host is not followed.
+ */
+template <typename QB_IO_>
+class RedirectingClient<Redis<QB_IO_>>
+    : public connection_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public server_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public key_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public string_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public list_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public hash_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public set_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public sorted_set_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public hyperloglog_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public geo_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public scripting_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public publish_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public stream_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public bitmap_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public cluster_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public acl_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public module_commands<RedirectingClient<Redis<QB_IO_>>>
+    , public function_commands<RedirectingClient<Redis<QB_IO_>>> {
+    using Client = Redis<QB_IO_>;
+
+public:
+    /// The client of the node at a host and a port, or nullptr when there is none.
+    using resolver = std::function<Client *(std::string const &host, std::uint16_t port)>;
+
+private:
+    Client                    *_client;
+    std::shared_ptr<bool>      _alive; ///< the client's liveness token
+    resolver                   _resolve;
+    qb::redis::redirect_policy _policy;
+
+    /// One command being followed: the arguments it was serialized with, where it was last sent, its callback.
+    template <typename Ret, typename Func>
+    struct hop_state : std::enable_shared_from_this<hop_state<Ret, Func>> {
+        Client                    *origin;
+        std::shared_ptr<bool>      origin_alive;
+        resolver                   resolve;
+        qb::redis::redirect_policy policy;
+        std::string                name;
+        std::vector<std::string>   parts;
+        Func                       callback;
+        Client                    *current;
+        std::shared_ptr<bool>      current_alive;
+        int                        redirects = 0;
+
+        hop_state(Client *c, std::shared_ptr<bool> a, resolver r, qb::redis::redirect_policy p, std::string n, std::vector<std::string> args,
+                  Func f)
+            : origin(c)
+            , origin_alive(a)
+            , resolve(std::move(r))
+            , policy(std::move(p))
+            , name(std::move(n))
+            , parts(std::move(args))
+            , callback(std::move(f))
+            , current(c)
+            , current_alive(std::move(a)) {}
+
+        void
+        issue(bool asking) {
+            auto self = this->shared_from_this();
+            if (asking) // one command: ASKING and the command leave back to back, on one connection
+                current->template command<qb::redis::status>([](Reply<qb::redis::status> &&) {}, "ASKING");
+            current->template command<Ret>([self](Reply<Ret> &&reply) { self->settle(std::move(reply)); }, name, parts);
+        }
+
+        void
+        settle(Reply<Ret> &&reply) {
+            // Only a server's answer redirects: a failure without one (no link, a timeout) is the caller's as it is.
+            if (reply.ok() || reply.raw() == nullptr || redirects >= policy.max_redirects || !*origin_alive) {
+                callback(std::move(reply));
+                return;
+            }
+            const auto to = parse_redirection(reply.error());
+            if (!to || to->host == "?") {
+                callback(std::move(reply));
+                return;
+            }
+            const std::string host = to->host.empty() && *current_alive ? std::string{current->uri().host()} : to->host;
+            Client *const     next = host.empty() || !resolve ? nullptr : resolve(host, to->port);
+            if (next == nullptr) {
+                callback(std::move(reply));
+                return;
+            }
+            ++redirects;
+            origin->count_redirect_();
+            current       = next;
+            current_alive = next->connector_alive();
+            // Never inside the reply callback that redirected: the next node may be the client dispatching it.
+            qb::io::async::defer([self = this->shared_from_this(), asking = to->kind == ReplyErrorType::ASK] {
+                if (*self->current_alive)
+                    self->issue(asking);
+                else
+                    TReply<Func, Ret>{std::move(self->callback)}.fail("the redirection's node is gone");
+            });
+        }
+    };
+
+    template <typename Ret, typename Func, typename Verb, typename... Args>
+    RedirectingClient &
+    submit_(Func &&func, Verb const &verb, std::string_view const name, Args &&...args) {
+        assert(*_alive && "a redirect-following view must not outlive its client");
+        if (!*_alive) [[unlikely]] {
+            TReply<Func, Ret>{std::forward<Func>(func)}.fail("the client is gone");
+            return *this;
+        }
+        std::vector<std::string> parts;
+        bool                     serialized = !_client->is_in_multi();
+        if (serialized) {
+            qb::allocator::pipe<char> frame;
+            try {
+                put_in_pipe(frame, name, args...);
+                serialized = retry_detail::read_command_frame(std::string_view{frame.begin(), frame.size()}, parts);
+            } catch (...) {
+                serialized = false; // the client refuses it the same way, and says why
+            }
+        }
+        if (!serialized) {
+            _client->template command<Ret>(std::forward<Func>(func), verb, std::forward<Args>(args)...);
+            return *this;
+        }
+        using State = hop_state<Ret, std::decay_t<Func>>;
+        std::make_shared<State>(_client, _alive, _resolve, _policy, std::string{name}, std::move(parts),
+                                std::decay_t<Func>(std::forward<Func>(func)))
+            ->issue(false);
+        return *this;
+    }
+
+public:
+    RedirectingClient(Client &client, std::shared_ptr<bool> alive, resolver resolve, qb::redis::redirect_policy policy)
+        : _client(&client)
+        , _alive(std::move(alive))
+        , _resolve(std::move(resolve))
+        , _policy(std::move(policy)) {}
+
+    using publish_commands<RedirectingClient<Redis<QB_IO_>>>::publish;
+    using server_commands<RedirectingClient<Redis<QB_IO_>>>::command;
+
+    /** @brief The policy this view follows redirections with. */
+    [[nodiscard]] qb::redis::redirect_policy const &
+    policy() const noexcept {
+        return _policy;
+    }
+
+    /**
+     * @brief Send a raw command through the view (callback API), its redirections followed.
+     * @details @p func is called once, with the last outcome.
+     */
+    template <typename Ret, typename Func, typename... Args>
+    requires std::invocable<Func, Reply<Ret> &&>
+    RedirectingClient &
+    command(Func &&func, std::string const &name, Args &&...args) {
+        return submit_<Ret>(std::forward<Func>(func), name, name, std::forward<Args>(args)...);
+    }
+
+    /// The command groups' form: the verb resolved at compile time.
+    template <typename Ret, typename Func, typename... Args>
+    requires std::invocable<Func, Reply<Ret> &&>
+    RedirectingClient &
+    command(Func &&func, known_verb const verb, Args &&...args) {
+        return submit_<Ret>(std::forward<Func>(func), verb, verb.name(), std::forward<Args>(args)...);
+    }
+
+    /** @brief Send a raw command through the view and await its last outcome (co_await API). */
+    template <typename Ret, typename... Args>
+    auto
+    command(std::string const &name, Args &&...args) {
+        return make_coro_command<Ret>([this, name, args_tuple = std::make_tuple(std::forward<Args>(args)...)](auto &&callback) mutable {
+            std::apply(
+                [this, &callback, &name](auto &&...a) { this->command<Ret>(std::move(callback), name, std::forward<decltype(a)>(a)...); },
+                std::move(args_tuple));
+        });
+    }
+
+    template <typename T, typename Func>
+    [[nodiscard]] auto
+    make_coro_command(Func &&operation) {
+        return make_redis_awaiter<T>(std::forward<Func>(operation));
+    }
+};
+
 } // namespace detail
 
 // ============================================================================
@@ -4031,6 +4286,98 @@ struct tcp {
         using co_consumer = detail::RedisCoroConsumer<qb::io::transport::stcp>;
     };
 #endif
+};
+
+namespace detail {
+/// The URI scheme a node client is named with: `rediss` for the TLS client, `tcp` otherwise (informative only).
+template <typename Client>
+inline constexpr char const *node_scheme = "tcp";
+#ifdef QB_HAS_SSL
+template <>
+inline constexpr char const *node_scheme<Redis<qb::io::transport::stcp>> = "rediss";
+#endif
+} // namespace detail
+
+/**
+ * @class node_pool
+ * @brief The clients of a cluster's nodes, by host and port, created on first use -- what a redirect-following
+ *        view (`following_redirects(pool)`) sends a redirected command through (Huly QB-129).
+ * @tparam Client The client class (`qb::redis::tcp::client`, `qb::redis::tcp::ssl::client`).
+ * @details `get(host, port)` creates the node's client, hands it to the `configure` callback -- where the
+ *          session a node needs is set: `with_auth`, `with_resp3`, `set_verify_peer`, `set_handshake`, ... -- and
+ *          starts its connection; commands sent to it meanwhile are held until it is ready. A node whose client
+ *          went down (a refused handshake, a lost link with no reconnection armed) is connected again the next
+ *          time it is asked for. The pool owns its clients, on the thread that made them; the clients die with
+ *          it, and a view that resolves through a pool gone resolves nothing.
+ */
+template <typename Client>
+class node_pool {
+    std::function<void(Client &)>                           _configure;
+    qb::duration                                            _connect_timeout;
+    qb::unordered_map<std::string, std::unique_ptr<Client>> _nodes;
+    std::shared_ptr<bool>                                   _alive = std::make_shared<bool>(true);
+
+    [[nodiscard]] static std::string
+    key_(std::string const &host, std::uint16_t const port) {
+        // An IPv6 host comes unbracketed in a redirection; the URI brackets it.
+        return (host.find(':') == std::string::npos ? host : "[" + host + "]") + ":" + std::to_string(port);
+    }
+
+public:
+    /**
+     * @param configure Called once per node client, before its first connection: the session it needs
+     * @param connect_timeout Each connection's bound
+     */
+    explicit node_pool(std::function<void(Client &)> configure = {}, qb::duration connect_timeout = std::chrono::seconds(3))
+        : _configure(std::move(configure))
+        , _connect_timeout(connect_timeout) {}
+
+    node_pool(node_pool const &)            = delete;
+    node_pool &operator=(node_pool const &) = delete;
+
+    ~node_pool() {
+        *_alive = false;
+    }
+
+    /**
+     * @brief The client of the node at @p host : @p port -- created, configured and connecting on first use,
+     *        connected again when it went down
+     */
+    [[nodiscard]] Client *
+    get(std::string const &host, std::uint16_t const port) {
+        const auto key = key_(host, port);
+        auto       it  = _nodes.find(key);
+        if (it == _nodes.end()) {
+            auto client = std::make_unique<Client>(qb::io::uri{std::string{detail::node_scheme<Client>} + "://" + key});
+            if (_configure)
+                _configure(*client);
+            it = _nodes.emplace(key, std::move(client)).first;
+            it->second->connect([](bool) {}, _connect_timeout);
+        } else if (it->second->state() == qb::io::connection_state::down)
+            it->second->connect([](bool) {}, _connect_timeout);
+        return it->second.get();
+    }
+
+    /// The client of that node when the pool has one, without creating it.
+    [[nodiscard]] Client *
+    find(std::string const &host, std::uint16_t const port) const {
+        const auto it = _nodes.find(key_(host, port));
+        return it == _nodes.end() ? nullptr : it->second.get();
+    }
+
+    /// How many node clients the pool holds.
+    [[nodiscard]] std::size_t
+    size() const noexcept {
+        return _nodes.size();
+    }
+
+    /// A resolver over this pool that resolves nothing once the pool is gone.
+    [[nodiscard]] std::function<Client *(std::string const &, std::uint16_t)>
+    resolver() {
+        return [this, alive = _alive](std::string const &host, std::uint16_t const port) -> Client * {
+            return *alive ? get(host, port) : nullptr;
+        };
+    }
 };
 
 inline constexpr auto no_check = [](auto &&) {

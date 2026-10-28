@@ -55,7 +55,7 @@ The result type `T` is fixed per command and varies across this group. `XADD` yi
 | `std::vector<std::string>`     | claimed IDs without entry fields                  | `xclaim_justid`                                                                                                  |
 | `qb::json`                     | loosely structured server data                   | `xread`, `xreadgroup`, `xpending`, `xautoclaim`, `xinfo_stream`, `xinfo_groups`, `xinfo_consumers`, `xinfo_help` |
 
-`qb::redis::Reply<T>` (`reply.h:1251-1333`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1283-1365`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. You read a successful payload through `reply.result()` after checking `reply.ok()`.
 
 ### `qb::redis::stream_id`
@@ -121,10 +121,10 @@ convert to milliseconds yourself (e.g. `std::chrono::milliseconds{5000}.count()`
 ### Blocking reads suspend the command deadline
 
 `XREAD` and `XREADGROUP` are blocking commands, and the client classes them as such **unconditionally** — they sit in
-the `is_blocking_command` set alongside `BLPOP`/`BLMOVE`/`BZMPOP` whether or not you pass `block` (`redis.h:1862-1873`,
+the `is_blocking_command` set alongside `BLPOP`/`BLMOVE`/`BZMPOP` whether or not you pass `block` (`redis.h:1889-1900`,
 whose comment calls the unconditional treatment deliberately conservative). While one is in flight,
 `_inflight_blocking` is non-zero and the client's own per-command deadline is suspended, so the server-side `block`
-timeout governs instead (`redis.h:1850-1851`, `:1880`). A blocking read with `block > 0` parks the connection until data
+timeout governs instead (`redis.h:1877-1878`, `:1907`). A blocking read with `block > 0` parks the connection until data
 arrives or the timeout elapses; a *non*-blocking `xread` is likewise exempt from the client deadline, which is a
 deliberate loss of protection, not an oversight.
 

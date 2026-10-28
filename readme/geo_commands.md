@@ -136,7 +136,7 @@ co_await redis.georadius(key, 13.361389, 38.115556, 200,
                          std::vector<std::string>{"ASC"});
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:239-240, qbm/redis/src/qbm/redis/reply.h:936-951 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/geo_commands.h:239-240, qbm/redis/src/qbm/redis/reply.h:968-983 -->
 
 You own the spelling and ordering of these tokens. The same vector reaches `geosearch` too — its callback overload
 appends `options` after the `BYRADIUS <radius> <unit>` tokens, so `COUNT`/`ASC`/`WITH*` are forwarded there as well.

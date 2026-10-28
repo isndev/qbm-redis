@@ -99,7 +99,7 @@ Six rules decide whether generated qbm-redis code is correct; everything else is
   decorated errors keep the server message. `raw()` owns the complete original value,
   and `attributes()` borrows its outermost `const parser::Map *` (null when absent).
   Metadata blocks are not merged; moving or releasing `raw()` transfers their lifetime
-  (`src/qbm/redis/reply.h:1316-1330`).
+  (`src/qbm/redis/reply.h:1348-1362`).
 - **Command groups are CRTP mixins** (`key_commands<Derived>`,
   `string_commands<Derived>`, …) composed into the client. You never
   instantiate them directly. Method names are lowercase Redis verbs, with
@@ -396,8 +396,9 @@ if (!r.ok()) {
   before the reconnection decision, so disarming the policy there prevents the run.
 - **Sharded pub/sub** (Redis 7+, Huly QB-127): `consumer.ssubscribe(ch)` /
   `sunsubscribe(ch)`, `client.spublish(ch, msg)`; an `smessage` is delivered as a
-  `message`. On a cluster the client follows no redirect: talk to the node that owns
-  the channel's slot, and keep the channels of one call in one slot.
+  `message`. On a cluster the plain client follows no redirect: talk to the node that
+  owns the channel's slot (or go through `following_redirects()`), and keep the channels
+  of one call in one slot.
 - **Per-command retry** (Huly QB-133): `co_await redis.retrying().get(k)` -- a view whose
   read-only commands (and, with `command_retry{.idempotent_writes = true}`, idempotent
   writes) are retried on a lost link the run recovers or on LOADING / BUSY / TRYAGAIN /
@@ -405,9 +406,16 @@ if (!r.ok()) {
   non-idempotent writes, SET NX/XX/GET, ZADD INCR, blocking commands, anything inside
   MULTI, a client that is down. Never wrap commands in `qb::io::async::with_retry`: a
   `Reply` failure is a value, not an exception, so it never retries.
+- **Cluster redirections** (Huly QB-129): `qb::redis::node_pool<qb::redis::tcp::client>
+  nodes{configure};` then `co_await seed.following_redirects(nodes).get(k)` -- MOVED re-sent
+  to the node it names, ASK there after `ASKING`, every command (a redirection means it did
+  not run), at most `redirect_policy::max_redirects` (5); MULTI, ordinary errors, failures
+  without an answer and `?` endpoints are not followed. `configure` sets the node clients'
+  session (auth, RESP3, TLS). No slot map: one MOVED round trip per command for a key on
+  another node. `qb::redis::parse_redirection(reply.error())` reads one by hand.
 - **Observability** (`<qbm/redis/stats.h>`, Huly QB-134): `stats()` is a snapshot of
   monotonic counts -- a client's `commands` / `errors` / `failed` / `held` / `by_family`,
-  `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.
+  `retries` / `redirects`, `reconnects`, a consumer's `gaps` / `messages_received` / `messages_dropped`.
   `set_latency_stats(true)` turns on per-family histograms (`latency(family)`,
   p50/p95/p99 = `percentile(0.50/0.95/0.99)`); `on_command_complete(fn)` sees every
   completed command (`command_info`: verb, family, outcome, error, duration) before its
@@ -438,7 +446,7 @@ if (!r.ok()) {
   runs after decoding returns, outside its catches, whether invoked
   by the operator or the cold member; a callback exception cannot cause a second completion.
   Attribute traversal is iterative, with no new depth limit beyond the configured wire parser.
-  _(src/qbm/redis/reply.h:1390-1412,1415-1420,1424-1457; src/qbm/redis/reply.cpp:31-40)_
+  _(src/qbm/redis/reply.h:1422-1444,1447-1452,1456-1489; src/qbm/redis/reply.cpp:60-69)_
 
 ---
 

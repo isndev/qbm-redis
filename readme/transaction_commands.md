@@ -100,7 +100,7 @@ For `exec<Result>`, you pick `Result` to match what your queued commands return.
 status strings, so `exec<std::string>()` yields a `std::vector<std::string>` of `"OK"` values — one element per queued
 command, in order.
 
-<!-- src: qbm/redis/src/qbm/redis/types.h:563-614, qbm/redis/src/qbm/redis/reply.h:1251-1383 -->
+<!-- src: qbm/redis/src/qbm/redis/types.h:563-614, qbm/redis/src/qbm/redis/reply.h:1283-1415 -->
 
 > **Time units:** No method in this group takes a time argument. Connect and command timeouts and the `RetryPolicy`
 > delays are `qb::duration` and live on the client, not here. Redis command arguments that *do* carry time (for example
@@ -181,7 +181,7 @@ qb::io::async::task<void> run_tx(qb::redis::tcp::client &redis) {
 > prefer the pipeline path and read the raw EXEC array through `Reply<pipeline_result>.raw()`: per-command
 `parser::Value`
 > results are move-only and are not cloned into a typed vector. See [pipeline_and_await.md](./pipeline_and_await.md). (
-`qbm/redis/src/qbm/redis/types.h:457-467`, `qbm/redis/src/qbm/redis/reply.cpp:525-543`.)
+`qbm/redis/src/qbm/redis/types.h:457-467`, `qbm/redis/src/qbm/redis/reply.cpp:554-572`.)
 
 ### `DISCARD`
 
@@ -321,7 +321,7 @@ need one.
 > others: the protocol-level `redis<IO_>::reset()` (parser reset, `redis.h:206-209`) and the server-facing `RESET` command
 > in [connection.md](./connection.md) (`connection_commands.h:303-321`). This one only clears the client-side MULTI flag.
 
-<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:268-276, qbm/redis/src/qbm/redis/redis.h:2063 -->
+<!-- src: qbm/redis/src/qbm/redis/commands/transaction_commands.h:268-276, qbm/redis/src/qbm/redis/redis.h:2090 -->
 
 ---
 

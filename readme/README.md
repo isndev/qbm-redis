@@ -48,7 +48,7 @@ actor on it stops with you — silently, because nothing in the framework diagno
 **Building from source:** configure the qb-dev superproject; its qb module loader registers qbm-redis. The module's
 `CMakeLists.txt` is not standalone-configurable because it needs qb's development-time CMake helpers.
 
-<!-- src: qbm/redis/README.md:446-447 -->
+<!-- src: qbm/redis/README.md:447-448 -->
 
 ```cmake
 add_subdirectory(qb)                                   # the framework first
@@ -81,14 +81,14 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
 ## TLS and time
 
 - **TLS** — there is no redis-specific SSL option. Transport security follows the framework-wide `QB_HAS_SSL` (derived
-  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:4022-4028`); with it
+  from OpenSSL detection). With SSL on, the `qb::redis::tcp::ssl::client` alias exists (`redis.h:4277-4283`); with it
   off, the build emits a status note and only cleartext TCP is available. For `rediss://`, certificate and hostname
   verification is on by default; `set_verify_peer(false)` disables it and must be set before `connect()`.
 - **Time — framework side.** Connect and command timeouts and the `RetryPolicy` delays are `qb::duration`. Defaults:
   `RetryPolicy.initial_delay` 100 ms, `max_delay` 30 s, `connect_timeout` zero (each attempt takes the 3 s of `connect()`);
   `connect()` default timeout 3 s;
   `command_timeout` is `qb::duration::zero()` (disabled). `set_command_timeout` is a connection-health watchdog, not a
-  per-command timer: on deadline it drops the whole connection (`redis.h:2411-2435,1921-1937`). `debug_sleep` also takes
+  per-command timer: on deadline it drops the whole connection (`redis.h:2444-2468,1948-1964`). `debug_sleep` also takes
   `qb::duration`.
 - **Time — Redis-protocol side.** Command arguments retain native Redis units. A duration is relative; an expiry
   timestamp is an absolute `system_clock` instant. The available overloads differ by command:
@@ -124,8 +124,8 @@ resolves qb itself. Do not hand-add the include directory; the `redis/` headers 
 - **Check the result.** `Reply<T>` carries a status and a typed value: `r.ok()`, `r.result()`, `r.error()`. Redis
   command errors are reported as `ok() == false`; they are not thrown.
 - **Pipeline.** Issue several callback-form commands without awaiting between them; each enqueues one handler and
-  replies return in FIFO order. Drain with the client's `await()` (`redis.h:2395-2400`), or `flush()` on the `tcp::pipeline`
-  wrapper (`redis.h:2588-2589`, which itself calls `client().await()`). `pending_reply_count()` reports the queue depth.
+  replies return in FIFO order. Drain with the client's `await()` (`redis.h:2428-2433`), or `flush()` on the `tcp::pipeline`
+  wrapper (`redis.h:2653-2654`, which itself calls `client().await()`). `pending_reply_count()` reports the queue depth.
 - **Generic escape hatch.** For a command without a typed wrapper, call `command<T>` with the verb and arguments:
 
   ```cpp
@@ -192,10 +192,10 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 
 - **Auto-reconnect does not replay work.** On disconnect, all pending replies fail and predicted subscription state is
   cleared. After a reconnect you must re-issue any in-flight commands yourself; the configured handshake and a consumer's
-  confirmed subscriptions are what is replayed (`redis.h:2025-2064,3228-3229,3231-3243`).
+  confirmed subscriptions are what is replayed (`redis.h:2052-2091,3293-3294,3296-3308`).
 - **`set_command_timeout` drops the connection.** It is a health watchdog, not a per-command deadline: because FIFO
   pipelining cannot fail one mid-queue command without desyncing later replies, tripping the deadline disconnects and
-  fails every pending command (`redis.h:1921-1937,1872-1906`).
+  fails every pending command (`redis.h:1948-1964,1899-1933`).
 - **Auto-iterating scanners and `hvals` are callback-only.** All four no-cursor overloads — key-space `scan` plus
   `sscan` / `zscan` / `hscan` — and multi-key `hvals` buffer the whole result and fire the callback once; there is no
   coroutine form, so `co_await redis.scan("prefix*")` does not compile (only the cursor-taking
@@ -205,7 +205,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
   command with nothing to act on (`del` / `exists` / `touch` / `unlink` with no keys, `lpush` / `rpush`, `sadd` / `srem`,
   `sdiffstore` and the other `*store`, `hdel` / `hmget` / `hmset`, `zmpop` / `bzmpop`, `geoadd`, `pfcount` / `pfmerge`,
   `script exists`, …) sends no frame and resolves the callback / awaiter with `ok() == false` and a reason in `error()`
-  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:161-162`, `reply.h:1475-1479`).
+  via `fail_client` — never a silent no-op or a malformed command (`set_commands.h:161-162`, `reply.h:1507-1511`).
 - **Every argument guard resolves the callback.** There is no silent no-op left: a command rejected client-side
   (empty key/member/field, empty key pack, a count below 1, …) invokes the callback — and resumes the coroutine —
   with `ok() == false` and a reason in `error()`, via `fail_client`. The single-argument guards on `scard` /

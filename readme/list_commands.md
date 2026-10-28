@@ -14,7 +14,7 @@ minimal `co_await` and callback snippet.
 ## Summary
 
 The list commands are defined by the `qb::redis::list_commands<Derived>` CRTP mixin (`list_commands.h:37`), which
-`qb::redis::tcp::client` inherits along with every other command group (`redis.h:1515`, `redis.h:4012`). You call these
+`qb::redis::tcp::client` inherits along with every other command group (`redis.h:1541`, `redis.h:4267`). You call these
 methods directly on a connected client. Each command exists in two forms that share one method name: a **coroutine**
 form you `co_await` to get a `qb::redis::Reply<T>`, and a **callback** form that takes the handler as its first argument
 and returns the client for chaining. The dispatch and the `Reply<T>` decoding contract are covered
@@ -44,7 +44,7 @@ them. These are protocol seconds, **not** `qb::duration`; do not substitute qb t
 | `std::optional<std::pair<std::string, std::string>>`              | `{key, element}` from a blocking pop                    | `blpop`, `brpop`                                                                            |
 | `std::optional<std::pair<std::string, std::vector<std::string>>>` | `{key, elements}` from a multi-key pop                  | `lmpop`, `blmpop`                                                                           |
 
-`qb::redis::Reply<T>` (`reply.h:1251-1333`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1283-1365`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. Optional replies are tested with `reply.result().has_value()`.
 See [Command API model](./commands_overview.md) for the full reply surface.
 

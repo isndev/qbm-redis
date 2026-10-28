@@ -39,4 +39,4 @@ llm/qbm-redis.llm.api.md	symbol:with_on_retry	A builder of `qb::io::reconnect_po
 # one line low when they were written, so the prose that justified the exception was itself
 # mis-citing the header.  Nothing gates that prose; read it
 # against the source before trusting it, and re-derive it whenever an entry moves.
-llm/qbm-redis.llm.api.md	redis.h:1509-1509	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:1509. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.
+llm/qbm-redis.llm.api.md	redis.h:1535-1535	correct: `class Redis` is qbm/redis/src/qbm/redis/redis.h:1535. The citation opens the line, so it has no preceding subject and the rule falls back to `*_commands` prose.

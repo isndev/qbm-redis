@@ -59,6 +59,7 @@ qredis_test(unit resp-aggregate-reserve unit/parser/resp-aggregate-reserve.cpp E
 qredis_test(unit resp-buffer unit/parser/resp-buffer.cpp EXTRA_LABELS parser)
 qredis_test(unit resp-types unit/parser/resp-types.cpp EXTRA_LABELS parser)
 qredis_test(unit reply-parse unit/reply/reply-parse.cpp EXTRA_LABELS reply)
+qredis_test(unit redirection unit/reply/redirection.cpp EXTRA_LABELS reply)
 qredis_test(unit reply-serialize unit/reply/reply-serialize.cpp EXTRA_LABELS reply)
 qredis_test(unit reply-wrapper unit/reply/reply-wrapper.cpp EXTRA_LABELS reply)
 qredis_test(unit reply-extractors unit/reply/reply-extractors.cpp EXTRA_LABELS reply)
@@ -151,3 +152,7 @@ qredis_itest(pubsub-sharded integration/pubsub/pubsub-sharded.cpp)
 
 # SYSTEM -- the retrying view: what is retried, when, how often, and what never is (Huly QB-133).
 qredis_test(system command-retry system/connection/command-retry.cpp EXTRA_LABELS coroutine)
+
+# SYSTEM -- the redirect-following view: MOVED and ASK followed through a node pool, bounded, and what never is
+# (Huly QB-129). Loopback peers as the cluster's nodes, no daemon.
+qredis_test(system cluster-redirects system/connection/cluster-redirects.cpp EXTRA_LABELS coroutine)

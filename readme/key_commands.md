@@ -49,7 +49,7 @@ below are the correct way to express expiry.)
 | `std::vector<std::optional<std::string>>` | sorted elements a `GET` may find missing | `sortKeyGet`, `sortKeyRoGet`                                                                      |
 | `qb::redis::scan<>`          | one SCAN round-trip: `{cursor, items}` | `scan`                                                                                                            |
 
-`qb::redis::Reply<T>` (`reply.h:1258`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
+`qb::redis::Reply<T>` (`reply.h:1290`) exposes `ok()`, `result()` (alias `value()`), `value_or(default)`, `error()`, and
 an explicit `operator bool()`. Reads of TTL/count replies go through `reply.result()`; optional replies are tested with
 `reply.result().has_value()`. See [Command API model](./commands_overview.md) for the full reply surface.
 

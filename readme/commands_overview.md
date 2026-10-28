@@ -23,15 +23,15 @@ how the command surface is organized.
 ### Where the methods come from
 
 The client class composes a stack of CRTP mixins, one per Redis command group. `qb::redis::tcp::client` is an alias for
-`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:4012`), and that class inherits — in this order — from
+`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:4267`), and that class inherits — in this order — from
 `connection_commands`, `server_commands`, `key_commands`, `string_commands`, `list_commands`, `hash_commands`,
 `set_commands`, `sorted_set_commands`, `hyperloglog_commands`, `geo_commands`, `scripting_commands`, `publish_commands`,
 `stream_commands`, `bitmap_commands`, `transaction_commands`, `cluster_commands`, `acl_commands`, `module_commands`, and
-`function_commands` (`redis.h:1509-1529`). Each mixin is a `template <typename Derived>` that injects its command methods
+`function_commands` (`redis.h:1535-1555`). Each mixin is a `template <typename Derived>` that injects its command methods
 and routes I/O through `static_cast<Derived&>(*this)` — they are never instantiated standalone. The practical
 consequence: every Redis command appears as a flat method on the client, regardless of which group header defines it.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1509-1529 (Redis<QB_IO_> base list) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1535-1555 (Redis<QB_IO_> base list) -->
 
 For commands that are not yet wrapped (or that you want to issue by name), the client exposes a generic dispatcher:
 
@@ -47,16 +47,16 @@ Both forms end in the same place. The callback form serializes the command name 
 then pushes one reply handler onto a FIFO queue:
 
 ```cpp
-// redis.h:2287-2295 — the callback dispatcher, simplified
+// redis.h:2320-2328 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);
 ```
 
 A command group passes its verb resolved at compile time -- `detail::verb<"GET">`, a verb with no row in the command
-table does not compile -- to the same dispatcher's other overload (`redis.h:2301-2307`): the verb's family and flags
+table does not compile -- to the same dispatcher's other overload (`redis.h:2334-2340`): the verb's family and flags
 are read at its row, with no lookup (`stats.h:373-434`). A verb named at run time, as above, is looked up once
-(`redis.h:1625-1633`). Both forms then share one path (`redis.h:2206-2232`).
+(`redis.h:1652-1660`). Both forms then share one path (`redis.h:2233-2259`).
 
 Arguments are converted to RESP bulk strings in order, then the reply handler is enqueued — still **before** a byte is
 sent: writing to the pipe sends nothing, so no reply can run ahead of its handler. A command that cannot be serialized
@@ -68,7 +68,7 @@ see [Pipelining and `await()`](./pipeline_and_await.md).
 
 A numeric `qb::json` or `json_value` passed to a generic command emits its number as one decimal bulk string, not a
 JSON document. Floating values use the same round-trip formatting as a direct `double` argument; `1e-7` stays nonzero
-for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:1024-1025`, `reply.h:1051-1062`).
+for `command<double>("INCRBYFLOAT", key, qb::json(1e-7))` (`reply.h:1056-1057`, `reply.h:1083-1094`).
 Numeric `qb::json` integers preserve their signed or unsigned decimal value through the full 64-bit domain.
 A value above `INT64_MAX` remains a positive unsigned decimal argument; it is not cast to a signed value first.
 
@@ -91,11 +91,11 @@ sequenceDiagram
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
-resumes your coroutine when the reply lands (`redis.h:2510-2514`, `redis.h:1461-1472`).
+resumes your coroutine when the reply lands (`redis.h:2575-2579`, `redis.h:1487-1498`).
 
 ### The reply type: `qb::redis::Reply<T>`
 
-Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1251`), where `T` is the **expected successful result type**
+Every command resolves to a `qb::redis::Reply<T>` (`reply.h:1283`), where `T` is the **expected successful result type**
 for that command — fixed per command, never chosen by you for the wrapped methods. Examples:
 
 | Command                 | Result type `T`                           |
@@ -110,7 +110,7 @@ for that command — fixed per command, never chosen by you for the wrapped meth
 | `SCAN`                  | `qb::redis::scan<Out>`                    |
 
 `Reply<T>` carries four things: a success flag, the parsed result, the raw owning `parser::Value`, and an owned error
-string (`reply.h:1251`). Its surface:
+string (`reply.h:1283`). Its surface:
 
 - `reply.ok()` / `if (reply)` — `true` when the command was sent, a reply arrived, and it was **not** a Redis error.
 - `reply.result()` / `reply.value()` — the decoded `T` (aliases; `value()` is preferred in new code).
@@ -136,7 +136,7 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1251-1333 (Reply<T>) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1283-1365 (Reply<T>) -->
 
 #### `qb::redis::status` — the "OK" reply
 
@@ -148,7 +148,7 @@ fail at the protocol level, and `reply.value().ok()` confirms the server replied
 ### How replies are decoded
 
 Decoding lives in `reply.h` and runs inside the reply handler (`TReply<Func, T>`), which takes ownership of the parsed
-RESP node and produces the `Reply<T>` (`reply.h:1375`). The handler distinguishes three cases:
+RESP node and produces the `Reply<T>` (`reply.h:1407`). The handler distinguishes three cases:
 
 1. **Disconnect / failure** — a null reply yields `Reply{ ok = false, error = "disconnected" }` (or the explicit
    `fail()` reason, e.g. `"command timed out"`).
@@ -168,7 +168,7 @@ arrive as a flat `[k, v, k, v]` array (RESP2) or a native map (RESP3), and the m
 See [Error handling](./error_handling.md) for the full error taxonomy and the few command-specific exceptions to the
 no-throw rule.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1390-1412,1415-1420,1424-1457 (the TReply operator, cold dispatch member and decoder template), 312-319 (generic dispatch) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1422-1444,1447-1452,1456-1489 (the TReply operator, cold dispatch member and decoder template), 344-351 (generic dispatch) -->
 
 ### Coroutine vs callback
 

@@ -140,7 +140,7 @@ if (resp2.ok() && resp2.result().is_object())
     qb::io::cout() << resp2.result()["proto"].get<int>() << std::endl;     // 2
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/reply.cpp:671-705; qbm/redis/tests/unit/reply/reply-json-decode.cpp:255-271 -->
+<!-- src: qbm/redis/src/qbm/redis/reply.cpp:700-734; qbm/redis/tests/unit/reply/reply-json-decode.cpp:255-271 -->
 
 ### `auth` — authentication
 
@@ -160,7 +160,7 @@ auth(Func &&func, const std::string &user, const std::string &password);
 
 Two argument shapes: one string is the legacy `requirepass` form (authenticates as the `default` user); two strings are
 the ACL `user` + `password` form. A rejected credential resolves with `ok() == false` and the server message (
-`WRONGPASS`, `NOPERM`) in `error()`. A `qb::redis::AuthError` class is declared (`reply.h:121`) but nothing in the
+`WRONGPASS`, `NOPERM`) in `error()`. A `qb::redis::AuthError` class is declared (`reply.h:153`) but nothing in the
 module ever constructs or throws it — a rejected `auth` reaches you only as `reply.error()` text, so do not write a
 `catch` clause for it. An `auth(...)` sent this way holds for one connection only: to authenticate every
 connection, reconnections included, configure it -- `with_auth(user, password)` -- and the client runs it as part of the
@@ -339,7 +339,7 @@ instead of guessing how many confirmations the server will send. Await `reset()`
 After success, an unsubscribe-all from the empty state resolves on Redis's single empty-state confirmation; re-authenticate
 if the server requires it, and call `hello(3)` again to regain RESP3. The connection itself remains open. The live
 RESP2/RESP3 tests cover channels, patterns, a pipelined command after the barrier and a command rejected during it.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2807-2845,2888-2899; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2872-2910,2953-2964; qbm/redis/tests/integration/pubsub/pubsub-pipeline-desync.cpp:196-292 -->
 
 
 

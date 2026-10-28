@@ -19,6 +19,8 @@ describe(snapshot &snap, qb::redis::stats const &stats, label_set labels) {
     snap.counter("qb_redis_failed_total", "Commands without a server answer, a subset of errors.").add(labels, stats.failed);
     snap.counter("qb_redis_held_total", "Commands that waited for the connection to become ready.").add(labels, stats.held);
     snap.counter("qb_redis_retries_total", "Commands reissued by a retrying view after a retryable failure.").add(labels, stats.retries);
+    snap.counter("qb_redis_redirects_total", "Cluster redirections (MOVED, ASK) a redirect-following view followed.")
+        .add(labels, stats.redirects);
     snap.counter("qb_redis_reconnects_total", "Ready connections reached after a lost connection.").add(labels, stats.reconnects);
     snap.counter("qb_redis_gaps_total", "Consumer stream gap markers emitted.").add(labels, stats.gaps);
     snap.counter("qb_redis_messages_received_total", "Redis pub/sub messages received.").add(labels, stats.messages_received);

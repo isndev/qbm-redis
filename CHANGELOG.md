@@ -7,6 +7,31 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- **A view that follows a cluster's redirections: `redis.following_redirects(nodes)` (Huly QB-129).** Against a Redis
+  Cluster every command for a key another node serves came back `MOVED <slot> <host>:<port>` -- or `ASK` during a
+  slot's migration -- and the caller had to read the error and re-issue the command itself, `ASKING` first for an ASK.
+  `qb::redis::node_pool<Client>` now holds the clients of the other nodes, created on first use, handed to a
+  `configure` callback (auth, RESP3, TLS, a handshake hook) and connected, and connected again when one went down; the
+  view `redis.following_redirects(pool, qb::redis::redirect_policy{...})` -- the whole command surface but the
+  transaction commands, coroutine and callback, like `retrying()` -- sends a command answered MOVED again to the node
+  it names, and one answered ASK there too, preceded by `ASKING` back to back on that node's connection (it holds for
+  one command). A redirection means the node did NOT run the command, so every command is followed, a non-idempotent
+  write and a blocking command included, at most `max_redirects` times (5): a command that missed its ASKING is
+  answered MOVED back to the source by the importing node, and the bound ends such a loop with the last MOVED as the
+  error. A command inside MULTI, an ordinary error, a failure without an answer, a `?` endpoint and a node the resolver
+  does not have reach the caller unchanged; an empty host is the answering node's. A resolver of one's own may take the
+  pool's place. The view keeps no slot map: the client is asked first every time, so a key served by another node costs
+  one MOVED round trip per command (a client that routes by slot is Huly QB-130). Every redirection followed counts in
+  `stats().redirects` (`qb_redis_redirects_total`). `qb::redis::error_type(error)` now produces `ReplyErrorType`, and
+  `qb::redis::parse_redirection(error)` reads the slot, the host and the port of a redirection (an unbracketed IPv6
+  host, an empty one, `?`; a slot past 16383, a port 0 or a trailing word are no redirection). Proven against a local
+  Redis 8.10.2 cluster of three nodes, a slot migrating between two of them (a key on the seed: no redirection; on
+  another node: one MOVED per command; in the migrating slot: MOVED then ASK, and the value landed on the importing
+  node), by `qbm-redis-test-system-cluster-redirects` (9 cases on loopback nodes) and `qbm-redis-test-unit-redirection`,
+  green under ASan+UBSan and TSan, and by twelve mutants of the view, the pool and the parser, all caught.
+
 ### Changed
 
 - **The reply parsers take RESP3 attributes themselves; `reply::parse<T>` is a plain forward for them (Huly QB-1086).**

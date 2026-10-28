@@ -77,7 +77,7 @@ is truthy when the server answered `OK`. `Reply<status>` itself is truthy when t
 layers if you need to distinguish a transport error from a non-`OK` server answer —
 see [error_handling.md](./error_handling.md).
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1274-1276 (the Reply bool conversion), src/qbm/redis/types.h:563 (status) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1306-1308 (the Reply bool conversion), src/qbm/redis/types.h:563 (status) -->
 
 ### Structured replies decode to `qb::json`
 

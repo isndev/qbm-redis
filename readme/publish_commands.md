@@ -23,7 +23,7 @@ the methods below are called on a live client through its public alias `qb::redi
 `make_coro_command<T>(...)`, which own argument serialization, I/O, and connection lifetime (
 see [connection.md](./connection.md)).
 
-<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:38-43 (the CRTP derived accessor), redis.h:4012 (tcp::client alias) -->
+<!-- src: qbm/redis/src/qbm/redis/commands/publish_commands.h:38-43 (the CRTP derived accessor), redis.h:4267 (tcp::client alias) -->
 
 ```cpp
 #include <qbm/redis/redis.h>            // umbrella header; pulls in publish_commands.h
@@ -64,7 +64,7 @@ durability, or consumer groups, use Redis Streams instead (see your stream comma
 - `reply.result()` (alias `reply.value()`) — the `long long` subscriber count.
 - `reply.error()` — the error message string when `!reply.ok()`.
 
-<!-- src: qbm/redis/src/qbm/redis/reply.h:1251-1333 (Reply ok/result/value/error) -->
+<!-- src: qbm/redis/src/qbm/redis/reply.h:1283-1365 (Reply ok/result/value/error) -->
 
 ---
 
@@ -154,8 +154,8 @@ not `Reply<long long>&&` does not match this overload, so you cannot accidentall
 
 `spublish(channel, message)` sends `SPUBLISH`: the message reaches the subscribers that `ssubscribe`d to the shard
 channel, and the reply is how many of them received it (Huly QB-127). A shard channel lives on the cluster node that
-owns its hash slot; the client follows no `MOVED` redirect, so on a cluster send it to that node -- a hash tag
-(`orders:{7}`) pins related channels to one slot. On a standalone server it behaves as `publish` does.
+owns its hash slot; the plain client follows no `MOVED` redirect, so on a cluster send it to that node, or through
+`redis.following_redirects(nodes)` -- a hash tag (`orders:{7}`) pins related channels to one slot. On a standalone server it behaves as `publish` does.
 
 ```cpp
 auto r = co_await redis.spublish("orders:{7}", R"({"id":7,"state":"paid"})");

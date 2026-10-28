@@ -206,7 +206,7 @@ public:
         // engaged-implies-initialised correlation across the awaiter frame and reports
         //     error: '*(const long long int*)((char*)&emit_end + offsetof(...))' may be
         //            used uninitialized [-Werror=maybe-uninitialized]
-        // in the earlier optional decoder; current code: qbm/redis/src/qbm/redis/reply.h:908-911,
+        // in the earlier optional decoder; current code: qbm/redis/src/qbm/redis/reply.h:940-943,
         // inside to_redis_string's `if (opt) ... opt.value()`. It is a false positive, but QB_TESTS_WERROR
         // defaults to QB_CI so it is fatal on every runner and invisible on the
         // maintainer's clang. This spelling writes the payload only from a value GCC

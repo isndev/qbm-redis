@@ -13,15 +13,17 @@ TEST(RedisMetrics, TotalsAndFamiliesAreSeparateExactCounters) {
     stats.failed                  = first + 2;
     stats.held                    = first + 3;
     stats.retries                 = first + 4;
-    stats.reconnects              = first + 5;
-    stats.gaps                    = first + 6;
-    stats.messages_received       = first + 7;
-    stats.messages_dropped        = first + 8;
+    stats.redirects               = first + 5;
+    stats.reconnects              = first + 6;
+    stats.gaps                    = first + 7;
+    stats.messages_received       = first + 8;
+    stats.messages_dropped        = first + 9;
     for (std::size_t i = 0; i < stats.by_family.size(); ++i)
         stats.by_family[i] = first + i;
     qb::metrics::snapshot snapshot;
     qb::metrics::describe(snapshot, stats, {{"connection", "cache"}, {"core", "1"}});
-    const char *names[] = {"commands", "errors", "failed", "held", "retries", "reconnects", "gaps", "messages_received", "messages_dropped"};
+    const char *names[] = {"commands",          "errors",          "failed", "held", "retries", "redirects", "reconnects", "gaps",
+                           "messages_received", "messages_dropped"};
     for (std::size_t i = 0; i < std::size(names); ++i) {
         const auto  name   = "qb_redis_" + std::string(names[i]) + "_total";
         const auto *family = snapshot.find(name);
@@ -40,7 +42,7 @@ TEST(RedisMetrics, TotalsAndFamiliesAreSeparateExactCounters) {
         EXPECT_EQ(families->samples[i].labels.back().name, "family");
         EXPECT_EQ(families->samples[i].labels.back().value, qb::redis::command_family_name(static_cast<qb::redis::command_family>(i)));
     }
-    EXPECT_EQ(snapshot.families().size(), 10u);
+    EXPECT_EQ(snapshot.families().size(), 11u);
     EXPECT_EQ(snapshot.find("qb_redis_command_duration_seconds"), nullptr);
     const auto text = qb::metrics::write_text(snapshot);
     EXPECT_NE(text.find("qb_redis_commands_total{connection=\"cache\",core=\"1\"} 9007199254740993\n"), std::string::npos);

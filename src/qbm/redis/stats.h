@@ -566,6 +566,7 @@ struct stats {
     std::uint64_t                               held     = 0; ///< commands that waited for the client to be ready
     std::array<std::uint64_t, command_families> by_family{};  ///< `commands`, by family (`command_family`)
     std::uint64_t                               retries = 0;  ///< commands a retrying view re-issued after a retryable failure (`retrying()`)
+    std::uint64_t redirects         = 0; ///< cluster redirections (`MOVED`, `ASK`) a redirect-following view followed (`following_redirects()`)
     std::uint64_t reconnects        = 0; ///< ready connections reached after a lost one (`disconnect()` ends the session: none)
     std::uint64_t gaps              = 0; ///< gap markers a consumer put in its stream: after a reconnection, or an overflow
     std::uint64_t messages_received = 0; ///< pub/sub messages a consumer received

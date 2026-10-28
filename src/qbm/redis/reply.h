@@ -20,6 +20,7 @@
 #include <charconv>
 #include <chrono>
 #include <concepts>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -54,9 +55,40 @@ using ReplyValue = parser::Value;
 // ============================================================================
 
 /**
- * @brief Types of errors that can occur in Redis replies
+ * @brief Types of errors that can occur in Redis replies: a cluster redirection (`MOVED`, `ASK`) or any
+ *        other error (`ERR`) -- see `error_type()` and `parse_redirection()`
  */
 enum class ReplyErrorType { ERR, MOVED, ASK };
+
+/**
+ * @brief A cluster redirection, read from an error reply: `MOVED <slot> <host>:<port>` -- the slot is served
+ *        by that node from now on -- or `ASK <slot> <host>:<port>` -- this one command goes there, during the
+ *        slot's migration, preceded by `ASKING` (Huly QB-129).
+ * @details `host` is what the server sent: an IP or a hostname, empty when the server names none (the host of
+ *          the connection that answered is meant), `?` when its endpoint is unknown. An IPv6 host comes
+ *          unbracketed (`::1`): the port is after the LAST colon.
+ */
+struct redirection {
+    ReplyErrorType kind = ReplyErrorType::MOVED; ///< `MOVED` or `ASK`
+    std::uint16_t  slot = 0;                     ///< The hash slot, 0 to 16383
+    std::string    host;                         ///< The node's host as sent (empty: the answering node's; `?`: unknown)
+    std::uint16_t  port = 0;                     ///< The node's port
+};
+
+/**
+ * @brief `MOVED` or `ASK` when @p error (a `Reply::error()`) is a cluster redirection, `ERR` otherwise
+ * @param error The error text, without its leading `-`
+ * @return The error's type, from its first word
+ */
+[[nodiscard]] ReplyErrorType error_type(std::string_view error) noexcept;
+
+/**
+ * @brief The redirection @p error carries (Huly QB-129)
+ * @param error The error text, without its leading `-` (`Reply::error()`)
+ * @return The slot and the node; empty for any other error, and for a malformed one (a slot past 16383, a
+ *         port that is not one)
+ */
+[[nodiscard]] std::optional<redirection> parse_redirection(std::string_view error);
 
 /**
  * @class Error

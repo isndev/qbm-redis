@@ -78,10 +78,14 @@ flowchart TD
     K["key"] -- "cluster_keyslot(key)" --> S["hash slot — one of 16384 (0–16383)"]
     S --> N["the node that owns that slot range"]
     N -- "key not served here" --> R["server replies -MOVED slot host:port (or -ASK during migration)"]
-    R --> C["this client does NOT auto-follow the redirect:<br/>Reply.ok() == false, target in error() — re-issue against the right node<br/>(asking() first for an -ASK)"]
+    R --> C["the plain client does NOT follow it:<br/>Reply.ok() == false, target in error()"]
+    R --> F["the following_redirects() view does:<br/>re-sent to that node (asking() first for an -ASK)"]
 ```
 
-Redirect handling is manual — see [Error handling](./error_handling.md) and the redirect verbs below.
+On the plain client redirect handling is manual: read the target with `qb::redis::parse_redirection(reply.error())`
+and re-issue there, `asking()` first for an ASK. `redis.following_redirects(nodes)` does it for every command, through
+a `qb::redis::node_pool` of the other nodes' clients — see [Error handling](./error_handling.md#following-cluster-redirections-following_redirects)
+and the redirect verbs below.
 
 ### Per-connection redirect verbs
 
