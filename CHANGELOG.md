@@ -66,7 +66,9 @@ All notable changes to the qbm-redis module are documented here. The format is b
   0.30--0.31 s between OFF and ON, and 0.55--0.56 s each behind its own SKIP (Redis 8.10.2, Apple M4, three runs each,
   the host not quiet). On the client, `qbm-redis-bench-oneway-batch` (client + loopback + an in-process peer) counts
   2.07--2.31 allocations per SET sent the usual way and 0.03--0.25 per SET of a batch (256 and 16 SETs: the batch's
-  completion handler and buffers, once). An independent review then found the MULTI marker able to stick -- a MULTI
+  completion handler and buffers, once), and times a batch at 5.94 us for 16 SETs against 7.10 us for the same SETs
+  sent the usual way (-16 %), 22.3 us for 256 against 39.6 us (-44 %) -- the median of ten processes, i9-12900K,
+  WSL2, g++ 14, Release. An independent review then found the MULTI marker able to stick -- a MULTI
   that never left, one the server refused, a `reset()` -- and to be wiped under a MULTI held for the next link; it now
   clears on the MULTI's own failure (never the nested-MULTI error, never for a MULTI submitted after it), on RESET and
   on the loss of the link it was sent on, and ACL joined the refused verbs, an `ACL SETUSER` in a batch being able to
