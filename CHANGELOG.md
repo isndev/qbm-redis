@@ -108,6 +108,21 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **The reconnect suite's in-flight disconnect case holds its reply instead of racing it, and the command-timeout
+  case sizes its stall from the fastest of five probes (Huly QB-1272).** `DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT`
+  went red on a host loaded by parallel builds: it needed a Lua `EVAL` busy-loop's reply not to arrive within a 50 ms
+  send-flush settle, and the stall was sized from one probe timed on the test's clock -- a descheduled test process
+  reads the probe slow, the stall comes out short (the band's floor allowed an eighth of a probe, ~9 ms here) and the
+  reply beats the disconnect. The case sends a `BLPOP` on a key nobody pushes now and waits until a second
+  connection's `CLIENT LIST` shows the server holding it blocked (`flags=b`, `cmd=blpop`): in flight by construction,
+  answered only by the disconnect (`"disconnected"`). `COMMAND_TIMEOUT_DROPS_CONNECTION` keeps the stall -- the
+  client deadline applies to `EVAL`, not to `BLPOP` -- sized from the fastest of five small probes and never fewer
+  than 2e7 iterations, and a stall that comes out under the 50 ms deadline fails with how long the command took and
+  what sized it. Measured on one macOS host (Redis 8.10): with one probe read ten times slow, the old calibration
+  failed both cases in 10 runs out of 10 and the new one passes; a steady load slows the probe and the stall alike,
+  and 32 runs of the old code at load averages of 20 to 60 stayed green; the whole binary, 20 runs in series, 400/400
+  tests.
+
 - **The retrying view: `await()` waits for a retry in its backoff, and a command behind an unanswered `multi()` is
   never retried (Huly QB-129 review).** A retry waiting for its backoff sat outside the client's queues, so `await()`
   returned before the command was done and `pending_reply_count()` said 0; it is the client's now, for both. "Inside

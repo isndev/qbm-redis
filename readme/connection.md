@@ -452,7 +452,7 @@ client.enable_auto_reconnect(qb::redis::RetryPolicy{}
 // is true again once an attempt's handshake ran. A command submitted meanwhile is held.
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:198-219 -->
+<!-- src: qbm/redis/tests/integration/connection/reconnect-resilience.cpp:239-260 -->
 
 `is_reconnecting()` is `true` for the lifetime of the run; `is_connected()` flips back to `true` when an attempt's
 handshake ran. A run that spends its `max_attempts` leaves the client `down` with `retries_exhausted`. The run uses the
