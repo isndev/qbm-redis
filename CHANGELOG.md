@@ -106,6 +106,15 @@ All notable changes to the qbm-redis module are documented here. The format is b
   `ReplySerialize_MultiBulk/100` witness level; g++ 14 `JsonWideMap/100` -2.4 %, `MapStreamEntryList/4` -4.3 %,
   `ScoreMemberVector/100` and `PubSubMessage/16` level.
 
+- **A client that ends its connection keeps no half-closed descriptor (qb-io, Huly QB-1270).** Since 3.3 a
+  `disconnect()` shut the sending side down and the client kept the descriptor until it was destroyed or connected
+  again: nothing read it, so a server that went on writing to it blocked for as long as the object lived. The
+  descriptor now leaves the client when its teardown completes: the thread's loop sends the FIN -- the server reads
+  EOF and drops the client at once, as before --, reads and drops what the server still sends, and closes the
+  descriptor on the server's EOF, a socket error or qb-io's close bound (2 s by default). The change is qb-io's and
+  is described in qb's CHANGELOG; this module's sources are untouched and its reference says the new behaviour
+  (`llm/qbm-redis.llm.api.md`, `disconnect`).
+
 ### Fixed
 
 - **The reconnect suite's in-flight disconnect case holds its reply instead of racing it, and the command-timeout
