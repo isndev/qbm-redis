@@ -164,7 +164,7 @@ neither wakes nor unwinds a coroutine parked on one.
 <!-- src: qbm/redis/src/qbm/redis/redis.h:1620-1636 (await_ready false; await_suspend stores the handle and launches the operation — no token, no hook) -->
 
 It is a callback bridge and nothing more: `await_ready()` returns `false`, the handle is stored, the command is issued
-with a completion lambda, and resumption goes through `coro_scheduler().schedule_resume`. What it *does* carry is a
+with a completion lambda, and resumption goes through `qb::io::async::resume_via_current` (queued on the current scheduler; dropped once the thread's loop is destroyed). What it *does* carry is a
 `shared_ptr<bool> valid_` cleared in its destructor, so a reply that lands after the awaiter is gone is a silent no-op
 rather than a use-after-free.
 <!-- src: qbm/redis/src/qbm/redis/redis.h:1615-1618 (destructor clears valid_), :1630-1632 (the completion checks it first) -->

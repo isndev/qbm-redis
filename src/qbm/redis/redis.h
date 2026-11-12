@@ -528,7 +528,7 @@ private:
             ok = value;
             if (waiter) {
                 auto h = std::exchange(waiter, {});
-                ::qb::io::async::coro_scheduler().schedule_resume(h);
+                ::qb::io::async::resume_via_current(h);
             } else if (callback) {
                 auto cb = std::move(callback);
                 cb(value);
@@ -633,7 +633,7 @@ private:
                     if (!*valid)
                         return; // the frame is gone; the socket closes with raw_io
                     _sock.emplace(std::forward<decltype(raw_io)>(raw_io));
-                    ::qb::io::async::coro_scheduler().schedule_resume(_handle);
+                    ::qb::io::async::resume_via_current(_handle);
                 },
                 _timeout);
         }
@@ -1631,7 +1631,7 @@ public:
             if (!*valid)
                 return;
             result_ = std::move(reply);
-            qb::io::async::coro_scheduler().schedule_resume(handle_);
+            qb::io::async::resume_via_current(handle_);
         });
     }
 

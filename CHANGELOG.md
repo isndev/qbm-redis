@@ -134,6 +134,17 @@ All notable changes to the qbm-redis module are documented here. The format is b
   no EXEC, DISCARD or RESET was submitted after it (`multi(); reset();` pipelined left it `true`). `stats().retries`
   counts the commands issued again -- a retry a `multi()` cancels is not one -- and `on_retry` announces each one
   scheduled. Six loopback cases (`qbm-redis-test-system-command-retry`, 12), each caught by its mutant.
+- **A completion delivered after the thread's loop is destroyed is dropped (Huly QB-1246).** The three completions
+  of the client (`redis.h`: the connect slot, the transport connect, `redis_awaiter`) resumed their coroutine through
+  `coro_scheduler().schedule_resume()`; from the destructor of a client with static storage, after the main thread's
+  `listener::current`, that reached the destroyed listener. They go through
+  `qb::io::async::resume_via_current()`: queued on the thread's current scheduler while the loop lives -- the rule
+  of qb-io's own wakers; it was the thread's listener's scheduler, which is the same one on a core -- and dropped
+  once it is gone. A client with
+  static storage that never connected -- the two unit tests `empty-arg-guards` and `transaction-args-validation` hold
+  one -- is also released without reading the destroyed listener (`listener::release()`, in qb): under this train's
+  sanitize lane, which poisons the destroyed listener, both tests were a use-after-poison at exit before it; on
+  3.3.0 the same read was silent. Requires the qb of the same train.
 
 ## [3.3.0] - 2026-10-26
 
