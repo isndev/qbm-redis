@@ -459,6 +459,16 @@ if (!r.ok()) {
   connection/core labels, no user keys/credentials; reserve `family` and histogram `le`.
   Keep registry handles after their client members, destroyed first on the owner core.
   _(metrics.h:21,31)_
+- A client or a consumer destroyed is NOT disconnected: what was in flight or held is
+  discarded with it, no callback runs, and the transport closes with the object. A
+  `node_pool` destroyed disconnects its node clients first: what was in flight on one
+  fails once with "disconnected". Neither asks for the thread's event loop, so both end
+  cleanly in static storage, destroyed after the loop at process exit (QB-1246): the
+  server reads a clean end of stream (a TCP reset only when bytes it sent are still
+  unread), a coroutine parked on a command was destroyed with
+  the loop and is not resumed, and the pool's failure callbacks run after the loop -- they
+  must ask nothing of it (a command submitted from one is dropped: the client is down and
+  its failure would come from the loop).
 - RESP3 `PUSH` frames must not pop a command handler; the plain client discards
   them, the consumer routes them. Mishandling desyncs the FIFO permanently.
 - A throwing user callback at a noexcept dispatch boundary (`onMessage`,

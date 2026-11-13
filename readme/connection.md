@@ -534,6 +534,16 @@ before its handshake.
 - **Destruction** is RAII — when the client object is destroyed the connection is torn down. The connector holds a
   shared liveness token so a detached reconnect or timer that fires after destruction safely no-ops instead of touching
   freed memory.
+  A client destroyed is not disconnected: what was in flight or held is discarded with it and no callback runs (a
+  `node_pool` disconnects its node clients first, so what was in flight on one fails with "disconnected"). Nothing in
+  a destructor asks for the event loop, so a client, a consumer or a pool kept in static storage -- destroyed at
+  process exit after the loop, which is a thread-local -- ends cleanly. A client: never connected, connecting, in its
+  handshake, ready, with a command in flight, disconnected or in a reconnection run. A consumer: never connected,
+  ready, with a `SUBSCRIBE` in flight, subscribed, disconnected or in a reconnection run; its destructor says nothing
+  -- no message, no error, and no `on_disconnected`, which comes from `disconnect()` or from the loss of the link,
+  when they happen. A pool: empty, ready, or with a command in flight on a node. The process prints nothing and the
+  server reads a clean end of stream -- a reset only when the client goes with bytes of the server still unread, as
+  any TCP close gives (Huly QB-1246).
 
 ---
 

@@ -9,6 +9,27 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Added
 
+- **A client, a consumer and a node pool kept in static storage are witnessed through process exit, and what they do
+  there is written down (Huly QB-1246).** `exit()` destroys the main thread's event loop, a thread-local, before the
+  objects with static storage, so a `static` client is destroyed after the loop it ran on, where a request for the
+  loop stops the process on qb-io's named line. Nothing in this module's destructors asks for it, and
+  `qbm-redis-test-system-client-static-exit` now holds that: the plain client, the retrying view, the
+  redirect-following view, `node_pool`, `cb_consumer` and `co_consumer`, each with static storage, run to the end of
+  a child process. The client: never connected, a connect in flight, a handshake in flight, ready, a command in
+  flight with its callback pending or a coroutine parked on it, a command a cluster redirected in flight on another
+  node, disconnected, a reconnection run waiting for its next attempt, a command held by a run, the handshake of a
+  run in flight, a retry of the view waiting. The consumers: never connected, ready, a `SUBSCRIBE` in flight,
+  subscribed, a coroutine parked on `receive()`, disconnected, a reconnection run. The pool: empty, ready, a command
+  in flight on a node, issued again from its failure callback or through the retrying view. They are ended from
+  `main`, from a callback of the loop, from a reply's callback and from a coroutine. Each child must print its
+  judge's line and nothing else; the judge, an `atexit` handler registered before the client, asserts that the client
+  was destroyed after the loop, reads the end of the peer's stream (a clean EOF, never a reset) and asks
+  LeakSanitizer. The 59 cases pass on the code as it was: no product line changes. The peer is a scripted server, so the binary needs no daemon;
+  `qbm-redis-test-integration-client-static-exit` is the same source with the relay in front of the live
+  redis-server. The contract is stated where it lives -- a client destroyed is not disconnected, what was in flight
+  or held is discarded and no callback runs; a pool destroyed disconnects its nodes first, and what was in flight on
+  one fails with "disconnected" -- in `readme/connection.md` and the `llm/` reference.
+
 - **A view that follows a cluster's redirections: `redis.following_redirects(nodes)` (Huly QB-129).** Against a Redis
   Cluster every command for a key another node serves came back `MOVED <slot> <host>:<port>` -- or `ASK` during a
   slot's migration -- and the caller had to read the error and re-issue the command itself, `ASKING` first for an ASK.

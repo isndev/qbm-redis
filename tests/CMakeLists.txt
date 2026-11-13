@@ -77,6 +77,25 @@ qredis_test(system reconnect-carries-nothing system/connection/reconnect-carries
 qredis_test(system co-consumer-lifecycle system/connection/co-consumer-lifecycle.cpp EXTRA_LABELS pubsub coroutine)
 qredis_test(system reconnect-disconnected-callback system/connection/reconnect-disconnected-callback.cpp EXTRA_LABELS coroutine)
 qredis_test(system monitor-stream system/connection/monitor-stream.cpp)
+# Huly QB-1246: a client with static storage -- destroyed after the main thread's event loop -- ends cleanly at process
+# exit, one child process per client and per state, against a scripted peer. The relay and the judge's tools are qb's
+# (static_exit_support.h).
+qredis_test(system client-static-exit system/connection/client-static-exit.cpp EXTRA_LABELS coroutine)
+if (TARGET qbm-redis-test-system-client-static-exit)
+    target_include_directories(qbm-redis-test-system-client-static-exit PRIVATE "${QB_ROOT_DIR}/tests/io/shared")
+endif ()
+# The same cases with the relay in front of the live redis-server (REDIS_URI) instead of the scripted peer.
+qb_register_module_test(
+        MODULE_NAME redis TIER integration TEST_NAME client-static-exit
+        SOURCES system/connection/client-static-exit.cpp
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        DEFINES QB_STATIC_EXIT_DAEMON=1
+        LABELS module:qbm-redis tier:integration coroutine
+        REQUIRES live
+        RESOURCE_LOCK qb_redis_integration)
+if (TARGET qbm-redis-test-integration-client-static-exit)
+    target_include_directories(qbm-redis-test-integration-client-static-exit PRIVATE "${QB_ROOT_DIR}/tests/io/shared")
+endif ()
 
 # AF_UNIX is a POSIX transport contract. REDIS_UNIX_SOCKET names a private live daemon;
 # an absent variable skips locally, but both Linux CI suites provide and verify it.
