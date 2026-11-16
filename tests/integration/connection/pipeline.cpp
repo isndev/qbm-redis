@@ -20,10 +20,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <gtest/gtest.h>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
@@ -403,6 +406,46 @@ TEST_F(PipelineCallbackTest, DisconnectDeliversFailureToPendingCallbacks) {
     // TearDown runs FLUSHALL; reconnect after the explicit disconnect.
     ASSERT_TRUE(qb::io::async::run_sync(redis.connect()));
     ASSERT_TRUE(qb::io::async::run_sync(redis.flushall()).ok());
+}
+
+// await() from a deferred callback, on a client that is down: the command fails on the next loop pass, through
+// defer(), and await() waits for that failure. Until qb 3.4 a loop pumped from a deferred callback drained no deferred
+// callback (Huly QB-1246): await() spun at full CPU for ever, and no timer could end it. The scenario runs on a thread
+// of its own, with its own loop and client, so that a red is a reported failure instead of a hung suite.
+TEST_F(PipelineCallbackTest, AwaitFromADeferredCallbackHearsAFailureDeliveredThroughDefer) {
+    std::atomic<bool> connected{false};
+    std::atomic<bool> done{false};
+    std::atomic<int>  failures{0};
+    std::thread       worker([&] {
+        qb::io::async::init();
+        qb::redis::tcp::client own{redis_test_uri()};
+        connected = qb::io::async::run_sync(own.connect());
+        if (connected) {
+            own.disconnect(); // down: a command fails on the next loop pass, through defer()
+            qb::io::async::defer([&] {
+                own.ping([&](qb::redis::Reply<std::string> &&r) {
+                    if (!r.ok())
+                        ++failures;
+                });
+                own.await(); // a pump in a deferred callback
+            });
+            qb::io::async::listener::current.run(EVRUN_NOWAIT);
+        }
+        qb::io::async::listener::current.clear();
+        done = true;
+    });
+    const auto        deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!done && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    if (!done) {
+        ADD_FAILURE() << "await() in a deferred callback never returned: its pump ran no deferred callback, and the "
+                         "command's failure, delivered through defer(), never came (the worker spins; the process ends here)";
+        std::fflush(stdout);
+        std::_Exit(1);
+    }
+    worker.join();
+    ASSERT_TRUE(connected.load()) << "the worker's client did not connect";
+    EXPECT_EQ(failures.load(), 1) << "the command submitted while down was not failed exactly once";
 }
 
 TEST_F(PipelineCallbackTest, RedisPipelineChainedCommandAndFlush) {

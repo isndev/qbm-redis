@@ -222,7 +222,7 @@ renames to avoid C++ standard-library and keyword collisions: `COPY` → `copyKe
 
 The integration tests under [`../tests/`](../tests/) are executable documentation and run in both RESP2 and RESP3 modes.
 When a signature or behavior is unclear, grep a test and read it — for example `integration/connection/pipeline.cpp` drives `connect` /
-`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:404-405`).
+`flushall` through `qb::io::async::run_sync` (`tests/integration/connection/pipeline.cpp:407-408`).
 
 ## See also
 

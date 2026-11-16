@@ -51,7 +51,7 @@ redis.get([&](qb::redis::Reply<std::optional<std::string>> &&r) { if (r.ok()) ++
 redis.await();  // polls the loop until all three callbacks have run; done == 3
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:81-108 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:84-111 -->
 
 ```mermaid
 sequenceDiagram
@@ -93,7 +93,7 @@ redis.await();
 // pending_reply_count() == 0 here
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:81-108 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:84-111 -->
 
 ### Pipelining cuts round trips
 
@@ -111,7 +111,7 @@ redis.await();
 // order == {1, 2, 3}
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:110-146 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:113-149 -->
 
 ### What `await()` does and does not do
 
@@ -140,7 +140,7 @@ while (redis.pending_reply_count() > 0)
     qb::io::async::run(EVRUN_NOWAIT);
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:389-406 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:392-409 -->
 
 ### `qb::redis::tcp::pipeline`
 
@@ -171,7 +171,7 @@ pipe
 pipe.flush();  // == client().await(); NOT Redis FLUSHDB/FLUSHALL
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:408-428 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:451-471 -->
 
 Mixing the named wrapper with the client's mixin methods is fine — they share one queue:
 
@@ -182,7 +182,7 @@ pipe.client().get([](qb::redis::Reply<std::optional<std::string>> &&r) { /* ... 
 pipe.flush();  // drains both
 ```
 
-<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:430-455 -->
+<!-- src: qbm/redis/tests/integration/connection/pipeline.cpp:473-498 -->
 
 ### One-way batches: commands without their replies
 
