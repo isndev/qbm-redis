@@ -309,6 +309,19 @@ oneway_refusal(std::string_view const verb) noexcept {
     return nullptr;
 }
 
+/// The pump of `await()`, the client's and the consumer's: non-blocking passes of the thread's loop while
+/// `waiting()`. A pump makes the loop forget a break asked while it runs -- every pass begins by clearing it -- so it
+/// ends by saying it again, as qb-io's own pumps do (`listener::relay_break()`, qb, Huly QB-1246): called from a
+/// watcher's handler of a main loop (`async::run()`), a `break_parent()` another handler asked meanwhile still ends
+/// that loop when the handler returns.
+template <typename Waiting>
+void
+pump_while(Waiting &&waiting) {
+    while (waiting())
+        qb::io::async::listener::current.run(EVRUN_NOWAIT);
+    qb::io::async::listener::current.relay_break();
+}
+
 } // namespace detail
 
 /**
@@ -2746,11 +2759,13 @@ public:
      *          or a disconnect, never on @c set_command_timeout(). Nor does a command
      *          held there ever leave: the connection, its handshake and the reconnection
      *          run are coroutines too -- from a coroutine, @c co_await the command.
+     *
+     * @note A @c break_parent() asked while it spins is not lost to it (3.4): it relays the
+     *       break when it returns, as qb-io's own pumps do (@c detail::pump_while()).
      */
     Redis &
     await() {
-        while (!_replies.empty() || !_held.empty() || this->_failing_soon != 0 || _view_held != 0)
-            qb::io::async::listener::current.run(EVRUN_NOWAIT);
+        detail::pump_while([this] { return !_replies.empty() || !_held.empty() || this->_failing_soon != 0 || _view_held != 0; });
         return *this;
     }
 
@@ -3656,8 +3671,7 @@ public:
 
     Derived &
     await() {
-        while (!_replies.empty() || !_held.empty() || this->_failing_soon != 0)
-            qb::io::async::listener::current.run(EVRUN_NOWAIT);
+        detail::pump_while([this] { return !_replies.empty() || !_held.empty() || this->_failing_soon != 0; });
         return derived();
     }
 

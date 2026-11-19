@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:4676-4702 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:4690-4716 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -132,20 +132,20 @@ instead be selected by setting `REDIS_UNIX_SOCKET` before running CTest directly
 four coroutine overloads and two callback overloads:
 
 ```cpp
-// Coroutine form — qbm/redis/src/qbm/redis/redis.h:1279-1298
+// Coroutine form — qbm/redis/src/qbm/redis/redis.h:1292-1311
 connect_awaiter connect();                                   // use the stored URI, 3s default timeout
 connect_awaiter connect(qb::io::uri uri);                    // set + use this URI
 connect_awaiter connect(qb::duration timeout);              // stored URI, custom timeout
 connect_awaiter connect(qb::io::uri uri, qb::duration timeout);
 
-// Callback form — qbm/redis/src/qbm/redis/redis.h:1337-1358
+// Callback form — qbm/redis/src/qbm/redis/redis.h:1350-1371
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3));
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::duration timeout = std::chrono::seconds(3));
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1230-1298,1337-1358 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1243-1311,1350-1371 -->
 
 The default connect timeout is **3 seconds** (`qb::duration`), and it bounds the connection's handshake too. The
 awaiter resolves to `true` only once that handshake ran -- the client is **ready**, which is what `is_connected()`
@@ -276,7 +276,7 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1337-1358 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1350-1371 -->
 
 `set_uri(uri)` updates the stored endpoint without connecting; a later argument-less `connect()` uses it. `uri()`
 returns the current endpoint. `is_connected()` is `true` while the client is ready -- connected and its handshake run
@@ -303,7 +303,7 @@ if (!co_await redis.connect())           // true once all of the above ran
     co_return;
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:946-1013 (the handshake, in order: HELLO 3 or AUTH, SELECT, the hook, the replay), 1423-1457 (set_handshake, with_auth, with_select, with_resp3) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:959-1026 (the handshake, in order: HELLO 3 or AUTH, SELECT, the hook, the replay), 1436-1470 (set_handshake, with_auth, with_select, with_resp3) -->
 
 The order is fixed: HELLO 3 (with `AUTH user password` when credentials are set) or AUTH alone, then SELECT, then the
 hook. The hook writes through the `handshake_client&` it is given, never
@@ -346,7 +346,7 @@ if (!co_await redis.connect())
 #endif
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1369-1396 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1382-1409 -->
 
 `set_verify_peer(bool)` toggles TLS chain + hostname verification; it **defaults to `true`** and must be set before
 `connect()`. `verify_peer()` reads the current setting. For a **private CA**, call `set_ssl_root_cert(path)` (a PEM
@@ -472,7 +472,7 @@ empty until set and read only on those transitions: `on_connected()` each time t
 `on_disconnected` runs after the work in flight failed and before the connector decides whether to start the run: if it
 throws, the connector logs the error and still checks the current policy, so a hook that calls
 `disable_auto_reconnect()` prevents the run even if it later throws.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:779-841 (link-loss order, exception containment, reconnect decision), :3613-3637 (consumer pending-reply drain before notification) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:792-854 (link-loss order, exception containment, reconnect decision), :3628-3652 (consumer pending-reply drain before notification) -->
 
 > **Auto-reconnect replays the handshake, never a request.** Every reconnection runs the configured handshake --
 > RESP3, credentials, database, the hook, and a consumer's CONFIRMED subscriptions -- before anything else, so nothing
@@ -503,7 +503,7 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2190-2230 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2203-2243 -->
 
 The queue is swapped *before* the drain loop so that a failing handler may legitimately re-issue a command without
 that brand-new command being failed by the same loop. Where it goes then depends on the state the client is in:
@@ -561,7 +561,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2767-2797 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2782-2812 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,
@@ -605,7 +605,7 @@ _redis.on_command_complete([this, metrics = _metrics_id](qb::redis::command_info
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/stats.h:489-503 (command_info), :562-575 (stats), :509-553 (latency_histogram); qbm/redis/src/qbm/redis/redis.h:2806-2849 (set_latency_stats, latency, on_command_complete), qbm/redis/src/qbm/redis/redis.h:1847-1919 (each command counted once, inline at the dispatch; latency and the hook out of line) -->
+<!-- src: qbm/redis/src/qbm/redis/stats.h:489-503 (command_info), :562-575 (stats), :509-553 (latency_histogram); qbm/redis/src/qbm/redis/redis.h:2821-2864 (set_latency_stats, latency, on_command_complete), qbm/redis/src/qbm/redis/redis.h:1860-1932 (each command counted once, inline at the dispatch; latency and the hook out of line) -->
 
 ---
 

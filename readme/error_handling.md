@@ -113,9 +113,9 @@ preserve that source response's error and raw value.
 
 ### Coroutine and callback paths return the same `Reply<T>`
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1638-1640 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1651-1653 -->
 
-The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:1638-1640`). The callback overload invokes your
+The coroutine awaiter's `await_resume()` returns `Reply<T>` by value (`redis.h:1651-1653`). The callback overload invokes your
 handler with `Reply<T>&&`. The check is identical on both paths:
 
 ```cpp
@@ -214,7 +214,7 @@ The exception hierarchy (all in `reply.h`, all deriving from `qb::redis::Error :
 | `ProtoError`                                   | `parse<double>` (`reply.h:411-436`; its error raised by `parse_double_mismatch`, `reply.cpp:129-133`), `parse_scan_reply` (`reply.h:665-712`), container parsers | reply shape is wrong (e.g. "not a double reply", odd-length flat array)                                                                                                                                    |
 | `ReplyParseError` (: `ProtoError`)             | the typed `parse()` overloads: the primitives through their cold mismatch tails (`reply.cpp:102-126`), the containers in place (`reply.h:528,…`) | reply type does not match the expected type; the message names both                                                                                                                                        |
 | `CommandError`                                 | the JSON parsers, `parse<json_value>` / `parse<qb::json>` (`reply.cpp:588,666`)            | a JSON command's reply was a server error                                                                                                                                                                  |
-| `SecurityError`                                | `to_redis_string` (`reply.h:876,886`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB); caught where the command is serialized (`redis.h:1179-1203`), so the command fails with `"String too large"` and nothing reaches your call site (Huly QB-255) |
+| `SecurityError`                                | `to_redis_string` (`reply.h:876,886`)                                                      | an outbound argument exceeds `REDIS_MAX_STRING_SIZE` (512 MB); caught where the command is serialized (`redis.h:1192-1216`), so the command fails with `"String too large"` and nothing reaches your call site (Huly QB-255) |
 | `ConnectionError`, `AuthError`, `TimeoutError` | nothing (declared, currently unthrown)                                                     | reserved lifecycle types; connect/auth/deadline failures reach you as `reply.error()` strings (`"disconnected"`, `"command timed out"`), never as these exceptions — do not write `catch` clauses for them |
 
 Because the dispatcher catches `const Error&` — and, as a backstop, any other `std::exception` (e.g. a `std::bad_alloc`
@@ -260,12 +260,12 @@ The protocol's `onMessage(std::size_t)` runs under the libev C callback and is d
    dropped; the remaining pending replies still dispatch (`redis.h:197-201`).
 2. The command-reply dispatch in the client (`on(message&&)`) wraps the handler call in
    `try { … } catch (const std::exception&) { … }` for the same reason — it also runs under the libev read dispatch (
-   `redis.h:2182-2186`).
+   `redis.h:2195-2199`).
 3. The disconnect drain (`on(disconnected&&)`) catches both `const std::exception&` and `...`, because a failing
-   callback may legitimately re-issue a command and that nested call could throw (`redis.h:2200-2228`).
+   callback may legitimately re-issue a command and that nested call could throw (`redis.h:2213-2241`).
 4. The consumer's protocol-error fallback also catches and logs both exception kinds when completing
    its failed head callback. It then reports the original protocol error; later queued replies remain
-   deliverable. This logging is compiled out when logging support is disabled (`redis.h:3527-3541`).
+   deliverable. This logging is compiled out when logging support is disabled (`redis.h:3542-3556`).
 
 The contract for *your* callbacks: a throw will not crash the process, but it will cause that reply to be dropped with
 only a log line. Handle your own errors inside the callback; do not rely on the backstop as control flow.
@@ -401,7 +401,7 @@ if (!r)
 
 ### A command timeout surfaces as a failed reply
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2035-2038 (is_blocking_command), :2190-2230 (link-loss drain), :2780-2797 (set_command_timeout/getter) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2048-2051 (is_blocking_command), :2203-2243 (link-loss drain), :2795-2812 (set_command_timeout/getter) -->
 
 `command_timeout` defaults to `qb::duration::zero()` (disabled). It is a connection-health watchdog, not a per-command
 timer: when the deadline trips, the client drops the whole connection and fails **every** pending reply with
@@ -440,7 +440,7 @@ split is a documented boundary; see [key_commands.md](./key_commands.md).
   callback.
 - **Auto-reconnect does not replay work.** On disconnect, every pending command is failed with `Reply{ok=false}`;
   in-flight commands are not re-issued -- only the configured handshake is, with a consumer's confirmed
-  subscriptions. Re-send after you observe the failure (`redis.h:2190-2230`).
+  subscriptions. Re-send after you observe the failure (`redis.h:2203-2243`).
 - **A faulted parser is dead until reset.** A corrupt frame faults the parser sticky and drops the connection; you
   cannot keep feeding the same socket. Reconnect (or rely on auto-reconnect) to get a fresh parser (
   `src/qbm/redis/parser/parser.h:153-154`, `redis.h:208-213`).
@@ -491,7 +491,7 @@ called -- as the client's own pending replies are. While it waits for its backof
 "Inside MULTI" is read from what was submitted: a command sent behind a `multi()` whose `+OK` has not arrived yet is
 inside the transaction already, and passes through.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:249-259 (command_retry), :2861-2864 (retrying), :4117-4190 (what is retried), :4202-4422 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:249-259 (command_retry), :2876-2879 (retrying), :4131-4204 (what is retried), :4216-4436 (the view); qbm/redis/tests/system/connection/command-retry.cpp -->
 
 ## Following cluster redirections: `following_redirects()`
 
@@ -539,7 +539,7 @@ its own pending replies; when the pool is destroyed instead, its node clients ar
 fails with `"disconnected"` rather than vanishing. A node pool is not thread-safe and keeps the clients it created for
 its lifetime: one pool per client, on that client's thread.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:269-273 (redirect_policy), :2881-2896 (following_redirects), :4434-4664 (the view), :4728-4800 (node_pool); qbm/redis/tests/system/connection/cluster-redirects.cpp -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:269-273 (redirect_policy), :2896-2911 (following_redirects), :4448-4678 (the view), :4742-4814 (node_pool); qbm/redis/tests/system/connection/cluster-redirects.cpp -->
 
 ---
 

@@ -138,6 +138,14 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **`await()` relays a `break_parent()` asked while it spins (Huly QB-1246).** `await()` -- the client's and the
+  consumer's -- pumps the loop with non-blocking passes until the replies are in, and the loop forgets a break at
+  every pass: called from a watcher's handler of a main loop (`async::run()`), a `break_parent()` that another handler
+  asked meanwhile was lost, and the main loop went on. Both now pump through `detail::pump_while()`, which ends with
+  qb-io's `listener::relay_break()` (qb 3.4): the main loop ends when the handler that awaited returns. Called from a
+  deferred callback `await()` needed nothing: there qb's loop says a kept break again by itself. Proved by
+  `CommandRetry.ABreakAskedWhileAwaitSpinsEndsTheLoopItWasAskedOf`, which waits for its watchdog without the relay.
+
 - **The reconnect suite's in-flight disconnect case holds its reply instead of racing it, and the command-timeout
   case sizes its stall from the fastest of five probes (Huly QB-1272).** `DISCONNECT_WITH_SLOW_COMMAND_IN_FLIGHT`
   went red on a host loaded by parallel builds: it needed a Lua `EVAL` busy-loop's reply not to arrive within a 50 ms

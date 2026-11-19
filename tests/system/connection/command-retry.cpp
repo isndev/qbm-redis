@@ -517,6 +517,39 @@ TEST_F(CommandRetry, AwaitReturnsOnlyOnceTheRetriedCommandIsDone) {
     EXPECT_EQ(out.seen, (std::vector<std::string>{"ok:v"})) << "await() returned with the retry still to come";
 }
 
+TEST_F(CommandRetry, ABreakAskedWhileAwaitSpinsEndsTheLoopItWasAskedOf) {
+    // await() is a pump: passes of the loop until the replies are in. The loop forgets a break at every pass, so a
+    // `break_parent()` asked while await() spun in a handler of a main loop (`async::run()`) was lost, and the main
+    // loop went on. await() relays it when it returns (qb's `listener::relay_break()`, Huly QB-1246).
+    FakeRedis server;
+    Client    client{server.uri()};
+    auto      peer = connect(client, server);
+    ASSERT_TRUE(peer);
+
+    Outcomes out;
+    bool     watchdog = false;
+    bool     awaited  = false;
+    qb::io::async::callback(
+        [&watchdog] {
+            watchdog = true;
+            qb::io::async::break_parent();
+        },
+        2s);
+    qb::io::async::callback(
+        [&] { // a handler of the main loop
+            client.get(out.get_sink(), "k");
+            qb::io::async::callback([] { qb::io::async::break_parent(); }, 10ms); // asked while await() spins
+            qb::io::async::callback([&peer] { peer->send(bulk("v")); }, 60ms);    // the reply that ends the wait
+            client.await();
+            awaited = true;
+        },
+        1ms);
+    qb::io::async::run();
+    EXPECT_TRUE(awaited);
+    EXPECT_FALSE(watchdog) << "the break asked while await() spun was lost: only the watchdog ended the main loop";
+    EXPECT_EQ(out.seen, (std::vector<std::string>{"ok:v"}));
+}
+
 TEST_F(CommandRetry, AResetThroughTheViewEndsTheTransactionItWasWaitingBehind) {
     FakeRedis server;
     Client    client{server.uri()};

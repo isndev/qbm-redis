@@ -23,15 +23,15 @@ how the command surface is organized.
 ### Where the methods come from
 
 The client class composes a stack of CRTP mixins, one per Redis command group. `qb::redis::tcp::client` is an alias for
-`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:4681`), and that class inherits — in this order — from
+`qb::redis::detail::Redis<qb::io::transport::tcp>` (`redis.h:4695`), and that class inherits — in this order — from
 `connection_commands`, `server_commands`, `key_commands`, `string_commands`, `list_commands`, `hash_commands`,
 `set_commands`, `sorted_set_commands`, `hyperloglog_commands`, `geo_commands`, `scripting_commands`, `publish_commands`,
 `stream_commands`, `bitmap_commands`, `transaction_commands`, `cluster_commands`, `acl_commands`, `module_commands`, and
-`function_commands` (`redis.h:1673-1693`). Each mixin is a `template <typename Derived>` that injects its command methods
+`function_commands` (`redis.h:1686-1706`). Each mixin is a `template <typename Derived>` that injects its command methods
 and routes I/O through `static_cast<Derived&>(*this)` — they are never instantiated standalone. The practical
 consequence: every Redis command appears as a flat method on the client, regardless of which group header defines it.
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1673-1693 (Redis<QB_IO_> base list) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1686-1706 (Redis<QB_IO_> base list) -->
 
 For commands that are not yet wrapped (or that you want to issue by name), the client exposes a generic dispatcher:
 
@@ -47,16 +47,16 @@ Both forms end in the same place. The callback form serializes the command name 
 then pushes one reply handler onto a FIFO queue:
 
 ```cpp
-// redis.h:2588-2596 — the callback dispatcher, simplified
+// redis.h:2601-2609 — the callback dispatcher, simplified
 template <typename Ret, typename Func, typename... Args>
     requires std::invocable<Func, Reply<Ret> &&>
 Redis &command(Func &&func, std::string const &name, Args &&...args);
 ```
 
 A command group passes its verb resolved at compile time -- `detail::verb<"GET">`, a verb with no row in the command
-table does not compile -- to the same dispatcher's other overload (`redis.h:2602-2608`): the verb's family and flags
+table does not compile -- to the same dispatcher's other overload (`redis.h:2615-2621`): the verb's family and flags
 are read at its row, with no lookup (`stats.h:373-434`). A verb named at run time, as above, is looked up once
-(`redis.h:1790-1798`). Both forms then share one path (`redis.h:2381-2407`).
+(`redis.h:1803-1811`). Both forms then share one path (`redis.h:2394-2420`).
 
 Arguments are converted to RESP bulk strings in order, then the reply handler is enqueued — still **before** a byte is
 sent: writing to the pipe sends nothing, so no reply can run ahead of its handler. A command that cannot be serialized
@@ -91,7 +91,7 @@ sequenceDiagram
 
 The coroutine form is a thin wrapper over the callback form. It calls `make_coro_command<Ret>(...)`, which returns a
 `redis_awaiter<Ret>` whose `await_suspend` invokes the same `command<Ret>(callback, name, args...)` internally and
-resumes your coroutine when the reply lands (`redis.h:2898-2902`, `redis.h:1625-1636`).
+resumes your coroutine when the reply lands (`redis.h:2913-2917`, `redis.h:1638-1649`).
 
 ### The reply type: `qb::redis::Reply<T>`
 
