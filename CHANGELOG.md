@@ -138,6 +138,38 @@ All notable changes to the qbm-redis module are documented here. The format is b
 
 ### Fixed
 
+- **A link is no longer installed over the one a handler has just ended (Huly QB-1278).** A reply handler runs
+  inside the read dispatch of the client's own link. `disconnect()` called there cannot tear that link down under
+  the handler: its teardown -- the failure of what was in flight, `on_disconnected` -- runs when the handler
+  returns. Two ways of beginning the next connection from the same handler installed its link before that:
+  `setup_connection()`, which installed the socket it was given at once; and `connect()`, when the handler then ran
+  the loop itself (a synchronous wait on other work), because the attempt's transport completed under it. The new
+  link took the place of the old one under the dispatch that was still reading it: a reply of the ended link was
+  still delivered, the command in flight was never failed, `on_disconnected` never fired and the new link answered
+  nothing -- and a build with assertions stopped in qb-io (`io::reset_io_state() while a disconnect() is pending`).
+  The same held for a link the peer closed, when a failure callback connected again and ran the loop: the new link
+  was installed inside the teardown of the old one, which then stopped its watcher and ended its transport. Now no
+  link is installed while the last link's teardown is owed or running. An attempt that finds one waits for its end
+  (`on(event::dispose&&)`), then looks again at who owns the client. `setup_connection()` installs its link before
+  it returns, as it always did, except in that one case: it keeps the socket, the client reads `connecting`, and
+  the link is installed from the loop once the teardown is over; a `disconnect()` made meanwhile closes the socket.
+  The wait has no deadline of its own -- `connect(timeout)` and an attempt's limit bound the transport and the
+  handshake, not this -- because it ends when the handler on the stack returns: a handler that waits synchronously
+  for the link it has just asked for does not see it come up.
+- **A consumer's callback that ends its link is no longer handed the rest of that link's read (Huly QB-1278).** One
+  read can bring several pushes. When the callback of the first called `disconnect()`, the teardown waited for the
+  read dispatch to return and the dispatch went on: the callback received the next message of the link it had just
+  ended -- and, when it had also begun a new connection, that message was delivered within the new lifecycle. The
+  client has always dropped the frames of a link whose teardown has begun; `cb_consumer` and `co_consumer` now do
+  the same.
+- **A `disconnect()` made by a callback of a lost link starts no run, whatever policy that callback arms (Huly
+  QB-1278).** `disconnect()` is terminal: no reconnection run starts, whatever the policy. On a client the loss had
+  already left `down` -- no policy armed when the link was lost -- it only forgot that a link had been lost: a
+  policy the same failure callback or `on_disconnected` hook armed then started a run, and the client came back by
+  itself. `disconnect()` on a client that is `down` now keeps it down until the next `connect()`.
+  The client stays `down` with the reason the loss gave it.
+  `tests/system/connection/lifecycle-in-reply-handler.cpp` holds the three entries: twelve cases, nine of them
+  failing on the code as it was.
 - **`await()` relays a `break_parent()` asked while it spins (Huly QB-1246).** `await()` -- the client's and the
   consumer's -- pumps the loop with non-blocking passes until the replies are in, and the loop forgets a break at
   every pass: called from a watcher's handler of a main loop (`async::run()`), a `break_parent()` that another handler

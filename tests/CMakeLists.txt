@@ -168,6 +168,7 @@ qredis_test(system reconnect-contract system/connection/reconnect-contract.cpp E
 
 # SYSTEM -- what a client or consumer reports of itself: stats(), on_command_complete, latency (Huly QB-134).
 qredis_test(system client-stats system/connection/client-stats.cpp EXTRA_LABELS coroutine)
+qredis_test(system lifecycle-in-reply-handler system/connection/lifecycle-in-reply-handler.cpp EXTRA_LABELS coroutine)
 
 # UNIT -- the command table of stats.h against the command groups' own sources (Huly QB-134).
 qredis_test(unit command-traits unit/stats/command-traits.cpp)

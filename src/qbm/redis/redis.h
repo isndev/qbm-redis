@@ -496,6 +496,7 @@ class handshake_writer;
 template <typename QB_IO_, typename Derived>
 class connector : public qb::io::async::tcp::client<connector<QB_IO_, Derived>, QB_IO_, void> {
     friend struct has_method_on<connector<QB_IO_, Derived>, void, qb::io::async::event::disconnected>;
+    friend struct has_method_on<connector<QB_IO_, Derived>, void, qb::io::async::event::dispose>;
     friend class qb::io::async::io<connector<QB_IO_, Derived>>;
     friend class qb::protocol::redis<connector<QB_IO_, Derived>>;
     friend class HandshakeClient<Derived>;
@@ -555,9 +556,11 @@ private:
     qb::io::down_reason        _down_reason   = qb::io::down_reason::user;
     qb::io::down_reason        _loss_cause    = qb::io::down_reason::peer; ///< why the last link went away
     bool                       _link_open     = false;                     ///< a link is installed and its teardown has not begun
+    bool                       _link_ending   = false;                     ///< the last link's teardown is owed or running: no install yet
     bool                       _cause_set     = false;                     ///< the client named _loss_cause before it dropped the link
     bool                       _session_ready = false;                     ///< the installed link reached ready: its loss fires on_disconnected
     bool                       _recovering    = false;                     ///< a reconnection run is in progress (is_reconnecting())
+    bool                       _stay_down     = false;                     ///< disconnect() on a client already down: no run before connect()
     bool                       _ever_ready    = false;                     ///< a connection reached ready once: a later one follows a gap
     bool                       _verify_peer   = true;                      /**< Verify server TLS cert for rediss:// (stcp transport). */
     /// Bumped by disconnect(), by every connect() that starts a lifecycle and by every terminal transition:
@@ -583,6 +586,55 @@ private:
     qb::redis::stats                         _stats{}; ///< what this client or consumer has done (stats(), Huly QB-134)
     bool                  _lost_since_ready = false;   ///< a ready link was lost, not by disconnect(): the next ready is a reconnect
     std::shared_ptr<bool> _alive{std::make_shared<bool>(true)};
+    /// The attempts and adoptions that wait for the last link's teardown to be over. Shared: an awaiter whose frame
+    /// is destroyed after the client leaves the list by it, not by the client.
+    struct link_gate {
+        std::vector<std::coroutine_handle<>> waiters;
+    };
+    std::shared_ptr<link_gate> _link_gate{std::make_shared<link_gate>()};
+
+    /**
+     * @brief Suspends an attempt or an adoption while the last link's teardown is owed or running.
+     * @details Resumed by `on(event::dispose&&)`, from the scheduler's next drain. A link installed before that
+     *          was installed over the link being torn down: `install_link_()` replaces the transport and resets
+     *          the io state the teardown still reads. Neither copyable nor movable: its place in the list is its
+     *          own.
+     */
+    struct link_ended_awaiter {
+        connector                 &_client;
+        std::shared_ptr<link_gate> _gate;
+        std::coroutine_handle<>    _self;
+
+        explicit link_ended_awaiter(connector &client) noexcept
+            : _client(client) {}
+        link_ended_awaiter(link_ended_awaiter const &)            = delete;
+        link_ended_awaiter(link_ended_awaiter &&)                 = delete;
+        link_ended_awaiter &operator=(link_ended_awaiter const &) = delete;
+        link_ended_awaiter &operator=(link_ended_awaiter &&)      = delete;
+
+        ~link_ended_awaiter() {
+            if (_gate && _self)
+                std::erase(_gate->waiters, _self); // a frame destroyed while it waits is never resumed
+        }
+
+        bool
+        await_ready() const noexcept {
+            return !_client._link_ending;
+        }
+
+        void
+        await_suspend(std::coroutine_handle<> h) {
+            qb::io::async::track_suspension(h, "redis link teardown");
+            _gate = _client._link_gate;
+            _self = h;
+            _gate->waiters.push_back(h);
+        }
+
+        void
+        await_resume() noexcept {
+            _self = {}; // resumed: on(event::dispose&&) took the list
+        }
+    };
 
     /**
      * @brief Build the transport socket for a new connection.
@@ -706,9 +758,10 @@ private:
     drop_link_(qb::io::down_reason cause) noexcept {
         if (!_link_open)
             return;
-        _loss_cause = cause;
-        _cause_set  = true;
-        _link_open  = false;
+        _loss_cause  = cause;
+        _cause_set   = true;
+        _link_open   = false;
+        _link_ending = true; // owed from here when the link's own dispatch is on the stack; over at on(event::dispose&&)
         qb::io::async::io<connector<QB_IO_, Derived>>::disconnect_now();
     }
 
@@ -787,9 +840,14 @@ private:
      *          A ready link's loss fires on_disconnected with its cause, AFTER the in-flight work failed and
      *          BEFORE the reconnection decision -- a hook that disarms the policy prevents the run (QB-663);
      *          then a run starts when the cause is not `user` and a policy is armed, else the client is down.
+     *          A failure callback or the hook that calls `connect()` owns the client from then on: this loss
+     *          decides nothing after it. One that calls `disconnect()` ends the matter: no run starts, whatever
+     *          policy was armed when the link was lost (`down` with `down_reason::user`, at once) or is armed by
+     *          that callback (the client stays `down` as the loss left it).
      */
     void
     on(qb::io::async::event::disconnected &&ev) {
+        _link_ending         = true; // a loss the peer or the socket caused begins its teardown here
         const bool was_ready = _session_ready;
         _session_ready       = false;
         _link_open           = false;
@@ -816,8 +874,9 @@ private:
                 _down_reason = cause;
             }
         }
-        // Read before anything user code runs: a failure callback below, or the on_disconnected hook, that calls
-        // disconnect() or connect() owns the client from then on, and this loss decides nothing after it.
+        // Read before anything user code runs: a failure callback below, or the on_disconnected hook, that moves
+        // the epoch -- connect(), or disconnect() on a client this loss left reconnecting -- owns the client from
+        // then on, and this loss decides nothing after it. (A disconnect() on a client it left down: _stay_down.)
         const auto epoch = _epoch;
         try {
             derived().on_link_lost_(was_ready);
@@ -843,14 +902,24 @@ private:
         notify_(_on_disconnected, "on_disconnected", cause);
         if (epoch != _epoch)
             return; // a failure callback or the hook disconnected or connected: that call owns the state now
-        if (!_reconnect_policy) {
-            enter_down_(cause);
+        if (!_reconnect_policy || _stay_down) {
+            enter_down_(cause); // no policy, or a disconnect() made by a callback of this loss: it stays down
             return;
         }
         _state      = qb::io::connection_state::reconnecting;
         _recovering = true;
         auto policy = *_reconnect_policy;
         ::qb::io::async::coro_scheduler().spawn(run_(std::move(policy), _alive, _epoch));
+    }
+
+    /// The teardown is over -- the last thing a standalone io's dispose() does, after `on(disconnected)` and the
+    /// end of the transport: what waited to install a link goes on, from the scheduler's next drain.
+    void
+    on(qb::io::async::event::dispose &&) {
+        _link_ending = false;
+        auto waiters = std::exchange(_link_gate->waiters, {});
+        for (const auto waiter : waiters)
+            ::qb::io::async::resume_via_current(waiter);
     }
 
     /// The reconnection run: the policy's attempts, until ready, refused, spent or superseded.
@@ -927,6 +996,11 @@ private:
             _loss_cause = qb::io::down_reason::peer;
             co_return attempt_outcome::transport_failed;
         }
+        // Never over a link whose teardown is owed or running: a caller that ended its link from that link's own
+        // reply handler and then ran the loop is still on the stack, and `on(disconnected)` has not run.
+        co_await link_ended_awaiter{*this};
+        if (!*alive || epoch != _epoch)
+            co_return attempt_outcome::cancelled; // the socket closes with this frame
         install_link_(std::move(sock));
         co_return co_await handshake_(limit, alive, epoch);
     }
@@ -1043,7 +1117,8 @@ private:
             return false; // a connection, a handshake or a run is in progress: it owns the state
         ++_epoch;
         _refusal.clear();
-        _state = qb::io::connection_state::connecting;
+        _stay_down = false;
+        _state     = qb::io::connection_state::connecting;
         derived().on_lifecycle_start_();
         return true;
     }
@@ -1413,8 +1488,17 @@ public:
      * @brief Adopt an already-opened transport socket, then run the handshake on it.
      *
      * Installs the RESP protocol, begins async I/O on `raw_io` and starts the handshake: the client is
-     * `ready` once it succeeds, `down` if it is refused or the link drops first. Refuses (returns `false`)
-     * while a connection, a handshake or a run is in progress.
+     * `handshaking` when this returns, `ready` once the handshake succeeds, `down` if it is refused or the link
+     * drops first. Refuses (returns `false`) while a connection, a handshake or a run is in progress.
+     *
+     * One case installs later: when the previous link's teardown is still owed or running -- a reply handler
+     * that has just called `disconnect()` is inside the read dispatch of the link it ended, whose teardown
+     * (`on_disconnected`, the failure of what was in flight) runs when the handler returns; a failure callback
+     * of a lost link is inside that teardown. A link installed there was installed over the one being torn down
+     * (the old link's next reply was delivered, its end was never told, the new link answered nothing). The
+     * socket is then kept, the client is `connecting`, and the link is installed from the loop once that
+     * teardown is over, as `connect()`'s is. A `disconnect()` made meanwhile supersedes the adoption: the
+     * socket is closed.
      *
      * @param uri    URI associated with this connection (stored).
      * @param raw_io An opened transport socket to take ownership of.
@@ -1425,8 +1509,12 @@ public:
         if (!begin_lifecycle_())
             return false;
         _uri = std::move(uri);
-        install_link_(std::move(raw_io));
-        ::qb::io::async::coro_scheduler().spawn(adopted_flow_(_alive, _epoch));
+        if (_link_ending) {
+            ::qb::io::async::coro_scheduler().spawn(adopted_flow_(std::move(raw_io), _alive, _epoch));
+        } else {
+            install_link_(std::move(raw_io));
+            ::qb::io::async::coro_scheduler().spawn(adopted_flow_(std::nullopt, _alive, _epoch));
+        }
         return true;
     }
 
@@ -1537,7 +1625,11 @@ public:
         return derived().self_();
     }
 
-    /** @brief Called each time the client reaches `down`, with the reason, after the held work failed. */
+    /**
+     * @brief Called each time the client settles `down`, with the reason, after the held work failed.
+     * @details A loss whose failure callback, or `on_disconnected` hook, began another connection does not settle
+     *          `down` -- that call owns the state -- and reports none, although `state()` read `down` inside it.
+     */
     auto &
     on_down(std::function<void(qb::io::down_reason)> hook) {
         _on_down = std::move(hook);
@@ -1555,7 +1647,9 @@ public:
 
     /**
      * @brief Disconnect for good, and complete the teardown before returning.
-     * @details Terminal: `down` with `down_reason::user`, whatever the reconnection policy -- an explicit
+     * @details Terminal: `down` with `down_reason::user` -- or, on a client that is already `down` (a lost
+     *          link, a refused handshake, a run that gave up), with the reason it has --, whatever the
+     *          reconnection policy: an explicit
      *          disconnect starts no run (the qbm-http clients' rule). What was in flight fails with
      *          "disconnected"; a connection, a handshake or a run in progress is abandoned and what it held
      *          fails too. The io base's `disconnect_now()` runs the teardown on the spot, without a loop pass
@@ -1567,7 +1661,12 @@ public:
         _lost_since_ready = false; // an explicit disconnect ends the session: the next ready is no reconnect
         switch (_state) {
             case qb::io::connection_state::idle:
+                return;
             case qb::io::connection_state::down:
+                // Already down, and it stays so. Said from a failure callback or the hook of a loss that is still
+                // deciding -- no policy was armed when the link was lost --, this is what keeps a policy that
+                // callback arms from starting a run: an explicit disconnect starts none, whatever the policy.
+                _stay_down = true;
                 return;
             case qb::io::connection_state::ready:
                 _state           = qb::io::connection_state::down;
@@ -1589,9 +1688,17 @@ public:
 
 private:
     qb::io::async::task<void>
-    adopted_flow_(std::shared_ptr<bool> alive, std::uint64_t epoch) {
+    adopted_flow_(std::optional<typename QB_IO_::transport_io_type> owed, std::shared_ptr<bool> alive, std::uint64_t epoch) {
         if (!*alive || epoch != _epoch)
-            co_return;
+            co_return; // superseded, or the client is gone: a socket still held closes with this frame
+        if (owed) {
+            // The socket of an adoption made while the last link's teardown was owed or running: installed once
+            // that teardown is over -- which it is by now, unless the caller ran the loop under it.
+            co_await link_ended_awaiter{*this};
+            if (!*alive || epoch != _epoch)
+                co_return;
+            install_link_(std::move(*owed));
+        }
         const auto outcome = co_await handshake_(qb::duration{std::chrono::seconds(3)}, alive, epoch);
         if (!*alive || epoch != _epoch)
             co_return;
@@ -3409,6 +3516,12 @@ private:
 
     void
     on(typename redis_protocol::message msg) {
+        // disconnect_now() can defer the teardown until this read dispatch returns: the frames the same read
+        // brought behind the one whose callback ended the link are the dead link's, as for the client. Delivered,
+        // the next message reached a callback that had just disconnected -- or the consumer of the lifecycle it
+        // had just begun.
+        if (!this->link_open_())
+            return;
         try {
             if (!msg.reply) {
                 throw ProtoError("Null reply received");

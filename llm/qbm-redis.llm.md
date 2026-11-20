@@ -391,7 +391,12 @@ if (!r.ok()) {
   `"reconnection attempts exhausted"`, `"handshake refused: …"`), on an idle or down
   client on the next loop pass. `disconnect()` has failed what was in flight by the
   time it returns, and it is terminal -- from a failure callback the loss runs, too (a
-  `connect()` there owns the client). `on_connected` / `on_disconnected(reason)`
+  `connect()` there owns the client). No link is installed while the last link's
+  teardown is owed or running (3.4): a `connect()` or `setup_connection()` made from
+  a reply handler after its `disconnect()`, or from a failure callback of a lost
+  link, installs its link once that handler has returned -- never wait synchronously
+  for it there, no timeout bounds that wait --, and a consumer drops the frames of a
+  link whose teardown has begun. `on_connected` / `on_disconnected(reason)`
   strictly alternate; `on_disconnected` runs after the in-flight work failed and
   before the reconnection decision, so disarming the policy there prevents the run.
 - **Sharded pub/sub** (Redis 7+, Huly QB-127): `consumer.ssubscribe(ch)` /

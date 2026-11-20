@@ -88,7 +88,7 @@ Everything lives in `namespace qb::redis`. The transport-bound aliases you insta
 | `qb::redis::tcp::pipeline`                    | plaintext TCP | named callback-pipelining wrapper                                              |
 | `qb::redis::tcp::cb_consumer` / `co_consumer` | plaintext TCP | pub/sub consumers (see [subscription_commands.md](./subscription_commands.md)) |
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:4690-4716 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:4803-4829 -->
 
 `qb::redis::tcp::client` is the alias for `qb::redis::detail::Redis<qb::io::transport::tcp>`; `database<QB_IO_>` is the
 generic template behind it. All the command mixins (`connection_commands`, `string_commands`, …) are inherited by this
@@ -132,20 +132,20 @@ instead be selected by setting `REDIS_UNIX_SOCKET` before running CTest directly
 four coroutine overloads and two callback overloads:
 
 ```cpp
-// Coroutine form — qbm/redis/src/qbm/redis/redis.h:1292-1311
+// Coroutine form — qbm/redis/src/qbm/redis/redis.h:1367-1386
 connect_awaiter connect();                                   // use the stored URI, 3s default timeout
 connect_awaiter connect(qb::io::uri uri);                    // set + use this URI
 connect_awaiter connect(qb::duration timeout);              // stored URI, custom timeout
 connect_awaiter connect(qb::io::uri uri, qb::duration timeout);
 
-// Callback form — qbm/redis/src/qbm/redis/redis.h:1350-1371
+// Callback form — qbm/redis/src/qbm/redis/redis.h:1425-1446
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::io::uri uri, qb::duration timeout = std::chrono::seconds(3));
 template <std::invocable<bool> Func>
 void connect(Func &&func, qb::duration timeout = std::chrono::seconds(3));
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1243-1311,1350-1371 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1318-1386,1425-1446 -->
 
 The default connect timeout is **3 seconds** (`qb::duration`), and it bounds the connection's handshake too. The
 awaiter resolves to `true` only once that handshake ran -- the client is **ready**, which is what `is_connected()`
@@ -276,7 +276,7 @@ redis.connect([&redis](bool connected) {
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1350-1371 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1425-1446 -->
 
 `set_uri(uri)` updates the stored endpoint without connecting; a later argument-less `connect()` uses it. `uri()`
 returns the current endpoint. `is_connected()` is `true` while the client is ready -- connected and its handshake run
@@ -303,7 +303,7 @@ if (!co_await redis.connect())           // true once all of the above ran
     co_return;
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:959-1026 (the handshake, in order: HELLO 3 or AUTH, SELECT, the hook, the replay), 1436-1470 (set_handshake, with_auth, with_select, with_resp3) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1033-1100 (the handshake, in order: HELLO 3 or AUTH, SELECT, the hook, the replay), 1524-1558 (set_handshake, with_auth, with_select, with_resp3) -->
 
 The order is fixed: HELLO 3 (with `AUTH user password` when credentials are set) or AUTH alone, then SELECT, then the
 hook. The hook writes through the `handshake_client&` it is given, never
@@ -346,7 +346,7 @@ if (!co_await redis.connect())
 #endif
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:1382-1409 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:1457-1484 -->
 
 `set_verify_peer(bool)` toggles TLS chain + hostname verification; it **defaults to `true`** and must be set before
 `connect()`. `verify_peer()` reads the current setting. For a **private CA**, call `set_ssl_root_cert(path)` (a PEM
@@ -468,11 +468,14 @@ fact: a poll sees where the client stands when it looks, not what happened befor
 `state()` and `down_reason()` say where the client stands at any moment, and three hooks report the transitions, each
 empty until set and read only on those transitions: `on_connected()` each time the client becomes ready,
 `on_disconnected(qb::io::down_reason)` once for every ready connection lost -- with its cause, `user`, `peer` or
-`protocol`; the two strictly alternate -- and `on_down(qb::io::down_reason)` when the client reaches `down`.
+`protocol`; the two strictly alternate -- and `on_down(qb::io::down_reason)` when the client settles `down`. A failure
+callback of the lost link, or the `on_disconnected` hook, may call `connect()` or `disconnect()`: a connection begun
+there is not undone -- the loss reports no `on_down` then --, and after a `disconnect()` no run starts, whatever policy
+was armed when the link was lost or is armed by that same callback.
 `on_disconnected` runs after the work in flight failed and before the connector decides whether to start the run: if it
 throws, the connector logs the error and still checks the current policy, so a hook that calls
 `disable_auto_reconnect()` prevents the run even if it later throws.
-<!-- src: qbm/redis/src/qbm/redis/redis.h:792-854 (link-loss order, exception containment, reconnect decision), :3628-3652 (consumer pending-reply drain before notification) -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:849-913 (link-loss order, exception containment, reconnect decision), :3741-3765 (consumer pending-reply drain before notification) -->
 
 > **Auto-reconnect replays the handshake, never a request.** Every reconnection runs the configured handshake --
 > RESP3, credentials, database, the hook, and a consumer's CONFIRMED subscriptions -- before anything else, so nothing
@@ -503,7 +506,7 @@ if (!r) {
 }
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2203-2243 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2310-2350 -->
 
 The queue is swapped *before* the drain loop so that a failing handler may legitimately re-issue a command without
 that brand-new command being failed by the same loop. Where it goes then depends on the state the client is in:
@@ -522,13 +525,19 @@ before its handshake.
 
 ### `disconnect()`, `quit()`, and destruction
 
-- **`disconnect()`** is terminal: the client is `down` with `down_reason::user`, and no reconnection run starts
-  whatever the policy -- only a new `connect()` leaves `down`. It completes the teardown before it returns -- on the
+- **`disconnect()`** is terminal: the client is `down` with `down_reason::user` -- or, on a client that is already
+  `down` (a lost link, a refused handshake, a run that gave up), with the reason it has --, and no reconnection run
+  starts whatever the policy -- only a new `connect()` leaves `down`. It completes the teardown before it returns -- on the
   spot, without running the loop, so nothing else runs under the caller -- so every queued handler has been failed when
   `disconnect()` comes back, and a `connect()` issued right after cannot overtake it. A coroutine awaiting one of
   those commands resumes at the loop's next pass, as every completion does. Called from inside a reply handler, the
-  teardown runs as soon as that handler returns. Called while connecting, handshaking or reconnecting, it abandons the
-  attempt and fails what was held.
+  teardown runs as soon as that handler returns. A link begun from that same handler -- `connect()`,
+  `setup_connection()` -- is installed only once that teardown is over, and so is one begun from a failure callback
+  of a lost link (3.4, Huly QB-1278): until then a new link took the place of the old one under the dispatch that
+  was still reading it. A handler that waits synchronously for the link it has just asked for does not see it come
+  up -- the wait ends when the handler returns, and no connect timeout bounds it. A consumer's callback that
+  disconnects is not handed the other messages its read brought. Called while connecting, handshaking or
+  reconnecting, it abandons the attempt and fails what was held.
 - **`quit()`** is the Redis `QUIT` command (a coroutine yielding `Reply<status>`): it asks the server to close the
   connection cleanly after replying.
 - **Destruction** is RAII — when the client object is destroyed the connection is torn down. The connector holds a
@@ -561,7 +570,7 @@ redis.set_command_timeout(500ms);   // arm
 // redis.set_command_timeout(qb::duration::zero());  // disarm
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/redis.h:2782-2812 -->
+<!-- src: qbm/redis/src/qbm/redis/redis.h:2889-2919 -->
 
 This is **not a per-command timer.** A FIFO-pipelined protocol cannot fail one mid-queue command without desynchronizing
 every later reply, so the only safe action on a stall is to drop the connection. Blocking commands (`BLPOP`, `WAIT`,
@@ -605,7 +614,7 @@ _redis.on_command_complete([this, metrics = _metrics_id](qb::redis::command_info
 });
 ```
 
-<!-- src: qbm/redis/src/qbm/redis/stats.h:489-503 (command_info), :562-575 (stats), :509-553 (latency_histogram); qbm/redis/src/qbm/redis/redis.h:2821-2864 (set_latency_stats, latency, on_command_complete), qbm/redis/src/qbm/redis/redis.h:1860-1932 (each command counted once, inline at the dispatch; latency and the hook out of line) -->
+<!-- src: qbm/redis/src/qbm/redis/stats.h:489-503 (command_info), :562-575 (stats), :509-553 (latency_histogram); qbm/redis/src/qbm/redis/redis.h:2928-2971 (set_latency_stats, latency, on_command_complete), qbm/redis/src/qbm/redis/redis.h:1967-2039 (each command counted once, inline at the dispatch; latency and the hook out of line) -->
 
 ---
 
